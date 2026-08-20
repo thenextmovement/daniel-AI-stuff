@@ -1,0 +1,85 @@
+{
+  "artifact_version": "neontrip_n8n_phase6_private_research_validation_v1",
+  "validated_at_utc": "2026-08-20T14:17:36Z",
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "prepared_against": {
+    "version_id": "5dc73e80-3249-4985-a51b-001c5cb69223",
+    "active_version_id": "5dc73e80-3249-4985-a51b-001c5cb69223",
+    "version_counter": 118,
+    "draft_node_count": 20,
+    "draft_connection_source_count": 17,
+    "draft_file_sha256": "f0927f96011b340e9198f083b3ab0cb85b4880d8052e86e24f4c9a4cc2487a9e",
+    "active_file_sha256": "59f4a6bfe5ce524eebfbb867c320ad86365e2307d872d45b193e6b5b1f2147cc",
+    "graph_sha256": "4b5a7c2187a05f5c39f62968efeed983e1011ac670b924a15bf7ae9d8f852485"
+  },
+  "offline": {
+    "phase6_tests": {
+      "passed": 23,
+      "failed": 0
+    },
+    "forward_operation_count": 9,
+    "reverse_operation_count": 9,
+    "exact_reverse_restores_full_prestate": true,
+    "standalone_artifacts_match_generator": true,
+    "candidate": {
+      "node_count": 23,
+      "connection_source_count": 20
+    },
+    "legacy_suite_notes": [
+      "Phase-2 aggregate test could not start because the unchanged local worktree lacks the ajv package.",
+      "Phase-5 functional tests passed; its unchanged standalone artifact comparison pins an absolute source-worktree path."
+    ]
+  },
+  "candidate_validation": {
+    "valid": true,
+    "total_nodes": 23,
+    "enabled_nodes": 14,
+    "trigger_nodes": 1,
+    "valid_connections": 23,
+    "invalid_connections": 0,
+    "expressions_validated": 8,
+    "error_count": 0,
+    "warning_count": 11,
+    "warning_scope": "Existing disabled Trello chain and existing Payload Ready Gate error-output warning only."
+  },
+  "n8n_validate_only": {
+    "fresh_pre_gate_exact": true,
+    "forward": {
+      "success": true,
+      "valid": true,
+      "operations_to_apply": 9,
+      "applied": false
+    },
+    "forward_and_reverse": {
+      "success": true,
+      "valid": true,
+      "operations_to_apply": 18,
+      "applied": false
+    }
+  },
+  "live_readback_after_validation": {
+    "draft_exactly_unchanged": true,
+    "published_active_exactly_unchanged": true,
+    "version_id": "5dc73e80-3249-4985-a51b-001c5cb69223",
+    "active_version_id": "5dc73e80-3249-4985-a51b-001c5cb69223",
+    "version_counter": 118,
+    "active": true,
+    "is_archived": false,
+    "draft_node_count": 20,
+    "draft_connection_source_count": 17,
+    "active_node_count": 20,
+    "active_connection_source_count": 17
+  },
+  "safety": {
+    "prepared_only": true,
+    "live_write_performed": false,
+    "publish_performed": false,
+    "activation_changed": false,
+    "workflow_execution_triggered": false,
+    "openai_request_performed": false,
+    "customer_action_performed": false,
+    "general_ingress_data_unchanged": true,
+    "general_ingress_processing_would_pause_during_pilot": true,
+    "master_projection_authorized": false
+  }
+}

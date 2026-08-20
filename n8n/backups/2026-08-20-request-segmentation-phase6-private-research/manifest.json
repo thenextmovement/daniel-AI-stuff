@@ -1,0 +1,40 @@
+{
+  "artifact_version": "neontrip_n8n_phase6_private_research_prestate_v1",
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "workflow_name": "NEONTRIP Request Segmenter v1.0 (SHADOW - scheduled active)",
+  "captured_at_utc": "2026-08-20T12:10:31Z",
+  "capture_mode": "read_only_full_and_published_active",
+  "active": true,
+  "is_archived": false,
+  "draft_version_id": "5dc73e80-3249-4985-a51b-001c5cb69223",
+  "active_version_id": "5dc73e80-3249-4985-a51b-001c5cb69223",
+  "version_counter": 118,
+  "node_count": 20,
+  "connection_source_count": 17,
+  "draft_active_graphs_equal": true,
+  "files": {
+    "draft": "ELpwCfdWOCRZ22gy.draft-before.json",
+    "active": "ELpwCfdWOCRZ22gy.published-active-before.json"
+  },
+  "hashes": {
+    "draft_file_sha256": "f0927f96011b340e9198f083b3ab0cb85b4880d8052e86e24f4c9a4cc2487a9e",
+    "active_file_sha256": "59f4a6bfe5ce524eebfbb867c320ad86365e2307d872d45b193e6b5b1f2147cc",
+    "draft_graph_sha256": "4b5a7c2187a05f5c39f62968efeed983e1011ac670b924a15bf7ae9d8f852485",
+    "active_graph_sha256": "4b5a7c2187a05f5c39f62968efeed983e1011ac670b924a15bf7ae9d8f852485",
+    "claim_node_sha256": "604b1bdb89884abf1c3659813053ae20adc541338152003090c12009598eeb57",
+    "payload_node_sha256": "969fb0f0fa7a7166146c508807cb276f30bf1c55514e522720737fa105851c31",
+    "build_node_sha256": "39dc013f712dc27cdbd8957356c78025329ef1a7bea973297549c57de1b0448f",
+    "classifier_node_sha256": "5648d6c178a65cb4dfca66082786d0b59cbf4871b8a60e873e35a75b212639e0",
+    "validator_node_sha256": "d809c5102b8165b5c49e354c250c66381e7bd56c0fd61f4ea8ad0aea8a731a67",
+    "record_node_sha256": "294c28368b07ab79aff8739a6ff7515f4db0151966e188ec633d7d5a58212902",
+    "failure_node_sha256": "e1e0db503ec32b6e3be1724fa16c269ebaf109ad6b7b6715ae54335e88ccf5cd"
+  },
+  "safety": {
+    "live_write_performed": false,
+    "publish_performed": false,
+    "activation_changed": false,
+    "execution_triggered": false,
+    "openai_request_performed": false,
+    "customer_action_performed": false
+  }
+}

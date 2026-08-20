@@ -1,0 +1,943 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+import {
+  BUILD_CODE_AFTER,
+  CLASSIFIER_BODY_EXPRESSION,
+  CLASSIFIER_MODEL,
+  CLASSIFIER_PARAMETERS_AFTER,
+  CLASSIFIER_REASONING_EFFORT,
+  CLASSIFIER_VERSION,
+  POLICY_VERSION,
+  PREPARE_CODE,
+  PROMPT_VERSION,
+  QUALITY_GATE_VERSION,
+  RESEARCH_BODY_EXPRESSION,
+  RESEARCH_CONTRACT,
+  RESEARCH_MODEL,
+  RESEARCH_NODE,
+  SOURCE,
+  STRICT_OUTPUT_SCHEMA,
+  TAXONOMY_VERSION,
+  VALIDATOR_CODE_AFTER,
+  VALIDATOR_VERSION,
+  evaluateBodyExpression
+} from "./privacy-safe-research-source.mjs";
+import {
+  applyOperationsInMemory,
+  createArtifactFiles,
+  createPatchBundle,
+  loadPreparedPrestate
+} from "./workflow-patch.mjs";
+import {
+  CONTEXT_TAGS,
+  CX8_SEGMENTS,
+  ORGANIZATION_SCALES,
+  SEGMENT_EVIDENCE_CODES
+} from "../2026-08-19-request-segmentation-phase2-cx8/cx8-contract-source.mjs";
+
+const JOB_ID_A = "11111111-1111-4111-8111-111111111111";
+const JOB_ID_B = "22222222-2222-4222-8222-222222222222";
+const REQUEST_ID_A = "33333333-3333-4333-8333-333333333333";
+const REQUEST_ID_B = "44444444-4444-4444-8444-444444444444";
+const SOURCE_URL = "https://example.com/services";
+
+function definitionFor(segment) {
+  return {
+    ...segment,
+    description: "Complete synthetic definition for " + segment.segment + " with enough detail.",
+    inclusion_criteria: ["Positive criterion for " + segment.segment + "."],
+    required_evidence: ["Required evidence for " + segment.segment + "."],
+    required_evidence_code: SEGMENT_EVIDENCE_CODES[segment.segment],
+    exclusion_criteria: ["Exclusion criterion for " + segment.segment + "."],
+    tie_breaker: "Deterministic synthetic tie breaker for " + segment.segment + " with enough detail."
+  };
+}
+
+function job(id = JOB_ID_A, requestId = REQUEST_ID_A) {
+  return {
+    id,
+    request_id: requestId,
+    input_hash: "input-hash-" + id.slice(0, 8),
+    source: SOURCE,
+    taxonomy_version: TAXONOMY_VERSION,
+    classifier_version: CLASSIFIER_VERSION,
+    prompt_version: PROMPT_VERSION
+  };
+}
+
+function payload(overrides = {}) {
+  const domainFacts = {
+    is_valid_dns_host: true,
+    is_freemail: false,
+    is_shared_provider: false,
+    email_domain_cache_allowed: true,
+    domain_lookup_allowed: true,
+    ...(overrides.domain_facts || {})
+  };
+  const input = {
+    title: "Synthetic request",
+    description: "Synthetic minimized request context.",
+    declared_customer_type: "unknown",
+    declared_customer_type_first_party_verified: false,
+    application: "Synthetic application",
+    country: "DE",
+    company: "Synthetic Media GmbH",
+    company_lookup_allowed: true,
+    email_domain: "example.com",
+    domain_facts: domainFacts,
+    ...(overrides.input || {})
+  };
+  input.domain_facts = domainFacts;
+  return {
+    contract: {
+      taxonomy_version: TAXONOMY_VERSION,
+      classifier_version: CLASSIFIER_VERSION,
+      prompt_version: PROMPT_VERSION,
+      policy_version: POLICY_VERSION,
+      quality_gate_version: QUALITY_GATE_VERSION,
+      research_contract: RESEARCH_CONTRACT,
+      source: SOURCE,
+      evaluation_only: true,
+      master_projection_authorized: false,
+      validator_version: VALIDATOR_VERSION,
+      research_model: RESEARCH_MODEL,
+      classifier_model: CLASSIFIER_MODEL,
+      classifier_reasoning_effort: CLASSIFIER_REASONING_EFFORT
+    },
+    input,
+    taxonomy: {
+      version: TAXONOMY_VERSION,
+      lifecycle_status: "shadow",
+      decision_unit: "requesting_or_contracting_entity",
+      default_outcome: "needs_review",
+      definitions: CX8_SEGMENTS.map(definitionFor),
+      tie_break_order: CX8_SEGMENTS.map((item) => item.segment)
+    },
+    context_definitions: CONTEXT_TAGS.map((contextTag) => ({
+      context_tag: contextTag,
+      label: "Label " + contextTag,
+      description: "Synthetic context definition for " + contextTag + "."
+    })),
+    organization_scale_values: [...ORGANIZATION_SCALES]
+  };
+}
+
+function runBuild(payloads, jobs) {
+  const run = new Function("$input", "$", BUILD_CODE_AFTER);
+  return run(
+    { all: () => payloads.map((value) => ({ json: value })) },
+    (nodeName) => {
+      assert.equal(nodeName, "Normalize Claimed Jobs");
+      return {
+        itemMatching: (index) => ({ json: jobs[index] })
+      };
+    }
+  );
+}
+
+function rawResearch(source, overrides = {}) {
+  const query = overrides.query ?? source.researchPlan.query;
+  const sourceUrl = overrides.sourceUrl ?? SOURCE_URL;
+  const sources = overrides.sources || [
+    { type: "url", url: sourceUrl, title: "Synthetic official source" }
+  ];
+  const extraCalls = overrides.extraCalls || [];
+  return {
+    id: overrides.responseId || "resp_phase6_research",
+    object: "response",
+    status: overrides.status || "completed",
+    incomplete_details: overrides.incompleteDetails ?? null,
+    model: overrides.model || RESEARCH_MODEL,
+    output: [
+      {
+        id: overrides.searchCallId || "ws_phase6_research",
+        type: "web_search_call",
+        status: "completed",
+        action: {
+          type: "search",
+          query,
+          sources
+        }
+      },
+      ...extraCalls,
+      {
+        id: "msg_phase6_research",
+        type: "message",
+        status: "completed",
+        role: "assistant",
+        content: [{
+          type: "output_text",
+          annotations: [],
+          text: "Synthetic bounded company research summary."
+        }]
+      }
+    ]
+  };
+}
+
+function runPrepare(incoming, buildSources) {
+  const run = new Function("$input", "$", PREPARE_CODE);
+  return run(
+    { all: () => incoming.map((value) => ({ json: value })) },
+    (nodeName) => {
+      assert.equal(nodeName, "Build Classifier Prompt");
+      return {
+        itemMatching: (index) => ({ json: buildSources[index] })
+      };
+    }
+  );
+}
+
+function acceptedModel() {
+  return {
+    taxonomy_version: TAXONOMY_VERSION,
+    decision: "classified",
+    segment: "NT-4",
+    confidence: 0.94,
+    evidence_grade: "strong",
+    reasoning_short: "Bound official source verifies the intermediary role.",
+    reason_codes: ["verified_intermediary_role"],
+    evidence: [{
+      type: "web_search",
+      url: SOURCE_URL,
+      used_for: "segment_role",
+      evidence_code: "verified_client_project_intermediary"
+    }],
+    firmographic: {
+      is_company: true,
+      company_name: "Synthetic Example Company",
+      website: "https://example.com",
+      industry: "Synthetic services",
+      email_domain: "example.com",
+      is_freemail: false
+    },
+    risk_flags: [],
+    context_tags: [],
+    organization_scale: null
+  };
+}
+
+function privateModel() {
+  return {
+    taxonomy_version: TAXONOMY_VERSION,
+    decision: "classified",
+    segment: "NT-8",
+    confidence: 0.95,
+    evidence_grade: "strong",
+    reasoning_short: "The unverified declared type claims private use.",
+    reason_codes: ["declared_private_use"],
+    evidence: [{
+      type: "customer_declared",
+      url: null,
+      used_for: "private_use",
+      evidence_code: "explicit_private_use"
+    }],
+    firmographic: {
+      is_company: false,
+      company_name: null,
+      website: null,
+      industry: null,
+      email_domain: "gmail.com",
+      is_freemail: true
+    },
+    risk_flags: [],
+    context_tags: [],
+    organization_scale: null
+  };
+}
+
+function directBusinessModel() {
+  const model = acceptedModel();
+  model.segment = "NT-9";
+  model.reasoning_short = "Bound official evidence verifies a direct operating business after higher-priority roles were ruled out.";
+  model.reason_codes = ["verified_direct_business", "higher_priority_roles_excluded"];
+  model.evidence = [{
+    type: "web_search",
+    url: SOURCE_URL,
+    used_for: "segment_role",
+    evidence_code: "verified_direct_business"
+  }];
+  model.firmographic.company_name = "Synthetic Direct Business GmbH";
+  return model;
+}
+
+function abstainingModel() {
+  const model = acceptedModel();
+  model.decision = "needs_review";
+  model.segment = null;
+  model.confidence = 0.45;
+  model.evidence_grade = "weak";
+  model.reasoning_short = "The bounded research is not sufficient for a reliable segment decision.";
+  model.reason_codes = ["insufficient_segment_evidence"];
+  model.evidence = [];
+  model.risk_flags = ["ambiguous_segment"];
+  return model;
+}
+
+function rawClassifier(model, extraOutput = []) {
+  return {
+    id: "resp_phase6_classifier",
+    object: "response",
+    status: "completed",
+    incomplete_details: null,
+    model: CLASSIFIER_MODEL,
+    output: [
+      { id: "rs_phase6_classifier", type: "reasoning", summary: [] },
+      ...extraOutput,
+      {
+        id: "msg_phase6_classifier",
+        type: "message",
+        status: "completed",
+        role: "assistant",
+        content: [{
+          type: "output_text",
+          annotations: [],
+          text: JSON.stringify(model)
+        }]
+      }
+    ]
+  };
+}
+
+function runValidator(responses, prepareSources) {
+  const run = new Function("$input", "$", VALIDATOR_CODE_AFTER);
+  return run(
+    { all: () => responses.map((value) => ({ json: value })) },
+    (nodeName) => {
+      assert.equal(nodeName, "Prepare Strict Classification");
+      return {
+        itemMatching: (index) => ({ json: prepareSources[index] })
+      };
+    }
+  );
+}
+
+test("fresh paused v3 prestate is pinned and forward/reverse is exact", () => {
+  const { draft, active, manifest } = loadPreparedPrestate();
+  assert.equal(draft.versionId, "5dc73e80-3249-4985-a51b-001c5cb69223");
+  assert.equal(draft.activeVersionId, draft.versionId);
+  assert.equal(draft.versionCounter, 118);
+  assert.equal(draft.nodes.length, 20);
+  assert.equal(Object.keys(draft.connections).length, 17);
+  assert.deepEqual(
+    { nodes: draft.nodes, connections: draft.connections, settings: draft.settings },
+    { nodes: active.nodes, connections: active.connections, settings: active.settings }
+  );
+  assert.equal(manifest.draft_active_graphs_equal, true);
+
+  const bundle = createPatchBundle();
+  const candidate = applyOperationsInMemory(draft, bundle.forward.operations);
+  assert.equal(candidate.nodes.length, 23);
+  assert.equal(Object.keys(candidate.connections).length, 20);
+  assert.equal(candidate.active, draft.active);
+  assert.deepEqual(candidate.settings, draft.settings);
+  const reversed = applyOperationsInMemory(candidate, bundle.reverse.operations);
+  assert.deepEqual(reversed, draft);
+});
+
+test("workflow uses only dedicated Phase-6 evaluation RPCs and keeps claim limit one", () => {
+  const bundle = createPatchBundle();
+  const claim = bundle.forward.operations.find((item) => item.nodeId === "claim-jobs");
+  const payloadNode = bundle.forward.operations.find((item) => item.nodeId === "get-payload");
+  assert.match(claim.updates["parameters.url"], /neontrip_claim_request_segmentation_phase6_evaluation$/);
+  assert.match(claim.updates["parameters.jsonBody"], /p_limit: 1/);
+  assert.match(claim.updates["parameters.jsonBody"], /n8n-request-segmenter-v5/);
+  assert.equal(claim.updates.retryOnFail, false);
+  assert.equal(claim.updates.maxTries, 1);
+  assert.doesNotMatch(claim.updates["parameters.url"], /neontrip_claim_request_segmentation_jobs$/);
+  assert.match(payloadNode.updates["parameters.url"], /neontrip_get_request_segmentation_phase6_evaluation_payload$/);
+  assert.equal(bundle.safety.general_ingress_data_unchanged, true);
+  assert.equal(bundle.safety.general_ingress_processing_paused, true);
+  assert.equal("general_ingress_unchanged" in bundle.safety, false);
+});
+
+test("domain path emits exactly one bounded site query and Stage-1 body contains no context or ids", () => {
+  const [item] = runBuild([payload()], [job()]);
+  assert.equal(
+    item.json.researchPlan.query,
+    "site:example.com Unternehmen Leistungen Kundenprojekte Standorte Impressum"
+  );
+  assert.equal(item.json.researchPlan.lookup_type, "domain");
+  assert.equal(item.json.researchPlan.execute, true);
+  const body = evaluateBodyExpression(RESEARCH_BODY_EXPRESSION, item.json);
+  assert.deepEqual(Object.keys(body).sort(), [
+    "include", "input", "max_output_tokens", "model", "store", "tool_choice", "tools"
+  ]);
+  assert.equal(body.model, RESEARCH_MODEL);
+  assert.equal(body.input, item.json.researchPlan.query);
+  assert.equal(typeof body.input, "string");
+  assert.equal(body.input.length <= 240, true);
+  assert.equal(body.tool_choice, "required");
+  assert.deepEqual(body.tools, [{
+    type: "web_search",
+    search_context_size: "medium",
+    user_location: { type: "approximate", country: "DE" }
+  }]);
+  assert.equal(body.store, false);
+  assert.equal("max_tool_calls" in body, false);
+  assert.equal("parallel_tool_calls" in body, false);
+  assert.equal(RESEARCH_NODE.retryOnFail, undefined);
+  assert.equal(RESEARCH_NODE.maxTries, undefined);
+  const serialized = JSON.stringify(body);
+  for (const forbidden of [JOB_ID_A, REQUEST_ID_A, "Synthetic minimized request context", "input-hash"]) {
+    assert.equal(serialized.includes(forbidden), false);
+  }
+});
+
+test("company fallback requires the exact DB gate and rejects person or PII-like values", () => {
+  const valid = payload({
+    input: { email_domain: null, company: "Synthetic Media GmbH", company_lookup_allowed: true },
+    domain_facts: {
+      is_valid_dns_host: false,
+      is_freemail: false,
+      is_shared_provider: false,
+      email_domain_cache_allowed: false,
+      domain_lookup_allowed: false
+    }
+  });
+  const [validItem] = runBuild([valid], [job()]);
+  assert.equal(validItem.json.researchPlan.lookup_type, "company");
+  assert.equal(
+    validItem.json.researchPlan.query,
+    "Synthetic Media GmbH offizielle Website Unternehmen Leistungen Kundenprojekte Standorte"
+  );
+
+  const longLegitimateCompany = "Musterveranstaltungstechnik GmbH";
+  const [longLegitimate] = runBuild([
+    payload({
+      input: {
+        email_domain: null,
+        company: longLegitimateCompany,
+        company_lookup_allowed: true
+      },
+      domain_facts: {
+        is_valid_dns_host: false,
+        is_freemail: false,
+        is_shared_provider: false,
+        email_domain_cache_allowed: false,
+        domain_lookup_allowed: false
+      }
+    })
+  ], [job()]);
+  assert.equal(
+    longLegitimate.json.researchPlan.query,
+    longLegitimateCompany + " offizielle Website Unternehmen Leistungen Kundenprojekte Standorte"
+  );
+
+  const sanitizedRejectedValues = [
+    "NEONTRIP",
+    "Max Mustermann",
+    "Muster Consulting",
+    "AccountA1B2C3D4E5F6G7H8I GmbH",
+    "AlphaBetaOne AlphaBetaOne AlphaBetaOne AlphaBetaOne AlphaBetaOne AlphaBetaOne AlphaBetaOne AlphaBetaOne AlphaBetaOne GmbH"
+  ];
+  for (const company of sanitizedRejectedValues) {
+    const candidate = payload({
+      input: { email_domain: null, company, company_lookup_allowed: true },
+      domain_facts: {
+        is_valid_dns_host: false,
+        is_freemail: false,
+        is_shared_provider: false,
+        email_domain_cache_allowed: false,
+        domain_lookup_allowed: false
+      }
+    });
+    const [result] = runBuild([candidate], [job()]);
+    assert.equal(result.json.researchPlan.query, null, company);
+    assert.equal(result.json.researchPlan.execute, false, company);
+    assert.equal(result.json.researchPlan.blocked, true, company);
+  }
+
+  const piiRejectedValues = [
+    "max@example.com",
+    "https://example.com",
+    "+49 170 12345678",
+    "11111111-1111-4111-8111-111111111111",
+    "utm_campaign=sensitive"
+  ];
+  for (const company of piiRejectedValues) {
+    const candidate = payload({
+      input: { email_domain: null, company, company_lookup_allowed: true },
+      domain_facts: {
+        is_valid_dns_host: false,
+        is_freemail: false,
+        is_shared_provider: false,
+        email_domain_cache_allowed: false,
+        domain_lookup_allowed: false
+      }
+    });
+    const [result] = runBuild([candidate], [job()]);
+    assert.ok(result.json.failureBody, company);
+    assert.equal(result.json.researchRequestBody, undefined, company);
+  }
+
+  valid.input.company_lookup_allowed = false;
+  const [denied] = runBuild([valid], [job()]);
+  assert.equal(denied.json.researchPlan.query, null);
+  assert.equal(denied.json.researchPlan.blocked, true);
+});
+
+test("freemail or shared domain cannot become a domain query", () => {
+  for (const flags of [
+    { is_freemail: true, is_shared_provider: false },
+    { is_freemail: false, is_shared_provider: true }
+  ]) {
+    const candidate = payload({
+      input: { company: null, company_lookup_allowed: false, email_domain: "gmail.com" },
+      domain_facts: {
+        is_valid_dns_host: true,
+        email_domain_cache_allowed: false,
+        domain_lookup_allowed: false,
+        ...flags
+      }
+    });
+    const [result] = runBuild([candidate], [job()]);
+    assert.equal(result.json.researchPlan.query, null);
+    assert.equal(result.json.researchPlan.lookup_type, null);
+  }
+});
+
+test("item matching carries each internal job while both OpenAI bodies stay identifier-free", () => {
+  const inputs = [payload(), payload({ input: { title: "Second synthetic request" } })];
+  const jobs = [job(JOB_ID_A, REQUEST_ID_A), job(JOB_ID_B, REQUEST_ID_B)];
+  const built = runBuild(inputs, jobs);
+  assert.equal(built[0].json.job.id, JOB_ID_A);
+  assert.equal(built[1].json.job.id, JOB_ID_B);
+  assert.deepEqual(built.map((item) => item.pairedItem.item), [0, 1]);
+  for (const item of built) {
+    const stage1 = JSON.stringify(evaluateBodyExpression(RESEARCH_BODY_EXPRESSION, item.json));
+    assert.equal(stage1.includes(item.json.job.id), false);
+    assert.equal(stage1.includes(item.json.job.request_id), false);
+    assert.equal(stage1.includes(item.json.job.input_hash), false);
+  }
+
+  const prepared = runPrepare(
+    built.map((item) => rawResearch(item.json)),
+    built.map((item) => item.json)
+  );
+  assert.deepEqual(prepared.map((item) => item.pairedItem.item), [0, 1]);
+  for (const item of prepared) {
+    const stage2 = JSON.stringify(evaluateBodyExpression(CLASSIFIER_BODY_EXPRESSION, item.json));
+    assert.equal(stage2.includes(item.json.job.id), false);
+    assert.equal(stage2.includes(item.json.job.request_id), false);
+    assert.equal(stage2.includes(item.json.job.input_hash), false);
+  }
+});
+
+test("Prepare binds one completed Stage-1 query and builds a tool-free strict GPT-5.5 request", () => {
+  const [built] = runBuild([payload()], [job()]);
+  const [prepared] = runPrepare([rawResearch(built.json)], [built.json]);
+  assert.equal(prepared.json.researchEvidence.performed, true);
+  assert.equal(prepared.json.researchEvidence.query, built.json.researchPlan.query);
+  assert.deepEqual(prepared.json.researchEvidence.sources, [{
+    url: SOURCE_URL,
+    title: "Synthetic official source",
+    source_ref: "ws_phase6_research",
+    research_response_ref: "resp_phase6_research"
+  }]);
+  const body = evaluateBodyExpression(CLASSIFIER_BODY_EXPRESSION, prepared.json);
+  assert.equal(body.model, CLASSIFIER_MODEL);
+  assert.deepEqual(body.reasoning, { effort: "medium" });
+  assert.deepEqual(body.tools, []);
+  assert.equal(body.tool_choice, "none");
+  assert.equal(body.store, false);
+  assert.equal(body.max_output_tokens, 8000);
+  assert.equal("temperature" in body, false);
+  assert.equal("top_p" in body, false);
+  assert.equal(body.text.format.type, "json_schema");
+  assert.equal(body.text.format.strict, true);
+  assert.deepEqual(body.text.format.schema, STRICT_OUTPUT_SCHEMA);
+  assert.deepEqual(
+    body.text.format.schema.properties.evidence.items.properties.type.enum,
+    ["web_search", "customer_declared"]
+  );
+  assert.equal(CLASSIFIER_PARAMETERS_AFTER.options.timeout, 300000);
+});
+
+test("Prepare rejects rewritten query, a second search call, and out-of-domain sources", () => {
+  const [built] = runBuild([payload()], [job()]);
+  assert.throws(
+    () => runPrepare([rawResearch(built.json, { query: "different query" })], [built.json]),
+    /phase6_research_query_binding_invalid/
+  );
+  assert.throws(
+    () => runPrepare([rawResearch(built.json, {
+      extraCalls: [{
+        id: "ws_second",
+        type: "web_search_call",
+        status: "completed",
+        action: { type: "search", query: built.json.researchPlan.query, sources: [] }
+      }]
+    })], [built.json]),
+    /phase6_research_call_count_invalid/
+  );
+  assert.throws(
+    () => runPrepare([rawResearch(built.json, {
+      sourceUrl: "https://unrelated.example.org/services"
+    })], [built.json]),
+    /phase6_research_domain_scope_invalid/
+  );
+});
+
+test("Prepare bounds Stage-1 URLs and references while deduplicating normalized sources", () => {
+  const [built] = runBuild([payload()], [job()]);
+  assert.throws(
+    () => runPrepare([rawResearch(built.json, {
+      sourceUrl: "https://example.com/" + "a".repeat(2030)
+    })], [built.json]),
+    /phase6_research_source_invalid/
+  );
+  assert.throws(
+    () => runPrepare([rawResearch(built.json, {
+      responseId: "r".repeat(321)
+    })], [built.json]),
+    /phase6_research_response_invalid/
+  );
+  assert.throws(
+    () => runPrepare([rawResearch(built.json, {
+      searchCallId: "w".repeat(321)
+    })], [built.json]),
+    /phase6_research_query_binding_invalid/
+  );
+
+  const [deduplicated] = runPrepare([rawResearch(built.json, {
+    sources: [
+      { type: "url", url: SOURCE_URL, title: "First" },
+      { type: "url", url: SOURCE_URL + "/", title: "Duplicate" }
+    ]
+  })], [built.json]);
+  assert.equal(deduplicated.json.researchEvidence.sources.length, 1);
+  assert.equal(deduplicated.json.researchEvidence.sources[0].url, SOURCE_URL);
+});
+
+test("validator binds Stage-2 evidence only to separate Stage-1 response and call", () => {
+  const [built] = runBuild([payload()], [job()]);
+  const [prepared] = runPrepare([rawResearch(built.json)], [built.json]);
+  const [validated] = runValidator([rawClassifier(acceptedModel())], [prepared.json]);
+  assert.equal(validated.json.rpcBody.p_status, "accepted");
+  assert.equal(validated.json.rpcBody.p_segment, "NT-4");
+  assert.equal(validated.json.rpcBody.p_research_contract, RESEARCH_CONTRACT);
+  assert.equal(validated.json.rpcBody.p_accepted_by, "n8n-request-segmenter-v5");
+  assert.deepEqual(Object.keys(validated.json.rpcBody).sort(), [
+    "p_accepted_by",
+    "p_classifier_json",
+    "p_classifier_version",
+    "p_confidence",
+    "p_evidence_grade",
+    "p_evidence_json",
+    "p_firmographic_json",
+    "p_input_hash",
+    "p_job_id",
+    "p_model",
+    "p_model_version",
+    "p_prompt_version",
+    "p_reason_codes",
+    "p_reasoning_short",
+    "p_request_id",
+    "p_research_contract",
+    "p_risk_flags",
+    "p_segment",
+    "p_status"
+  ].sort());
+  assert.equal(validated.json.rpcBody.p_model, CLASSIFIER_MODEL);
+  assert.equal(validated.json.rpcBody.p_model_version, CLASSIFIER_MODEL);
+  assert.equal(validated.json.rpcBody.p_prompt_version, PROMPT_VERSION);
+  assert.equal(validated.json.rpcBody.p_classifier_version, CLASSIFIER_VERSION);
+  const classifier = validated.json.rpcBody.p_classifier_json;
+  assert.equal(classifier.research_contract, RESEARCH_CONTRACT);
+  assert.equal(classifier.validator_version, VALIDATOR_VERSION);
+  assert.equal(classifier.research_model, RESEARCH_MODEL);
+  assert.equal(classifier.classifier_model, CLASSIFIER_MODEL);
+  assert.equal(classifier.classifier_reasoning_effort, "medium");
+  assert.deepEqual(
+    Object.keys(classifier.evidence_provenance).sort(),
+    [
+      "classifier_model",
+      "classifier_reasoning_effort",
+      "classifier_tool_call_count",
+      "research_call_count",
+      "research_call_id",
+      "research_call_status",
+      "research_contract",
+      "research_model",
+      "research_performed",
+      "research_query",
+      "research_response_id",
+      "valid",
+      "validated_positive_evidence_codes",
+      "validator_version",
+      "verified_sources"
+    ].sort()
+  );
+  assert.equal(classifier.evidence_provenance.valid, true);
+  assert.equal(classifier.evidence_provenance.research_performed, true);
+  assert.equal(classifier.evidence_provenance.research_call_count, 1);
+  assert.equal(classifier.evidence_provenance.research_call_status, "completed");
+  assert.equal(classifier.evidence_provenance.research_query, built.json.researchPlan.query);
+  assert.equal(classifier.evidence_provenance.classifier_tool_call_count, 0);
+  assert.deepEqual(classifier.evidence_provenance.verified_sources, [{
+    url: SOURCE_URL,
+    source_type: "web_search_call",
+    source_ref: "ws_phase6_research",
+    research_response_ref: "resp_phase6_research",
+    validated_positive_evidence_codes: ["verified_client_project_intermediary"]
+  }]);
+});
+
+test("NT-9 accepts bound verified_direct_business evidence without inventing a first-party B2B flag", () => {
+  const [built] = runBuild([payload()], [job()]);
+  assert.equal(built.json.request.customer_type, "unknown");
+  assert.equal(built.json.request.customer_type_first_party_verified, false);
+  const [prepared] = runPrepare([rawResearch(built.json)], [built.json]);
+  const [validated] = runValidator([rawClassifier(directBusinessModel())], [prepared.json]);
+  const rpc = validated.json.rpcBody;
+  assert.equal(rpc.p_status, "accepted");
+  assert.equal(rpc.p_segment, "NT-9");
+  assert.equal(rpc.p_classifier_json.segment, "NT-9");
+  assert.equal(rpc.p_classifier_json.evidence_provenance.valid, true);
+  assert.deepEqual(
+    rpc.p_classifier_json.evidence_provenance.validated_positive_evidence_codes,
+    ["verified_direct_business"]
+  );
+  assert.deepEqual(rpc.p_classifier_json.evidence_provenance.verified_sources, [{
+    url: SOURCE_URL,
+    source_type: "web_search_call",
+    source_ref: "ws_phase6_research",
+    research_response_ref: "resp_phase6_research",
+    validated_positive_evidence_codes: ["verified_direct_business"]
+  }]);
+  assert.equal(
+    rpc.p_classifier_json.evidence.some((item) => item.type === "customer_declared"),
+    false
+  );
+});
+
+test("NT-9 fails closed on bound positive higher-role evidence but ignores context-only use", () => {
+  const [built] = runBuild([payload()], [job()]);
+  const [prepared] = runPrepare([rawResearch(built.json)], [built.json]);
+
+  const conflicting = directBusinessModel();
+  conflicting.evidence.push({
+    type: "web_search",
+    url: SOURCE_URL,
+    used_for: "segment_role",
+    evidence_code: "verified_event_or_media_operator"
+  });
+  const [blocked] = runValidator([rawClassifier(conflicting)], [prepared.json]);
+  assert.equal(blocked.json.rpcBody.p_status, "needs_review");
+  assert.equal(blocked.json.rpcBody.p_classifier_json.segment, null);
+  assert.equal(blocked.json.rpcBody.p_classifier_json.evidence_provenance.valid, false);
+  assert.ok(blocked.json.rpcBody.p_risk_flags.includes("conflicting_evidence"));
+
+  for (const usedFor of ["context_tag", "conflict"]) {
+    const nonPositive = directBusinessModel();
+    nonPositive.evidence.push({
+      type: "web_search",
+      url: SOURCE_URL,
+      used_for: usedFor,
+      evidence_code: "verified_event_or_media_operator"
+    });
+    const [allowed] = runValidator([rawClassifier(nonPositive)], [prepared.json]);
+    assert.equal(allowed.json.rpcBody.p_status, "accepted", usedFor);
+    assert.equal(allowed.json.rpcBody.p_segment, "NT-9", usedFor);
+  }
+});
+
+test("Stage-1 provenance survives a clean Stage-2 abstention with empty positive codes", () => {
+  const [built] = runBuild([payload()], [job()]);
+  const [prepared] = runPrepare([rawResearch(built.json)], [built.json]);
+  const [validated] = runValidator([rawClassifier(abstainingModel())], [prepared.json]);
+  const rpc = validated.json.rpcBody;
+  const provenance = rpc.p_classifier_json.evidence_provenance;
+  assert.equal(rpc.p_status, "needs_review");
+  assert.equal(rpc.p_segment, null);
+  assert.equal(provenance.valid, false);
+  assert.equal(provenance.research_performed, true);
+  assert.equal(provenance.research_response_id, "resp_phase6_research");
+  assert.equal(provenance.research_call_id, "ws_phase6_research");
+  assert.equal(provenance.research_call_count, 1);
+  assert.equal(provenance.research_call_status, "completed");
+  assert.deepEqual(provenance.validated_positive_evidence_codes, []);
+  assert.deepEqual(provenance.verified_sources, [{
+    url: SOURCE_URL,
+    source_type: "web_search_call",
+    source_ref: "ws_phase6_research",
+    research_response_ref: "resp_phase6_research",
+    validated_positive_evidence_codes: []
+  }]);
+});
+
+test("validator rejects Stage-2 tools and forged URLs fail closed", () => {
+  const [built] = runBuild([payload()], [job()]);
+  const [prepared] = runPrepare([rawResearch(built.json)], [built.json]);
+  assert.throws(
+    () => runValidator(
+      [rawClassifier(acceptedModel(), [{ id: "ws_forbidden", type: "web_search_call" }])],
+      [prepared.json]
+    ),
+    /classifier_tool_call_forbidden/
+  );
+
+  const forged = acceptedModel();
+  forged.evidence[0].url = "https://forged.example.org/services";
+  const [result] = runValidator([rawClassifier(forged)], [prepared.json]);
+  assert.equal(result.json.rpcBody.p_status, "needs_review");
+  assert.equal(result.json.rpcBody.p_classifier_json.segment, null);
+  assert.equal(result.json.rpcBody.p_classifier_json.evidence_provenance.valid, false);
+  assert.ok(result.json.rpcBody.p_risk_flags.includes("invalid_external_evidence"));
+});
+
+test("validator rejects incomplete, refused, or model-mismatched Stage-2 responses before RPC", () => {
+  const [built] = runBuild([payload()], [job()]);
+  const [prepared] = runPrepare([rawResearch(built.json)], [built.json]);
+
+  const incomplete = rawClassifier(acceptedModel());
+  incomplete.status = "incomplete";
+  incomplete.incomplete_details = { reason: "max_output_tokens" };
+  assert.throws(
+    () => runValidator([incomplete], [prepared.json]),
+    /classifier_response_envelope_invalid/
+  );
+
+  const refused = rawClassifier(acceptedModel());
+  refused.output.at(-1).content = [{ type: "refusal", refusal: "Cannot comply." }];
+  assert.throws(
+    () => runValidator([refused], [prepared.json]),
+    /classifier_refusal/
+  );
+
+  const wrongModel = rawClassifier(acceptedModel());
+  wrongModel.model = "gpt-5.5";
+  assert.throws(
+    () => runValidator([wrongModel], [prepared.json]),
+    /classifier_response_envelope_invalid/
+  );
+});
+
+test("validator hard-rejects missing or nonempty Phase-6 research cache", () => {
+  const [built] = runBuild([payload()], [job()]);
+  const [prepared] = runPrepare([rawResearch(built.json)], [built.json]);
+  const missing = structuredClone(prepared.json);
+  delete missing.researchCache;
+  assert.throws(
+    () => runValidator([rawClassifier(acceptedModel())], [missing]),
+    /research_cache_forbidden/
+  );
+  const nonempty = structuredClone(prepared.json);
+  nonempty.researchCache = [{ cache_key: "forbidden" }];
+  assert.throws(
+    () => runValidator([rawClassifier(acceptedModel())], [nonempty]),
+    /research_cache_forbidden/
+  );
+});
+
+test("Pilot payload pins declared customer type to unknown and first-party verification to false", () => {
+  for (const declared of [
+    { declared_customer_type: "b2b", declared_customer_type_first_party_verified: false },
+    { declared_customer_type: "unknown", declared_customer_type_first_party_verified: true },
+    { declared_customer_type: "privat", declared_customer_type_first_party_verified: true }
+  ]) {
+    const [result] = runBuild([payload({ input: declared })], [job()]);
+    assert.equal(
+      result.json.failureBody.p_error_code,
+      "phase6_minimized_input_shape_invalid",
+      JSON.stringify(declared)
+    );
+    assert.equal(result.json.researchRequestBody, undefined);
+    assert.equal(result.json.systemPrompt, undefined);
+  }
+});
+
+test("unverified unknown customer type cannot authorize NT-8 in the conflicting Gold-like case", () => {
+  const candidate = payload({
+    input: {
+      declared_customer_type: "unknown",
+      declared_customer_type_first_party_verified: false,
+      company: null,
+      company_lookup_allowed: false,
+      email_domain: null
+    },
+    domain_facts: {
+      is_valid_dns_host: false,
+      is_freemail: false,
+      is_shared_provider: false,
+      email_domain_cache_allowed: false,
+      domain_lookup_allowed: false
+    }
+  });
+  const [built] = runBuild([candidate], [job()]);
+  assert.equal(built.json.researchPlan.execute, false);
+  const [prepared] = runPrepare([built.json], [built.json]);
+  const [result] = runValidator([rawClassifier(privateModel())], [prepared.json]);
+  assert.equal(result.json.rpcBody.p_status, "needs_review");
+  assert.equal(result.json.rpcBody.p_classifier_json.segment, null);
+  const provenance = result.json.rpcBody.p_classifier_json.evidence_provenance;
+  assert.equal(provenance.valid, false);
+  assert.equal(provenance.research_performed, false);
+  assert.equal(provenance.research_response_id, null);
+  assert.equal(provenance.research_call_id, null);
+  assert.equal(provenance.research_call_count, 0);
+  assert.equal(provenance.research_call_status, null);
+  assert.equal(provenance.research_query, null);
+  assert.equal(provenance.classifier_tool_call_count, 0);
+  assert.deepEqual(provenance.verified_sources, []);
+});
+
+test("taxonomy review-threshold drift is rejected before either OpenAI request", () => {
+  const candidate = payload();
+  candidate.taxonomy.definitions.find((item) => item.segment === "NT-4").review_threshold = 0.81;
+  const [result] = runBuild([candidate], [job()]);
+  assert.equal(result.json.failureBody.p_error_code, "phase6_taxonomy_contract_invalid");
+  assert.equal(result.json.researchRequestBody, undefined);
+  assert.equal(result.json.systemPrompt, undefined);
+});
+
+test("exact payload allowlist blocks extra customer and tracking keys", () => {
+  for (const forbiddenKey of ["email", "phone", "utm_campaign", "gold_segment"]) {
+    const candidate = payload();
+    candidate.input[forbiddenKey] = "forbidden";
+    const [result] = runBuild([candidate], [job()]);
+    assert.ok(result.json.failureBody);
+    assert.equal(result.json.researchRequestBody, undefined);
+  }
+});
+
+test("free-text PII sentinels fail closed before either OpenAI body is built", () => {
+  const unsafeValues = [
+    "Kontakt max@example.com",
+    "Ruf mich an unter +49 170 12345678",
+    "Mehr auf https://customer.example/path",
+    "ID 11111111-1111-4111-8111-111111111111",
+    "utm_campaign=private",
+    "Opaque ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+  ];
+  for (const description of unsafeValues) {
+    const candidate = payload({ input: { description } });
+    const [result] = runBuild([candidate], [job()]);
+    assert.ok(result.json.failureBody, description);
+    assert.equal(result.json.researchRequestBody, undefined, description);
+    assert.equal(result.json.systemPrompt, undefined, description);
+  }
+});
+
+test("eval-only record cannot reach Trello because the preserved prepare node returns no items", () => {
+  const { draft } = loadPreparedPrestate();
+  const trello = draft.nodes.find((node) => node.id === "trello-description-sync-prepare");
+  assert.ok(trello.parameters.jsCode.includes("disabled by ops request"));
+  const run = new Function("$input", "console", trello.parameters.jsCode);
+  const result = run(
+    { first: () => ({ json: { projection: { applied: false } } }) },
+    { log: () => {} }
+  );
+  assert.deepEqual(result, []);
+});
+
+test("standalone artifacts equal the generator contract", () => {
+  const generated = createArtifactFiles();
+  for (const [filename, expected] of Object.entries(generated)) {
+    const path = new URL("./" + filename, import.meta.url);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path, "utf8")), expected);
+  }
+});

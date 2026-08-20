@@ -1,6 +1,6 @@
 # Request Segmentation
 
-Stand: 2026-08-20 (Phase-2-CX8 live im Shadow-Modus; Phase-3-Validator repariert und durch genau einen neuen natuerlichen eval-only Abstention-Lauf belegt; Phase 4 stellt einen strikt blinden Vier-Fall-Prozesspilot bereit; menschliches Gold darf einen gespeicherten Kundentyp mit Begruendung korrigieren, ohne den Kundendatensatz zu mutieren; den tatsaechlichen Gold-, Policy- und n8n-Live-Stand immer neu verifizieren)
+Stand: 2026-08-20 (Phase-2-CX8 live im Shadow-Modus; Phase-3-Validator repariert und durch genau einen neuen natuerlichen eval-only Abstention-Lauf belegt; Phase 4 stellt einen strikt blinden Vier-Fall-Prozesspilot bereit; Phase 6 ist nur als inaktiver, privacy-sicherer Gold-Re-Evaluationsvertrag mit gehaltenem Vier-Job-Staging vorbereitet; menschliches Gold darf einen gespeicherten Kundentyp mit Begruendung korrigieren, ohne den Kundendatensatz zu mutieren; den tatsaechlichen Gold-, Policy- und n8n-Live-Stand immer neu verifizieren)
 
 Diese Doku beschreibt, wie neue Kundenanfragen bei NEONTRIP segmentiert werden, wo das Ergebnis sichtbar ist und wie ein Segment manuell bestaetigt oder korrigiert wird.
 
@@ -294,6 +294,131 @@ Scheduler verarbeitet; kein manueller Run und kein Retry/Reset ist Teil dieses
 Cutovers. Policy/Gate, Jobzustand, Klassifikationen, Cache, Master-Projektion
 und Kundenaktionen werden danach erneut aus ihren autoritativen Quellen
 verifiziert.
+
+## Phase 6: privacy-sichere Research-Evaluation
+
+Phase 6 ist eine additive, strikt evaluation-only Pilot-Lane. Sie ersetzt und
+aktiviert nichts: `nt_policy_v2_20260819_cx8_shadow` und
+`nt_quality_gate_v2_20260819_cx8` bleiben global die jeweils einzige aktive
+Policy beziehungsweise das einzige aktive Gate. Der vorbereitete Kandidat
+`nt_policy_v4_20260820_cx8_shadow` mit Gate
+`nt_quality_gate_v4_20260820_cx8` bleibt `active=false`; seine acht Rules sind
+vollstaendig inert. Die Taxonomie bleibt `nt_taxonomy_v2_20260819_cx8`.
+
+Der eingefrorene Modellvertrag lautet:
+
+- Classifier `segment_classifier_v5_20260820_cx8`, Prompt
+  `segment_prompt_v5_20260820_cx8`, Worker `n8n-request-segmenter-v5`
+- Research `segment_research_v1_20260820_cx8`, Validator
+  `n8n_cx8_validator_v2`, Job-Source `gold_re_evaluation_phase6`
+- Research-Modell `gpt-4o-mini-2024-07-18`; Classifier-Modell
+  `gpt-5.5-2026-04-23` mit Reasoning `medium`
+
+Der Claim ist service-role-only, akzeptiert nur current-hash immutable Gold,
+den exakten inaktiven Kandidaten, den exakten weiterhin aktiven v2-Vertrag und
+`attempts < max_attempts`. Der Payload-RPC gibt weder Job-/Request-/Customer-
+IDs noch Namen, volle E-Mail, Telefon, Adresse, Attribution, alte Segmente,
+Preise, History, Cache oder Gold-Label/-Grund/-Evidence aus. Sein Top-Level hat
+exakt `contract`, `input`, `taxonomy`, `context_definitions` und
+`organization_scale_values`. `input` hat exakt diese zehn Keys:
+`title`, `description`, `declared_customer_type`,
+`declared_customer_type_first_party_verified`, `application`, `country`,
+`company`, `company_lookup_allowed`, `email_domain`, `domain_facts`.
+Freitext wird redigiert und hart begrenzt. Mangels belastbarer Rohprovenienz
+ist der deklarierte Kundentyp in allen vier Pilotfaellen `unknown` und
+`declared_customer_type_first_party_verified=false`; insbesondere die drei
+synthetischen Landingpage-B2B-Defaults sind keine Evidence.
+
+Eine gueltige, Cache-zulaessige Corporate Domain hat beim Research-Plan Vorrang.
+Der Company-Fallback gibt eine Firma nur frei, wenn die normalisierte
+Bezeichnung maximal 120 Zeichen und 2..10 Tokens mit maximal 40 Zeichen hat,
+keine E-Mail/URL/Telefon/UUID/Tracking-/Steuer-/ID- oder Person-Muster enthaelt
+und einen explizit gepinnten Rechtsform-/Business-Marker besitzt. Ein reines
+langes Alphabetwort bleibt zulaessig; ein mindestens 24 Zeichen langer Token
+mit Ziffer, Unterstrich oder Bindestrich wird als ID-artig gesperrt. Bei jedem
+Zweifel ist `company=null` und `company_lookup_allowed=false`. Der DB-Planer
+erzeugt die einzige erlaubte Query deterministisch; Record und Diagnose-View
+vergleichen `research_query` exakt dagegen. Durchgefuehrte Recherche braucht
+mindestens eine tatsaechliche, deduplizierte HTTP(S)-Quelle. Response-ID,
+Search-Call-ID sowie die beiden zugehoerigen Source-Refs sind jeweils auf
+1..320 Zeichen begrenzt und exakt miteinander gebunden. Der v5-Cache-Writer
+bleibt geschlossen.
+
+Die technische Research-Integritaet ist absichtlich von fachlicher positiver
+Evidence getrennt. Eine sauber gebundene Stage-1-Recherche mit anschliessender
+`needs_review`-Abstention darf daher
+`research_contract_integrity=true`, aber
+`evidence_provenance_valid=false` haben. Eine ausgefuehrte Recherche ohne
+Quelle, eine umgeschriebene Query, falsche Call-/Response-Refs oder ein
+abweichender Modell-/Research-Vertrag ist dagegen ein technischer
+Contract-Verstoss. `request_segmentation_v4_quality_summary` zaehlt Modell- und
+Research-Verstoesse ueber alle evaluierten Rows, nicht nur ueber akzeptierte
+Rows; Readiness verlangt beide Gesamtwerte `0`.
+
+`NT-8` bleibt fuer diese Lane ohne explizite First-Party-Privat-Evidence
+unerreichbar. `NT-9` darf dagegen bei `unknown/false` akzeptiert werden, wenn
+eine exakt an denselben Research-Call gebundene externe
+`verified_direct_business`-Evidence am `segment_role`-Item vorliegt und keine
+hoehere positive Segmentrolle gleichzeitig behauptet wird.
+
+Die vier immutable Gold-Faelle bleiben unveraendert und werden weder
+automatisch korrigiert noch ausgefiltert. Goldfall 2 (`NT-8`) ist fachlich
+konfliktaer: Er enthaelt ein explizites Business-Signal, waehrend Freemail
+allein gemaess Taxonomie kein Privatbeleg ist. Deshalb ist ein Pilotresultat
+niemals als einfaches 4/4-Gate zu interpretieren. Die NT-8-Abweichung wird
+separat als Re-Adjudikationsbedarf ausgewiesen; jede spaetere Gold-Aenderung
+braucht einen eigenen menschlichen Prozess.
+
+### Gehaltener Ablauf und Beweise
+
+1. PII-freien Prestate mit
+   `supabase/security-backups/request-segmentation-phase6-prechange-20260820.sql`
+   sichern und die Base-Migration anwenden. Sie legt keine Tabelle, Queue,
+   Spalte oder Index an und staged keinen Job.
+2. Nach dem enthaltenen `NOTIFY pgrst, 'reload schema'` im PostgREST-Schema-
+   Cache beweisen, dass die neue 19-Argument-Overload von
+   `neontrip_record_request_segment_classification` mit dem zusaetzlichen
+   Named-Argument `p_research_contract` aufloesbar ist und die bestehende
+   18-Argument-Funktion weiterhin unveraendert existiert. Ohne diesen
+   Overload-/Reload-Beweis kein Pilot.
+3. Vor dem n8n-v5-Publish muessen laufende v2-Jobs `processing=0` erreicht
+   haben. Dann den exakten n8n-v5-Graph publizieren, vollstaendig zuruecklesen
+   und vor jedem Staging einen natuerlichen v5-Claim mit Ergebnis `[]`
+   beweisen. Der Runtime-Claim bleibt auf `p_limit=1`. `job_id`, `request_id`
+   und `input_hash` werden ausserhalb des ID-freien Modellpayloads per
+   Item-Lineage vom normalisierten Claim bis Record getragen. Zusaetzlich muss
+   ein Vier-Item-Fixture beweisen, dass Payloads und Claim-Identitaeten nicht
+   vertauscht werden.
+4. Erst nach Readback und leerem v5-Claim das weiterhin gehaltene
+   `supabase/rollouts/held/20260820123000_stage_request_segmentation_phase6_privacy_safe_gold.sql`
+   freigeben. Unter Locks verlangt es eine pristine v5-Lane und exakt vier
+   current Gold-Faelle; es fuegt genau vier neue `pending`-Jobs mit
+   `attempts=0`, `max_attempts=3` und Prioritaet 900 ein. Es aktualisiert keinen
+   bestehenden Job und flippt weder Policy noch Gate.
+5. Ausschliesslich den natuerlichen Scheduler arbeiten lassen. Kein manueller
+   Run, kein absichtlich erzeugter normaler Ingress und kein echter Kunde als
+   Canary. Natuerlich neu eintreffende v2-Jobs koennen nicht ausgeschlossen
+   werden; sie bleiben in diesem kurzen v5-Fenster unclaimed. Nach exakt vier
+   terminalen v5-Rows und `processing=0` sofort den separat geprueften
+   n8n-v3-Reverse publizieren, vollstaendig zuruecklesen und die natuerliche
+   v2-Wiederaufnahme beweisen. Ausserdem null Gesamt-Contract-Verstoesse sowie
+   unveraenderten Master-Authority-Hash, v5-Cache, Gold und
+   Kundenaktionszustand aus den autoritativen Tabellen belegen.
+   Transport-/Vertragsfehler werden getrennt von fachlicher Abstention
+   berichtet; insbesondere Goldfall 2 separat.
+
+Vor jeder v5-Runtime entfernt
+`supabase/rollbacks/20260820121334_prepare_request_segmentation_phase6_privacy_safe_research_rollback.sql`
+den unbenutzten Kandidaten vollstaendig und fail-closed. Nach erster Runtime
+bleibt die Historie bestehen: zuerst n8n-v5 stoppen beziehungsweise den separat
+geprueften Reverse publizieren, laufende `processing`-Jobs bis `0` drainen und
+dann
+`supabase/rollbacks/20260820123000_request_segmentation_phase6_operational_rollback.sql`
+anwenden. Dieser operative Rollback loescht oder resettet keine Jobs,
+Klassifikationen oder Goldzeilen, sondern entzieht nur die drei v5-RPC-
+Ausfuehrungsrechte und verifiziert History-Hashes. Eine Wiederfreigabe braucht
+einen neuen, explizit geprueften Grant-/Graph-Schritt; das Rollback-Artefakt
+aktiviert nichts automatisch.
 
 ## Rollback
 
