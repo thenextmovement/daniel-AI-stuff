@@ -437,6 +437,13 @@ test("express, urgent and conflicting instructions are detected deterministicall
   assert.equal(classifyShipping({ ...standardOrder, note: "Expresszustellung bis 9:00 Uhr" }).shippingClass, "express_09");
   assert.equal(classifyShipping({ ...standardOrder, note: "Express 12:00 Uhr" }).shippingClass, "express_12");
   assert.equal(classifyShipping({ ...standardOrder, note: "Eilauftrag" }).shippingClass, "urgent");
+  assert.deepEqual(
+    classifyShipping(
+      { ...standardOrder, note: "Liefertermin Standardlieferung" },
+      { ...card(), description: "Anlieferung naechstmoeglich, aber erstmal kein Express" },
+    ),
+    { shippingClass: "standard", conflict: null },
+  );
   const conflict = classifyShipping({ ...standardOrder, note: "Express Versand, aber kein Express" });
   assert.equal(conflict.shippingClass, "unknown");
   assert.match(conflict.conflict || "", /widersprechen/);

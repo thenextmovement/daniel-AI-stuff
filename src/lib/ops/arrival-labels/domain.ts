@@ -770,9 +770,10 @@ export function classifyShipping(order: ShopifyOrderEvidence, card?: TrelloCardE
     card?.name || "",
     card?.description || "",
   ].join("\n");
-  const express = EXPRESS_PATTERN.test(evidence);
-  const urgent = URGENT_PATTERN.test(evidence);
   const explicitNegation = EXPRESS_NEGATION_PATTERN.test(evidence);
+  const expressEvidence = evidence.replace(new RegExp(EXPRESS_NEGATION_PATTERN.source, "gi"), " ");
+  const express = EXPRESS_PATTERN.test(expressEvidence);
+  const urgent = URGENT_PATTERN.test(evidence);
   const standard = STANDARD_PATTERN.test(evidence);
   const deadlines = (["09", "12", "18"] as const)
     .filter((hour) => hasExpressDeadline(evidence, hour))
