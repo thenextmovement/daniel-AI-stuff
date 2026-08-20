@@ -38,7 +38,9 @@ const projectNumber = String(billingCase.project_number || address.projectNumber
 if (projectNumber.length > 100 || /[<>\r\n]/.test(projectNumber)) throw new Error('billing_project_number_invalid');
 const vatPercent = billingCase.tax_exempt ? 0 : Math.round((Number(billingCase.vat_cents||0) / Math.max(Number(billingCase.subtotal_net_cents||1),1))*10000)/100;
 let items = (Array.isArray(billingCase.line_items) ? billingCase.line_items : []).map((item)=>({
-  description:[item.title,item.description].filter(Boolean).join('\n').slice(0,4000),
+  description:(String(item.section||'').trim().toLowerCase()==='zusatzoptionen'
+    ? String(item.title||'')
+    : [item.title,item.description].filter(Boolean).join('\n')).slice(0,4000),
   quantity:Number(item.normalizedQuantity || item.quantity || 1),
   unit:'Stück',
   single_price_net:Math.round(Number(item.unitPriceNet || 0)*100),
