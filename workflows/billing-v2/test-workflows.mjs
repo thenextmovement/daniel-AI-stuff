@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -13,6 +14,40 @@ const vatReview = JSON.parse(fs.readFileSync(path.join(root, "generated/vat-revi
 const proformaVoid = JSON.parse(fs.readFileSync(path.join(root, "generated/easybill-proforma-void-worker-v2.inactive.json"), "utf8"));
 const shopifyOrderIntake = JSON.parse(fs.readFileSync(path.join(root, "generated/shopify-order-intake-adapter-v2.inactive.json"), "utf8"));
 const byName = new Map(workflow.nodes.map((node) => [node.name, node]));
+
+async function runPrepareEasybillCommand(lineItems) {
+  const source = byName.get("Prepare Easybill Command").parameters.jsCode;
+  return vm.runInNewContext(`(async()=>{${source}})()`, {
+    $json: {
+      body: {
+        claimed: {
+          job: {
+            id: "test-job",
+            idempotency_key: "billing:test",
+            job_type: "CREATE_PROFORMA",
+            payload: {
+              documentNumber: "PF-NEONT9999",
+              portalUrl: "https://rechnung.neontrip.de/test-token",
+              revision: 0,
+            },
+          },
+          billingCase: {
+            billing_address: { country: "DE" },
+            customer: { email: "rechnung@example.com", name: "Test Kunde" },
+            customer_email: "rechnung@example.com",
+            delivery_address: { country: "DE" },
+            line_items: lineItems,
+            payment_method: "VORKASSE",
+            shopify_order_name: "#NEONT9999",
+            subtotal_net_cents: 10000,
+            tax_exempt: false,
+            vat_cents: 1900,
+          },
+        },
+      },
+    },
+  });
+}
 
 test("billing workflow remains inactive and lease-driven", () => {
   assert.equal(workflow.active, false);
@@ -35,6 +70,35 @@ test("Easybill adapter uses supported document and VAT mappings", () => {
   assert.match(source, /billingCase\.customer_email/);
   assert.match(source, /billing_portal_url_missing/);
   assert.doesNotMatch(source, /number:String\(item\.id/);
+});
+
+test("Easybill positions suppress details only for Zusatzoptionen", async () => {
+  const [prepared] = await runPrepareEasybillCommand([
+    {
+      title: "LED Neonschild – Testdesign",
+      description: "Größe: 50 x 45cm\nLeuchtfarbe: Warmweiß",
+      section: "LED-Leuchtschild",
+      unitPriceNet: 100,
+    },
+    {
+      title: "Dimmer mit Bluetooth und Fernbedienung",
+      description: "Helligkeit bequem per App oder Fernbedienung steuern.",
+      section: "Zusatzoptionen",
+      unitPriceNet: 19,
+    },
+    {
+      title: "Express-Produktion 7 Tage",
+      description: "Gewählter Termin: 31.8.2026 (+7 Tage)",
+      section: "Versand",
+      unitPriceNet: 125,
+    },
+  ]);
+
+  assert.deepEqual(Array.from(prepared.json.documentPayload.items, (item) => item.description), [
+    "LED Neonschild – Testdesign\nGröße: 50 x 45cm\nLeuchtfarbe: Warmweiß",
+    "Dimmer mit Bluetooth und Fernbedienung",
+    "Express-Produktion 7 Tage\nGewählter Termin: 31.8.2026 (+7 Tage)",
+  ]);
 });
 
 test("all Easybill mutations have an explicit error completion path", () => {
