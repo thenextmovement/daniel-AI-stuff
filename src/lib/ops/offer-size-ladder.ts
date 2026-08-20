@@ -24,6 +24,7 @@ export const OFFER_SIZE_LADDER_MAX_OPTIONS = 300;
 export const TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS = 16_384;
 const OFFER_SIZE_LADDER_NUMERIC_12_2_MAX_ABS = 10_000_000_000;
 const OFFER_SIZE_LADDER_STORAGE_RANGE_ISSUE = "generated_price_out_of_supported_range";
+export const OFFER_SIZE_LADDER_SAME_SIZE_VARIANT_ISSUE = "same_size_supplier_variants_require_manual_selection";
 
 export type OfferSizeLadderCoreAnchorRole = "minimum" | "requested" | "max_250";
 export type OfferSizeLadderAnchorRole = OfferSizeLadderCoreAnchorRole | `anchor_${number}`;
@@ -1905,10 +1906,23 @@ function normalizeAnchorList(inputs: OfferSizeLadderAnchorInput[]) {
   if (normalized.length < 1) {
     throw new QuoteValidationError("Mindestens ein Supplier-Anker ist fuer eine Groessenleiter erforderlich.");
   }
-  return normalized.map((anchor, index) => {
+  const deduplicated = normalized.filter((anchor, index) => !normalized.slice(0, index).some((previous) => (
+    sameAnchorGeometry(previous, anchor)
+    && Math.abs(previous.productionPrice - anchor.productionPrice) < 0.01
+    && Math.abs(previous.shippingPrice - anchor.shippingPrice) < 0.01
+    && previous.currency === anchor.currency
+  )));
+  return deduplicated.map((anchor, index) => {
     const role = sortedAnchorRole(anchor, index);
     return { ...anchor, role };
   });
+}
+
+function sameAnchorGeometry(left: OfferSizeLadderAnchor, right: OfferSizeLadderAnchor) {
+  const leftDimensions = [left.widthCm, left.heightCm].sort((a, b) => a - b);
+  const rightDimensions = [right.widthCm, right.heightCm].sort((a, b) => a - b);
+  return Math.abs(leftDimensions[0]! - rightDimensions[0]!) < 0.1
+    && Math.abs(leftDimensions[1]! - rightDimensions[1]!) < 0.1;
 }
 
 function anchorsByRole(anchorList: OfferSizeLadderAnchor[]) {
@@ -1990,6 +2004,15 @@ function addAnchorConsistencyIssue(params: {
   lower: OfferSizeLadderAnchor;
   upper: OfferSizeLadderAnchor;
 }) {
+  if (sameAnchorGeometry(params.lower, params.upper)) {
+    const pricesDiffer = Math.abs(params.lower.productionPrice - params.upper.productionPrice) >= 0.01
+      || Math.abs(params.lower.shippingPrice - params.upper.shippingPrice) >= 0.01
+      || params.lower.currency !== params.upper.currency;
+    if (pricesDiffer && !params.issues.includes(OFFER_SIZE_LADDER_SAME_SIZE_VARIANT_ISSUE)) {
+      params.issues.push(OFFER_SIZE_LADDER_SAME_SIZE_VARIANT_ISSUE);
+    }
+    return;
+  }
   const areaRatio = params.upper.areaCm2 / params.lower.areaCm2;
   const totalRatio = params.upper.supplierTotal / params.lower.supplierTotal;
   if (areaRatio > 1.03 && totalRatio < 0.98) {

@@ -17,6 +17,7 @@ import {
   generateOfferSizeLadderFromTrello,
   listOfferSizeLadderDrafts,
   OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
+  OFFER_SIZE_LADDER_SAME_SIZE_VARIANT_ISSUE,
   TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS,
   resolveQuoteReadyOfferStructure,
   validateOfferItemsJsonProjection,
@@ -251,6 +252,54 @@ test("offer size ladder can build a review ladder from only the minimum supplier
   assert.equal(option120!.reviewStatus, "needs_review");
   assert.ok(option120!.issues.includes("single_anchor_estimated_size"));
   assert.ok(option120!.supplierTotalEstimated > 300);
+});
+
+test("offer size ladder deduplicates an identical repeated supplier anchor", async () => {
+  const result = await generateOfferSizeLadder({
+    trelloCardId: "cardDuplicateIdenticalAnchor",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 70, heightCm: 30, productionPrice: 111, shippingPrice: 58 },
+      { role: "requested", widthCm: 70, heightCm: 30, productionPrice: 111, shippingPrice: 58 },
+    ],
+    maxLongSideCm: 100,
+  });
+
+  assert.equal(result.anchorList.length, 1);
+  assert.equal(result.status, "needs_review");
+  assert.ok(result.options.find((option) => option.longSideCm === 80)!.supplierTotalEstimated > 169);
+});
+
+test("quote ready preflight blocks same-size supplier variants with different prices", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardSameSizeSupplierVariants",
+    idBoard: "board-1",
+    name: "LED Flex FilmFest Hamburg Color as Logo",
+    desc: "Neon Flex",
+    customFields: {
+      Size_1: "70x30cm",
+      Price_1: "169",
+      Product_1: "LED Flex",
+      Color_1: "Color as Logo",
+      Size_2: "70x30cm",
+      Price_2: "216",
+      Product_2: "LED Flex",
+      Color_2: "RGB",
+    },
+    attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+  }, {
+    trelloCard: "cardSameSizeSupplierVariants",
+    maxLongSideCm: 100,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.offerItemsJson, null);
+  assert.ok(result.issues.includes(`design_1:${OFFER_SIZE_LADDER_SAME_SIZE_VARIANT_ISSUE}`));
+  assert.ok(result.designs[0]?.sizeLadder.options.every((option) => option.reviewStatus === "blocked"));
+  const release = classifyManualReleaseSizeLadderPreflight(result);
+  assert.equal(release.decision, "blocked");
 });
 
 test("quote ready preflight groups two Neonflex source mockups with one anchor per design", async () => {
