@@ -33,7 +33,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const base=String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,''); if(!/^https:\\/\\//.test(base)) throw new Error('NEONTRIP_OPS_BASE_URL missing'); return [{json:{opsBaseUrl:base,worker:'n8n-easybill-document-v2'}}];"
+        "jsCode": "return [{json:{opsBaseUrl:'https://ops.neontrip.de',worker:'n8n-easybill-document-v2'}}];"
       }
     },
     {
@@ -644,7 +644,7 @@
           "name": "NEONTRIP Billing Worker"
         }
       },
-      "onError": "continueErrorOutput"
+      "onError": "stopWorkflow"
     },
     {
       "id": "failure",
