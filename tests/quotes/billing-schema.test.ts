@@ -7,6 +7,8 @@ const migration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/
 const rollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260819170000_create_billing_cases_rollback.sql"), "utf8");
 const actions = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260819180000_create_billing_case_actions.sql"), "utf8");
 const actionsRollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260819180000_create_billing_case_actions_rollback.sql"), "utf8");
+const portalIngest = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260820133000_add_billing_portal_url_to_initial_job.sql"), "utf8");
+const portalIngestRollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260820133000_add_billing_portal_url_to_initial_job_rollback.sql"), "utf8");
 
 test("billing schema has source-of-truth ledgers and unique effect keys", () => {
   for (const table of ["billing_cases","billing_case_versions","billing_documents","billing_payments","billing_change_requests","billing_events","billing_jobs","billing_incidents"]) {
@@ -41,4 +43,11 @@ test("billing migration has a complete rollback", () => {
   assert.match(rollback, /drop function if exists public\.billing_case_ingest/);
   assert.match(rollback, /drop table if exists public\.billing_cases/);
   assert.match(rollback, /drop function if exists public\.set_billing_updated_at/);
+});
+
+test("initial Pro-forma job receives the permanent Rechnungsportal URL atomically", () => {
+  assert.match(portalIngest, /billing_case_ingest_with_portal/);
+  assert.match(portalIngest, /rechnung\\\.neontrip\\\.de/);
+  assert.match(portalIngest, /payload \|\| jsonb_build_object\('portalUrl',p_portal_url\)/);
+  assert.match(portalIngestRollback, /drop function if exists public\.billing_case_ingest_with_portal/);
 });

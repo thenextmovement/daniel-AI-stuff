@@ -57,6 +57,12 @@ const paymentText = billingCase.payment_method === 'VORKASSE'
   : 'Zahlbar innerhalb von ' + dueInDays + ' Tagen nach Erhalt der Ware.';
 const documentText = [projectNumber ? 'Projektnummer: ' + projectNumber : '', paymentText].filter(Boolean).join('\n\n');
 const documentLabel = documentType==='PROFORMA_INVOICE'?'Pro-forma-Rechnung':documentType==='CREDIT'?'Gutschrift':documentType==='STORNO'?'Stornobeleg':'Rechnung';
+const initialProforma = job.job_type === 'CREATE_PROFORMA' && Number(job.payload?.revision || 0) === 0;
+const portalUrl = String(job.payload?.portalUrl || '').trim();
+if (initialProforma && !/^https:\/\/rechnung\.neontrip\.de\/[A-Za-z0-9_-]+$/.test(portalUrl)) throw new Error('billing_portal_url_missing');
+const orderLabel = String(billingCase.shopify_order_name || '').startsWith('#') ? String(billingCase.shopify_order_name) : '#' + String(billingCase.shopify_order_name || '');
+const initialEmailMessage = 'Guten Tag,\n\nvielen Dank für Ihre Bestellung. Hiermit bestätigen wir die Annahme Ihres Auftrags ' + orderLabel + '.\n\nAnbei erhalten Sie Ihre Pro-forma-Rechnung ' + documentNumber + (projectNumber?' für das Projekt '+projectNumber:'') + '.\n\n' + paymentText + '\n\nÜber diesen permanenten Link können Sie Ihre Rechnungsdaten einsehen und Änderungen ausschließlich zu Ihren Rechnungsdaten anfragen:\n' + portalUrl + '\n\nÄnderungen im Rechnungsportal ändern weder den Auftrag noch die bestellten Produkte oder Leistungen.\n\nFreundliche Grüße\nIhr NEONTRIP Team';
+const standardEmailMessage = 'Guten Tag,\n\nanbei erhalten Sie Ihre '+documentLabel+(projectNumber?' für das Projekt '+projectNumber:'')+'.\n\nFreundliche Grüße\nIhr NEONTRIP Team';
 return [{json:{
   hasJob:true,
   job,
@@ -68,7 +74,7 @@ return [{json:{
   customerPayload:{number:customerNumber,company_name:company,last_name:names.slice(-1)[0]||company,first_name:names.slice(0,-1).join(' ')||'',street:String(address.street||''),zip_code:String(address.zip||address.zipCode||''),city:String(address.city||''),country:country(address.country||delivery.country),emails:[invoiceEmail],vat_identifier:billingCase.vat_id||null,tax_options:taxOption,delivery_company_name:String(delivery.company||delivery.contactCompany||company),delivery_first_name:String(delivery.firstName||delivery.contactName||''),delivery_last_name:String(delivery.lastName||''),delivery_street:String(delivery.street||''),delivery_zip_code:String(delivery.zip||delivery.zipCode||''),delivery_city:String(delivery.city||''),delivery_country:country(delivery.country)},
   documentNumber,
   documentPayload:{type:documentType,number:documentNumber,order_number:String(billingCase.shopify_order_name||''),buyer_reference:projectNumber,external_id:job.idempotency_key,currency:billingCase.currency||'EUR',due_in_days:dueInDays,customer_id:null,ref_id:originalInvoice?.easybill_document_id?Number(originalInvoice.easybill_document_id):undefined,items,vat_option:taxOption,vat_country:country(address.country||delivery.country),shipping_country:country(delivery.country),title:documentLabel+' '+String(billingCase.shopify_order_name||''),text:documentText,calc_vat_from:0},
-  emailPayload:{to:invoiceEmail,subject:documentLabel+' '+documentNumber+' – NEONTRIP',message:'Guten Tag,\n\nanbei erhalten Sie Ihre '+documentLabel+(projectNumber?' für das Projekt '+projectNumber:'')+'.\n\nFreundliche Grüße\nIhr NEONTRIP Team',send_with_attachment:true,document_file_type:'default'}
+  emailPayload:{to:invoiceEmail,subject:initialProforma?'Auftragsbestätigung '+orderLabel+' – NEONTRIP':documentLabel+' '+documentNumber+' – NEONTRIP',message:initialProforma?initialEmailMessage:standardEmailMessage,send_with_attachment:true,document_file_type:'default'}
 }}];`;
 
 const workflow = {

@@ -56,14 +56,16 @@ export function billingPortalUrl(token: string) {
 export async function ingestBillingCase(input: BillingIntake) {
   const built = buildBillingCaseInput(input);
   const token = derivePortalToken({ secret: portalSecret(), shopifyOrderId: built.caseRecord.shopify_order_id });
-  const result = await supabaseRpc<IngestResult>("billing_case_ingest", {
+  const portalUrl = billingPortalUrl(token);
+  const result = await supabaseRpc<IngestResult>("billing_case_ingest_with_portal", {
     p_case: built.caseRecord,
     p_snapshot: built.snapshot,
     p_snapshot_hash: built.snapshotHash,
     p_source_event_id: input.sourceEventId,
     p_portal_token_hash: portalTokenHash(token),
+    p_portal_url: portalUrl,
   });
-  return { ...result, portalUrl: billingPortalUrl(token) };
+  return { ...result, portalUrl };
 }
 
 export async function listBillingCases(input: { status?: string | null; query?: string | null; limit?: number } = {}) {
