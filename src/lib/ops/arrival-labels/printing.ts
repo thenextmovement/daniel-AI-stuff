@@ -136,7 +136,11 @@ export const runBoundedProcess: ProcessRunner = (command, args, timeoutMs = 30_0
   const child = spawn(command, args, { shell: false, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "";
   let stderr = "";
-  const append = (current: string, value: Buffer) => `${current}${value.toString("utf8")}`.slice(-16_000);
+  // CUPS lists completed jobs newest-first. Preserve the beginning so recent jobs
+  // remain visible after the local history grows beyond the output limit.
+  const append = (current: string, value: Buffer) => current.length >= 16_000
+    ? current
+    : `${current}${value.toString("utf8")}`.slice(0, 16_000);
   child.stdout.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
   child.stderr.on("data", (chunk: Buffer) => { stderr = append(stderr, chunk); });
   child.on("error", reject);

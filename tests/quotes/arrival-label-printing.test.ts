@@ -8,6 +8,7 @@ import {
   parseCupsJobId,
   readBoundedJson,
   readBoundedResponseBytes,
+  runBoundedProcess,
   validateApprovedArrivalPrinterMapping,
   validateCupsName,
   validatePrinterKey,
@@ -98,6 +99,19 @@ test("CUPS adapter uses argument arrays, A6 media and no scaling option", async 
     { command: "lpstat", args: ["-p", "Zebra-ZD421"] },
     { command: "lpoptions", args: ["-p", "Zebra-ZD421", "-l"] },
   ]);
+});
+
+test("bounded CUPS history preserves newest completed jobs after 16 KB", async () => {
+  const newestJob = "Brother_QL_1110NWB-189 daniel 40960 Thu";
+  const oldHistory = Array.from({ length: 500 }, (_, index) => `Brother_QL_1110NWB-${index} daniel 40960 Wed`).join("\n");
+  const result = await runBoundedProcess(process.execPath, [
+    "-e",
+    `process.stdout.write(${JSON.stringify(`${newestJob}\n${oldHistory}`)})`,
+  ]);
+
+  assert.equal(result.exitCode, 0);
+  assert.ok(result.stdout.length <= 16_000);
+  assert.match(result.stdout, /^Brother_QL_1110NWB-189 /);
 });
 
 test("CUPS media inspection requires an exact advertised value", () => {
