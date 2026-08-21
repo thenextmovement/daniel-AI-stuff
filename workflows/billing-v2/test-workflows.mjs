@@ -15,7 +15,7 @@ const proformaVoid = JSON.parse(fs.readFileSync(path.join(root, "generated/easyb
 const shopifyOrderIntake = JSON.parse(fs.readFileSync(path.join(root, "generated/shopify-order-intake-adapter-v2.inactive.json"), "utf8"));
 const byName = new Map(workflow.nodes.map((node) => [node.name, node]));
 
-async function runPrepareEasybillCommand(lineItems) {
+async function runPrepareEasybillCommand(lineItems, billingOverrides = {}) {
   const source = byName.get("Prepare Easybill Command").parameters.jsCode;
   return vm.runInNewContext(`(async()=>{${source}})()`, {
     $json: {
@@ -41,7 +41,9 @@ async function runPrepareEasybillCommand(lineItems) {
             shopify_order_name: "#NEONT9999",
             subtotal_net_cents: 10000,
             tax_exempt: false,
+            tax_treatment: "DE_STANDARD",
             vat_cents: 1900,
+            ...billingOverrides,
           },
         },
       },
@@ -115,11 +117,29 @@ test("Easybill positions use titles only and normalize shipping labels", async (
   ]);
 });
 
+test("German standard-tax documents keep exactly 19 percent despite cent rounding", async () => {
+  const [prepared] = await runPrepareEasybillCommand(
+    [{ title: "LED Neonschild", section: "LED-Leuchtschild", unitPriceNet: 60.5 }],
+    { subtotal_net_cents: 6050, vat_cents: 1150 },
+  );
+
+  assert.equal(prepared.json.documentPayload.items[0].vat_percent, 19);
+});
+
+test("invoice cancellations use Easybill's cancel endpoint idempotently", () => {
+  assert.match(JSON.stringify(byName.get("Easybill Cancel Invoice")), /documents\/.*\/cancel/);
+  assert.match(JSON.stringify(workflow.connections["Cancellation Job"]), /Easybill Load Original Invoice/);
+  assert.match(JSON.stringify(workflow.connections["Original Invoice Already Cancelled"]), /Easybill Load Finalized Document/);
+  assert.doesNotMatch(JSON.stringify(workflow.connections["Cancellation Job"]), /Easybill Create Document/);
+});
+
 test("all Easybill mutations have an explicit error completion path", () => {
-  for (const name of ["Easybill Find Customer", "Easybill Create Customer", "Easybill Update Existing Customer", "Easybill Find Document", "Easybill Create Document", "Easybill Finalize Document", "Easybill Load Finalized Document"]) {
+  for (const name of ["Easybill Find Customer", "Easybill Create Customer", "Easybill Update Existing Customer", "Easybill Load Original Invoice", "Easybill Cancel Invoice", "Easybill Find Document", "Easybill Create Document", "Easybill Finalize Document", "Easybill Load Finalized Document"]) {
     assert.equal(byName.get(name).onError, "continueErrorOutput");
     assert.match(JSON.stringify(workflow.connections[name]), /Prepare Failed Completion/);
   }
+  assert.match(byName.get("Prepare Failed Completion").parameters.jsCode, /Prepare Easybill Command'\)\.all\(\)/);
+  assert.match(byName.get("Prepare Failed Completion").parameters.jsCode, /Claim Billing Job'\)\.all\(\)/);
   assert.match(byName.get("Raise Urgent Billing Error").parameters.jsCode, /Fehler Rechnung Shopify\/Easybill/);
 });
 
