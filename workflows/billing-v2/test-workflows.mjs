@@ -163,6 +163,7 @@ test("financial event adapters are passive sub-workflows with cent guards", () =
 test("payment projection checks Shopify before marking paid and records Easybill payment", () => {
   const source = JSON.stringify(paymentProjection);
   assert.equal(paymentProjection.active, false);
+  assert.equal(paymentProjection.nodes[0].typeVersion, 1.3);
   assert.match(source, /PROJECT_PAYMENT_SHOPIFY/);
   assert.match(source, /PROJECT_PAYMENT_EASYBILL/);
   assert.match(source, /orderMarkAsPaid/);
@@ -175,6 +176,7 @@ test("payment projection checks Shopify before marking paid and records Easybill
 test("VAT review worker produces the internal summary with direct Ops and VIES links", () => {
   const source = JSON.stringify(vatReview);
   assert.equal(vatReview.active, false);
+  assert.equal(vatReview.nodes[0].typeVersion, 1.3);
   assert.match(source, /Umsatzsteuer-ID passt nicht zur Firma/);
   assert.match(source, /ops\/rechnungen\?caseId=/);
   assert.match(source, /taxation_customs\/vies/);
@@ -185,6 +187,7 @@ test("VAT review worker produces the internal summary with direct Ops and VIES l
 test("Pro-forma void worker never creates an accounting cancellation itself", () => {
   const source = JSON.stringify(proformaVoid);
   assert.equal(proformaVoid.active, false);
+  assert.equal(proformaVoid.nodes[0].typeVersion, 1.3);
   assert.match(source, /VOID_PROFORMA/);
   assert.match(source, /documents\/.*\/cancel/);
   assert.match(source, /CONFIGURE_EASYBILL_BEARER/);
