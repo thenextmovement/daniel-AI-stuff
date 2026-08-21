@@ -126,6 +126,37 @@ test("German standard-tax documents keep exactly 19 percent despite cent roundin
   assert.equal(prepared.json.documentPayload.items[0].vat_percent, 19);
 });
 
+test("Shopify rounding cents are absorbed into an existing position", async () => {
+  const [prepared] = await runPrepareEasybillCommand([
+    { id: "sign-a", title: "LED Neonschild – Brezzels", section: "LED-Leuchtschild", unitPriceNet: 603, normalizedQuantity: 2 },
+    { id: "dimmer", title: "Dimmer mit Bluetooth und Fernbedienung", section: "Zusatzoptionen", unitPriceNet: 19, normalizedQuantity: 4 },
+    { id: "mounting", title: "Wandmontage Set", section: "Zusatzoptionen", unitPriceNet: 5, normalizedQuantity: 4 },
+    { id: "power", title: "Weißes Netzteil Premium-Version", section: "Zusatzoptionen", unitPriceNet: 19, normalizedQuantity: 4 },
+    { id: "tabletop", title: "Acryl LED Tischgerät", section: "Zusatzoptionen", unitPriceNet: 89, normalizedQuantity: 1 },
+    { id: "shipping", title: "Liefertermin Standardlieferung", section: "Versand", unitPriceNet: 0, normalizedQuantity: 1 },
+    { id: "sign-b", title: "LED Neonschild – Brezzels", section: "LED-Leuchtschild", unitPriceNet: 400.5, normalizedQuantity: 2 },
+    { id: "system-rounding-NEONT4611", title: "Rundungskorrektur Shopify", section: "Zusatzoptionen", unitPriceNet: 0.01, lineNet: 0.01, normalizedQuantity: 1 },
+  ], { subtotal_net_cents: 226801, vat_cents: 43092, total_gross_cents: 269893 });
+  const items = prepared.json.documentPayload.items;
+
+  assert.equal(items.some((item) => item.description === "Rundungskorrektur Shopify"), false);
+  assert.equal(items.find((item) => item.description === "Acryl LED Tischgerät").single_price_net, 8901);
+  assert.equal(items.reduce((sum, item) => sum + item.quantity * item.single_price_net, 0), 226801);
+  assert.equal(Math.round(226801 * 0.19), 43092);
+});
+
+test("Shopify rounding cents split a normal multi-quantity position when necessary", async () => {
+  const [prepared] = await runPrepareEasybillCommand([
+    { id: "sign", title: "LED Neonschild", section: "LED-Leuchtschild", unitPriceNet: 100, normalizedQuantity: 2 },
+    { id: "system-rounding-NEONT9999", title: "Rundungskorrektur Shopify", section: "Zusatzoptionen", unitPriceNet: 0.01, lineNet: 0.01, normalizedQuantity: 1 },
+  ]);
+  const items = prepared.json.documentPayload.items;
+
+  assert.deepEqual(Array.from(items, (item) => item.description), ["LED Neonschild", "LED Neonschild"]);
+  assert.deepEqual(Array.from(items, (item) => item.quantity), [1, 1]);
+  assert.equal(items.reduce((sum, item) => sum + item.quantity * item.single_price_net, 0), 20001);
+});
+
 test("invoice cancellations use Easybill's cancel endpoint idempotently", () => {
   assert.match(JSON.stringify(byName.get("Easybill Cancel Invoice")), /documents\/.*\/cancel/);
   assert.match(JSON.stringify(workflow.connections["Cancellation Job"]), /Easybill Load Original Invoice/);
