@@ -1,0 +1,40 @@
+{
+  "artifact_version": "neontrip_n8n_treatment_shadow_always_on_prestate_v1",
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "workflow_name": "NEONTRIP Request Segmenter v1.0 (SHADOW - scheduled active)",
+  "captured_at_utc": "2026-08-21T06:18:27.000Z",
+  "capture_mode": "read_only_full_and_published_active",
+  "active": true,
+  "is_archived": false,
+  "draft_version_id": "d42befa7-f6fc-4201-8516-c71c01cf5e17",
+  "active_version_id": "d42befa7-f6fc-4201-8516-c71c01cf5e17",
+  "version_counter": 136,
+  "node_count": 20,
+  "connection_source_count": 17,
+  "draft_active_graphs_equal": true,
+  "files": {
+    "draft": "ELpwCfdWOCRZ22gy.draft-before.json",
+    "active": "ELpwCfdWOCRZ22gy.published-active-before.json"
+  },
+  "hashes": {
+    "draft_file_sha256": "eaa4510079552bcd80917b8b8b5f0f13a390d13d4909a590d00d81017e0f483a",
+    "active_file_sha256": "1195d3281f88969140585e7881342bfadd14e2a60f3e63e2870ed3400336d3a3",
+    "draft_graph_sha256": "4b5a7c2187a05f5c39f62968efeed983e1011ac670b924a15bf7ae9d8f852485",
+    "active_graph_sha256": "4b5a7c2187a05f5c39f62968efeed983e1011ac670b924a15bf7ae9d8f852485",
+    "claim_node_sha256": "604b1bdb89884abf1c3659813053ae20adc541338152003090c12009598eeb57",
+    "payload_node_sha256": "969fb0f0fa7a7166146c508807cb276f30bf1c55514e522720737fa105851c31",
+    "build_node_sha256": "39dc013f712dc27cdbd8957356c78025329ef1a7bea973297549c57de1b0448f",
+    "classifier_node_sha256": "5648d6c178a65cb4dfca66082786d0b59cbf4871b8a60e873e35a75b212639e0",
+    "validator_node_sha256": "d809c5102b8165b5c49e354c250c66381e7bd56c0fd61f4ea8ad0aea8a731a67",
+    "record_node_sha256": "294c28368b07ab79aff8739a6ff7515f4db0151966e188ec633d7d5a58212902",
+    "failure_node_sha256": "e1e0db503ec32b6e3be1724fa16c269ebaf109ad6b7b6715ae54335e88ccf5cd"
+  },
+  "safety": {
+    "live_write_performed": false,
+    "publish_performed": false,
+    "activation_changed": false,
+    "execution_triggered": false,
+    "openai_request_performed": false,
+    "customer_action_performed": false
+  }
+}

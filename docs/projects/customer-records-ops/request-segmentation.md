@@ -495,6 +495,58 @@ Spaetestens nach vier terminalen Jobs wird ebenfalls auf v3 zurueckgedreht und
 ein natuerlicher v2-Claim sowie unveraenderte Master-/Cache-/Kundenaktionswerte
 werden belegt.
 
+## Dauerhafter Treatment-Shadow-Betrieb
+
+Der nachfolgende v7-Vertrag ersetzt den zeitlich begrenzten Treatment-Pilot
+fuer neue natuerliche Anfragen. Er setzt die einfache Betriebsentscheidung um:
+
+- Eine gueltige Firmen-Maildomain wird mit einer kurzen, ausschliesslich an die
+  Domain gebundenen Websuche geprueft.
+- Freemail und Shared Provider werden nie gesucht. Zeigt Titel, Beschreibung
+  oder Anwendung eine gewerbliche Nutzung, wird der passende normale
+  Business-Fall verwendet. Ohne ein solches Business-Signal wird der Fall als
+  privater Standardfall behandelt.
+- Nur positiv belegte oeffentliche/institutionelle, Multi-Site-, Enterprise-
+  oder grosse Organisationen erhalten `treatment_tier=special`. Alle anderen
+  erhalten `standard`.
+
+```text
+taxonomy_version  = nt_taxonomy_v2_20260819_cx8
+classifier        = segment_classifier_v7_20260821_treatment_shadow
+prompt            = segment_prompt_v7_20260821_treatment_shadow
+policy            = nt_policy_v6_20260821_treatment_shadow
+quality_gate       = nt_quality_gate_v6_20260821_treatment_shadow
+research          = segment_research_v2_20260820_domain_filter
+treatment          = treatment_focus_v2_20260821_always_on
+validator          = n8n_cx8_validator_v4
+worker             = n8n-request-segmenter-v7-treatment-shadow
+```
+
+Die Einordnung wird ausschliesslich als versionierte
+`segment_classifications`-Shadow-Historie gespeichert. Der Status
+`shadow` autorisiert keine Master-Projektion. Policy und Gate bleiben im
+Modus `shadow`; alle acht Regeln bleiben mit
+`automation_enabled=false`, `price_factor=null`, `max_followups=0` und
+leeren Call-/E-Mail-Sequenzen inert. Der Vertrag darf daher weder
+`master_requests`, Research-Cache, Trello, Angebot, Preis, Reminder, E-Mail,
+WhatsApp noch eine andere Kundenaktion aendern.
+
+Die Base-Migration
+`supabase/migrations/20260821063055_prepare_request_segmentation_treatment_shadow_always_on.sql`
+legt den Kandidaten zunaechst inaktiv an. Erst nach vollstaendigem
+n8n-v7-Readback und einem natuerlichen leeren v7-Claim darf
+`supabase/rollouts/held/20260821070000_activate_request_segmentation_treatment_shadow_always_on.sql`
+v2 atomar deaktivieren und v6 aktivieren. Anders als die alten Gold-Piloten
+bleibt der v7-Workflow danach dauerhaft aktiv und verarbeitet ausschliesslich
+natuerlich eingehende Jobs; es gibt keinen Backfill oder manuellen Run.
+
+Nach erster v7-Runtime ist nur der nicht-destruktive operative Rollback
+`supabase/rollbacks/20260821070000_request_segmentation_treatment_shadow_operational_rollback.sql`
+zulaessig: v7-`processing` und Locks muessen zuerst null sein, dann wird auf
+v2 zurueckgeschaltet, ein leerer exakter v7-Claim belegt, der vollstaendige
+n8n-Reverse publiziert und abschliessend ein natuerlicher leerer v3-Claim
+geprueft. Runtime-Historie wird nicht geloescht.
+
 ## Rollback
 
 - Vor erster v4-Runtime entfernt
