@@ -14,6 +14,9 @@ const vatReview = JSON.parse(fs.readFileSync(path.join(root, "generated/vat-revi
 const proformaVoid = JSON.parse(fs.readFileSync(path.join(root, "generated/easybill-proforma-void-worker-v2.inactive.json"), "utf8"));
 const shopifyOrderIntake = JSON.parse(fs.readFileSync(path.join(root, "generated/shopify-order-intake-adapter-v2.inactive.json"), "utf8"));
 const byName = new Map(workflow.nodes.map((node) => [node.name, node]));
+const customerDelivery = JSON.parse(fs.readFileSync(path.join(root, "generated/customer-document-delivery-worker-v2.inactive.json"), "utf8"));
+const customerDeliveryByName = new Map(customerDelivery.nodes.map((node) => [node.name, node]));
+const customerDeliveryMigration = fs.readFileSync(path.join(root, "../../supabase/migrations/20260821153000_queue_billing_customer_delivery.sql"), "utf8");
 
 async function runPrepareEasybillCommand(lineItems, billingOverrides = {}) {
   const source = byName.get("Prepare Easybill Command").parameters.jsCode;
@@ -235,4 +238,68 @@ test("all Shopify orders can enter the same signed BillingCase intake", () => {
   assert.match(source, /X-Neontrip-Signature/);
   assert.match(source, /\/api\/internal\/billing\/cases/);
   assert.match(source, /#NEONT/);
+});
+test("customer delivery worker is isolated, inactive, allowlisted and idempotent", async () => {
+  assert.equal(customerDelivery.active, false);
+  assert.equal(customerDeliveryByName.get("Every Minute").typeVersion, 1.3);
+  assert.match(JSON.stringify(customerDeliveryByName.get("Claim Customer Delivery Job")), /SEND_CUSTOMER_DOCUMENT/);
+  assert.match(JSON.stringify(customerDeliveryByName.get("Easybill Send Customer Document")), /\/send\/email/);
+  assert.match(JSON.stringify(customerDeliveryByName.get("Easybill Send Customer Document")), /send_with_attachment/);
+  assert.match(JSON.stringify(customerDeliveryByName.get("Easybill Send Customer Document")), /document_file_type/);
+  assert.match(customerDeliveryByName.get("Check Existing Customer Delivery").parameters.jsCode, /last_postbox_id/);
+  assert.match(customerDeliveryByName.get("Prepare Customer Delivery Success").parameters.jsCode, /last_postbox_id/);
+  assert.match(customerDeliveryByName.get("Prepare Customer Delivery Success").parameters.jsCode, /sent:true/);
+  assert.equal(customerDeliveryByName.get("Complete Customer Delivery Job").onError, "stopWorkflow");
+  assert.equal(customerDelivery.settings.errorWorkflow, "M4uG1HAtN9Zggxww");
+
+  const source = customerDeliveryByName.get("Prepare Customer Delivery").parameters.jsCode;
+  const run = (recipient, kind = "ORDER_CONFIRMATION_PROFORMA") => vm.runInNewContext(`(async()=>{${source}})()`, {
+    $json: {
+      body: {
+        claimed: {
+          job: {
+            id: "delivery-test-job",
+            lease_token: "delivery-test-lease",
+            payload: {
+              recipient,
+              deliveryKind: kind,
+              easybillDocumentId: "12345",
+              documentNumber: "PF-NEONT9999",
+              shopifyOrderName: "#NEONT9999",
+              portalUrl: "https://rechnung.neontrip.de/test-token",
+              projectNumber: "PROJ-E2E-9999",
+            },
+          },
+          billingCase: {
+            shopify_order_name: "#NEONT9999",
+            project_number: "PROJ-E2E-9999",
+          },
+        },
+      },
+    },
+  });
+
+  const [prepared] = await run("rahim.hedayati@icloud.com");
+  assert.equal(prepared.json.recipient, "rahim.hedayati@icloud.com");
+  assert.match(prepared.json.subject, /Auftragsbestätigung #NEONT9999/);
+  assert.match(prepared.json.message, /Pro-forma-Rechnung PF-NEONT9999/);
+  assert.match(prepared.json.message, /Zahlbar sofort/);
+  assert.match(prepared.json.message, /rechnung\.neontrip\.de\/test-token/);
+  assert.match(prepared.json.message, /angebote\.neontrip\.de\/legal\/agb/);
+  await assert.rejects(() => run("kunde@example.com"), /recipient_not_allowlisted/);
+});
+
+test("customer delivery queue is fail-closed and marks only completed test documents sent", () => {
+  assert.match(customerDeliveryMigration, /rahim\.hedayati@icloud\.com/);
+  assert.match(customerDeliveryMigration, /info@riesenobjekte\.de/);
+  assert.match(customerDeliveryMigration, /not in \('rahim\.hedayati@icloud\.com', 'info@riesenobjekte\.de'\)/);
+  assert.match(customerDeliveryMigration, /SEND_CUSTOMER_DOCUMENT/);
+  assert.match(customerDeliveryMigration, /send-customer-document:/);
+  assert.match(customerDeliveryMigration, /customerEmailSuppressed/);
+  assert.match(customerDeliveryMigration, /new\.document_type = 'INVOICE'/);
+  assert.match(customerDeliveryMigration, /deliveryKind/);
+  assert.match(customerDeliveryMigration, /ORDER_CONFIRMATION_PROFORMA/);
+  assert.match(customerDeliveryMigration, /PROFORMA_UPDATE/);
+  assert.match(customerDeliveryMigration, /billing_mark_document_sent_after_job/);
+  assert.match(customerDeliveryMigration, /new\.status = 'DONE'/);
 });

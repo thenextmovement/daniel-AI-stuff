@@ -311,3 +311,121 @@ fs.writeFileSync(path.join(generated, "vat-review-alert-worker-v2.inactive.json"
 fs.writeFileSync(path.join(generated, "easybill-proforma-void-worker-v2.inactive.json"), JSON.stringify(proformaVoidWorkflow, null, 2) + "\n");
 fs.writeFileSync(path.join(generated, "shopify-order-intake-adapter-v2.inactive.json"), JSON.stringify(shopifyOrderIntakeWorkflow, null, 2) + "\n");
 console.log("Generated inactive billing v2 workflows.");
+const customerDeliveryPrepareCode = String.raw`
+const claimed = ($json.body ?? $json).claimed;
+if (!claimed?.job || !claimed?.billingCase) {
+  const empty = {hasJob:false};
+  return [{json:empty}];
+}
+const job = claimed.job;
+const billingCase = claimed.billingCase;
+const payload = job.payload || {};
+const recipient = String(payload.recipient || '').trim().toLowerCase();
+const allowed = new Set(['rahim.hedayati@icloud.com','info@riesenobjekte.de']);
+if (!allowed.has(recipient)) throw new Error('billing_customer_delivery_recipient_not_allowlisted');
+const easybillDocumentId = String(payload.easybillDocumentId || '');
+if (!/^\d+$/.test(easybillDocumentId)) throw new Error('billing_customer_delivery_easybill_id_invalid');
+const documentNumber = String(payload.documentNumber || '').trim();
+const shopifyOrderName = String(payload.shopifyOrderName || billingCase.shopify_order_name || '').trim();
+if (!/^#NEONT\d+$/.test(shopifyOrderName)) throw new Error('billing_customer_delivery_order_number_invalid');
+const portalUrl = String(payload.portalUrl || '').trim();
+if (!/^https:\/\/rechnung\.neontrip\.de\/[A-Za-z0-9_-]+$/.test(portalUrl)) throw new Error('billing_customer_delivery_portal_url_invalid');
+const projectNumber = String(payload.projectNumber || billingCase.project_number || '').trim();
+if (projectNumber.length > 100 || /[<>\r\n]/.test(projectNumber)) throw new Error('billing_customer_delivery_project_number_invalid');
+const kind = String(payload.deliveryKind || '');
+const subjects = {
+  ORDER_CONFIRMATION_PROFORMA:'Auftragsbestätigung ' + shopifyOrderName + ' – Ihre Bestellung bei NEONTRIP',
+  PROFORMA_UPDATE:'Aktualisierte Pro-forma-Rechnung ' + documentNumber + ' – NEONTRIP',
+  INVOICE:'Rechnung ' + documentNumber + ' – NEONTRIP',
+  CREDIT:'Gutschrift ' + documentNumber + ' – NEONTRIP',
+  CANCELLATION:'Stornobeleg ' + documentNumber + ' – NEONTRIP'
+};
+if (!subjects[kind]) throw new Error('billing_customer_delivery_kind_invalid');
+const common = [
+  'Bestellnummer: ' + shopifyOrderName,
+  projectNumber ? 'Projektnummer: ' + projectNumber : '',
+  'Rechnungsdaten und Dokumente: ' + portalUrl,
+  'AGB: https://angebote.neontrip.de/legal/agb'
+].filter(Boolean);
+const messages = {
+  ORDER_CONFIRMATION_PROFORMA:[
+    'vielen Dank für Ihre verbindliche Bestellung bei NEONTRIP. Hiermit bestätigen wir den Eingang und die Annahme Ihres Auftrags.',
+    'Ihre Pro-forma-Rechnung ' + documentNumber + ' finden Sie als PDF im Anhang. Sie dient als Zahlungsaufforderung und ist keine steuerliche Schlussrechnung.',
+    'Zahlbar sofort. Die Produktion beginnt bereits. Sollte die Zahlung nicht rechtzeitig eingehen, kann die Produktion vor Fertigstellung pausiert werden. Dadurch kann sich der Liefertermin verschieben.',
+    'Über den folgenden Link können Sie ausschließlich Änderungen zu Ihren Rechnungsdaten anfragen. Änderungen am Auftrag selbst sind dort nicht möglich.'
+  ],
+  PROFORMA_UPDATE:[
+    'die von uns freigegebenen Änderungen an Ihren Rechnungsdaten wurden übernommen.',
+    'Ihre aktualisierte Pro-forma-Rechnung ' + documentNumber + ' finden Sie als PDF im Anhang.'
+  ],
+  INVOICE:[
+    'anbei erhalten Sie Ihre Rechnung ' + documentNumber + ' als PDF.',
+    'Die Rechnung wurde auf Grundlage des bestätigten Auftrags und des aktuellen Zahlungs-/Lieferstatus erstellt.'
+  ],
+  CREDIT:[
+    'anbei erhalten Sie die Gutschrift ' + documentNumber + ' zu Ihrer Bestellung als PDF.',
+    'Der in Shopify erfasste Erstattungsbetrag wurde in diesem Beleg berücksichtigt.'
+  ],
+  CANCELLATION:[
+    'anbei erhalten Sie den Stornobeleg ' + documentNumber + ' zu Ihrer Bestellung als PDF.',
+    'Die Stornierung wurde mit dem zugehörigen Shopify-Auftrag abgeglichen.'
+  ]
+};
+const message = ['Guten Tag,','',...messages[kind],'',...common,'','Freundliche Grüße','Ihr NEONTRIP-Team'].join('\n');
+const output = {
+  hasJob:true,
+  job,
+  billingCase,
+  recipient,
+  easybillDocumentId,
+  documentNumber,
+  shopifyOrderName,
+  portalUrl,
+  kind,
+  subject:subjects[kind],
+  message
+};
+return [{json:output}];`;
+
+const customerDeliveryWorkflow = {
+  name: "NEONTRIP Billing v2 - Customer Document Delivery Worker (INACTIVE)",
+  active: false,
+  nodes: [
+    node("delivery-schedule", "Every Minute", "n8n-nodes-base.scheduleTrigger", [-1120, 0], { rule: { interval: [{ field: "minutes", minutesInterval: 1 }] } }, { typeVersion: 1.3 }),
+    node("delivery-config", "Customer Delivery Config", "n8n-nodes-base.code", [-900, 0], { mode: "runOnceForAllItems", jsCode: "const config={opsBaseUrl:'https://ops.neontrip.de',worker:'n8n-customer-document-delivery-v2'};return [{json:config}];" }),
+    node("delivery-claim", "Claim Customer Delivery Job", "n8n-nodes-base.httpRequest", [-680, 0], { method: "POST", url: "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {worker:$json.worker,jobTypes:['SEND_CUSTOMER_DOCUMENT'],leaseSeconds:180} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, onError: "continueErrorOutput" }),
+    node("delivery-prepare", "Prepare Customer Delivery", "n8n-nodes-base.code", [-440, -80], { mode: "runOnceForAllItems", jsCode: customerDeliveryPrepareCode }, { onError: "continueErrorOutput" }),
+    node("delivery-has-job", "Has Customer Delivery Job", "n8n-nodes-base.if", [-220, -80], { conditions: { options: { caseSensitive: true, typeValidation: "strict" }, conditions: [{ leftValue: "={{ $json.hasJob }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" } }),
+    node("delivery-load", "Easybill Load Customer Document", "n8n-nodes-base.httpRequest", [20, -80], { method: "GET", url: "={{ 'https://api.easybill.de/rest/v1/documents/' + encodeURIComponent($json.easybillDocumentId) }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: easybillCredentials, onError: "continueErrorOutput" }),
+    node("delivery-check", "Check Existing Customer Delivery", "n8n-nodes-base.code", [260, -80], { jsCode: "const ctx=$('Prepare Customer Delivery').first().json;const doc=$json.body??$json;if(!doc.id||String(doc.number||'')!==ctx.documentNumber)throw new Error('billing_customer_delivery_document_mismatch');const output={...ctx,easybillDocument:doc,emailAlreadySent:Boolean(doc.last_postbox_id)};return [{json:output}];" }, { onError: "continueErrorOutput" }),
+    node("delivery-already-sent", "Customer Document Already Sent", "n8n-nodes-base.if", [500, -80], { conditions: { options: { typeValidation: "strict" }, conditions: [{ leftValue: "={{ $json.emailAlreadySent }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" } }),
+    node("delivery-send", "Easybill Send Customer Document", "n8n-nodes-base.httpRequest", [740, 40], { method: "POST", url: "={{ 'https://api.easybill.de/rest/v1/documents/' + encodeURIComponent($json.easybillDocumentId) + '/send/email' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {to:$json.recipient,subject:$json.subject,message:$json.message,send_with_attachment:true,document_file_type:'default',send_by_self:false} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: easybillCredentials, onError: "continueErrorOutput" }),
+    node("delivery-wait", "Wait for Easybill Postbox", "n8n-nodes-base.wait", [980, 40], { resume: "timeInterval", amount: 3, unit: "seconds" }, { typeVersion: 1.1 }),
+    node("delivery-reload", "Easybill Reload Sent Document", "n8n-nodes-base.httpRequest", [1220, 40], { method: "GET", url: "={{ 'https://api.easybill.de/rest/v1/documents/' + encodeURIComponent($('Prepare Customer Delivery').first().json.easybillDocumentId) }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: easybillCredentials, onError: "continueErrorOutput" }),
+    node("delivery-success", "Prepare Customer Delivery Success", "n8n-nodes-base.code", [1460, -80], { jsCode: "const ctx=$('Prepare Customer Delivery').first().json;const doc=$json.easybillDocument||$json.body||$json;if(!doc.last_postbox_id)throw new Error('billing_customer_delivery_postbox_missing');const result={worker:'n8n-customer-document-delivery-v2',easybillDocumentId:ctx.easybillDocumentId,documentNumber:ctx.documentNumber,recipient:ctx.recipient,deliveryKind:ctx.kind,sent:true,postboxId:String(doc.last_postbox_id)};const output={jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:true,result};return [{json:output}];" }, { onError: "continueErrorOutput" }),
+    node("delivery-failure", "Prepare Customer Delivery Failure", "n8n-nodes-base.code", [740, 280], { jsCode: "const prepared=$('Prepare Customer Delivery').all();const claimedItems=$('Claim Customer Delivery Job').all();const claimBody=claimedItems[0]?.json?.body??claimedItems[0]?.json??{};const job=prepared[0]?.json?.job??claimBody.claimed?.job;if(!job?.id||!job?.lease_token)throw new Error('billing_customer_delivery_failure_context_missing');const message=String($json.error?.message||$json.message||$json.description||'customer_document_delivery_failed').slice(0,1800);const result={worker:'n8n-customer-document-delivery-v2'};const output={jobId:job.id,leaseToken:job.lease_token,success:false,result,error:message};return [{json:output}];" }),
+    node("delivery-complete", "Complete Customer Delivery Job", "n8n-nodes-base.httpRequest", [1700, -80], { method: "POST", url: "={{ $('Customer Delivery Config').first().json.opsBaseUrl + '/api/internal/billing/jobs/' + encodeURIComponent($json.jobId) + '/complete' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {leaseToken:$json.leaseToken,success:$json.success,result:$json.result,error:$json.error} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, onError: "stopWorkflow" }),
+    node("delivery-blocked", "Raise Customer Delivery Block", "n8n-nodes-base.code", [1940, -80], { jsCode: "const body=$json.body??$json;if(body.completed?.status==='BLOCKED')throw new Error('Fehler Rechnung Shopify/Easybill: Kundenbeleg konnte nicht versendet werden. Bitte Ops-Rechnungsabteilung prüfen.');const output={ok:true,status:body.completed?.status||'DONE'};return [{json:output}];" }),
+    node("delivery-claim-failure", "Raise Customer Delivery Claim Error", "n8n-nodes-base.code", [-440, 200], { jsCode: "throw new Error('Fehler Rechnung Shopify/Easybill: Kundenversand-Job konnte nicht abgeholt werden.');return [];" })
+  ],
+  connections: {
+    "Every Minute": { main: [[{ node: "Customer Delivery Config", type: "main", index: 0 }]] },
+    "Customer Delivery Config": { main: [[{ node: "Claim Customer Delivery Job", type: "main", index: 0 }]] },
+    "Claim Customer Delivery Job": { main: [[{ node: "Prepare Customer Delivery", type: "main", index: 0 }], [{ node: "Raise Customer Delivery Claim Error", type: "main", index: 0 }]] },
+    "Prepare Customer Delivery": { main: [[{ node: "Has Customer Delivery Job", type: "main", index: 0 }], [{ node: "Prepare Customer Delivery Failure", type: "main", index: 0 }]] },
+    "Has Customer Delivery Job": { main: [[{ node: "Easybill Load Customer Document", type: "main", index: 0 }], []] },
+    "Easybill Load Customer Document": { main: [[{ node: "Check Existing Customer Delivery", type: "main", index: 0 }], [{ node: "Prepare Customer Delivery Failure", type: "main", index: 0 }]] },
+    "Check Existing Customer Delivery": { main: [[{ node: "Customer Document Already Sent", type: "main", index: 0 }], [{ node: "Prepare Customer Delivery Failure", type: "main", index: 0 }]] },
+    "Customer Document Already Sent": { main: [[{ node: "Prepare Customer Delivery Success", type: "main", index: 0 }], [{ node: "Easybill Send Customer Document", type: "main", index: 0 }]] },
+    "Easybill Send Customer Document": { main: [[{ node: "Wait for Easybill Postbox", type: "main", index: 0 }], [{ node: "Prepare Customer Delivery Failure", type: "main", index: 0 }]] },
+    "Wait for Easybill Postbox": { main: [[{ node: "Easybill Reload Sent Document", type: "main", index: 0 }]] },
+    "Easybill Reload Sent Document": { main: [[{ node: "Prepare Customer Delivery Success", type: "main", index: 0 }], [{ node: "Prepare Customer Delivery Failure", type: "main", index: 0 }]] },
+    "Prepare Customer Delivery Success": { main: [[{ node: "Complete Customer Delivery Job", type: "main", index: 0 }], [{ node: "Prepare Customer Delivery Failure", type: "main", index: 0 }]] },
+    "Prepare Customer Delivery Failure": { main: [[{ node: "Complete Customer Delivery Job", type: "main", index: 0 }]] },
+    "Complete Customer Delivery Job": { main: [[{ node: "Raise Customer Delivery Block", type: "main", index: 0 }], []] }
+  },
+  settings: { executionOrder: "v1", timezone: "Europe/Berlin", saveDataErrorExecution: "all", saveDataSuccessExecution: "all", errorWorkflow: "M4uG1HAtN9Zggxww", availableInMCP: false },
+  versionId: "neontrip-billing-v2-customer-document-delivery-worker-inactive"
+};
+
+fs.writeFileSync(path.join(generated, "customer-document-delivery-worker-v2.inactive.json"), JSON.stringify(customerDeliveryWorkflow, null, 2) + "\n");
