@@ -32,7 +32,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "const base=String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,'');if(!/^https:\\/\\//.test(base))throw new Error('NEONTRIP_OPS_BASE_URL missing');return [{json:{opsBaseUrl:base,worker:'n8n-easybill-proforma-void-v2'}}];"
+        "jsCode": "const base=String($env.NEONTRIP_OPS_BASE_URL||'https://ops.neontrip.de').replace(/\\/+$/,'');if(!/^https:\\/\\//.test(base))throw new Error('NEONTRIP_OPS_BASE_URL missing');return [{json:{opsBaseUrl:base,worker:'n8n-easybill-proforma-void-v2'}}];"
       }
     },
     {
@@ -79,7 +79,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "const claimed=($json.body??$json).claimed;if(!claimed?.job)return [];const id=String(claimed.job.payload?.easybillDocumentId||'');if(!/^\\d+$/.test(id))throw new Error('easybill_proforma_id_missing');return [{json:{...claimed,job:claimed.job,easybillDocumentId:id,opsBaseUrl:String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,'')}}];"
+        "jsCode": "const claimed=($json.body??$json).claimed;if(!claimed?.job)return [];const id=String(claimed.job.payload?.easybillDocumentId||'');if(!/^\\d+$/.test(id))throw new Error('easybill_proforma_id_missing');return [{json:{...claimed,job:claimed.job,easybillDocumentId:id,opsBaseUrl:String($env.NEONTRIP_OPS_BASE_URL||'https://ops.neontrip.de').replace(/\\/+$/,'')}}];"
       },
       "onError": "continueErrorOutput"
     },

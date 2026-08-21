@@ -5,6 +5,8 @@ import test from "node:test";
 
 const migration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260821123000_sequence_cancel_invoice_and_storno.sql"), "utf8");
 const rollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260821123000_sequence_cancel_invoice_and_storno_rollback.sql"), "utf8");
+const numberPairMigration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260821143500_allow_invoice_cancellation_number_pair.sql"), "utf8");
+const numberPairRollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260821143500_allow_invoice_cancellation_number_pair_rollback.sql"), "utf8");
 
 test("unbilled Shopify cancellation sequences invoice before linked cancellation", () => {
   assert.match(migration, /elsif v_case\.final_invoice_at is null then[\s\S]*'CREATE_INVOICE'/);
@@ -39,4 +41,11 @@ test("migration is reversible without deleting finalized documents", () => {
   assert.match(rollback, /create or replace function public\.billing_shopify_event_ingest/);
   assert.match(rollback, /status='SYNC_BLOCKED'[\s\S]*CANCELLATION_PENDING/);
   assert.doesNotMatch(rollback, /delete from public\.billing_documents|drop table public\.billing_documents/);
+});
+
+test("Easybill invoice and cancellation may share a number without allowing same-type duplicates", () => {
+  assert.match(numberPairMigration, /drop constraint if exists billing_documents_document_number_key/);
+  assert.match(numberPairMigration, /unique index if not exists billing_documents_type_document_number_key/);
+  assert.match(numberPairMigration, /\(document_type, document_number\)/);
+  assert.match(numberPairRollback, /add constraint billing_documents_document_number_key unique \(document_number\)/);
 });
