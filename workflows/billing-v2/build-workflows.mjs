@@ -45,7 +45,20 @@ const vatPercent = billingCase.tax_exempt
     : billingCase.tax_treatment === 'DE_STANDARD'
       ? 19
       : effectiveVatPercent;
-let items = (Array.isArray(billingCase.line_items) ? billingCase.line_items : []).map((item)=>{
+const rawItems = Array.isArray(billingCase.line_items) ? billingCase.line_items : [];
+const isSystemRoundingItem = item => String(item?.id||'').startsWith('system-rounding-')
+  || String(item?.title||'').trim().toLowerCase() === 'rundungskorrektur shopify';
+const roundingAdjustmentCents = rawItems
+  .filter(isSystemRoundingItem)
+  .reduce((sum,item)=>{
+    const quantity = Number(item.normalizedQuantity || item.quantity || 1);
+    const lineNet = Number(item.lineNet);
+    const cents = Number.isFinite(lineNet)
+      ? Math.round(lineNet*100)
+      : Math.round(Number(item.unitPriceNet || 0)*100)*quantity;
+    return sum+cents;
+  },0);
+let items = rawItems.filter(item=>!isSystemRoundingItem(item)).map((item)=>{
   const section = String(item.section||'').trim().toLowerCase();
   const title = String(item.title||'').trim();
   let description = title;
@@ -64,6 +77,38 @@ let items = (Array.isArray(billingCase.line_items) ? billingCase.line_items : []
     vat_percent:vatPercent
   };
 });
+if (roundingAdjustmentCents !== 0 && job.job_type !== 'CREATE_CREDIT') {
+  if (Math.abs(roundingAdjustmentCents) > 100) throw new Error('billing_rounding_adjustment_too_large');
+  let targetIndex = -1;
+  for (let index=items.length-1; index>=0; index--) {
+    const quantity = Number(items[index].quantity || 0);
+    const price = Number(items[index].single_price_net || 0);
+    if (Number.isInteger(quantity) && quantity > 0 && price > 0 && roundingAdjustmentCents % quantity === 0 && price + roundingAdjustmentCents/quantity >= 0) {
+      targetIndex = index;
+      break;
+    }
+  }
+  if (targetIndex >= 0) {
+    const quantity = Number(items[targetIndex].quantity);
+    items[targetIndex].single_price_net += roundingAdjustmentCents/quantity;
+  } else {
+    let splitIndex = -1;
+    for (let index=items.length-1; index>=0; index--) {
+      const quantity = Number(items[index].quantity || 0);
+      const price = Number(items[index].single_price_net || 0);
+      if (Number.isInteger(quantity) && quantity > 1 && price > 0 && price + roundingAdjustmentCents >= 0) {
+        splitIndex = index;
+        break;
+      }
+    }
+    if (splitIndex < 0) throw new Error('billing_rounding_adjustment_unallocatable');
+    const original = items[splitIndex];
+    items.splice(splitIndex,1,
+      {...original,quantity:original.quantity-1},
+      {...original,quantity:1,single_price_net:original.single_price_net+roundingAdjustmentCents}
+    );
+  }
+}
 if(job.job_type==='CREATE_CREDIT') {
   if(!originalInvoice?.easybill_document_id) throw new Error('credit_original_invoice_missing');
   const refundLines=Array.isArray(job.payload?.refundLineItems)?job.payload.refundLineItems:[];
