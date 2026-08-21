@@ -168,7 +168,7 @@ test("VAT review worker produces the internal summary with direct Ops and VIES l
   assert.equal(vatReview.settings.errorWorkflow, "M4uG1HAtN9Zggxww");
 });
 
-test("pre-invoice Shopify cancellation voids the Easybill Pro-forma without an accounting invoice cancellation", () => {
+test("Pro-forma void worker never creates an accounting cancellation itself", () => {
   const source = JSON.stringify(proformaVoid);
   assert.equal(proformaVoid.active, false);
   assert.match(source, /VOID_PROFORMA/);
