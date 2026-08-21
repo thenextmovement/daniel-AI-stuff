@@ -72,7 +72,7 @@ test("Easybill adapter uses supported document and VAT mappings", () => {
   assert.doesNotMatch(source, /number:String\(item\.id/);
 });
 
-test("Easybill positions preserve product details and simplify addons and shipping", async () => {
+test("Easybill positions use titles only and normalize shipping labels", async () => {
   const [prepared] = await runPrepareEasybillCommand([
     {
       title: "LED Neonschild – Testdesign",
@@ -107,7 +107,7 @@ test("Easybill positions preserve product details and simplify addons and shippi
   ]);
 
   assert.deepEqual(Array.from(prepared.json.documentPayload.items, (item) => item.description), [
-    "LED Neonschild – Testdesign\nGröße: 50 x 45cm\nLeuchtfarbe: Warmweiß",
+    "LED Neonschild – Testdesign",
     "Dimmer mit Bluetooth und Fernbedienung",
     "Standardlieferung",
     "Express",

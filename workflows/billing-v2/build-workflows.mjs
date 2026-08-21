@@ -40,9 +40,8 @@ const vatPercent = billingCase.tax_exempt ? 0 : Math.round((Number(billingCase.v
 let items = (Array.isArray(billingCase.line_items) ? billingCase.line_items : []).map((item)=>{
   const section = String(item.section||'').trim().toLowerCase();
   const title = String(item.title||'').trim();
-  let description = [title,item.description].filter(Boolean).join('\n');
-  if (section === 'zusatzoptionen') description = title;
-  else if (section === 'versand') {
+  let description = title;
+  if (section === 'versand') {
     const normalizedTitle = title.toLowerCase();
     if (normalizedTitle.includes('standardlieferung')) description = 'Standardlieferung';
     else if (normalizedTitle.includes('eilauftrag')) description = 'Eilauftrag';
