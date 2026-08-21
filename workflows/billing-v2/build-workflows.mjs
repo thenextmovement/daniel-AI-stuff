@@ -37,15 +37,26 @@ if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invoiceEmail) || invoiceEmail.length > 25
 const projectNumber = String(billingCase.project_number || address.projectNumber || '').trim();
 if (projectNumber.length > 100 || /[<>\r\n]/.test(projectNumber)) throw new Error('billing_project_number_invalid');
 const vatPercent = billingCase.tax_exempt ? 0 : Math.round((Number(billingCase.vat_cents||0) / Math.max(Number(billingCase.subtotal_net_cents||1),1))*10000)/100;
-let items = (Array.isArray(billingCase.line_items) ? billingCase.line_items : []).map((item)=>({
-  description:(String(item.section||'').trim().toLowerCase()==='zusatzoptionen'
-    ? String(item.title||'')
-    : [item.title,item.description].filter(Boolean).join('\n')).slice(0,4000),
-  quantity:Number(item.normalizedQuantity || item.quantity || 1),
-  unit:'Stück',
-  single_price_net:Math.round(Number(item.unitPriceNet || 0)*100),
-  vat_percent:vatPercent
-}));
+let items = (Array.isArray(billingCase.line_items) ? billingCase.line_items : []).map((item)=>{
+  const section = String(item.section||'').trim().toLowerCase();
+  const title = String(item.title||'').trim();
+  let description = [title,item.description].filter(Boolean).join('\n');
+  if (section === 'zusatzoptionen') description = title;
+  else if (section === 'versand') {
+    const normalizedTitle = title.toLowerCase();
+    if (normalizedTitle.includes('standardlieferung')) description = 'Standardlieferung';
+    else if (normalizedTitle.includes('eilauftrag')) description = 'Eilauftrag';
+    else if (normalizedTitle.includes('express')) description = 'Express';
+    else description = title;
+  }
+  return {
+    description:description.slice(0,4000),
+    quantity:Number(item.normalizedQuantity || item.quantity || 1),
+    unit:'Stück',
+    single_price_net:Math.round(Number(item.unitPriceNet || 0)*100),
+    vat_percent:vatPercent
+  };
+});
 if(job.job_type==='CREATE_CREDIT') {
   if(!originalInvoice?.easybill_document_id) throw new Error('credit_original_invoice_missing');
   const refundLines=Array.isArray(job.payload?.refundLineItems)?job.payload.refundLineItems:[];
