@@ -40,7 +40,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "={{ String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,'') + '/api/internal/billing/shopify/events' }}",
+        "url": "={{ String($env.NEONTRIP_OPS_BASE_URL||'https://ops.neontrip.de').replace(/\\/+$/,'') + '/api/internal/billing/shopify/events' }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,

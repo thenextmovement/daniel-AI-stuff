@@ -173,6 +173,19 @@ test("payment projection checks Shopify before marking paid and records Easybill
   assert.match(source, /CONFIGURE_NEONTRIP_SHOPIFY_ADMIN/);
 });
 
+test("Billing v2 workflows fall back to the verified production Ops URL", () => {
+  for (const candidate of [
+    shopifyAdapter,
+    paymentAdapter,
+    paymentProjection,
+    vatReview,
+    proformaVoid,
+    shopifyOrderIntake,
+  ]) {
+    assert.match(JSON.stringify(candidate), /https:\/\/ops\.neontrip\.de/);
+  }
+});
+
 test("VAT review worker produces the internal summary with direct Ops and VIES links", () => {
   const source = JSON.stringify(vatReview);
   assert.equal(vatReview.active, false);

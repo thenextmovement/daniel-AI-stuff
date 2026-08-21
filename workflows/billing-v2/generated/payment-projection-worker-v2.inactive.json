@@ -32,7 +32,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "const base=String($env.NEONTRIP_OPS_BASE_URL||'').replace(/\\/+$/,''); if(!/^https:\\/\\//.test(base)) throw new Error('NEONTRIP_OPS_BASE_URL missing'); return [{json:{opsBaseUrl:base,worker:'n8n-payment-projection-v2'}}];"
+        "jsCode": "const base=String($env.NEONTRIP_OPS_BASE_URL||'https://ops.neontrip.de').replace(/\\/+$/,''); if(!/^https:\\/\\//.test(base)) throw new Error('NEONTRIP_OPS_BASE_URL missing'); return [{json:{opsBaseUrl:base,worker:'n8n-payment-projection-v2'}}];"
       }
     },
     {
