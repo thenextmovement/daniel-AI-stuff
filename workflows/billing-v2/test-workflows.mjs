@@ -10,6 +10,7 @@ const workflow = JSON.parse(fs.readFileSync(path.join(root, "generated/easybill-
 const shopifyAdapter = JSON.parse(fs.readFileSync(path.join(root, "generated/shopify-event-adapter-v2.inactive.json"), "utf8"));
 const paymentAdapter = JSON.parse(fs.readFileSync(path.join(root, "generated/payment-match-adapter-v2.inactive.json"), "utf8"));
 const paymentProjection = JSON.parse(fs.readFileSync(path.join(root, "generated/payment-projection-worker-v2.inactive.json"), "utf8"));
+const shopifyTaxSync = JSON.parse(fs.readFileSync(path.join(root, "generated/shopify-tax-sync-worker-v2.inactive.json"), "utf8"));
 const vatReview = JSON.parse(fs.readFileSync(path.join(root, "generated/vat-review-alert-worker-v2.inactive.json"), "utf8"));
 const proformaVoid = JSON.parse(fs.readFileSync(path.join(root, "generated/easybill-proforma-void-worker-v2.inactive.json"), "utf8"));
 const shopifyOrderIntake = JSON.parse(fs.readFileSync(path.join(root, "generated/shopify-order-intake-adapter-v2.inactive.json"), "utf8"));
@@ -17,6 +18,7 @@ const byName = new Map(workflow.nodes.map((node) => [node.name, node]));
 const customerDelivery = JSON.parse(fs.readFileSync(path.join(root, "generated/customer-document-delivery-worker-v2.inactive.json"), "utf8"));
 const customerDeliveryByName = new Map(customerDelivery.nodes.map((node) => [node.name, node]));
 const customerDeliveryMigration = fs.readFileSync(path.join(root, "../../supabase/migrations/20260821153000_queue_billing_customer_delivery.sql"), "utf8");
+const shopifyTaxSyncMigration = fs.readFileSync(path.join(root, "../../supabase/migrations/20260822003000_sync_vat_decision_to_shopify_before_proforma.sql"), "utf8");
 
 async function runPrepareEasybillCommand(lineItems, billingOverrides = {}) {
   const source = byName.get("Prepare Easybill Command").parameters.jsCode;
@@ -201,12 +203,40 @@ test("Billing v2 workflows fall back to the verified production Ops URL", () => 
     shopifyAdapter,
     paymentAdapter,
     paymentProjection,
+    shopifyTaxSync,
     vatReview,
     proformaVoid,
     shopifyOrderIntake,
   ]) {
     assert.match(JSON.stringify(candidate), /https:\/\/ops\.neontrip\.de/);
   }
+});
+
+test("Shopify tax sync is lease-driven, fail-closed and never emails customers", () => {
+  const source = JSON.stringify(shopifyTaxSync);
+  assert.equal(shopifyTaxSync.active, false);
+  assert.equal(shopifyTaxSync.nodes[0].typeVersion, 1.3);
+  assert.match(source, /SYNC_SHOPIFY_TAX/);
+  assert.match(source, /orderEditBegin/);
+  assert.match(source, /orderEditSetQuantity/);
+  assert.match(source, /orderEditAddCustomItem/);
+  assert.match(source, /orderEditCommit/);
+  assert.match(source, /notifyCustomer/);
+  assert.match(source, /false/);
+  assert.match(source, /EU_REVERSE_CHARGE_EXEMPTION_RULE/);
+  assert.match(source, /shopify_tax_sync_order_paid_or_fulfilled/);
+  assert.match(source, /shopify_tax_sync_total_mismatch/);
+  assert.match(source, /CONFIGURE_NEONTRIP_SHOPIFY_ADMIN/);
+  assert.doesNotMatch(source, /send\/email/);
+  assert.equal(shopifyTaxSync.settings.errorWorkflow, "M4uG1HAtN9Zggxww");
+});
+
+test("confirmed VAT changes queue Easybill only after Shopify tax sync succeeds", () => {
+  assert.match(shopifyTaxSyncMigration, /VAT_REVIEW_CONFIRMED/);
+  assert.match(shopifyTaxSyncMigration, /SYNC_SHOPIFY_TAX/);
+  assert.match(shopifyTaxSyncMigration, /VAT_REVIEW_SHOPIFY_SYNCED/);
+  assert.match(shopifyTaxSyncMigration, /status = 'DONE'/);
+  assert.match(shopifyTaxSyncMigration, /CREATE_PROFORMA/);
 });
 
 test("VAT review worker produces the internal summary with direct Ops and VIES links", () => {
