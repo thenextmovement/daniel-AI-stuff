@@ -1,0 +1,871 @@
+{
+  "name": "NEONTRIP Billing v2 - Shopify Tax Sync Worker (INACTIVE)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "tax-sync-schedule",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1180,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "tax-sync-config",
+      "name": "Shopify Tax Sync Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -980,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const base=String($env.NEONTRIP_OPS_BASE_URL||'https://ops.neontrip.de').replace(/\\/+$/,'');if(!/^https:\\/\\//.test(base))throw new Error('NEONTRIP_OPS_BASE_URL missing');return [{json:{opsBaseUrl:base,worker:'n8n-shopify-tax-sync-v2'}}];"
+      }
+    },
+    {
+      "id": "tax-sync-claim",
+      "name": "Claim Shopify Tax Sync Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -780,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {worker:$json.worker,jobTypes:['SYNC_SHOPIFY_TAX'],leaseSeconds:300} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-prepare",
+      "name": "Prepare Shopify Tax Sync",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst claimed = ($json.body ?? $json).claimed;\nif (!claimed?.job || !claimed?.billingCase) return [{json:{hasJob:false}}];\nconst job = claimed.job;\nconst billingCase = claimed.billingCase;\nif (job.job_type !== 'SYNC_SHOPIFY_TAX') throw new Error('shopify_tax_sync_job_type_invalid');\nif (!/^gid:\\/\\/shopify\\/Order\\/\\d+$/.test(String(billingCase.shopify_order_id || ''))) throw new Error('shopify_tax_sync_order_id_invalid');\nif (!/^#NEONT\\d+$/.test(String(billingCase.shopify_order_name || ''))) throw new Error('shopify_tax_sync_order_name_invalid');\nif (!['EU_B2B_REVERSE_CHARGE','EU_B2C_OSS','DE_STANDARD','EXPORT_THIRD_COUNTRY'].includes(String(billingCase.tax_treatment || ''))) throw new Error('shopify_tax_sync_treatment_invalid');\nreturn [{json:{hasJob:true,job,billingCase}}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-has-job",
+      "name": "Has Shopify Tax Sync Job",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -340,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.hasJob }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "tax-sync-read",
+      "name": "Read Shopify Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -120,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-10/graphql.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {query:'query BillingTaxSyncOrder($id:ID!){order(id:$id){id name displayFinancialStatus displayFulfillmentStatus customer{id} currentTotalPriceSet{shopMoney{amount currencyCode}} totalTaxSet{shopMoney{amount currencyCode}} lineItems(first:100){nodes{id title currentQuantity unfulfilledQuantity}}}}',variables:{id:$json.billingCase.shopify_order_id}} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_NEONTRIP_SHOPIFY_ADMIN",
+          "name": "NEONTRIP Shopify Admin"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-analyze",
+      "name": "Analyze Shopify Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        100,
+        -80
+      ],
+      "parameters": {
+        "jsCode": "\nconst ctx = $('Prepare Shopify Tax Sync').first().json;\nconst body = $json.body ?? $json;\nif (Array.isArray(body.errors) && body.errors.length) throw new Error('shopify_tax_sync_read_graphql:' + body.errors.map(x=>x.message).join(';'));\nconst order = body.data?.order;\nif (!order || order.id !== ctx.billingCase.shopify_order_id || order.name !== ctx.billingCase.shopify_order_name) throw new Error('shopify_tax_sync_order_identity_mismatch');\nconst cents = value => Math.round(Number(value || 0) * 100);\nconst expectedTotalCents = Number(ctx.billingCase.total_gross_cents);\nconst expectedTaxCents = Number(ctx.billingCase.vat_cents);\nif (!Number.isSafeInteger(expectedTotalCents) || expectedTotalCents <= 0 || !Number.isSafeInteger(expectedTaxCents) || expectedTaxCents < 0) throw new Error('shopify_tax_sync_expected_totals_invalid');\nconst currentTotalCents = cents(order.currentTotalPriceSet?.shopMoney?.amount);\nconst currentTaxCents = cents(order.totalTaxSet?.shopMoney?.amount);\nconst taxExempt = ctx.billingCase.tax_exempt === true;\nif (taxExempt && expectedTaxCents !== 0) throw new Error('shopify_tax_sync_tax_exempt_case_has_tax');\nconst requiresEdit = currentTotalCents !== expectedTotalCents || currentTaxCents !== expectedTaxCents;\nif (requiresEdit && !taxExempt) throw new Error('shopify_tax_sync_gross_order_total_mismatch_manual_review');\nconst activeLines = (order.lineItems?.nodes || []).filter(line => Number(line.currentQuantity) > 0);\nif (requiresEdit) {\n  if (!['PENDING','AUTHORIZED'].includes(String(order.displayFinancialStatus || '')) || String(order.displayFulfillmentStatus || '') !== 'UNFULFILLED') throw new Error('shopify_tax_sync_order_paid_or_fulfilled');\n  if (!activeLines.length || activeLines.length > 100 || activeLines.some(line => Number(line.unfulfilledQuantity) !== Number(line.currentQuantity))) throw new Error('shopify_tax_sync_order_paid_or_fulfilled');\n}\nconst caseLines = (Array.isArray(ctx.billingCase.line_items) ? ctx.billingCase.line_items : []).map((line,index)=>{\n  const title = String(line.title || '').trim().slice(0,255);\n  const quantity = Number(line.normalizedQuantity || line.quantity || 1);\n  const unitPriceCents = Math.round(Number(line.unitPriceNet || 0) * 100);\n  if (!title || !Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 1000 || !Number.isSafeInteger(unitPriceCents) || unitPriceCents < 0) throw new Error('shopify_tax_sync_line_invalid:' + index);\n  return {title,quantity,unitPriceCents,requiresShipping:true};\n});\nif (!caseLines.length || caseLines.length > 50) throw new Error('shopify_tax_sync_line_count_invalid');\nconst expectedSubtotalCents = Number(ctx.billingCase.subtotal_net_cents);\nconst calculatedSubtotalCents = caseLines.reduce((sum,line)=>sum + line.quantity * line.unitPriceCents,0);\nif (requiresEdit && calculatedSubtotalCents !== expectedSubtotalCents) throw new Error('shopify_tax_sync_line_subtotal_mismatch');\nconst customerId = String(order.customer?.id || '');\nif (!/^gid:\\/\\/shopify\\/Customer\\/\\d+$/.test(customerId)) throw new Error('shopify_tax_sync_customer_missing');\nconst address = value => {\n  const x=value||{};\n  const name=String(x.name||x.contactName||'').trim().split(/\\s+/).filter(Boolean);\n  const countryAliases={Deutschland:'DE',Germany:'DE',Österreich:'AT',Oesterreich:'AT',Austria:'AT',Schweiz:'CH',Switzerland:'CH'};\n  const rawCountry=String(x.countryCode||x.country||'').trim();\n  const countryCode=/^[A-Za-z]{2}$/.test(rawCountry)?rawCountry.toUpperCase():countryAliases[rawCountry];\n  const result={address1:String(x.street||x.address1||'').trim(),city:String(x.city||'').trim(),zip:String(x.zip||x.zipCode||'').trim(),countryCode,company:String(x.company||x.contactCompany||'').trim()||undefined,firstName:String(x.firstName||name.slice(0,-1).join(' ')||'').trim()||undefined,lastName:String(x.lastName||name.slice(-1)[0]||'').trim()||undefined};\n  if (!result.address1 || !result.city || !result.zip || !result.countryCode) throw new Error('shopify_tax_sync_address_invalid');\n  return result;\n};\nconst exemptions = taxExempt && ctx.billingCase.tax_treatment === 'EU_B2B_REVERSE_CHARGE' ? ['EU_REVERSE_CHARGE_EXEMPTION_RULE'] : [];\nreturn [{json:{...ctx,order,customerId,requiresEdit,expectedTotalCents,expectedTaxCents,caseLines,activeLines,customerMutation:{query:'mutation BillingSyncCustomerTax($customer: CustomerInput!, $customerId: ID!, $exemptions: [TaxExemption!]!, $order: OrderInput!) { replace: customerReplaceTaxExemptions(customerId:$customerId,taxExemptions:$exemptions) { customer { id taxExempt taxExemptions } userErrors { field message } } customerUpdate(input:$customer) { customer { id taxExempt taxExemptions } userErrors { field message } } orderUpdate(input:$order) { order { id } userErrors { field message } } }',variables:{customerId,exemptions,customer:{id:customerId,taxExempt},order:{id:order.id,billingAddress:address(ctx.billingCase.billing_address),shippingAddress:address(ctx.billingCase.delivery_address)}}}}}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-customer",
+      "name": "Sync Shopify Customer and Addresses",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        -80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-10/graphql.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.customerMutation }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_NEONTRIP_SHOPIFY_ADMIN",
+          "name": "NEONTRIP Shopify Admin"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-check-customer",
+      "name": "Check Shopify Customer Sync",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        540,
+        -80
+      ],
+      "parameters": {
+        "jsCode": "\nconst ctx=$('Analyze Shopify Order').first().json;\nconst body=$json.body??$json;\nif(Array.isArray(body.errors)&&body.errors.length)throw new Error('shopify_tax_sync_customer_graphql:'+body.errors.map(x=>x.message).join(';'));\nfor(const key of ['replace','customerUpdate','orderUpdate']){const errors=body.data?.[key]?.userErrors||[];if(errors.length)throw new Error('shopify_tax_sync_'+key+':'+errors.map(x=>x.message).join(';'));}\nreturn [{json:ctx}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-required",
+      "name": "Shopify Order Edit Required",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        760,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.requiresEdit }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "tax-sync-begin",
+      "name": "Begin Shopify Order Edit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-10/graphql.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {query:'mutation BillingBeginTaxSync($id:ID!){orderEditBegin(id:$id){calculatedOrder{id calculatedLineItems(first:100){nodes{id quantity}}} userErrors{field message}}}',variables:{id:$json.billingCase.shopify_order_id}} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_NEONTRIP_SHOPIFY_ADMIN",
+          "name": "NEONTRIP Shopify Admin"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-build-edit",
+      "name": "Build Shopify Tax Edit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "\nconst ctx=$('Analyze Shopify Order').first().json;\nconst body=$json.body??$json;\nif(Array.isArray(body.errors)&&body.errors.length)throw new Error('shopify_tax_sync_begin_graphql:'+body.errors.map(x=>x.message).join(';'));\nconst started=body.data?.orderEditBegin;\nconst errors=started?.userErrors||[];\nif(errors.length)throw new Error('shopify_tax_sync_begin:'+errors.map(x=>x.message).join(';'));\nconst calculatedOrderId=String(started?.calculatedOrder?.id||'');\nconst calculatedLines=started?.calculatedOrder?.calculatedLineItems?.nodes||[];\nif(!/^gid:\\/\\/shopify\\/CalculatedOrder\\/\\d+$/.test(calculatedOrderId)||!calculatedLines.length)throw new Error('shopify_tax_sync_calculated_order_invalid');\nconst declarations=['$id:ID!'];\nconst fields=[];\nconst variables={id:calculatedOrderId};\ncalculatedLines.forEach((line,index)=>{const key='remove'+index;declarations.push('$'+key+':ID!');variables[key]=line.id;fields.push(key+':orderEditSetQuantity(id:$id,lineItemId:$'+key+',quantity:0,restock:false){userErrors{field message}}');});\nctx.caseLines.forEach((line,index)=>{const title='title'+index,price='price'+index,quantity='quantity'+index;declarations.push('$'+title+':String!','$'+price+':MoneyInput!','$'+quantity+':Int!');variables[title]=line.title;variables[price]={amount:(line.unitPriceCents/100).toFixed(2),currencyCode:String(ctx.billingCase.currency||'EUR')};variables[quantity]=line.quantity;fields.push('add'+index+':orderEditAddCustomItem(id:$id,title:$'+title+',price:$'+price+',quantity:$'+quantity+',requiresShipping:true,taxable:false){userErrors{field message}}');});\nreturn [{json:{...ctx,calculatedOrderId,stageMutation:{query:'mutation BillingStageTaxSync('+declarations.join(',')+'){'+fields.join(' ')+'}',variables}}}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-stage",
+      "name": "Stage Shopify Tax Edit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-10/graphql.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.stageMutation }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_NEONTRIP_SHOPIFY_ADMIN",
+          "name": "NEONTRIP Shopify Admin"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-validate-stage",
+      "name": "Validate Shopify Tax Edit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "\nconst ctx=$('Build Shopify Tax Edit').first().json;\nconst body=$json.body??$json;\nif(Array.isArray(body.errors)&&body.errors.length)throw new Error('shopify_tax_sync_stage_graphql:'+body.errors.map(x=>x.message).join(';'));\nfor(const [key,value] of Object.entries(body.data||{})){const errors=value?.userErrors||[];if(errors.length)throw new Error('shopify_tax_sync_stage_'+key+':'+errors.map(x=>x.message).join(';'));}\nreturn [{json:ctx}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-preview",
+      "name": "Read Shopify Tax Edit Preview",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-10/graphql.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {query:'query BillingTaxSyncPreview($id:ID!){node(id:$id){... on CalculatedOrder{id totalPriceSet{shopMoney{amount currencyCode}} totalTaxSet{shopMoney{amount currencyCode}}}}}',variables:{id:$json.calculatedOrderId}} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_NEONTRIP_SHOPIFY_ADMIN",
+          "name": "NEONTRIP Shopify Admin"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-validate-preview",
+      "name": "Validate Shopify Tax Preview",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "\nconst ctx=$('Build Shopify Tax Edit').first().json;\nconst body=$json.body??$json;\nif(Array.isArray(body.errors)&&body.errors.length)throw new Error('shopify_tax_sync_preview_graphql:'+body.errors.map(x=>x.message).join(';'));\nconst calculated=body.data?.node;\nconst cents=value=>Math.round(Number(value||0)*100);\nconst total=cents(calculated?.totalPriceSet?.shopMoney?.amount);\nconst tax=cents(calculated?.totalTaxSet?.shopMoney?.amount);\nif(total!==ctx.expectedTotalCents||tax!==ctx.expectedTaxCents)throw new Error('shopify_tax_sync_total_mismatch:expected='+ctx.expectedTotalCents+'/'+ctx.expectedTaxCents+',actual='+total+'/'+tax);\nreturn [{json:ctx}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-commit",
+      "name": "Commit Shopify Tax Edit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2300,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-10/graphql.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {query:'mutation BillingCommitTaxSync($id:ID!,$note:String!){orderEditCommit(id:$id,notifyCustomer:false,staffNote:$note){order{id name currentTotalPriceSet{shopMoney{amount currencyCode}} totalTaxSet{shopMoney{amount currencyCode}}} userErrors{field message}}}',variables:{id:$json.calculatedOrderId,note:'NEONTRIP Billing: bestätigte Rechnungs- und Steuerdaten synchronisiert'}} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_NEONTRIP_SHOPIFY_ADMIN",
+          "name": "NEONTRIP Shopify Admin"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-validate-commit",
+      "name": "Validate Shopify Tax Commit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2520,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "\nconst ctx=$('Build Shopify Tax Edit').first().json;\nconst body=$json.body??$json;\nif(Array.isArray(body.errors)&&body.errors.length)throw new Error('shopify_tax_sync_commit_graphql:'+body.errors.map(x=>x.message).join(';'));\nconst result=body.data?.orderEditCommit;\nconst errors=result?.userErrors||[];\nif(errors.length)throw new Error('shopify_tax_sync_commit:'+errors.map(x=>x.message).join(';'));\nconst cents=value=>Math.round(Number(value||0)*100);\nconst total=cents(result?.order?.currentTotalPriceSet?.shopMoney?.amount);\nconst tax=cents(result?.order?.totalTaxSet?.shopMoney?.amount);\nif(total!==ctx.expectedTotalCents||tax!==ctx.expectedTaxCents)throw new Error('shopify_tax_sync_total_mismatch:expected='+ctx.expectedTotalCents+'/'+ctx.expectedTaxCents+',actual='+total+'/'+tax);\nreturn [{json:{...ctx,verifiedTotalCents:total,verifiedTaxCents:tax}}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-success",
+      "name": "Prepare Shopify Tax Sync Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2740,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const ctx=$json.billingCase?$json:$('Analyze Shopify Order').first().json;return [{json:{jobId:ctx.job.id,leaseToken:ctx.job.lease_token,opsBaseUrl:$('Shopify Tax Sync Config').first().json.opsBaseUrl,success:true,result:{worker:'n8n-shopify-tax-sync-v2',shopifyOrderId:ctx.billingCase.shopify_order_id,totalCents:Number(ctx.expectedTotalCents),taxCents:Number(ctx.expectedTaxCents),customerEmailSuppressed:true}}}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "tax-sync-failure",
+      "name": "Prepare Shopify Tax Sync Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1420,
+        240
+      ],
+      "parameters": {
+        "jsCode": "const prepared=$('Prepare Shopify Tax Sync').all().find(x=>x.json?.job)?.json;const analyzed=$('Analyze Shopify Order').all().find(x=>x.json?.job)?.json;const ctx=analyzed||prepared;if(!ctx?.job)throw new Error('shopify_tax_sync_failure_without_job');return [{json:{jobId:ctx.job.id,leaseToken:ctx.job.lease_token,opsBaseUrl:$('Shopify Tax Sync Config').first().json.opsBaseUrl,success:false,result:{worker:'n8n-shopify-tax-sync-v2'},error:String($json.error?.message||$json.message||'shopify_tax_sync_failed').slice(0,1800)}}];"
+      }
+    },
+    {
+      "id": "tax-sync-complete",
+      "name": "Complete Shopify Tax Sync Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2960,
+        -40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/' + encodeURIComponent($json.jobId) + '/complete' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {leaseToken:$json.leaseToken,success:$json.success,result:$json.result,error:$json.error} }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "tax-sync-blocked",
+      "name": "Raise Shopify Tax Sync Block",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3180,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const body=$json.body??$json;if(body.completed?.status==='BLOCKED')throw new Error('Fehler Rechnung Shopify/Easybill: Shopify-Steuerabgleich blockiert.');return [{json:{ok:true}}];"
+      }
+    }
+  ],
+  "connections": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Shopify Tax Sync Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify Tax Sync Config": {
+      "main": [
+        [
+          {
+            "node": "Claim Shopify Tax Sync Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Shopify Tax Sync Job": {
+      "main": [
+        [
+          {
+            "node": "Prepare Shopify Tax Sync",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Shopify Tax Sync": {
+      "main": [
+        [
+          {
+            "node": "Has Shopify Tax Sync Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Shopify Tax Sync Job": {
+      "main": [
+        [
+          {
+            "node": "Read Shopify Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Read Shopify Order": {
+      "main": [
+        [
+          {
+            "node": "Analyze Shopify Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Shopify Order": {
+      "main": [
+        [
+          {
+            "node": "Sync Shopify Customer and Addresses",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Shopify Customer and Addresses": {
+      "main": [
+        [
+          {
+            "node": "Check Shopify Customer Sync",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Shopify Customer Sync": {
+      "main": [
+        [
+          {
+            "node": "Shopify Order Edit Required",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify Order Edit Required": {
+      "main": [
+        [
+          {
+            "node": "Begin Shopify Order Edit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Begin Shopify Order Edit": {
+      "main": [
+        [
+          {
+            "node": "Build Shopify Tax Edit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Shopify Tax Edit": {
+      "main": [
+        [
+          {
+            "node": "Stage Shopify Tax Edit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage Shopify Tax Edit": {
+      "main": [
+        [
+          {
+            "node": "Validate Shopify Tax Edit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Shopify Tax Edit": {
+      "main": [
+        [
+          {
+            "node": "Read Shopify Tax Edit Preview",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Shopify Tax Edit Preview": {
+      "main": [
+        [
+          {
+            "node": "Validate Shopify Tax Preview",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Shopify Tax Preview": {
+      "main": [
+        [
+          {
+            "node": "Commit Shopify Tax Edit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit Shopify Tax Edit": {
+      "main": [
+        [
+          {
+            "node": "Validate Shopify Tax Commit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Shopify Tax Commit": {
+      "main": [
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Shopify Tax Sync Success": {
+      "main": [
+        [
+          {
+            "node": "Complete Shopify Tax Sync Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Shopify Tax Sync Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Shopify Tax Sync Failure": {
+      "main": [
+        [
+          {
+            "node": "Complete Shopify Tax Sync Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete Shopify Tax Sync Job": {
+      "main": [
+        [
+          {
+            "node": "Raise Shopify Tax Sync Block",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "availableInMCP": false
+  },
+  "versionId": "neontrip-billing-v2-shopify-tax-sync-worker-inactive"
+}
