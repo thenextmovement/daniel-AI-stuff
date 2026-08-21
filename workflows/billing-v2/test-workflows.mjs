@@ -72,7 +72,7 @@ test("Easybill adapter uses supported document and VAT mappings", () => {
   assert.doesNotMatch(source, /number:String\(item\.id/);
 });
 
-test("Easybill positions suppress details only for Zusatzoptionen", async () => {
+test("Easybill positions preserve product details and simplify addons and shipping", async () => {
   const [prepared] = await runPrepareEasybillCommand([
     {
       title: "LED Neonschild – Testdesign",
@@ -87,17 +87,31 @@ test("Easybill positions suppress details only for Zusatzoptionen", async () => 
       unitPriceNet: 19,
     },
     {
+      title: "Liefertermin Standardlieferung",
+      description: "Gratis Standardlieferung ab ca. 15 Tagen.\nGewählter Termin: 10.9.2026 (+15 Tage)",
+      section: "Versand",
+      unitPriceNet: 0,
+    },
+    {
       title: "Express-Produktion 7 Tage",
       description: "Gewählter Termin: 31.8.2026 (+7 Tage)",
       section: "Versand",
       unitPriceNet: 125,
+    },
+    {
+      title: "Eilauftrag 3 Tage",
+      description: "Priorisierte Produktion.\nGewählter Termin: 27.8.2026 (+3 Tage)",
+      section: "Versand",
+      unitPriceNet: 250,
     },
   ]);
 
   assert.deepEqual(Array.from(prepared.json.documentPayload.items, (item) => item.description), [
     "LED Neonschild – Testdesign\nGröße: 50 x 45cm\nLeuchtfarbe: Warmweiß",
     "Dimmer mit Bluetooth und Fernbedienung",
-    "Express-Produktion 7 Tage\nGewählter Termin: 31.8.2026 (+7 Tage)",
+    "Standardlieferung",
+    "Express",
+    "Eilauftrag",
   ]);
 });
 
@@ -168,7 +182,7 @@ test("VAT review worker produces the internal summary with direct Ops and VIES l
   assert.equal(vatReview.settings.errorWorkflow, "M4uG1HAtN9Zggxww");
 });
 
-test("pre-invoice Shopify cancellation voids the Easybill Pro-forma without an accounting invoice cancellation", () => {
+test("Pro-forma void worker never creates an accounting cancellation itself", () => {
   const source = JSON.stringify(proformaVoid);
   assert.equal(proformaVoid.active, false);
   assert.match(source, /VOID_PROFORMA/);
