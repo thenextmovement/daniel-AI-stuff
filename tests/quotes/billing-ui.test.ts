@@ -25,9 +25,18 @@ test("Ops exposes a dedicated NEONTRIP billing department", () => {
 test("customer portal is invoice-only and becomes read-only after final invoice", () => {
   const portal = read("src/app/rechnung/[token]/portal-client.tsx");
   const middleware = read("src/middleware.ts");
-  assert.match(portal, /Änderungen zur Rechnung anfragen/);
+  assert.match(portal, /Rechnungsdaten bearbeiten/);
+  assert.match(portal, /Speichern und zur Prüfung senden/);
+  assert.match(portal, /readOnly=\{!editing\}/);
   assert.match(portal, /nicht verändert/);
   assert.match(portal, /Änderungen sind nicht mehr möglich/);
+  assert.match(portal, /Live-Vorschau/);
+  assert.match(portal, /Nettobetrag/);
+  assert.match(portal, /Umsatzsteuer/);
+  assert.match(portal, /Gesamtbetrag/);
+  assert.match(portal, /Bestellung \{billing\.shopify_order_name\}/);
+  assert.match(portal, /Zahlung ausstehend/);
+  assert.match(portal, /Das Lieferland ist für die steuerliche Behandlung maßgeblich/);
   assert.match(middleware, /rechnung\.neontrip\.de/);
   assert.doesNotMatch(portal, /Kauf auf Rechnung anfragen/);
   assert.match(portal, /PDF öffnen/);
