@@ -597,3 +597,92 @@ const customerDeliveryWorkflow = {
 };
 
 fs.writeFileSync(path.join(generated, "customer-document-delivery-worker-v2.inactive.json"), JSON.stringify(customerDeliveryWorkflow, null, 2) + "\n");
+
+const changeRequestNotificationPrepareCode = String.raw`
+const claimed = ($json.body ?? $json).claimed;
+if (!claimed?.job || !claimed?.billingCase) return [{json:{hasJob:false}}];
+const job = claimed.job;
+const billingCase = claimed.billingCase;
+if (job.job_type !== 'NOTIFY_CHANGE_REQUEST') throw new Error('billing_change_notification_job_type_invalid');
+const payload = job.payload && typeof job.payload === 'object' ? job.payload : {};
+const requestedChanges = payload.requestedChanges && typeof payload.requestedChanges === 'object' && !Array.isArray(payload.requestedChanges) ? payload.requestedChanges : {};
+const caseId = String(billingCase.id || '');
+if (!/^[0-9a-f-]{36}$/i.test(caseId)) throw new Error('billing_change_notification_case_id_invalid');
+const orderName = String(billingCase.shopify_order_name || payload.shopifyOrderName || '').trim();
+if (!orderName || orderName.length > 80) throw new Error('billing_change_notification_order_name_invalid');
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+const bounded = value => String(value ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 500);
+const formatAddress = value => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return bounded(value);
+  return [value.company, value.name, value.street, [value.zip || value.zipCode, value.city].filter(Boolean).join(' '), value.country]
+    .map(bounded).filter(Boolean).join(', ');
+};
+const currentValues = {
+  billingAddress: billingCase.billing_address || {},
+  deliveryAddress: billingCase.delivery_address || {},
+  vatId: billingCase.vat_id || '',
+  invoiceEmail: billingCase.customer_email || billingCase.billing_address?.invoiceEmail || billingCase.customer?.email || '',
+  projectNumber: billingCase.project_number || ''
+};
+const labels = {
+  billingAddress: 'Rechnungsanschrift',
+  deliveryAddress: 'Lieferanschrift',
+  vatId: 'Umsatzsteuer-ID',
+  invoiceEmail: 'Rechnungs-E-Mail',
+  projectNumber: 'Projektnummer'
+};
+const renderValue = (key, value) => key === 'billingAddress' || key === 'deliveryAddress' ? formatAddress(value) : bounded(value);
+const rows = Object.keys(labels).filter(key => Object.prototype.hasOwnProperty.call(requestedChanges, key)).map(key => {
+  const before = renderValue(key, currentValues[key]) || '–';
+  const after = renderValue(key, requestedChanges[key]) || '–';
+  return '<tr><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:700;vertical-align:top">'+escapeHtml(labels[key])+'</td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;vertical-align:top">'+escapeHtml(before)+'</td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;vertical-align:top">'+escapeHtml(after)+'</td></tr>';
+});
+if (!rows.length) throw new Error('billing_change_notification_changes_missing');
+const requesterEmailRaw = bounded(payload.requesterEmail || '');
+const requesterEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requesterEmailRaw) ? requesterEmailRaw.toLowerCase() : 'nicht angegeben';
+const submittedAtDate = new Date(String(payload.submittedAt || job.created_at || ''));
+const submittedAt = Number.isNaN(submittedAtDate.getTime()) ? 'nicht verfügbar' : new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Berlin'}).format(submittedAtDate) + ' Uhr';
+const opsUrl = 'https://ops.neontrip.de/ops/rechnungen?caseId=' + encodeURIComponent(caseId);
+const subject = 'Rechnungsänderung angefordert – ' + orderName;
+const bodyHtml = '<div style="font-family:Arial,sans-serif;color:#171717;line-height:1.55;max-width:760px">'
+  + '<h2 style="margin:0 0 12px">Ein Kunde hat eine Rechnungsänderung angefordert</h2>'
+  + '<p style="margin:0 0 18px">Bitte prüfen und anschließend in der Rechnungsabteilung freigeben oder ablehnen.</p>'
+  + '<table style="border-collapse:collapse;width:100%;margin:0 0 18px"><tr><td style="padding:5px 0;font-weight:700;width:190px">Bestellnummer</td><td>'+escapeHtml(orderName)+'</td></tr><tr><td style="padding:5px 0;font-weight:700">Angefordert am</td><td>'+escapeHtml(submittedAt)+'</td></tr><tr><td style="padding:5px 0;font-weight:700">Absender</td><td>'+escapeHtml(requesterEmail)+'</td></tr></table>'
+  + '<h3 style="margin:0 0 8px">Gewünschte Änderungen</h3>'
+  + '<table style="border-collapse:collapse;width:100%;border:1px solid #e5e7eb;margin:0 0 22px"><thead><tr style="background:#f5f5f5"><th style="padding:10px 12px;text-align:left">Feld</th><th style="padding:10px 12px;text-align:left">Bisher</th><th style="padding:10px 12px;text-align:left">Gewünscht</th></tr></thead><tbody>'+rows.join('')+'</tbody></table>'
+  + '<p style="margin:0 0 18px"><a href="'+escapeHtml(opsUrl)+'" style="display:inline-block;background:#f6299a;color:#fff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:8px">Rechnungsänderung in Ops prüfen</a></p>'
+  + '<p style="font-size:13px;color:#666;margin:0">Diese Nachricht wurde nur intern versendet. Die Änderung ist noch nicht freigegeben und hat Shopify oder easybill nicht verändert.</p></div>';
+return [{json:{hasJob:true,job,billingCase,recipient:'info@neontrip.de',subject,bodyHtml,opsUrl,orderName,requesterEmail}}];`;
+
+const changeRequestNotificationWorkflow = {
+  name: "NEONTRIP Billing v2 - Change Request Notification Worker (INACTIVE)",
+  active: false,
+  nodes: [
+    node("change-alert-schedule", "Every Minute", "n8n-nodes-base.scheduleTrigger", [-1120, 0], { rule: { interval: [{ field: "minutes", minutesInterval: 1 }] } }, { typeVersion: 1.3 }),
+    node("change-alert-config", "Change Notification Config", "n8n-nodes-base.code", [-900, 0], { mode: "runOnceForAllItems", jsCode: "return [{json:{opsBaseUrl:'https://ops.neontrip.de',worker:'n8n-billing-change-notification-v1'}}];" }),
+    node("change-alert-claim", "Claim Change Notification Job", "n8n-nodes-base.httpRequest", [-680, 0], { method: "POST", url: "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {worker:$json.worker,jobTypes:['NOTIFY_CHANGE_REQUEST'],leaseSeconds:180} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, onError: "continueErrorOutput" }),
+    node("change-alert-prepare", "Prepare Change Notification", "n8n-nodes-base.code", [-440, -80], { mode: "runOnceForAllItems", jsCode: changeRequestNotificationPrepareCode }, { onError: "continueErrorOutput" }),
+    node("change-alert-has-job", "Has Change Notification Job", "n8n-nodes-base.if", [-220, -80], { conditions: { options: { typeValidation: "strict" }, conditions: [{ leftValue: "={{ $json.hasJob }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" } }),
+    node("change-alert-send", "Send Internal Change Notification", "n8n-nodes-base.microsoftOutlook", [20, -80], { resource: "message", operation: "send", toRecipients: "={{ $json.recipient }}", subject: "={{ $json.subject }}", bodyContent: "={{ $json.bodyHtml }}", additionalFields: { bodyContentType: "html" } }, { credentials: { microsoftOutlookOAuth2Api: { id: "CTEmJD5CjYu9hawu", name: "Microsoft Outlook support@neontrip.de" } }, onError: "continueErrorOutput" }),
+    node("change-alert-success", "Prepare Change Notification Success", "n8n-nodes-base.code", [260, -160], { jsCode: "const ctx=$('Prepare Change Notification').first().json;const provider=$json.body??$json;return [{json:{jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:true,result:{worker:'n8n-billing-change-notification-v1',recipient:ctx.recipient,shopifyOrderName:ctx.orderName,opsUrl:ctx.opsUrl,providerMessageId:String(provider.id||provider.messageId||'outlook-node-success')}}}];" }, { onError: "continueErrorOutput" }),
+    node("change-alert-failure", "Prepare Change Notification Failure", "n8n-nodes-base.code", [260, 120], { jsCode: "const prepared=$('Prepare Change Notification').all();const claimedItems=$('Claim Change Notification Job').all();const claimBody=claimedItems[0]?.json?.body??claimedItems[0]?.json??{};const job=prepared[0]?.json?.job??claimBody.claimed?.job;if(!job?.id||!job?.lease_token)throw new Error('billing_change_notification_failure_context_missing');const message=String($json.error?.message||$json.message||$json.description||'billing_change_notification_failed').slice(0,1800);return [{json:{jobId:job.id,leaseToken:job.lease_token,success:false,result:{worker:'n8n-billing-change-notification-v1'},error:message}}];" }),
+    node("change-alert-complete", "Complete Change Notification Job", "n8n-nodes-base.httpRequest", [500, -80], { method: "POST", url: "={{ $('Change Notification Config').first().json.opsBaseUrl + '/api/internal/billing/jobs/' + encodeURIComponent($json.jobId) + '/complete' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {leaseToken:$json.leaseToken,success:$json.success,result:$json.result,error:$json.error} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, onError: "stopWorkflow" }),
+    node("change-alert-blocked", "Raise Change Notification Block", "n8n-nodes-base.code", [740, -80], { jsCode: "const body=$json.body??$json;if(body.completed?.status==='BLOCKED')throw new Error('FATAL: Eine Rechnungsänderung wurde gespeichert, aber die interne Prüf-E-Mail konnte nach vier Versuchen nicht gesendet werden. Bitte Ops/Rechnungen sofort prüfen.');return [{json:{ok:true,status:body.completed?.status||'DONE'}}];" }),
+    node("change-alert-claim-failure", "Raise Change Notification Claim Error", "n8n-nodes-base.code", [-440, 200], { jsCode: "throw new Error('Billing-Änderungsbenachrichtigung konnte keinen Job abrufen.');" })
+  ],
+  connections: {
+    "Every Minute": { main: [[{ node: "Change Notification Config", type: "main", index: 0 }]] },
+    "Change Notification Config": { main: [[{ node: "Claim Change Notification Job", type: "main", index: 0 }]] },
+    "Claim Change Notification Job": { main: [[{ node: "Prepare Change Notification", type: "main", index: 0 }], [{ node: "Raise Change Notification Claim Error", type: "main", index: 0 }]] },
+    "Prepare Change Notification": { main: [[{ node: "Has Change Notification Job", type: "main", index: 0 }], [{ node: "Prepare Change Notification Failure", type: "main", index: 0 }]] },
+    "Has Change Notification Job": { main: [[{ node: "Send Internal Change Notification", type: "main", index: 0 }], []] },
+    "Send Internal Change Notification": { main: [[{ node: "Prepare Change Notification Success", type: "main", index: 0 }], [{ node: "Prepare Change Notification Failure", type: "main", index: 0 }]] },
+    "Prepare Change Notification Success": { main: [[{ node: "Complete Change Notification Job", type: "main", index: 0 }], [{ node: "Prepare Change Notification Failure", type: "main", index: 0 }]] },
+    "Prepare Change Notification Failure": { main: [[{ node: "Complete Change Notification Job", type: "main", index: 0 }]] },
+    "Complete Change Notification Job": { main: [[{ node: "Raise Change Notification Block", type: "main", index: 0 }], []] }
+  },
+  settings: { executionOrder: "v1", timezone: "Europe/Berlin", saveDataErrorExecution: "all", saveDataSuccessExecution: "all", errorWorkflow: "M4uG1HAtN9Zggxww", availableInMCP: false },
+  versionId: "neontrip-billing-v2-change-request-notification-worker-inactive"
+};
+
+fs.writeFileSync(path.join(generated, "change-request-notification-worker-v1.inactive.json"), JSON.stringify(changeRequestNotificationWorkflow, null, 2) + "\n");
