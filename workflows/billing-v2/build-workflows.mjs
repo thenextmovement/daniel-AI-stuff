@@ -502,7 +502,7 @@ const projectNumber = String(payload.projectNumber || billingCase.project_number
 if (projectNumber.length > 100 || /[<>\r\n]/.test(projectNumber)) throw new Error('billing_customer_delivery_project_number_invalid');
 const kind = String(payload.deliveryKind || '');
 const subjects = {
-  ORDER_CONFIRMATION_PROFORMA:'Auftragsbestätigung ' + shopifyOrderName + ' – Ihre Bestellung bei NEONTRIP',
+  ORDER_CONFIRMATION_PROFORMA:'Auftragsbestätigung und Rechnung ' + shopifyOrderName,
   PROFORMA_UPDATE:'Aktualisierte Pro-forma-Rechnung ' + documentNumber + ' – NEONTRIP',
   INVOICE:'Rechnung ' + documentNumber + ' – NEONTRIP',
   CREDIT:'Gutschrift ' + documentNumber + ' – NEONTRIP',
@@ -518,7 +518,7 @@ const common = [
 const messages = {
   ORDER_CONFIRMATION_PROFORMA:[
     'vielen Dank für Ihre verbindliche Bestellung bei NEONTRIP. Hiermit bestätigen wir den Eingang und die Annahme Ihres Auftrags.',
-    'Ihre Pro-forma-Rechnung ' + documentNumber + ' finden Sie als PDF im Anhang. Sie dient als Zahlungsaufforderung und ist keine steuerliche Schlussrechnung.',
+    'Ihre Pro-forma-Rechnung ' + documentNumber + ' finden Sie als PDF im Anhang.',
     'Zahlbar sofort. Mit unserer Auftragsbestätigung beginnt die Produktion Ihres individuellen Auftrags bereits. Der Auftrag ist verbindlich. Sollte die Zahlung nicht rechtzeitig eingehen, kann die Produktion vor Fertigstellung pausiert werden. Dadurch kann sich der Liefertermin verschieben.',
     'Über den folgenden Link können Sie ausschließlich Änderungen zu Ihren Rechnungsdaten anfragen. Änderungen am Auftrag selbst sind dort nicht möglich.'
   ],

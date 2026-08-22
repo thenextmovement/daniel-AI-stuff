@@ -311,7 +311,8 @@ test("customer delivery worker is isolated, generated inactive and validates rec
 
   const [prepared] = await run("rahim.hedayati@icloud.com");
   assert.equal(prepared.json.recipient, "rahim.hedayati@icloud.com");
-  assert.match(prepared.json.subject, /Auftragsbestätigung #NEONT9999/);
+  assert.equal(prepared.json.subject, "Auftragsbestätigung und Rechnung #NEONT9999");
+  assert.doesNotMatch(prepared.json.message, /keine steuerliche Schlussrechnung/);
   assert.match(prepared.json.message, /Pro-forma-Rechnung PF-NEONT9999/);
   assert.match(prepared.json.message, /Zahlbar sofort/);
   assert.match(prepared.json.message, /Der Auftrag ist verbindlich/);
