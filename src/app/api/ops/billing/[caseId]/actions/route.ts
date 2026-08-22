@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured, validateCloudflareAccess } from "@/lib/ops/auth";
-import { applyBillingOpsAction, type BillingOpsAction } from "@/lib/ops/billing/repository";
+import { applyBillingOpsAction, decideBillingChangeRequest, saveBillingChangeDraft, type BillingOpsAction } from "@/lib/ops/billing/repository";
+import { sanitizePortalChangeBody } from "@/lib/ops/billing/portal-change";
 
 export const dynamic = "force-dynamic";
 
-const BILLING_ACTIONS = new Set<BillingOpsAction>(["SET_PAYMENT_METHOD", "CONFIRM_VAT", "APPLY_CHANGE_REQUEST", "REJECT_CHANGE_REQUEST", "CREATE_PROFORMA", "MARK_PAID", "MARK_DELIVERED", "CREATE_INVOICE"]);
+const BILLING_ACTIONS = new Set<BillingOpsAction>(["SET_PAYMENT_METHOD", "CONFIRM_VAT", "APPLY_CHANGE_REQUEST", "REJECT_CHANGE_REQUEST", "SAVE_CHANGE_REQUEST_DRAFT", "CREATE_PROFORMA", "MARK_PAID", "MARK_DELIVERED", "CREATE_INVOICE"]);
 
 function parseActionBody(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -36,13 +37,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const actor = await billingActor(request, parsed.operatorName);
   if (!actor) return NextResponse.json({ ok: false, error: "operator_required" }, { status: 422 });
   try {
-    const result = await applyBillingOpsAction({
-      caseId,
-      action: parsed.action,
-      payload: parsed.payload,
-      actor,
-      idempotencyKey: parsed.idempotencyKey,
-    });
+    const changeRequestId = typeof parsed.payload.changeRequestId === "string" ? parsed.payload.changeRequestId : "";
+    if (["SAVE_CHANGE_REQUEST_DRAFT", "APPLY_CHANGE_REQUEST", "REJECT_CHANGE_REQUEST"].includes(parsed.action) && !/^[0-9a-f-]{36}$/i.test(changeRequestId)) {
+      return NextResponse.json({ ok: false, error: "invalid_change_request_id" }, { status: 422 });
+    }
+    let result: Record<string, unknown>;
+    if (parsed.action === "SAVE_CHANGE_REQUEST_DRAFT") {
+      const changes = sanitizePortalChangeBody(parsed.payload.changes).changes;
+      result = await saveBillingChangeDraft({ caseId, changeRequestId, changes, actor, idempotencyKey: parsed.idempotencyKey });
+    } else if (parsed.action === "APPLY_CHANGE_REQUEST" || parsed.action === "REJECT_CHANGE_REQUEST") {
+      const approvedChanges = parsed.action === "APPLY_CHANGE_REQUEST" && parsed.payload.approvedChanges
+        ? sanitizePortalChangeBody(parsed.payload.approvedChanges).changes
+        : undefined;
+      result = await decideBillingChangeRequest({
+        caseId,
+        changeRequestId,
+        decision: parsed.action === "APPLY_CHANGE_REQUEST" ? "APPLY" : "REJECT",
+        approvedChanges,
+        note: typeof parsed.payload.note === "string" ? parsed.payload.note : "",
+        actor,
+        idempotencyKey: parsed.idempotencyKey,
+      });
+    } else {
+      result = await applyBillingOpsAction({ caseId, action: parsed.action, payload: parsed.payload, actor, idempotencyKey: parsed.idempotencyKey });
+    }
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "billing_action_failed";

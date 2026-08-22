@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, FileText, RefreshCw, Search, ShieldCheck, WalletCards } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Pencil, RefreshCw, Save, Search, ShieldCheck, WalletCards } from "lucide-react";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
@@ -15,6 +15,7 @@ type BillingCase = {
   paid_at?: string | null; delivered_at?: string | null; final_invoice_at?: string | null; current_revision?: number;
 };
 type Detail = { billingCase: BillingCase; documents: Array<Record<string, unknown>>; changes: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>; incidents: Array<Record<string, unknown>>; payments: Array<Record<string, unknown>> };
+type ChangeForm = { company: string; name: string; street: string; zip: string; city: string; country: string; vatId: string; invoiceEmail: string; projectNumber: string };
 
 function money(cents: number, currency: string) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(Number(cents || 0) / 100);
@@ -31,7 +32,102 @@ function statusTone(status: string) {
   return "border-amber-200 bg-amber-50 text-amber-900";
 }
 
-export function BillingOpsClient({ initialHasSession, opsEnabled, localMode }: { initialHasSession: boolean; opsEnabled: boolean; localMode: boolean }) {
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: "Offen", APPLIED: "Akzeptiert", REJECTED: "Abgelehnt", APPROVED: "Freigegeben",
+  PAYMENT_PENDING: "Zahlung ausstehend", MANUAL_REVIEW: "Prüfung erforderlich", SYNC_BLOCKED: "Synchronisierung blockiert",
+  PAID: "Bezahlt", INVOICED: "Rechnung erstellt", CANCELLED: "Storniert", REFUNDED: "Erstattet",
+};
+
+function record(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function changeForm(change: Record<string, unknown>, billingCase: BillingCase): ChangeForm {
+  const requested = record(change.ops_draft_changes || change.requested_changes);
+  const requestedAddress = record(requested.billingAddress);
+  const currentAddress = record(billingCase.billing_address);
+  return {
+    company: String(requestedAddress.company ?? currentAddress.company ?? ""),
+    name: String(requestedAddress.name ?? currentAddress.name ?? ""),
+    street: String(requestedAddress.street ?? currentAddress.street ?? ""),
+    zip: String(requestedAddress.zip ?? currentAddress.zip ?? ""),
+    city: String(requestedAddress.city ?? currentAddress.city ?? ""),
+    country: String(requestedAddress.country ?? currentAddress.country ?? ""),
+    vatId: String(requested.vatId ?? billingCase.vat_id ?? ""),
+    invoiceEmail: String(requested.invoiceEmail ?? billingCase.customer_email ?? ""),
+    projectNumber: String(requested.projectNumber ?? billingCase.project_number ?? ""),
+  };
+}
+
+function changePayload(form: ChangeForm) {
+  return {
+    billingAddress: { company: form.company, name: form.name, street: form.street, zip: form.zip, city: form.city, country: form.country },
+    vatId: form.vatId,
+    invoiceEmail: form.invoiceEmail,
+    projectNumber: form.projectNumber,
+  };
+}
+
+function AddressSummary({ value }: { value: Record<string, unknown> }) {
+  return <span>{[value.company || value.name, value.street, [value.zip, value.city].filter(Boolean).join(" "), value.country].filter(Boolean).map(String).join(", ") || "–"}</span>;
+}
+
+function ChangeRequestReview({ change, billingCase, busy, onAction }: {
+  change: Record<string, unknown>;
+  billingCase: BillingCase;
+  busy: string | null;
+  onAction: (action: string, payload: Record<string, unknown>) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<ChangeForm>(() => changeForm(change, billingCase));
+  useEffect(() => setForm(changeForm(change, billingCase)), [change, billingCase]);
+  const requested = record(change.requested_changes);
+  const draft = record(change.ops_draft_changes);
+  const applied = record(change.applied_changes);
+  const currentAddress = record(billingCase.billing_address);
+  const requestedAddress = record(requested.billingAddress);
+  const status = String(change.status || "PENDING");
+  const finalValues = Object.keys(applied).length ? applied : Object.keys(draft).length ? draft : requested;
+  const field = "h-10 rounded-xl border border-stone-300 bg-white px-3 text-sm outline-none focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/10";
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    await onAction("SAVE_CHANGE_REQUEST_DRAFT", { changeRequestId: change.id, changes: changePayload(form) });
+    setEditing(false);
+  }
+
+  return <article className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><p className="text-sm font-semibold text-stone-950">Änderungsanfrage vom {new Date(String(change.created_at)).toLocaleString("de-DE")}</p><p className="mt-1 text-xs text-stone-500">Status: {STATUS_LABELS[status] || status}{change.reviewed_by ? ` · bearbeitet von ${String(change.reviewed_by)}` : ""}</p></div>
+      {status === "PENDING" ? <button type="button" onClick={() => setEditing((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold"><Pencil className="h-4 w-4" /> {editing ? "Bearbeitung schließen" : "Anfrage anpassen"}</button> : null}
+    </div>
+    {!editing ? <div className="mt-4 overflow-hidden rounded-xl border border-stone-200 bg-white">
+      <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-stone-200 bg-stone-100 px-3 py-2 text-xs font-semibold text-stone-600"><span>Feld</span><span>Bisher</span><span>{status === "PENDING" ? "Gewünscht" : "Entschieden"}</span></div>
+      <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-stone-100 px-3 py-3 text-xs"><strong>Rechnungsanschrift</strong><AddressSummary value={currentAddress} /><AddressSummary value={record(finalValues.billingAddress || requestedAddress)} /></div>
+      <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-stone-100 px-3 py-3 text-xs"><strong>Rechnungs-E-Mail</strong><span>{billingCase.customer_email || "–"}</span><span>{String(finalValues.invoiceEmail ?? requested.invoiceEmail ?? billingCase.customer_email ?? "–")}</span></div>
+      <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-stone-100 px-3 py-3 text-xs"><strong>USt-ID</strong><span>{billingCase.vat_id || "–"}</span><span>{String(finalValues.vatId ?? requested.vatId ?? billingCase.vat_id ?? "–") || "–"}</span></div>
+      <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 px-3 py-3 text-xs"><strong>Projektnummer</strong><span>{billingCase.project_number || "–"}</span><span>{String(finalValues.projectNumber ?? requested.projectNumber ?? billingCase.project_number ?? "–") || "–"}</span></div>
+    </div> : <form onSubmit={save} className="mt-4 grid gap-3 rounded-xl border border-stone-200 bg-white p-4 md:grid-cols-2">
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Firma<input className={field} value={form.company} onChange={(event) => setForm({ ...form, company: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Name<input className={field} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600 md:col-span-2">Straße und Hausnummer<input className={field} value={form.street} onChange={(event) => setForm({ ...form, street: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">PLZ<input className={field} value={form.zip} onChange={(event) => setForm({ ...form, zip: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Ort<input className={field} value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Land<input className={field} value={form.country} onChange={(event) => setForm({ ...form, country: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Umsatzsteuer-ID<input className={field} value={form.vatId} onChange={(event) => setForm({ ...form, vatId: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Rechnungs-E-Mail<input type="email" required className={field} value={form.invoiceEmail} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Projektnummer<input className={field} value={form.projectNumber} onChange={(event) => setForm({ ...form, projectNumber: event.target.value })} /></label>
+      <div className="md:col-span-2"><button disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"><Save className="h-4 w-4" /> Intern speichern</button><p className="mt-2 text-xs text-stone-500">Beim internen Speichern wird keine E-Mail versendet.</p></div>
+    </form>}
+    {status === "PENDING" ? <div className="mt-4 flex flex-wrap gap-2 border-t border-stone-200 pt-4">
+      <button disabled={Boolean(busy)} onClick={() => void onAction("APPLY_CHANGE_REQUEST", { changeRequestId: change.id, approvedChanges: changePayload(form), note: "In Ops akzeptiert" })} className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Akzeptieren</button>
+      <button disabled={Boolean(busy)} onClick={() => void onAction("REJECT_CHANGE_REQUEST", { changeRequestId: change.id, note: "In Ops abgelehnt" })} className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-800 disabled:opacity-50">Ablehnen</button>
+      <p className="w-full text-xs text-stone-500">Erst diese endgültige Entscheidung versendet genau eine E-Mail an den Kunden. Öffnen, Bearbeiten und internes Speichern bleiben intern.</p>
+    </div> : null}
+  </article>;
+}
+
+export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, detailCaseId }: { initialHasSession: boolean; opsEnabled: boolean; localMode: boolean; detailCaseId?: string }) {
   const [hasSession, setHasSession] = useState(initialHasSession);
   const [password, setPassword] = useState("");
   const [operatorName, setOperatorName] = useState("");
@@ -50,10 +146,14 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode }: {
   useEffect(() => { if (operatorName) localStorage.setItem("neontrip-billing-operator", operatorName); }, [operatorName]);
   useEffect(() => {
     if (!(hasSession || localMode)) return;
+    if (detailCaseId) {
+      void loadDetail(detailCaseId);
+      return;
+    }
     void loadCases();
     const caseId = new URLSearchParams(window.location.search).get("caseId");
-    if (caseId && /^[0-9a-f-]{36}$/i.test(caseId)) void loadDetail(caseId);
-  }, [hasSession, localMode]);
+    if (caseId && /^[0-9a-f-]{36}$/i.test(caseId)) window.location.replace(`/ops/rechnungen/${caseId}`);
+  }, [hasSession, localMode, detailCaseId]);
 
   const openIncidents = useMemo(() => cases.filter((entry) => ["SYNC_BLOCKED", "MANUAL_REVIEW"].includes(entry.status)).length, [cases]);
   const waiting = useMemo(() => cases.filter((entry) => !["INVOICED", "CANCELLED", "REFUNDED"].includes(entry.status)).length, [cases]);
@@ -110,9 +210,10 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode }: {
   return <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
     <div className={`${opsPageContainerClass} space-y-6`}>
       <OpsPageHeader active="billing" label="Rechnungsabteilung" />
-      <OpsPageIntro eyebrow="Billing Control" title="Pro-forma, Rechnungen und Korrekturen an einem Ort" description="Shopify ist der Auftragsschlüssel. Jeder finanzielle Schritt wird centgenau mit Easybill und dem BillingCase abgeglichen.">
-        <button onClick={() => void loadCases()} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-stone-950"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Aktualisieren</button>
+      <OpsPageIntro eyebrow="Billing Control" title={detailCaseId ? "Bestellung und Rechnungsdaten prüfen" : "Pro-forma, Rechnungen und Korrekturen an einem Ort"} description={detailCaseId ? "Änderungen können intern vorbereitet werden. Erst Akzeptieren oder Ablehnen informiert den Kunden." : "Shopify ist der Auftragsschlüssel. Jeder finanzielle Schritt wird centgenau mit Easybill und dem BillingCase abgeglichen."}>
+        {detailCaseId ? <a href="/ops/rechnungen" className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-stone-950"><ArrowLeft className="h-4 w-4" /> Zur Übersicht</a> : <button onClick={() => void loadCases()} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-stone-950"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Aktualisieren</button>}
       </OpsPageIntro>
+      {!detailCaseId ? <>
       <section className="grid gap-3 md:grid-cols-3">
         <OpsStatCard label="Fälle" value={cases.length} icon={<FileText className="h-5 w-5" />} />
         <OpsStatCard label="Offen" value={waiting} tone="warning" icon={<WalletCards className="h-5 w-5" />} />
@@ -125,15 +226,17 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode }: {
         </div>
         {error ? <div className="m-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div> : null}
         <div className="divide-y divide-[#eee8e0]">
-          {cases.map((entry) => <button key={entry.id} onClick={() => void loadDetail(entry.id)} className="grid w-full gap-3 p-4 text-left transition hover:bg-[#faf6f1] md:grid-cols-[9rem_minmax(0,1fr)_11rem_10rem] md:items-center">
+          {cases.map((entry) => <a key={entry.id} href={`/ops/rechnungen/${entry.id}`} className="grid w-full gap-3 p-4 text-left transition hover:bg-[#faf6f1] md:grid-cols-[9rem_minmax(0,1fr)_11rem_10rem] md:items-center">
             <span className="font-semibold text-stone-950">{entry.shopify_order_name}</span>
             <span className="min-w-0"><span className="block truncate text-sm font-medium text-stone-800">{customerName(entry)}</span><span className="block truncate text-xs text-stone-500">{entry.customer_email || "Keine Rechnungs-E-Mail"}{entry.project_number ? ` · Projekt ${entry.project_number}` : ""}</span></span>
             <span className="text-sm font-semibold text-stone-900">{money(entry.total_gross_cents, entry.currency)}</span>
-            <span className={`w-fit rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone(entry.status)}`}>{entry.status}</span>
-          </button>)}
+            <span className={`w-fit rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone(entry.status)}`}>{STATUS_LABELS[entry.status] || entry.status}</span>
+          </a>)}
           {!cases.length && !loading ? <p className="p-8 text-center text-sm text-stone-500">Noch keine BillingCases vorhanden.</p> : null}
         </div>
-      </section>
+      </section></> : null}
+      {detailCaseId && error ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div> : null}
+      {detailCaseId && !selected && !error ? <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center text-sm text-stone-500">Bestellung wird geladen …</div> : null}
       {selected ? <section className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_16px_44px_rgba(20,16,12,0.07)]">
         <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#b91c73]">Falldetails</p><h2 className="mt-1 text-2xl font-semibold text-stone-950">{selected.billingCase.shopify_order_name}</h2></div><ShieldCheck className="h-6 w-6 text-emerald-700" /></div>
         <div className="mt-5 grid gap-4 md:grid-cols-4"><div><p className="text-xs text-stone-500">Zahlungsart</p><p className="mt-1 font-semibold">{selected.billingCase.payment_method}{selected.billingCase.payment_terms_days ? ` · ${selected.billingCase.payment_terms_days} Tage` : ""}</p></div><div><p className="text-xs text-stone-500">Rechnungsversand</p><p className="mt-1 break-all font-semibold">{selected.billingCase.customer_email || "Nicht hinterlegt"}</p><p className="text-xs text-stone-500">{selected.billingCase.project_number ? `Projekt ${selected.billingCase.project_number}` : "Keine Projektnummer"}</p></div><div><p className="text-xs text-stone-500">Steuerfall</p><p className="mt-1 font-semibold">{selected.billingCase.tax_treatment}</p><p className="text-xs text-stone-500">{selected.billingCase.tax_review_status}</p></div><div><p className="text-xs text-stone-500">Dokumente / Änderungen</p><p className="mt-1 font-semibold">{selected.documents.length} / {selected.changes.length}</p></div></div>
@@ -169,7 +272,7 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode }: {
         </div>
         <div className="mt-4 rounded-2xl border border-stone-200 p-4">
           <p className="text-sm font-semibold text-stone-950">Änderungen zur Rechnung</p>
-          <div className="mt-3 space-y-3">{selected.changes.length ? selected.changes.map((change) => <div key={String(change.id)} className="rounded-xl border border-stone-200 bg-stone-50 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold text-stone-800">{String(change.source)} · {String(change.status)}</p><p className="text-xs text-stone-500">{new Date(String(change.created_at)).toLocaleString("de-DE")}</p></div><pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs leading-5 text-stone-600">{JSON.stringify(change.requested_changes, null, 2)}</pre>{change.status === "PENDING" ? <div className="mt-3 flex gap-2"><button disabled={Boolean(actionBusy)} onClick={() => void runAction("APPLY_CHANGE_REQUEST", { changeRequestId: change.id, note: "In Ops freigegeben" })} className="rounded-xl bg-stone-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Freigeben</button><button disabled={Boolean(actionBusy)} onClick={() => void runAction("REJECT_CHANGE_REQUEST", { changeRequestId: change.id, note: "In Ops abgelehnt" })} className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">Ablehnen</button></div> : null}</div>) : <p className="text-xs text-stone-500">Keine Änderungsanfragen vorhanden.</p>}</div>
+          <div className="mt-3 space-y-3">{selected.changes.length ? selected.changes.map((change) => <ChangeRequestReview key={String(change.id)} change={change} billingCase={selected.billingCase} busy={actionBusy} onAction={runAction} />) : <p className="text-xs text-stone-500">Keine Änderungsanfragen vorhanden.</p>}</div>
         </div>
       </section> : null}
     </div>
