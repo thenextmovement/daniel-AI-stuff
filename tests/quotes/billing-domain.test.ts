@@ -41,7 +41,8 @@ test("billing intake is cent exact and defaults to prepayment", () => {
   assert.equal(result.caseRecord.payment_method, "VORKASSE");
   assert.equal(result.caseRecord.total_gross_cents, 1000);
   assert.equal(result.caseRecord.customer_email, "buchhaltung@example.com");
-  assert.equal(result.caseRecord.customer.email, "buchhaltung@example.com");
+  assert.equal(result.caseRecord.customer.email, "test@example.com");
+  assert.equal(result.caseRecord.customer.invoiceEmail, "buchhaltung@example.com");
   assert.equal(result.caseRecord.project_number, "PROJ-2026-0815");
   assert.equal(result.caseRecord.billing_address.invoiceEmail, "buchhaltung@example.com");
   assert.equal(result.caseRecord.billing_address.projectNumber, "PROJ-2026-0815");
@@ -62,6 +63,17 @@ test("billing intake rejects invalid invoice destinations and project numbers", 
     totals: { subtotalNet: 8.4, vatAmount: 1.6, totalGross: 10, currency: "EUR" },
   };
   assert.equal(buildBillingCaseInput({ ...valid, projectNumber: "P-123 / Messe & Süd (AT)" }).caseRecord.project_number, "P-123 / Messe & Süd (AT)");
+  const fallback = buildBillingCaseInput({ ...valid, invoiceEmail: null });
+  assert.equal(fallback.caseRecord.customer_email, "test@example.com");
+  assert.equal(fallback.caseRecord.customer.email, "test@example.com");
+  assert.equal(fallback.caseRecord.customer.invoiceEmail, "test@example.com");
+  const invoiceOnly = buildBillingCaseInput({ ...valid, customer: {}, invoiceEmail: "rechnung@example.com" });
+  assert.equal(invoiceOnly.caseRecord.customer_email, "rechnung@example.com");
+  assert.equal(invoiceOnly.caseRecord.customer.invoiceEmail, "rechnung@example.com");
+  const validInvoiceWithStaleCustomer = buildBillingCaseInput({ ...valid, customer: { email: "keine-email" }, invoiceEmail: "rechnung@example.com" });
+  assert.equal(validInvoiceWithStaleCustomer.caseRecord.customer_email, "rechnung@example.com");
+  assert.equal(validInvoiceWithStaleCustomer.caseRecord.customer.email, "keine-email");
+  assert.throws(() => buildBillingCaseInput({ ...valid, customer: { email: "keine-email" }, invoiceEmail: null }));
   assert.throws(() => buildBillingCaseInput({ ...valid, invoiceEmail: "keine-email" }));
   assert.throws(() => buildBillingCaseInput({ ...valid, projectNumber: "PROJ\nINJECTION" }));
 });

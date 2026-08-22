@@ -185,11 +185,20 @@ export function buildBillingCaseInput(input: BillingIntake) {
   if (!shopifyOrderId) throw new Error("Shopify-Order-ID fehlt.");
   const shopifyOrderName = normalizeShopifyOrderName(input.shopifyOrderName);
   const money = validateBillingMoney(input.totals);
-  const invoiceEmail = normalizeBillingEmail(input.invoiceEmail || input.billingAddress.invoiceEmail || input.customer.email);
+  const requestedInvoiceEmail = normalizeBillingEmail(input.invoiceEmail || input.billingAddress.invoiceEmail);
+  let customerEmail: string | null = null;
+  try {
+    customerEmail = normalizeBillingEmail(input.customer.email);
+  } catch (error) {
+    // A valid explicit invoice address remains usable even if stale source
+    // customer data contains an invalid address. Without it, fail closed.
+    if (!requestedInvoiceEmail) throw error;
+  }
+  const invoiceEmail = requestedInvoiceEmail || customerEmail;
   const projectNumber = normalizeProjectNumber(input.projectNumber || input.billingAddress.projectNumber);
   const billingAddress = {
     ...input.billingAddress,
-    ...(invoiceEmail ? { invoiceEmail } : {}),
+    ...(requestedInvoiceEmail ? { invoiceEmail: requestedInvoiceEmail } : {}),
     ...(projectNumber ? { projectNumber } : {}),
   };
   const vatId = input.billingAddress.vatId || input.vatValidation?.normalizedVatId;
@@ -201,7 +210,11 @@ export function buildBillingCaseInput(input: BillingIntake) {
   const snapshot = {
     source: text(input.source) || "unknown", sourceOfferId: input.sourceOfferId || null,
     sourceAcceptanceId: input.sourceAcceptanceId || null, shopifyOrderId, shopifyOrderName,
-    customer: { ...input.customer, ...(invoiceEmail ? { email: invoiceEmail } : {}) },
+    customer: {
+      ...input.customer,
+      ...(customerEmail ? { email: customerEmail } : {}),
+      ...(invoiceEmail ? { invoiceEmail } : {}),
+    },
     invoiceEmail, projectNumber, billingAddress, deliveryAddress: input.deliveryAddress,
     lineItems: input.lineItems, totals: input.totals, tax, vatValidation: input.vatValidation || null,
     acceptedAt: input.acceptedAt || null,
@@ -213,7 +226,11 @@ export function buildBillingCaseInput(input: BillingIntake) {
       source_system: text(input.source) || "unknown", source_offer_id: input.sourceOfferId || null,
       source_acceptance_id: input.sourceAcceptanceId || null, shopify_order_id: shopifyOrderId,
       shopify_order_name: shopifyOrderName,
-      customer: { ...input.customer, ...(invoiceEmail ? { email: invoiceEmail } : {}) },
+      customer: {
+        ...input.customer,
+        ...(customerEmail ? { email: customerEmail } : {}),
+        ...(invoiceEmail ? { invoiceEmail } : {}),
+      },
       customer_email: invoiceEmail, project_number: projectNumber, billing_address: billingAddress,
       delivery_address: input.deliveryAddress, line_items: input.lineItems, totals: input.totals,
       currency: money.currency, subtotal_net_cents: money.subtotalNetCents, vat_cents: money.vatCents,

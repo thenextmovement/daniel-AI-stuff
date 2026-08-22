@@ -72,7 +72,7 @@ if(job.job_type==='CREATE_CREDIT') {
 if(job.job_type==='CREATE_CANCELLATION'&&!originalInvoice?.easybill_document_id) throw new Error('cancellation_original_invoice_missing');
 const dueInDays = billingCase.payment_method === 'KAUF_AUF_RECHNUNG' ? Number(billingCase.payment_terms_days || 14) : 0;
 const paymentText = billingCase.payment_method === 'VORKASSE'
-  ? 'Zahlbar sofort. Die Produktion beginnt bereits. Sollte die Zahlung nicht rechtzeitig eingehen, kann die Produktion vor Fertigstellung pausiert werden. Dadurch kann sich der Liefertermin verschieben.'
+  ? 'Zahlbar sofort. Mit unserer Auftragsbestätigung beginnt die Produktion Ihres individuellen Auftrags bereits. Der Auftrag ist verbindlich. Sollte die Zahlung nicht rechtzeitig eingehen, kann die Produktion vor Fertigstellung pausiert werden. Dadurch kann sich der Liefertermin verschieben.'
   : 'Zahlbar innerhalb von ' + dueInDays + ' Tagen nach Erhalt der Ware.';
 const documentText = [projectNumber ? 'Projektnummer: ' + projectNumber : '', paymentText].filter(Boolean).join('\n\n');
 const documentLabel = documentType==='PROFORMA_INVOICE'?'Pro-forma-Rechnung':documentType==='CREDIT'?'Gutschrift':documentType==='STORNO'?'Stornobeleg':'Rechnung';
@@ -488,8 +488,9 @@ const job = claimed.job;
 const billingCase = claimed.billingCase;
 const payload = job.payload || {};
 const recipient = String(payload.recipient || '').trim().toLowerCase();
-const allowed = new Set(['rahim.hedayati@icloud.com','info@riesenobjekte.de']);
-if (!allowed.has(recipient)) throw new Error('billing_customer_delivery_recipient_not_allowlisted');
+if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient) || recipient.length > 254) {
+  throw new Error('FATAL_billing_customer_delivery_recipient_missing_or_invalid');
+}
 const easybillDocumentId = String(payload.easybillDocumentId || '');
 if (!/^\d+$/.test(easybillDocumentId)) throw new Error('billing_customer_delivery_easybill_id_invalid');
 const documentNumber = String(payload.documentNumber || '').trim();
@@ -501,7 +502,7 @@ const projectNumber = String(payload.projectNumber || billingCase.project_number
 if (projectNumber.length > 100 || /[<>\r\n]/.test(projectNumber)) throw new Error('billing_customer_delivery_project_number_invalid');
 const kind = String(payload.deliveryKind || '');
 const subjects = {
-  ORDER_CONFIRMATION_PROFORMA:'Auftragsbestätigung ' + shopifyOrderName + ' – Ihre Bestellung bei NEONTRIP',
+  ORDER_CONFIRMATION_PROFORMA:'Auftragsbestätigung und Rechnung ' + shopifyOrderName,
   PROFORMA_UPDATE:'Aktualisierte Pro-forma-Rechnung ' + documentNumber + ' – NEONTRIP',
   INVOICE:'Rechnung ' + documentNumber + ' – NEONTRIP',
   CREDIT:'Gutschrift ' + documentNumber + ' – NEONTRIP',
@@ -517,8 +518,8 @@ const common = [
 const messages = {
   ORDER_CONFIRMATION_PROFORMA:[
     'vielen Dank für Ihre verbindliche Bestellung bei NEONTRIP. Hiermit bestätigen wir den Eingang und die Annahme Ihres Auftrags.',
-    'Ihre Pro-forma-Rechnung ' + documentNumber + ' finden Sie als PDF im Anhang. Sie dient als Zahlungsaufforderung und ist keine steuerliche Schlussrechnung.',
-    'Zahlbar sofort. Die Produktion beginnt bereits. Sollte die Zahlung nicht rechtzeitig eingehen, kann die Produktion vor Fertigstellung pausiert werden. Dadurch kann sich der Liefertermin verschieben.',
+    'Ihre Pro-forma-Rechnung ' + documentNumber + ' finden Sie als PDF im Anhang.',
+    'Zahlbar sofort. Mit unserer Auftragsbestätigung beginnt die Produktion Ihres individuellen Auftrags bereits. Der Auftrag ist verbindlich. Sollte die Zahlung nicht rechtzeitig eingehen, kann die Produktion vor Fertigstellung pausiert werden. Dadurch kann sich der Liefertermin verschieben.',
     'Über den folgenden Link können Sie ausschließlich Änderungen zu Ihren Rechnungsdaten anfragen. Änderungen am Auftrag selbst sind dort nicht möglich.'
   ],
   PROFORMA_UPDATE:[
@@ -555,7 +556,7 @@ const output = {
 return [{json:output}];`;
 
 const customerDeliveryWorkflow = {
-  name: "NEONTRIP Billing v2 - Customer Document Delivery Worker (INACTIVE)",
+  name: "NEONTRIP Billing v2 - Customer Document Delivery Worker",
   active: false,
   nodes: [
     node("delivery-schedule", "Every Minute", "n8n-nodes-base.scheduleTrigger", [-1120, 0], { rule: { interval: [{ field: "minutes", minutesInterval: 1 }] } }, { typeVersion: 1.3 }),
@@ -572,7 +573,7 @@ const customerDeliveryWorkflow = {
     node("delivery-success", "Prepare Customer Delivery Success", "n8n-nodes-base.code", [1460, -80], { jsCode: "const ctx=$('Prepare Customer Delivery').first().json;const doc=$json.easybillDocument||$json.body||$json;if(!doc.last_postbox_id)throw new Error('billing_customer_delivery_postbox_missing');const result={worker:'n8n-customer-document-delivery-v2',easybillDocumentId:ctx.easybillDocumentId,documentNumber:ctx.documentNumber,recipient:ctx.recipient,deliveryKind:ctx.kind,sent:true,postboxId:String(doc.last_postbox_id)};const output={jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:true,result};return [{json:output}];" }, { onError: "continueErrorOutput" }),
     node("delivery-failure", "Prepare Customer Delivery Failure", "n8n-nodes-base.code", [740, 280], { jsCode: "const prepared=$('Prepare Customer Delivery').all();const claimedItems=$('Claim Customer Delivery Job').all();const claimBody=claimedItems[0]?.json?.body??claimedItems[0]?.json??{};const job=prepared[0]?.json?.job??claimBody.claimed?.job;if(!job?.id||!job?.lease_token)throw new Error('billing_customer_delivery_failure_context_missing');const message=String($json.error?.message||$json.message||$json.description||'customer_document_delivery_failed').slice(0,1800);const result={worker:'n8n-customer-document-delivery-v2'};const output={jobId:job.id,leaseToken:job.lease_token,success:false,result,error:message};return [{json:output}];" }),
     node("delivery-complete", "Complete Customer Delivery Job", "n8n-nodes-base.httpRequest", [1700, -80], { method: "POST", url: "={{ $('Customer Delivery Config').first().json.opsBaseUrl + '/api/internal/billing/jobs/' + encodeURIComponent($json.jobId) + '/complete' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {leaseToken:$json.leaseToken,success:$json.success,result:$json.result,error:$json.error} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, onError: "stopWorkflow" }),
-    node("delivery-blocked", "Raise Customer Delivery Block", "n8n-nodes-base.code", [1940, -80], { jsCode: "const body=$json.body??$json;if(body.completed?.status==='BLOCKED')throw new Error('Fehler Rechnung Shopify/Easybill: Kundenbeleg konnte nicht versendet werden. Bitte Ops-Rechnungsabteilung prüfen.');const output={ok:true,status:body.completed?.status||'DONE'};return [{json:output}];" }),
+    node("delivery-blocked", "Raise Customer Delivery Block", "n8n-nodes-base.code", [1940, -80], { jsCode: "const body=$json.body??$json;const prepared=$('Prepare Customer Delivery').all()[0]?.json??{};const claim=$('Claim Customer Delivery Job').all()[0]?.json??{};const claimed=(claim.body??claim).claimed??{};const payload=prepared.job?.payload??claimed.job?.payload??{};const documentNumber=prepared.documentNumber??payload.documentNumber??'UNBEKANNT';const orderName=prepared.shopifyOrderName??payload.shopifyOrderName??claimed.billingCase?.shopify_order_name??'UNBEKANNT';const recipient=prepared.recipient??payload.recipient??'KEINE GUELTIGE EMPFAENGERADRESSE';if(body.completed?.status==='BLOCKED')throw new Error('FATAL Fehler Rechnung Shopify/Easybill: Kundenbeleg '+documentNumber+' zu '+orderName+' konnte nach vier Versuchen nicht an '+recipient+' versendet werden. Bitte sofort in Ops/Rechnungen und Easybill pruefen.');const output={ok:true,status:body.completed?.status||'DONE'};return [{json:output}];" }),
     node("delivery-claim-failure", "Raise Customer Delivery Claim Error", "n8n-nodes-base.code", [-440, 200], { jsCode: "throw new Error('Fehler Rechnung Shopify/Easybill: Kundenversand-Job konnte nicht abgeholt werden.');return [];" })
   ],
   connections: {

@@ -269,7 +269,7 @@ test("all Shopify orders can enter the same signed BillingCase intake", () => {
   assert.match(source, /\/api\/internal\/billing\/cases/);
   assert.match(source, /#NEONT/);
 });
-test("customer delivery worker is isolated, inactive, allowlisted and idempotent", async () => {
+test("customer delivery worker is isolated, generated inactive and validates recipients idempotently", async () => {
   assert.equal(customerDelivery.active, false);
   assert.equal(customerDeliveryByName.get("Every Minute").typeVersion, 1.3);
   assert.match(JSON.stringify(customerDeliveryByName.get("Claim Customer Delivery Job")), /SEND_CUSTOMER_DOCUMENT/);
@@ -311,20 +311,33 @@ test("customer delivery worker is isolated, inactive, allowlisted and idempotent
 
   const [prepared] = await run("rahim.hedayati@icloud.com");
   assert.equal(prepared.json.recipient, "rahim.hedayati@icloud.com");
-  assert.match(prepared.json.subject, /Auftragsbestätigung #NEONT9999/);
+  assert.equal(prepared.json.subject, "Auftragsbestätigung und Rechnung #NEONT9999");
+  assert.doesNotMatch(prepared.json.message, /keine steuerliche Schlussrechnung/);
   assert.match(prepared.json.message, /Pro-forma-Rechnung PF-NEONT9999/);
   assert.match(prepared.json.message, /Zahlbar sofort/);
+  assert.match(prepared.json.message, /Der Auftrag ist verbindlich/);
+  assert.doesNotMatch(prepared.json.message, /Zahlungsart Vorkasse/);
   assert.match(prepared.json.message, /rechnung\.neontrip\.de\/test-token/);
   assert.match(prepared.json.message, /angebote\.neontrip\.de\/legal\/agb/);
-  await assert.rejects(() => run("kunde@example.com"), /recipient_not_allowlisted/);
+  const [realRecipient] = await run("kunde@example.com");
+  assert.equal(realRecipient.json.recipient, "kunde@example.com");
+  await assert.rejects(() => run(""), /FATAL_billing_customer_delivery_recipient_missing_or_invalid/);
+  await assert.rejects(() => run("keine-email"), /FATAL_billing_customer_delivery_recipient_missing_or_invalid/);
 });
 
-test("customer delivery queue is fail-closed and marks only completed test documents sent", () => {
-  assert.match(customerDeliveryMigration, /rahim\.hedayati@icloud\.com/);
-  assert.match(customerDeliveryMigration, /info@riesenobjekte\.de/);
-  assert.match(customerDeliveryMigration, /not in \('rahim\.hedayati@icloud\.com', 'info@riesenobjekte\.de'\)/);
+test("customer delivery cutover resolves invoice email first and never silently skips missing recipients", () => {
+  const cutoverMigration = fs.readFileSync(path.join(root, "../../supabase/migrations/20260822130000_harden_billing_customer_delivery.sql"), "utf8");
+  assert.match(cutoverMigration, /billing_address->>'invoiceEmail'/);
+  assert.match(cutoverMigration, /customer->>'email'/);
+  assert.match(cutoverMigration, /recipientSource/);
+  assert.match(cutoverMigration, /else 'MISSING'/);
+  assert.doesNotMatch(cutoverMigration, /rahim\.hedayati@icloud\.com/);
+  assert.doesNotMatch(cutoverMigration, /v_recipient not in/);
+  assert.match(cutoverMigration, /billing_preserve_customer_email_fallback/);
+  assert.match(cutoverMigration, /'invoiceEmail', lower\(btrim\(new\.customer_email\)\)/);
+  assert.match(cutoverMigration, /SEND_CUSTOMER_DOCUMENT/);
+  assert.match(cutoverMigration, /send-customer-document:/);
   assert.match(customerDeliveryMigration, /SEND_CUSTOMER_DOCUMENT/);
-  assert.match(customerDeliveryMigration, /send-customer-document:/);
   assert.match(customerDeliveryMigration, /customerEmailSuppressed/);
   assert.match(customerDeliveryMigration, /new\.document_type = 'INVOICE'/);
   assert.match(customerDeliveryMigration, /deliveryKind/);
