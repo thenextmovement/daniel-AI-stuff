@@ -151,7 +151,7 @@ export async function submitBillingPortalChange(input: { token: string; changes:
   });
 }
 
-export type BillingOpsAction = "SET_PAYMENT_METHOD" | "CONFIRM_VAT" | "APPLY_CHANGE_REQUEST" | "REJECT_CHANGE_REQUEST" | "CREATE_PROFORMA" | "MARK_PAID" | "MARK_DELIVERED" | "CREATE_INVOICE";
+export type BillingOpsAction = "SET_PAYMENT_METHOD" | "CONFIRM_VAT" | "APPLY_CHANGE_REQUEST" | "REJECT_CHANGE_REQUEST" | "SAVE_CHANGE_REQUEST_DRAFT" | "CREATE_PROFORMA" | "MARK_PAID" | "MARK_DELIVERED" | "CREATE_INVOICE";
 
 export async function applyBillingOpsAction(input: {
   caseId: string;
@@ -164,6 +164,42 @@ export async function applyBillingOpsAction(input: {
     p_case_id: input.caseId,
     p_action: input.action,
     p_payload: input.payload || {},
+    p_actor: input.actor,
+    p_idempotency_key: input.idempotencyKey,
+  });
+}
+
+export async function saveBillingChangeDraft(input: {
+  caseId: string;
+  changeRequestId: string;
+  changes: Record<string, unknown>;
+  actor: string;
+  idempotencyKey: string;
+}) {
+  return supabaseRpc<Record<string, unknown>>("billing_change_request_save_draft", {
+    p_case_id: input.caseId,
+    p_change_request_id: input.changeRequestId,
+    p_changes: input.changes,
+    p_actor: input.actor,
+    p_idempotency_key: input.idempotencyKey,
+  });
+}
+
+export async function decideBillingChangeRequest(input: {
+  caseId: string;
+  changeRequestId: string;
+  decision: "APPLY" | "REJECT";
+  approvedChanges?: Record<string, unknown>;
+  note?: string;
+  actor: string;
+  idempotencyKey: string;
+}) {
+  return supabaseRpc<Record<string, unknown>>("billing_change_request_decide", {
+    p_case_id: input.caseId,
+    p_change_request_id: input.changeRequestId,
+    p_decision: input.decision,
+    p_approved_changes: input.approvedChanges || null,
+    p_note: input.note || "",
     p_actor: input.actor,
     p_idempotency_key: input.idempotencyKey,
   });

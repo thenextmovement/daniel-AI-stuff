@@ -617,6 +617,26 @@ const formatAddress = value => {
   return [value.company, value.name, value.street, [value.zip || value.zipCode, value.city].filter(Boolean).join(' '), value.country]
     .map(bounded).filter(Boolean).join(', ');
 };
+const notificationKind = String(payload.notificationKind || 'REQUEST_INTERNAL');
+if (notificationKind === 'DECISION_CUSTOMER') {
+  const recipient = bounded(payload.recipient).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient) || recipient.length > 254) throw new Error('billing_change_decision_recipient_invalid');
+  const decision = String(payload.decision || '').toUpperCase();
+  if (!['APPLY','REJECT'].includes(decision)) throw new Error('billing_change_decision_invalid');
+  const portalUrl = String(payload.portalUrl || '').trim();
+  if (!/^https:\/\/rechnung\.neontrip\.de\/[A-Za-z0-9_-]+$/.test(portalUrl)) throw new Error('billing_change_decision_portal_url_invalid');
+  const accepted = decision === 'APPLY';
+  const subject = (accepted ? 'Rechnungsänderung akzeptiert – ' : 'Rechnungsänderung abgelehnt – ') + orderName;
+  const bodyHtml = '<div style="font-family:Arial,sans-serif;color:#171717;line-height:1.55;max-width:680px">'
+    + '<h2 style="margin:0 0 12px">'+(accepted ? 'Ihre Rechnungsänderung wurde akzeptiert' : 'Ihre Rechnungsänderung wurde abgelehnt')+'</h2>'
+    + '<p style="margin:0 0 14px">Bestellnummer: <strong>'+escapeHtml(orderName)+'</strong></p>'
+    + '<p style="margin:0 0 18px">'+(accepted
+      ? 'Wir haben die geprüften Rechnungsdaten übernommen. Den aktuellen Stand und Ihre Dokumente sehen Sie jederzeit im Rechnungsportal.'
+      : 'Wir haben die angefragte Änderung geprüft und nicht übernommen. Ihre bisherigen Rechnungsdaten bleiben bestehen.')+'</p>'
+    + '<p style="margin:0 0 18px"><a href="'+escapeHtml(portalUrl)+'" style="display:inline-block;background:#f6299a;color:#fff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:8px">Rechnungsportal öffnen</a></p>'
+    + '<p style="font-size:13px;color:#666;margin:0">Diese Entscheidung betrifft ausschließlich Ihre Rechnungsdaten, nicht den beauftragten Leistungsumfang.</p></div>';
+  return [{json:{hasJob:true,job,billingCase,recipient,subject,bodyHtml,opsUrl:portalUrl,orderName,notificationKind,decision}}];
+}
 const currentValues = {
   billingAddress: billingCase.billing_address || {},
   deliveryAddress: billingCase.delivery_address || {},
@@ -642,7 +662,7 @@ const requesterEmailRaw = bounded(payload.requesterEmail || '');
 const requesterEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requesterEmailRaw) ? requesterEmailRaw.toLowerCase() : 'nicht angegeben';
 const submittedAtDate = new Date(String(payload.submittedAt || job.created_at || ''));
 const submittedAt = Number.isNaN(submittedAtDate.getTime()) ? 'nicht verfügbar' : new Intl.DateTimeFormat('de-DE',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Berlin'}).format(submittedAtDate) + ' Uhr';
-const opsUrl = 'https://ops.neontrip.de/ops/rechnungen?caseId=' + encodeURIComponent(caseId);
+const opsUrl = 'https://ops.neontrip.de/ops/rechnungen/' + encodeURIComponent(caseId);
 const subject = 'Rechnungsänderung angefordert – ' + orderName;
 const bodyHtml = '<div style="font-family:Arial,sans-serif;color:#171717;line-height:1.55;max-width:760px">'
   + '<h2 style="margin:0 0 12px">Ein Kunde hat eine Rechnungsänderung angefordert</h2>'

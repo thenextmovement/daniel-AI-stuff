@@ -27,7 +27,7 @@ test("notification worker is inactive, internal-only and links to the exact Ops 
   const prepareCode = byName["Prepare Change Notification"].parameters.jsCode;
   assert.match(prepareCode, /recipient:'info@neontrip\.de'/);
   assert.match(prepareCode, /Rechnungsänderung angefordert/);
-  assert.match(prepareCode, /ops\/rechnungen\?caseId=/);
+  assert.match(prepareCode, /ops\/rechnungen\//);
   assert.match(prepareCode, /Bisher/);
   assert.match(prepareCode, /Gewünscht/);
   assert.doesNotMatch(JSON.stringify(workflow), /api\.easybill\.de|myshopify\.com|SEND_CUSTOMER_DOCUMENT/);
@@ -52,4 +52,8 @@ test("internal email content is bounded and escapes customer-controlled values",
   assert.match(code, /slice\(0, 500\)/);
   assert.match(code, /Diese Nachricht wurde nur intern versendet/);
   assert.match(code, /hat Shopify oder easybill nicht verändert/);
+  assert.match(code, /DECISION_CUSTOMER/);
+  assert.match(code, /Rechnungsänderung akzeptiert/);
+  assert.match(code, /Rechnungsänderung abgelehnt/);
+  assert.match(code, /Rechnungsportal öffnen/);
 });

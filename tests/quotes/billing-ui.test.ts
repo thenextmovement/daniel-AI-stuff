@@ -20,6 +20,10 @@ test("Ops exposes a dedicated NEONTRIP billing department", () => {
   assert.match(client, /Audit-Log protokolliert/);
   assert.match(client, /Rechnungsversand/);
   assert.match(client, /project_number/);
+  assert.match(client, /Anfrage anpassen/);
+  assert.match(client, /Akzeptieren/);
+  assert.match(client, /Ablehnen/);
+  assert.match(client, /Erst diese endgültige Entscheidung versendet genau eine E-Mail/);
 });
 
 test("customer portal is invoice-only and becomes read-only after final invoice", () => {
