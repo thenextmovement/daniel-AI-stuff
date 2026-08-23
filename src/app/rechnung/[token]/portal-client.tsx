@@ -180,6 +180,14 @@ function countryLabel(value: unknown) {
   return COUNTRY_OPTIONS.find(([optionCode]) => optionCode === code)?.[1] || String(value || "–");
 }
 
+function firstNonEmptyText(...values: unknown[]) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
 function formFromBilling(billing: Record<string, any>, requested: Record<string, any> = {}): InvoiceForm {
   const address = { ...(billing.billing_address || {}), ...(requested.billingAddress || {}) };
   const delivery = { ...(billing.delivery_address || {}), ...(requested.deliveryAddress || {}) };
@@ -189,14 +197,14 @@ function formFromBilling(billing: Record<string, any>, requested: Record<string,
     zip: String(address.zip || ""),
     city: String(address.city || ""),
     country: normalizeCountry(address.country) || String(address.country || ""),
-    deliveryCompany: String(delivery.company || ""),
-    deliveryName: String(delivery.name || [delivery.firstName, delivery.lastName].filter(Boolean).join(" ") || ""),
+    deliveryCompany: firstNonEmptyText(delivery.company, delivery.contactCompany),
+    deliveryName: firstNonEmptyText(delivery.name, delivery.contactName, [delivery.firstName, delivery.lastName].filter(Boolean).join(" ")),
     deliveryStreet: String(delivery.street || delivery.address1 || ""),
     deliveryZip: String(delivery.zip || delivery.zipCode || ""),
     deliveryCity: String(delivery.city || ""),
     deliveryCountry: normalizeCountry(delivery.countryCode || delivery.country) || String(delivery.countryCode || delivery.country || ""),
     vatId: String(requested.vatId ?? billing.vat_id ?? ""),
-    invoiceEmail: String(requested.invoiceEmail ?? billing.customer_email ?? address.invoiceEmail ?? billing.customer?.invoiceEmail ?? billing.customer?.email ?? ""),
+    invoiceEmail: firstNonEmptyText(requested.invoiceEmail, billing.customer_email, billing.customerEmail, address.invoiceEmail, billing.customer?.invoiceEmail, billing.customer?.email),
     projectNumber: String(requested.projectNumber ?? billing.project_number ?? address.projectNumber ?? ""),
   };
 }
