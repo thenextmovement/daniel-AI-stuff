@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeVatId, validateVatIdWithVies, VatValidationError } from "../../src/lib/ops/billing/vies";
+import { isEuVatIdRelevant, normalizeVatId, validateVatIdWithVies, VatValidationError } from "../../src/lib/ops/billing/vies";
+
+test("VAT IDs are relevant only for foreign EU delivery countries", () => {
+  assert.equal(isEuVatIdRelevant("AT"), true);
+  assert.equal(isEuVatIdRelevant("Österreich"), true);
+  assert.equal(isEuVatIdRelevant("DE"), false);
+  assert.equal(isEuVatIdRelevant("CH"), false);
+});
 
 test("Austrian VAT IDs require ATU plus exactly eight digits", () => {
   assert.deepEqual(normalizeVatId("AT", "ATU 46674503"), { countryCode: "AT", normalizedVatId: "ATU46674503", vatNumber: "U46674503" });
