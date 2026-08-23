@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured, validateCloudflareAccess } from "@/lib/ops/auth";
+import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured, resolvePersonalOpsRequestActor } from "@/lib/ops/auth";
 import { applyBillingOpsAction, decideBillingChangeRequest, saveBillingChangeDraft, type BillingOpsAction } from "@/lib/ops/billing/repository";
 import { sanitizePortalChangeBody } from "@/lib/ops/billing/portal-change";
 
@@ -20,9 +20,7 @@ function parseActionBody(value: unknown) {
 }
 
 async function billingActor(request: NextRequest, host?: string | null) {
-  if (isOpsPortalBypassed(host)) return "local-ops";
-  const access = await validateCloudflareAccess(request.headers);
-  return access.ok && "email" in access && access.email ? access.email : null;
+  return resolvePersonalOpsRequestActor(host, request.headers);
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ caseId: string }> }) {

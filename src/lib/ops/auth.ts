@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
-import { createHash, timingSafeEqual, webcrypto } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual, webcrypto } from "node:crypto";
 import { NextResponse } from "next/server";
 
 const OPS_SESSION_COOKIE = "neontrip_ops_session";
+const OPS_ACTOR_COOKIE = "neontrip_ops_actor";
 const OPS_SESSION_TTL_SECONDS = 60 * 60 * 8;
 const ACCESS_JWKS_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -264,6 +265,40 @@ function safeEqual(left: string, right: string) {
   return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function normalizeOpsActor(value: unknown) {
+  const actor = String(value || "").trim().replace(/\s+/g, " ");
+  if (actor.length < 2 || actor.length > 100 || /[\u0000-\u001f\u007f]/.test(actor)) return null;
+  return actor;
+}
+
+function actorSignature(actor: string, token: string) {
+  return createHmac("sha256", sessionDigest(token))
+    .update(`neontrip:ops:actor:${actor}`)
+    .digest("hex");
+}
+
+function encodeSessionActor(actor: string, token: string) {
+  const encodedActor = Buffer.from(actor, "utf8").toString("base64url");
+  return `${encodedActor}.${actorSignature(actor, token)}`;
+}
+
+async function resolveSignedSessionActor() {
+  const value = (await cookies()).get(OPS_ACTOR_COOKIE)?.value || "";
+  const separator = value.lastIndexOf(".");
+  if (separator <= 0) return null;
+  try {
+    const actor = normalizeOpsActor(Buffer.from(value.slice(0, separator), "base64url").toString("utf8"));
+    const signature = value.slice(separator + 1);
+    if (!actor || !signature) return null;
+    const valid = getOpsPortalTokens().some((token) =>
+      safeEqual(signature, actorSignature(actor, token)),
+    );
+    return valid ? actor : null;
+  } catch {
+    return null;
+  }
+}
+
 export function validateOpsPortalToken(candidate: string) {
   if (isOpsPortalBypassed()) return true;
   if (isCloudflareAccessRequired()) return false;
@@ -275,7 +310,7 @@ export function validateOpsPortalToken(candidate: string) {
   return configuredTokens.some((token) => safeEqual(candidateDigest, sessionDigest(token)));
 }
 
-export function applyOpsSession(response: NextResponse, candidate: string) {
+export function applyOpsSession(response: NextResponse, candidate: string, actorValue: unknown) {
   if (isOpsPortalBypassed()) return response;
   const normalized = String(candidate || "").trim();
   const candidateDigest = normalized ? sessionDigest(normalized) : "";
@@ -285,9 +320,22 @@ export function applyOpsSession(response: NextResponse, candidate: string) {
   if (!configured) {
     throw new Error("Ops portal token is not configured.");
   }
+  const actor = normalizeOpsActor(actorValue);
+  if (!actor) {
+    throw new Error("Ops actor is required.");
+  }
   response.cookies.set({
     name: OPS_SESSION_COOKIE,
     value: candidateDigest,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: OPS_SESSION_TTL_SECONDS,
+    path: "/",
+  });
+  response.cookies.set({
+    name: OPS_ACTOR_COOKIE,
+    value: encodeSessionActor(actor, normalized),
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -301,6 +349,15 @@ export function clearOpsSession(response: NextResponse) {
   if (isOpsPortalBypassed()) return response;
   response.cookies.set({
     name: OPS_SESSION_COOKIE,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    expires: new Date(0),
+    path: "/",
+  });
+  response.cookies.set({
+    name: OPS_ACTOR_COOKIE,
     value: "",
     httpOnly: true,
     sameSite: "lax",
@@ -332,6 +389,14 @@ export async function hasOpsSession(host?: string | null, headers?: HeaderReader
   return Boolean(value && configuredTokens.some((token) => safeEqual(value, sessionDigest(token))));
 }
 
+export async function resolvePersonalOpsRequestActor(host?: string | null, headers?: HeaderReader | null) {
+  if (isOpsPortalBypassed(host)) return "local-ops";
+  const access = await validateCloudflareAccess(headers);
+  if (access.ok && "email" in access && access.email) return access.email;
+  if (!(await hasOpsSession(host, headers))) return null;
+  return resolveSignedSessionActor();
+}
+
 export async function resolveOpsRequestActor(host?: string | null, headers?: HeaderReader | null) {
   if (isOpsPortalBypassed(host)) return "local-ops";
   const access = await validateCloudflareAccess(headers);
@@ -340,5 +405,5 @@ export async function resolveOpsRequestActor(host?: string | null, headers?: Hea
     if ("serviceTokenId" in access && access.serviceTokenId) return access.serviceTokenId;
     return access.subject || "cloudflare-access";
   }
-  return (await hasOpsSession(host, headers)) ? "ops-session" : null;
+  return (await hasOpsSession(host, headers)) ? (await resolveSignedSessionActor()) || "ops-session" : null;
 }

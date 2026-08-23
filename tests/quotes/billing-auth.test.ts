@@ -10,6 +10,9 @@ const timestamp = "1787133600";
 const eventId = "shopify:order:1:created";
 const authSource = fs.readFileSync(path.join(process.cwd(), "src/lib/ops/billing/auth.ts"), "utf8");
 const actionRouteSource = fs.readFileSync(path.join(process.cwd(), "src/app/api/ops/billing/[caseId]/actions/route.ts"), "utf8");
+const opsAuthSource = fs.readFileSync(path.join(process.cwd(), "src/lib/ops/auth.ts"), "utf8");
+const opsSessionRouteSource = fs.readFileSync(path.join(process.cwd(), "src/app/api/ops/session/route.ts"), "utf8");
+const opsLoginSource = fs.readFileSync(path.join(process.cwd(), "src/app/ops-login/page-client.tsx"), "utf8");
 const billingClientSource = fs.readFileSync(path.join(process.cwd(), "src/app/ops/rechnungen/page-client.tsx"), "utf8");
 
 function headers(values: Record<string, string>) {
@@ -36,11 +39,19 @@ test("billing webhook requires its dedicated secret", () => {
 });
 
 test("billing actions derive the audit actor from the personal Ops login", () => {
-  assert.match(actionRouteSource, /validateCloudflareAccess\(request\.headers\)/);
-  assert.match(actionRouteSource, /"email" in access && access\.email/);
+  assert.match(actionRouteSource, /resolvePersonalOpsRequestActor\(host, request\.headers\)/);
   assert.match(actionRouteSource, /personal_login_required/);
   assert.doesNotMatch(actionRouteSource, /input\.operatorName|parsed\.operatorName/);
   assert.doesNotMatch(billingClientSource, /neontrip-billing-operator|operatorName\.trim\(\)/);
   assert.doesNotMatch(billingClientSource, /operatorName:/);
   assert.match(billingClientSource, /showOperatorName=\{false\}/);
+});
+
+test("the internal Ops login binds its actor to a signed HttpOnly session", () => {
+  assert.match(opsSessionRouteSource, /applyOpsSession\(NextResponse\.json\(\{ ok: true \}\), body\.token, body\.operatorName\)/);
+  assert.match(opsLoginSource, /JSON\.stringify\(\{ token, operatorName: operatorName\.trim\(\) \}\)/);
+  assert.match(opsAuthSource, /const OPS_ACTOR_COOKIE = "neontrip_ops_actor"/);
+  assert.match(opsAuthSource, /createHmac\("sha256", sessionDigest\(token\)\)/);
+  assert.match(opsAuthSource, /httpOnly: true/);
+  assert.match(opsAuthSource, /resolveSignedSessionActor\(\)/);
 });
