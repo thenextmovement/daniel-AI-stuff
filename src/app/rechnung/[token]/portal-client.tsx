@@ -27,6 +27,12 @@ type InvoiceForm = {
   zip: string;
   city: string;
   country: string;
+  deliveryCompany: string;
+  deliveryName: string;
+  deliveryStreet: string;
+  deliveryZip: string;
+  deliveryCity: string;
+  deliveryCountry: string;
   vatId: string;
   invoiceEmail: string;
   projectNumber: string;
@@ -46,6 +52,12 @@ const EMPTY_FORM: InvoiceForm = {
   zip: "",
   city: "",
   country: "",
+  deliveryCompany: "",
+  deliveryName: "",
+  deliveryStreet: "",
+  deliveryZip: "",
+  deliveryCity: "",
+  deliveryCountry: "",
   vatId: "",
   invoiceEmail: "",
   projectNumber: "",
@@ -168,18 +180,30 @@ function countryLabel(value: unknown) {
   return COUNTRY_OPTIONS.find(([optionCode]) => optionCode === code)?.[1] || String(value || "–");
 }
 
-function formFromBilling(billing: Record<string, any>): InvoiceForm {
-  const address = billing.billing_address || {};
+function formFromBilling(billing: Record<string, any>, requested: Record<string, any> = {}): InvoiceForm {
+  const address = { ...(billing.billing_address || {}), ...(requested.billingAddress || {}) };
+  const delivery = { ...(billing.delivery_address || {}), ...(requested.deliveryAddress || {}) };
   return {
     company: String(address.company || ""),
     street: String(address.street || ""),
     zip: String(address.zip || ""),
     city: String(address.city || ""),
     country: normalizeCountry(address.country) || String(address.country || ""),
-    vatId: String(billing.vat_id || ""),
-    invoiceEmail: String(billing.customer_email || address.invoiceEmail || billing.customer?.invoiceEmail || billing.customer?.email || ""),
-    projectNumber: String(billing.project_number || address.projectNumber || ""),
+    deliveryCompany: String(delivery.company || ""),
+    deliveryName: String(delivery.name || [delivery.firstName, delivery.lastName].filter(Boolean).join(" ") || ""),
+    deliveryStreet: String(delivery.street || delivery.address1 || ""),
+    deliveryZip: String(delivery.zip || delivery.zipCode || ""),
+    deliveryCity: String(delivery.city || ""),
+    deliveryCountry: normalizeCountry(delivery.countryCode || delivery.country) || String(delivery.countryCode || delivery.country || ""),
+    vatId: String(requested.vatId ?? billing.vat_id ?? ""),
+    invoiceEmail: String(requested.invoiceEmail ?? billing.customer_email ?? address.invoiceEmail ?? billing.customer?.invoiceEmail ?? billing.customer?.email ?? ""),
+    projectNumber: String(requested.projectNumber ?? billing.project_number ?? address.projectNumber ?? ""),
   };
+}
+
+function pendingChanges(payload: PortalPayload) {
+  const pending = payload.changes?.find((change) => ["PENDING", "OPEN"].includes(String(change.status)));
+  return pending?.requested_changes && typeof pending.requested_changes === "object" ? pending.requested_changes : {};
 }
 
 function normalizedVatInput(value: string) {
@@ -198,7 +222,7 @@ function invoicePreview(billing: Record<string, any>, form: InvoiceForm, vatChec
     ? Math.round(Number(totals.vatAmount) * 100)
     : Math.max(0, storedGross - storedNet);
   const storedRate = storedNet > 0 && storedVat > 0 ? storedVat / storedNet : 0.19;
-  const deliveryCountry = normalizeCountry(billing.delivery_address?.country);
+  const deliveryCountry = normalizeCountry(form.deliveryCountry);
   const hasVerifiedVatId = vatCheck.status === "valid" && vatCheck.normalizedVatId === normalizedVatInput(form.vatId);
   const isThirdCountry = Boolean(deliveryCountry) && !EU_COUNTRIES.has(deliveryCountry);
   const isEuBusinessPreview = Boolean(deliveryCountry) && deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry) && hasVerifiedVatId;
@@ -247,9 +271,10 @@ export function BillingPortalClient({ token }: { token: string }) {
     setData(payload);
     setLoading(false);
     if (payload.ok && payload.billingCase) {
-      const nextForm = formFromBilling(payload.billingCase);
+      const requested = pendingChanges(payload);
+      const nextForm = formFromBilling(payload.billingCase, requested);
       setForm(nextForm);
-      const stored = payload.billingCase.vat_validation;
+      const stored = requested.vatValidation || payload.billingCase.vat_validation;
       setVatCheck(stored?.checked && stored?.valid && stored?.normalizedVatId === normalizedVatInput(nextForm.vatId)
         ? { status: "valid", normalizedVatId: stored.normalizedVatId, name: stored.name || stored.listedName || null, address: stored.address || stored.listedAddress || null, identityComparison: stored.identityComparison }
         : { status: "idle" });
@@ -257,13 +282,13 @@ export function BillingPortalClient({ token }: { token: string }) {
   }
 
   function cancelEditing() {
-    if (data?.billingCase) setForm(formFromBilling(data.billingCase));
+    if (data?.billingCase) setForm(formFromBilling(data.billingCase, pendingChanges(data)));
     setEditing(false);
     setMessage(null);
   }
 
   async function checkVatId() {
-    const deliveryCountry = normalizeCountry(data?.billingCase?.delivery_address?.country);
+    const deliveryCountry = normalizeCountry(form.deliveryCountry);
     const needsCheck = Boolean(form.vatId.trim()) && deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry);
     if (!needsCheck) {
       setVatCheck({ status: "idle" });
@@ -274,7 +299,7 @@ export function BillingPortalClient({ token }: { token: string }) {
     const response = await fetch(`/api/rechnung/${encodeURIComponent(token)}/vat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vatId: form.vatId, company: form.company }),
+      body: JSON.stringify({ vatId: form.vatId, company: form.company, deliveryCountry }),
     });
     const payload = await response.json().catch(() => null);
     if (response.ok && payload?.validation?.valid) {
@@ -299,7 +324,7 @@ export function BillingPortalClient({ token }: { token: string }) {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!editing || data?.readOnly) return;
-    const deliveryCountry = normalizeCountry(data?.billingCase?.delivery_address?.country);
+    const deliveryCountry = normalizeCountry(form.deliveryCountry);
     const needsVatCheck = Boolean(form.vatId.trim()) && deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry);
     if (needsVatCheck && (vatCheck.status !== "valid" || vatCheck.normalizedVatId !== normalizedVatInput(form.vatId))) {
       setMessage("Bitte prüfen Sie die USt-IdNr., bevor Sie die Rechnungsdaten absenden.");
@@ -321,6 +346,14 @@ export function BillingPortalClient({ token }: { token: string }) {
           city: form.city,
           country: form.country,
         },
+        deliveryAddress: {
+          company: form.deliveryCompany,
+          name: form.deliveryName,
+          street: form.deliveryStreet,
+          zip: form.deliveryZip,
+          city: form.deliveryCity,
+          country: form.deliveryCountry,
+        },
         vatId: form.vatId,
         invoiceEmail: form.invoiceEmail,
         projectNumber: form.projectNumber,
@@ -335,6 +368,8 @@ export function BillingPortalClient({ token }: { token: string }) {
           ? "Die finale Rechnung wurde bereits erstellt. Änderungen sind nicht mehr möglich."
           : payload?.error === "vat_id_invalid" || payload?.error === "vat_id_format_invalid" || payload?.error === "vat_id_country_mismatch"
             ? "Diese USt-IdNr. ist für das Lieferland nicht gültig. Bitte prüfen Sie die Eingabe."
+            : payload?.error === "billing_address_invalid" || payload?.error === "delivery_address_invalid"
+              ? "Bitte füllen Sie Rechnungs- und Lieferanschrift vollständig aus und wählen Sie jeweils ein Land."
             : payload?.error === "vat_validation_unavailable"
               ? "Die USt-IdNr. konnte gerade nicht beim EU-Dienst geprüft werden. Bitte versuchen Sie es erneut."
               : "Die Rechnungsdaten konnten nicht gesendet werden. Bitte versuchen Sie es erneut oder kontaktieren Sie NEONTRIP.",
@@ -435,23 +470,23 @@ export function BillingPortalClient({ token }: { token: string }) {
             <fieldset disabled={Boolean(data.readOnly)} className="mt-6 grid gap-4 sm:grid-cols-2">
               <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
                 <span>Firma / Rechnungsempfänger</span>
-                <input value={form.company} readOnly={!editing} onChange={(event) => setForm({ ...form, company: event.target.value })} className={fieldClass(editing)} />
+                <input required={editing} value={form.company} readOnly={!editing} onChange={(event) => { setForm({ ...form, company: event.target.value }); setVatCheck({ status: "idle" }); }} className={fieldClass(editing)} />
               </label>
               <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
                 <span>Straße und Hausnummer</span>
-                <input value={form.street} readOnly={!editing} onChange={(event) => setForm({ ...form, street: event.target.value })} className={fieldClass(editing)} />
+                <input required={editing} value={form.street} readOnly={!editing} onChange={(event) => setForm({ ...form, street: event.target.value })} className={fieldClass(editing)} />
               </label>
               <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
                 <span>PLZ</span>
-                <input value={form.zip} readOnly={!editing} onChange={(event) => setForm({ ...form, zip: event.target.value })} className={fieldClass(editing)} />
+                <input required={editing} value={form.zip} readOnly={!editing} onChange={(event) => setForm({ ...form, zip: event.target.value })} className={fieldClass(editing)} />
               </label>
               <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
                 <span>Ort</span>
-                <input value={form.city} readOnly={!editing} onChange={(event) => setForm({ ...form, city: event.target.value })} className={fieldClass(editing)} />
+                <input required={editing} value={form.city} readOnly={!editing} onChange={(event) => setForm({ ...form, city: event.target.value })} className={fieldClass(editing)} />
               </label>
               <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
                 <span>Rechnungsland</span>
-                <select value={form.country} disabled={!editing || Boolean(data.readOnly)} onChange={(event) => setForm({ ...form, country: event.target.value })} className={fieldClass(editing)}>
+                <select required={editing} value={form.country} disabled={!editing || Boolean(data.readOnly)} onChange={(event) => setForm({ ...form, country: event.target.value })} className={fieldClass(editing)}>
                   <option value="">Land auswählen</option>
                   {COUNTRY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
                 </select>
@@ -472,7 +507,38 @@ export function BillingPortalClient({ token }: { token: string }) {
               </label>
               <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
                 <span>Rechnungs-E-Mail</span>
-                <input type="email" value={form.invoiceEmail} readOnly={!editing} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} className={fieldClass(editing)} />
+                <input required={editing} type="email" value={form.invoiceEmail} readOnly={!editing} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} className={fieldClass(editing)} />
+              </label>
+              <div className="mt-3 border-t border-stone-200 pt-5 sm:col-span-2">
+                <p className="text-sm font-semibold text-stone-950">Lieferadresse</p>
+                <p className="mt-1 text-xs leading-5 text-stone-500">Das Lieferland bestimmt die steuerliche Behandlung. Eine Änderung wird deshalb gemeinsam mit der USt-ID geprüft.</p>
+              </div>
+              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
+                <span>Firma am Lieferort</span>
+                <input value={form.deliveryCompany} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryCompany: event.target.value })} className={fieldClass(editing)} />
+              </label>
+              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
+                <span>Ansprechpartner</span>
+                <input value={form.deliveryName} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryName: event.target.value })} className={fieldClass(editing)} />
+              </label>
+              <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
+                <span>Lieferstraße und Hausnummer</span>
+                <input required={editing} value={form.deliveryStreet} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryStreet: event.target.value })} className={fieldClass(editing)} />
+              </label>
+              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
+                <span>Liefer-PLZ</span>
+                <input required={editing} value={form.deliveryZip} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryZip: event.target.value })} className={fieldClass(editing)} />
+              </label>
+              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
+                <span>Lieferort</span>
+                <input required={editing} value={form.deliveryCity} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryCity: event.target.value })} className={fieldClass(editing)} />
+              </label>
+              <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
+                <span>Lieferland</span>
+                <select required={editing} value={form.deliveryCountry} disabled={!editing || Boolean(data.readOnly)} onChange={(event) => { setForm({ ...form, deliveryCountry: event.target.value }); setVatCheck({ status: "idle" }); }} className={fieldClass(editing)}>
+                  <option value="">Land auswählen</option>
+                  {COUNTRY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+                </select>
               </label>
             </fieldset>
 
@@ -507,7 +573,7 @@ export function BillingPortalClient({ token }: { token: string }) {
             </dl>
             <div className="mt-5 rounded-2xl bg-[#f7f4ee] p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">Steuerlich maßgeblich</p>
-              <p className="mt-2 text-sm font-semibold">Lieferland: {countryLabel(billing.delivery_address?.country)}</p>
+              <p className="mt-2 text-sm font-semibold">Lieferland: {countryLabel(form.deliveryCountry)}</p>
               <p className="mt-2 text-xs leading-5 text-stone-500">Das Lieferland ist für die steuerliche Behandlung maßgeblich, nicht das Rechnungsland.</p>
             </div>
             {preview.isEuBusinessPreview ? <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">Die USt-IdNr. wurde beim EU-Dienst bestätigt. Nach Freigabe durch NEONTRIP wird die Rechnung ohne Umsatzsteuer ausgestellt.</p> : null}

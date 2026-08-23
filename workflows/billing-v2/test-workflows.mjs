@@ -224,6 +224,9 @@ test("Shopify tax sync is lease-driven, fail-closed and never emails customers",
   assert.match(source, /notifyCustomer/);
   assert.match(source, /false/);
   assert.match(source, /EU_REVERSE_CHARGE_EXEMPTION_RULE/);
+  assert.match(source, /NEONTRIP-LIEFERADRESSE/);
+  assert.match(source, /Lieferadresse über das Rechnungsportal geändert/);
+  assert.match(source, /order \{ id note \}/);
   assert.match(source, /shopify_tax_sync_order_paid_or_fulfilled/);
   assert.match(source, /shopify_tax_sync_total_mismatch/);
   assert.match(source, /CONFIGURE_NEONTRIP_SHOPIFY_ADMIN/);

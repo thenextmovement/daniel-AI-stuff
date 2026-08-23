@@ -293,7 +293,20 @@ const address = value => {
   return result;
 };
 const exemptions = taxExempt && ctx.billingCase.tax_treatment === 'EU_B2B_REVERSE_CHARGE' ? ['EU_REVERSE_CHARGE_EXEMPTION_RULE'] : [];
-return [{json:{...ctx,order,customerId,requiresEdit,expectedTotalCents,expectedTaxCents,caseLines,activeLines,customerMutation:{query:'mutation BillingSyncCustomerTax($customer: CustomerInput!, $customerId: ID!, $exemptions: [TaxExemption!]!, $order: OrderInput!) { replace: customerReplaceTaxExemptions(customerId:$customerId,taxExemptions:$exemptions) { customer { id taxExempt taxExemptions } userErrors { field message } } customerUpdate(input:$customer) { customer { id taxExempt taxExemptions } userErrors { field message } } orderUpdate(input:$order) { order { id } userErrors { field message } } }',variables:{customerId,exemptions,customer:{id:customerId,taxExempt},order:{id:order.id,billingAddress:address(ctx.billingCase.billing_address),shippingAddress:address(ctx.billingCase.delivery_address)}}}}}];`;
+const deliveryChange = ctx.job.payload?.deliveryAddressChange;
+const formatAddress = value => {
+  const x=value||{};
+  return [x.company||x.name,x.street||x.address1,[x.zip||x.zipCode,x.city].filter(Boolean).join(' '),x.countryCode||x.country].filter(Boolean).map(v=>String(v).trim()).join(', ').slice(0,700);
+};
+let orderNote=String(order.note||'');
+if(deliveryChange?.changeRequestId){
+  const marker='[NEONTRIP-LIEFERADRESSE:'+String(deliveryChange.changeRequestId)+']';
+  if(!orderNote.includes(marker)){
+    const block=[marker,'Lieferadresse über das Rechnungsportal geändert.','Vorher: '+formatAddress(deliveryChange.previous),'Neu: '+formatAddress(deliveryChange.next)].join('\\n');
+    orderNote=(block+(orderNote?'\\n\\n'+orderNote:'')).slice(0,5000);
+  }
+}
+return [{json:{...ctx,order,customerId,requiresEdit,expectedTotalCents,expectedTaxCents,caseLines,activeLines,customerMutation:{query:'mutation BillingSyncCustomerTax($customer: CustomerInput!, $customerId: ID!, $exemptions: [TaxExemption!]!, $order: OrderInput!) { replace: customerReplaceTaxExemptions(customerId:$customerId,taxExemptions:$exemptions) { customer { id taxExempt taxExemptions } userErrors { field message } } customerUpdate(input:$customer) { customer { id taxExempt taxExemptions } userErrors { field message } } orderUpdate(input:$order) { order { id note } userErrors { field message } } }',variables:{customerId,exemptions,customer:{id:customerId,taxExempt},order:{id:order.id,note:orderNote,billingAddress:address(ctx.billingCase.billing_address),shippingAddress:address(ctx.billingCase.delivery_address)}}}}}];`;
 
 const shopifyTaxCheckCustomerCode = String.raw`
 const ctx=$('Analyze Shopify Order').first().json;
@@ -358,7 +371,7 @@ const shopifyTaxSyncWorkflow = {
     node("tax-sync-claim","Claim Shopify Tax Sync Job","n8n-nodes-base.httpRequest",[-780,0],{method:"POST",url:"={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}",authentication:"genericCredentialType",genericAuthType:"httpHeaderAuth",sendBody:true,specifyBody:"json",jsonBody:"={{ {worker:$json.worker,jobTypes:['SYNC_SHOPIFY_TAX'],leaseSeconds:300} }}",options:{timeout:30000,response:{response:{fullResponse:true,responseFormat:"json"}}}},{credentials:opsCredentials,onError:"continueErrorOutput"}),
     node("tax-sync-prepare","Prepare Shopify Tax Sync","n8n-nodes-base.code",[-560,0],{jsCode:shopifyTaxPrepareCode},{onError:"continueErrorOutput"}),
     node("tax-sync-has-job","Has Shopify Tax Sync Job","n8n-nodes-base.if",[-340,0],{conditions:{options:{typeValidation:"strict"},conditions:[{leftValue:"={{ $json.hasJob }}",rightValue:true,operator:{type:"boolean",operation:"true",singleValue:true}}],combinator:"and"}}),
-    node("tax-sync-read","Read Shopify Order","n8n-nodes-base.httpRequest",[-120,-80],{method:"POST",url:"https://galaxybuzzdk.myshopify.com/admin/api/2026-10/graphql.json",authentication:"genericCredentialType",genericAuthType:"httpHeaderAuth",sendBody:true,specifyBody:"json",jsonBody:"={{ {query:'query BillingTaxSyncOrder($id:ID!){order(id:$id){id name displayFinancialStatus displayFulfillmentStatus customer{id} currentTotalPriceSet{shopMoney{amount currencyCode}} totalTaxSet{shopMoney{amount currencyCode}} lineItems(first:100){nodes{id title currentQuantity unfulfilledQuantity}}}}',variables:{id:$json.billingCase.shopify_order_id}} }}",options:{timeout:30000,response:{response:{fullResponse:true,responseFormat:"json"}}}},{credentials:shopifyCredentials,onError:"continueErrorOutput"}),
+    node("tax-sync-read","Read Shopify Order","n8n-nodes-base.httpRequest",[-120,-80],{method:"POST",url:"https://galaxybuzzdk.myshopify.com/admin/api/2026-10/graphql.json",authentication:"genericCredentialType",genericAuthType:"httpHeaderAuth",sendBody:true,specifyBody:"json",jsonBody:"={{ {query:'query BillingTaxSyncOrder($id:ID!){order(id:$id){id name note displayFinancialStatus displayFulfillmentStatus customer{id} currentTotalPriceSet{shopMoney{amount currencyCode}} totalTaxSet{shopMoney{amount currencyCode}} lineItems(first:100){nodes{id title currentQuantity unfulfilledQuantity}}}}',variables:{id:$json.billingCase.shopify_order_id}} }}",options:{timeout:30000,response:{response:{fullResponse:true,responseFormat:"json"}}}},{credentials:shopifyCredentials,onError:"continueErrorOutput"}),
     node("tax-sync-analyze","Analyze Shopify Order","n8n-nodes-base.code",[100,-80],{jsCode:shopifyTaxAnalyzeCode},{onError:"continueErrorOutput"}),
     node("tax-sync-customer","Sync Shopify Customer and Addresses","n8n-nodes-base.httpRequest",[320,-80],{method:"POST",url:"https://galaxybuzzdk.myshopify.com/admin/api/2026-10/graphql.json",authentication:"genericCredentialType",genericAuthType:"httpHeaderAuth",sendBody:true,specifyBody:"json",jsonBody:"={{ $json.customerMutation }}",options:{timeout:30000,response:{response:{fullResponse:true,responseFormat:"json"}}}},{credentials:shopifyCredentials,onError:"continueErrorOutput"}),
     node("tax-sync-check-customer","Check Shopify Customer Sync","n8n-nodes-base.code",[540,-80],{jsCode:shopifyTaxCheckCustomerCode},{onError:"continueErrorOutput"}),

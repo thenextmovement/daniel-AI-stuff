@@ -54,6 +54,10 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(portal, /USt-ID prüfen/);
   assert.match(portal, /vatCheck\.status === "valid"/);
   assert.match(portal, /Die USt-IdNr\. wurde beim EU-Dienst bestätigt/);
+  assert.match(portal, /deliveryAddress/);
+  assert.match(portal, /Lieferstraße und Hausnummer/);
+  assert.match(portal, /pendingChanges\(payload\)/);
+  assert.match(portal, /requested\.vatValidation \|\| payload\.billingCase\.vat_validation/);
   assert.doesNotMatch(portal, /const hasVatId = form\.vatId\.trim\(\)\.length > 0/);
   assert.match(middleware, /rechnung\.neontrip\.de/);
   assert.doesNotMatch(portal, /Kauf auf Rechnung anfragen/);
@@ -66,5 +70,6 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(download, /easybill\.de\/rest\/v1\/documents/);
   const repository = read("src/lib/ops/billing/repository.ts");
   assert.match(repository, /selectCurrentBillingDocuments/);
+  assert.match(repository, /id,status,requested_changes,created_at,reviewed_at/);
   assert.doesNotMatch(repository, /id: `eq\.\$\{documentId\}`/);
 });

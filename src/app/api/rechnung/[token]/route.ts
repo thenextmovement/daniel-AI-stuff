@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBillingPortal, submitBillingPortalChange } from "@/lib/ops/billing/repository";
 import { sanitizePortalChangeBody } from "@/lib/ops/billing/portal-change";
-import { requiresEuVatValidation, validateVatIdWithVies, VatValidationError } from "@/lib/ops/billing/vies";
+import { normalizeCountryCode, requiresEuVatValidation, validateVatIdWithVies, VatValidationError } from "@/lib/ops/billing/vies";
 
 export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store, private", "X-Robots-Tag": "noindex, nofollow" };
 
 function validToken(token: string) {
   return /^[A-Za-z0-9_-]{40,100}$/.test(token);
+}
+
+function validateRequiredAddress(value: unknown, errorCode: string) {
+  const address = value && typeof value === "object" ? value as Record<string, unknown> : null;
+  const country = normalizeCountryCode(address?.country);
+  if (!address || !String(address.street || "").trim() || !String(address.zip || "").trim() || !String(address.city || "").trim() || !/^[A-Z]{2}$/.test(country)) {
+    throw new Error(errorCode);
+  }
+  address.country = country;
 }
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
@@ -28,16 +37,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   let sanitized: ReturnType<typeof sanitizePortalChangeBody>;
   try {
     sanitized = sanitizePortalChangeBody(body);
+    validateRequiredAddress(sanitized.changes.billingAddress, "billing_address_invalid");
+    validateRequiredAddress(sanitized.changes.deliveryAddress, "delivery_address_invalid");
   } catch (error) {
     const code = error instanceof Error ? error.message : "invalid_portal_change";
-    return NextResponse.json({ ok: false, error: code }, { status: code === "no_allowed_changes" ? 422 : 400, headers: NO_STORE });
+    return NextResponse.json({ ok: false, error: code }, { status: ["no_allowed_changes", "billing_address_invalid", "delivery_address_invalid"].includes(code) ? 422 : 400, headers: NO_STORE });
   }
   try {
     const vatId = sanitized.changes.vatId;
-    if (requiresEuVatValidation(portal.billingCase.delivery_address?.country, vatId)) {
+    const deliveryAddress = sanitized.changes.deliveryAddress as Record<string, unknown> | undefined;
+    const deliveryCountry = deliveryAddress?.country || portal.billingCase.delivery_address?.country;
+    if (requiresEuVatValidation(deliveryCountry, vatId)) {
       const billingAddress = sanitized.changes.billingAddress as Record<string, unknown> | undefined;
       const validation = await validateVatIdWithVies({
-        deliveryCountry: portal.billingCase.delivery_address?.country,
+        deliveryCountry,
         vatId,
         company: billingAddress?.company || portal.billingCase.billing_address?.company,
       });

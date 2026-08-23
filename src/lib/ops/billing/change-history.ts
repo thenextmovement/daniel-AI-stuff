@@ -1,5 +1,6 @@
 export type BillingHistoryState = {
   billingAddress: Record<string, unknown>;
+  deliveryAddress: Record<string, unknown>;
   vatId: unknown;
   invoiceEmail: unknown;
   projectNumber: unknown;
@@ -12,6 +13,7 @@ function record(value: unknown) {
 function stateFromCurrent(billingCase: Record<string, unknown>): BillingHistoryState {
   return {
     billingAddress: record(billingCase.billing_address),
+    deliveryAddress: record(billingCase.delivery_address),
     vatId: billingCase.vat_id ?? null,
     invoiceEmail: billingCase.customer_email ?? null,
     projectNumber: billingCase.project_number ?? null,
@@ -22,6 +24,7 @@ function stateFromOld(value: unknown, fallback: BillingHistoryState): BillingHis
   const old = record(value);
   return {
     billingAddress: Object.keys(record(old.billingAddress)).length ? record(old.billingAddress) : fallback.billingAddress,
+    deliveryAddress: Object.keys(record(old.deliveryAddress)).length ? record(old.deliveryAddress) : fallback.deliveryAddress,
     vatId: valueOrFallback(old, "vatId", fallback.vatId),
     invoiceEmail: Object.prototype.hasOwnProperty.call(old, "customerEmail")
       ? old.customerEmail
@@ -34,6 +37,7 @@ function stateAfterChange(previous: BillingHistoryState, value: unknown): Billin
   const change = record(value);
   return {
     billingAddress: Object.keys(record(change.billingAddress)).length ? record(change.billingAddress) : previous.billingAddress,
+    deliveryAddress: Object.keys(record(change.deliveryAddress)).length ? record(change.deliveryAddress) : previous.deliveryAddress,
     vatId: valueOrFallback(change, "vatId", previous.vatId),
     invoiceEmail: valueOrFallback(change, "invoiceEmail", previous.invoiceEmail),
     projectNumber: valueOrFallback(change, "projectNumber", previous.projectNumber),
@@ -68,6 +72,7 @@ export function billingChangeBaselines(
     if (eventOld !== undefined) state = stateFromOld(eventOld, state);
     result[id] = {
       billingAddress: { ...state.billingAddress },
+      deliveryAddress: { ...state.deliveryAddress },
       vatId: state.vatId,
       invoiceEmail: state.invoiceEmail,
       projectNumber: state.projectNumber,
@@ -83,4 +88,3 @@ export function billingChangeBaselines(
 function valueOrFallback(source: Record<string, unknown>, key: string, fallback: unknown) {
   return Object.prototype.hasOwnProperty.call(source, key) ? source[key] : fallback;
 }
-
