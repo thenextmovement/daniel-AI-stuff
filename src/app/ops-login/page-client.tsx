@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { OpsLoginCard } from "../ops/ops-login-card";
 import type { OpsAppKey } from "../ops/ops-app-switcher";
-
-const operatorNameKey = "neontrip-ops-operator";
 
 function activeAppFromPath(path: string): OpsAppKey {
   if (path.startsWith("/ops/eu-supplier-3d-signs")) return "euSupplierQuotes";
@@ -20,38 +18,16 @@ function activeAppFromPath(path: string): OpsAppKey {
 }
 
 export function OpsLoginPageClient({ nextPath }: { nextPath: string }) {
-  const [operatorName, setOperatorName] = useState("");
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(operatorNameKey);
-      if (raw) setOperatorName(raw);
-    } catch {
-      // localStorage can be unavailable in hardened browser contexts.
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!operatorName) return;
-    try {
-      window.localStorage.setItem(operatorNameKey, operatorName);
-    } catch {
-      // localStorage can be unavailable in hardened browser contexts.
-    }
-  }, [operatorName]);
 
   async function login() {
     setError(null);
-    if (operatorName.trim().length < 2) {
-      setError("Bitte zuerst Ihren Namen eingeben.");
-      return;
-    }
     const response = await fetch("/api/ops/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, operatorName: operatorName.trim() }),
+      body: JSON.stringify({ token }),
     });
     if (!response.ok) {
       setError("Ops-Login fehlgeschlagen.");
@@ -66,11 +42,10 @@ export function OpsLoginPageClient({ nextPath }: { nextPath: string }) {
       title="Interner Login"
       description="Melde dich mit deinem internen Zugang an. Danach wirst du automatisch in den gewählten Bereich weitergeleitet."
       activeApp={activeAppFromPath(nextPath)}
-      operatorName={operatorName}
       password={token}
       error={error}
       buttonLabel="Einloggen"
-      onOperatorNameChange={setOperatorName}
+      showOperatorName={false}
       onPasswordChange={setToken}
       onSubmit={login}
     />
