@@ -9,11 +9,12 @@ type OpsLoginCardProps = {
   eyebrow?: string;
   description?: string;
   activeApp?: OpsAppKey;
-  operatorName: string;
+  operatorName?: string;
   password: string;
   error?: string | null;
   buttonLabel?: string;
-  onOperatorNameChange: (value: string) => void;
+  onOperatorNameChange?: (value: string) => void;
+  showOperatorName?: boolean;
   onPasswordChange: (value: string) => void;
   onSubmit: () => void | Promise<void>;
 };
@@ -23,11 +24,12 @@ export function OpsLoginCard({
   eyebrow = "NEONTRIP Ops",
   description = "Melde dich mit deinem internen Zugang an. Die Sitzung wird als sicherer Cookie gespeichert.",
   activeApp = "records",
-  operatorName,
+  operatorName = "",
   password,
   error,
   buttonLabel = "Anmelden",
-  onOperatorNameChange,
+  onOperatorNameChange = () => {},
+  showOperatorName = true,
   onPasswordChange,
   onSubmit,
 }: OpsLoginCardProps) {
@@ -68,7 +70,7 @@ export function OpsLoginCard({
             </div>
 
             <div className="mt-8 grid gap-4">
-              <label className="grid gap-2">
+              {showOperatorName ? <label className="grid gap-2">
                 <span className="text-sm font-medium text-stone-800">Name</span>
                 <span className="relative block">
                   <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
@@ -80,7 +82,7 @@ export function OpsLoginCard({
                     autoComplete="username"
                   />
                 </span>
-              </label>
+              </label> : null}
 
               <div className="grid gap-2">
                 <label htmlFor="ops-password" className="text-sm font-medium text-stone-800">

@@ -160,7 +160,6 @@ function ChangeRequestReview({ change, billingCase, busy, onAction }: {
 export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, detailCaseId }: { initialHasSession: boolean; opsEnabled: boolean; localMode: boolean; detailCaseId?: string }) {
   const [hasSession, setHasSession] = useState(initialHasSession);
   const [password, setPassword] = useState("");
-  const [operatorName, setOperatorName] = useState("");
   const [cases, setCases] = useState<BillingCase[]>([]);
   const [selected, setSelected] = useState<Detail | null>(null);
   const [query, setQuery] = useState("");
@@ -172,8 +171,6 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, det
   const [manualReason, setManualReason] = useState("Manuelle Freigabe durch Rechnungsabteilung");
   const [deliveredAt, setDeliveredAt] = useState(() => new Date().toISOString().slice(0, 16));
 
-  useEffect(() => { try { setOperatorName(localStorage.getItem("neontrip-billing-operator") || ""); } catch {} }, []);
-  useEffect(() => { if (operatorName) localStorage.setItem("neontrip-billing-operator", operatorName); }, [operatorName]);
   useEffect(() => {
     if (!(hasSession || localMode)) return;
     if (detailCaseId) {
@@ -217,13 +214,12 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, det
 
   async function runAction(action: string, payload: Record<string, unknown> = {}) {
     if (!selected) return;
-    if (!operatorName.trim()) return setError("Bitte zuerst oben Ihren Namen für das Änderungsprotokoll eintragen.");
     setActionBusy(action); setError(null); setNotice(null);
     try {
       const response = await fetch(`/api/ops/billing/${selected.billingCase.id}/actions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, payload, operatorName: operatorName.trim(), idempotencyKey: `ops:${selected.billingCase.id}:${action}:${crypto.randomUUID()}` }),
+        body: JSON.stringify({ action, payload, idempotencyKey: `ops:${selected.billingCase.id}:${action}:${crypto.randomUUID()}` }),
       });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Aktion konnte nicht gespeichert werden.");
@@ -235,7 +231,7 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, det
   }
 
   if (!opsEnabled) return <main className="min-h-screen bg-stone-100 p-8 text-stone-700">Ops Portal ist nicht konfiguriert.</main>;
-  if (!hasSession && !localMode) return <OpsLoginCard eyebrow="Rechnungen" title="Rechnungsabteilung anmelden" description="Pro-forma, Rechnungen, Zahlungen und Korrekturen sind nur intern sichtbar." activeApp="billing" operatorName={operatorName} password={password} error={error} buttonLabel="Einloggen" onOperatorNameChange={setOperatorName} onPasswordChange={setPassword} onSubmit={login} />;
+  if (!hasSession && !localMode) return <OpsLoginCard eyebrow="Rechnungen" title="Rechnungsabteilung anmelden" description="Melde dich mit deinem persönlichen internen Zugang an. Aktionen werden automatisch deinem Login zugeordnet." activeApp="billing" showOperatorName={false} password={password} error={error} buttonLabel="Einloggen" onPasswordChange={setPassword} onSubmit={login} />;
 
   return <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
     <div className={`${opsPageContainerClass} space-y-6`}>

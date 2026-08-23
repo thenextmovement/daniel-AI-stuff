@@ -11,19 +11,18 @@ function parseActionBody(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const input = value as Record<string, unknown>;
   const action = String(input.action || "") as BillingOpsAction;
-  const operatorName = typeof input.operatorName === "string" ? input.operatorName.trim() : undefined;
   const idempotencyKey = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
   const payload = input.payload && typeof input.payload === "object" && !Array.isArray(input.payload)
     ? input.payload as Record<string, unknown>
     : {};
-  if (!BILLING_ACTIONS.has(action) || idempotencyKey.length < 8 || idempotencyKey.length > 200 || (operatorName && (operatorName.length < 2 || operatorName.length > 120))) return null;
-  return { action, payload, operatorName, idempotencyKey };
+  if (!BILLING_ACTIONS.has(action) || idempotencyKey.length < 8 || idempotencyKey.length > 200) return null;
+  return { action, payload, idempotencyKey };
 }
 
-async function billingActor(request: NextRequest, operatorName?: string) {
+async function billingActor(request: NextRequest, host?: string | null) {
+  if (isOpsPortalBypassed(host)) return "local-ops";
   const access = await validateCloudflareAccess(request.headers);
-  if (access.ok) return "email" in access ? access.email : `service:${access.serviceTokenId}`;
-  return String(operatorName || "").trim();
+  return access.ok && "email" in access && access.email ? access.email : null;
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ caseId: string }> }) {
@@ -34,8 +33,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!/^[0-9a-f-]{36}$/i.test(caseId)) return NextResponse.json({ ok: false, error: "invalid_case_id" }, { status: 400 });
   const parsed = parseActionBody(await request.json().catch(() => null));
   if (!parsed) return NextResponse.json({ ok: false, error: "invalid_action" }, { status: 422 });
-  const actor = await billingActor(request, parsed.operatorName);
-  if (!actor) return NextResponse.json({ ok: false, error: "operator_required" }, { status: 422 });
+  const actor = await billingActor(request, host);
+  if (!actor) return NextResponse.json({ ok: false, error: "personal_login_required" }, { status: 403 });
   try {
     const changeRequestId = typeof parsed.payload.changeRequestId === "string" ? parsed.payload.changeRequestId : "";
     if (["SAVE_CHANGE_REQUEST_DRAFT", "APPLY_CHANGE_REQUEST", "REJECT_CHANGE_REQUEST"].includes(parsed.action) && !/^[0-9a-f-]{36}$/i.test(changeRequestId)) {
