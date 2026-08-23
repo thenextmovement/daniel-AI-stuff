@@ -18,12 +18,19 @@ test("Ops exposes a dedicated NEONTRIP billing department", () => {
   assert.match(client, /Zugestellt/);
   assert.match(client, /Rechnung jetzt erstellen/);
   assert.match(client, /Audit-Log protokolliert/);
-  assert.match(client, /Rechnungsversand/);
+  assert.match(client, /Rechnungs-E-Mail/);
   assert.match(client, /project_number/);
   assert.match(client, /Anfrage anpassen/);
   assert.match(client, /Akzeptieren/);
   assert.match(client, /Ablehnen/);
   assert.match(client, /Erst diese endgültige Entscheidung versendet genau eine E-Mail/);
+  assert.match(client, /Zur Rechnungsübersicht/);
+  assert.match(client, /id="billing-payment-method"/);
+  assert.match(client, /subtotal_net_cents/);
+  assert.match(client, /vat_cents/);
+  assert.match(client, /Gesamtbetrag/);
+  assert.match(client, /lg:grid-cols-\[minmax\(0,1fr\)_22rem\]/);
+  assert.match(client, /Weitere interne Aktionen/);
 });
 
 test("customer portal is invoice-only and becomes read-only after final invoice", () => {
