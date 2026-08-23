@@ -136,6 +136,11 @@ function ChangeRequestReview({ change, billingCase, busy, onAction }: {
     setEditing(false);
   }
 
+  function cancelEditing() {
+    setForm(changeForm(change, billingCase));
+    setEditing(false);
+  }
+
   const decisionLabel = status === "PENDING" ? "Gewünscht" : "Entschieden";
 
   return <article className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_8px_24px_rgba(28,25,23,0.04)]">
@@ -147,7 +152,6 @@ function ChangeRequestReview({ change, billingCase, busy, onAction }: {
         </div>
         {change.reviewed_by ? <p className="mt-1 text-xs text-stone-500">Bearbeitet von {String(change.reviewed_by)}</p> : <p className="mt-1 text-xs text-stone-500">Bitte Änderungen prüfen und anschließend entscheiden.</p>}
       </div>
-      {status === "PENDING" ? <button type="button" onClick={() => setEditing((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-800 transition hover:border-stone-400"><Pencil className="h-4 w-4" /> {editing ? "Bearbeitung schließen" : "Anfrage anpassen"}</button> : null}
     </div>
     {!editing ? <div>
       <div className="hidden grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-stone-200 bg-[#faf8f5] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-500 md:grid"><span>Feld</span><span>Bisher</span><span>{decisionLabel}</span></div>
@@ -165,12 +169,13 @@ function ChangeRequestReview({ change, billingCase, busy, onAction }: {
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Umsatzsteuer-ID<input className={field} value={form.vatId} onChange={(event) => setForm({ ...form, vatId: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Rechnungs-E-Mail<input type="email" required className={field} value={form.invoiceEmail} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Projektnummer<input className={field} value={form.projectNumber} onChange={(event) => setForm({ ...form, projectNumber: event.target.value })} /></label>
-      <div className="flex flex-wrap items-center gap-3 border-t border-stone-200 pt-4 md:col-span-2"><button disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Save className="h-4 w-4" /> Intern speichern</button><p className="text-xs text-stone-500">Beim internen Speichern wird keine E-Mail versendet.</p></div>
+      <div className="flex flex-wrap items-center gap-2 border-t border-stone-200 pt-4 md:col-span-2"><button disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50"><Save className="h-4 w-4" /> Änderungen speichern</button><button type="button" disabled={Boolean(busy)} onClick={cancelEditing} className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-800 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50">Abbrechen</button><p className="w-full text-xs text-stone-500">Beim internen Speichern wird keine E-Mail versendet.</p></div>
     </form>}
-    {status === "PENDING" ? <div className="flex flex-wrap items-center gap-2 border-t border-stone-200 bg-white px-5 py-4">
-      <button disabled={Boolean(busy)} onClick={() => void onAction("APPLY_CHANGE_REQUEST", { changeRequestId: change.id, approvedChanges: changePayload(form), note: "In Ops akzeptiert" })} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50">Akzeptieren</button>
-      <button disabled={Boolean(busy)} onClick={() => void onAction("REJECT_CHANGE_REQUEST", { changeRequestId: change.id, note: "In Ops abgelehnt" })} className="rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-800 transition hover:bg-rose-50 disabled:opacity-50">Ablehnen</button>
-      <p className="w-full text-xs leading-5 text-stone-500">Erst diese endgültige Entscheidung versendet genau eine E-Mail an den Kunden.</p>
+    {status === "PENDING" ? <div className="grid grid-cols-1 gap-2 border-t border-stone-200 bg-white px-5 py-4 sm:grid-cols-3">
+      <button disabled={Boolean(busy) || editing} onClick={() => void onAction("APPLY_CHANGE_REQUEST", { changeRequestId: change.id, approvedChanges: changePayload(form), note: "In Ops akzeptiert" })} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40">Annehmen</button>
+      <button disabled={Boolean(busy) || editing} onClick={() => void onAction("REJECT_CHANGE_REQUEST", { changeRequestId: change.id, note: "In Ops abgelehnt" })} className="rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-800 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40">Ablehnen</button>
+      <button type="button" disabled={Boolean(busy) || editing} onClick={() => setEditing(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-800 transition hover:border-stone-400 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"><Pencil className="h-4 w-4" /> {editing ? "Daten werden bearbeitet" : "Daten ändern"}</button>
+      <p className="text-xs leading-5 text-stone-500 sm:col-span-3">Erst diese endgültige Entscheidung versendet genau eine E-Mail an den Kunden.</p>
     </div> : null}
   </article>;
 }
