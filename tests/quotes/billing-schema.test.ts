@@ -9,6 +9,8 @@ const actions = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20
 const actionsRollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260819180000_create_billing_case_actions_rollback.sql"), "utf8");
 const portalIngest = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260820133000_add_billing_portal_url_to_initial_job.sql"), "utf8");
 const portalIngestRollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260820133000_add_billing_portal_url_to_initial_job_rollback.sql"), "utf8");
+const recoveryIncident = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260824002000_resolve_recovered_billing_job_incidents.sql"), "utf8");
+const recoveryIncidentRollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260824002000_resolve_recovered_billing_job_incidents_rollback.sql"), "utf8");
 
 test("billing schema has source-of-truth ledgers and unique effect keys", () => {
   for (const table of ["billing_cases","billing_case_versions","billing_documents","billing_payments","billing_change_requests","billing_events","billing_jobs","billing_incidents"]) {
@@ -50,4 +52,14 @@ test("initial Pro-forma job receives the permanent Rechnungsportal URL atomicall
   assert.match(portalIngest, /rechnung\\\.neontrip\\\.de/);
   assert.match(portalIngest, /payload \|\| jsonb_build_object\('portalUrl',p_portal_url\)/);
   assert.match(portalIngestRollback, /drop function if exists public\.billing_case_ingest_with_portal/);
+});
+
+test("recovered billing jobs automatically close their stale incidents", () => {
+  assert.match(recoveryIncident, /new\.status = 'DONE'/);
+  assert.match(recoveryIncident, /old\.status is distinct from 'DONE'/);
+  assert.match(recoveryIncident, /'job-blocked:' \|\| new\.id::text/);
+  assert.match(recoveryIncident, /'change-request-notification-blocked:' \|\| new\.id::text/);
+  assert.match(recoveryIncident, /status = 'RESOLVED'/);
+  assert.match(recoveryIncidentRollback, /drop trigger if exists billing_jobs_resolve_recovered_incidents/);
+  assert.match(recoveryIncidentRollback, /drop function if exists public\.resolve_recovered_billing_job_incidents/);
 });

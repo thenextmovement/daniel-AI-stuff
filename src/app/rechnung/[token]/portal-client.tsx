@@ -409,8 +409,15 @@ export function BillingPortalClient({ token }: { token: string }) {
   const currency = String(billing.currency || billing.totals?.currency || "EUR");
   const preview = invoicePreview(billing, form, vatCheck);
   const paymentLabel = billing.payment_method === "VORKASSE" ? "Zahlbar sofort" : `${billing.payment_terms_days || 14} Tage nach Erhalt`;
-  const taxLabel = preview.vat === 0 ? (preview.isThirdCountry ? "Steuerfreie Ausfuhr" : "USt-ID wird geprüft") : `${percent(preview.rate)} % Umsatzsteuer`;
   const pendingChange = data.changes?.find((change) => ["PENDING", "OPEN"].includes(String(change.status)));
+  const taxReviewVerified = String(billing.tax_review_status || "") === "VERIFIED";
+  const taxLabel = preview.vat === 0
+    ? preview.isThirdCountry
+      ? "Steuerfreie Ausfuhr"
+      : taxReviewVerified && !pendingChange
+        ? "USt-ID geprüft · Reverse Charge"
+        : vatCheck.status === "valid" ? "USt-ID geprüft · Freigabe ausstehend" : "USt-ID wird geprüft"
+    : `${percent(preview.rate)} % Umsatzsteuer`;
 
   return (
     <main className="min-h-screen bg-[#f7f4ee] px-4 py-5 text-[#171412] sm:px-6 sm:py-8">
