@@ -55,6 +55,9 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(portal, /vatCheck\.status === "valid"/);
   assert.match(portal, /Die USt-IdNr\. wurde beim EU-Dienst bestätigt/);
   assert.match(portal, /deliveryAddress/);
+  assert.match(portal, /delivery\.contactCompany/);
+  assert.match(portal, /delivery\.contactName/);
+  assert.match(portal, /firstNonEmptyText\(requested\.invoiceEmail, billing\.customer_email/);
   assert.match(portal, /Lieferstraße und Hausnummer/);
   assert.match(portal, /pendingChanges\(payload\)/);
   assert.match(portal, /requested\.vatValidation \|\| payload\.billingCase\.vat_validation/);
