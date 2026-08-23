@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Pencil, RefreshCw, Save, Search, ShieldCheck, WalletCards } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, FileText, Pencil, RefreshCw, Save, Search, ShieldCheck, WalletCards } from "lucide-react";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
@@ -9,7 +9,7 @@ import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } f
 type BillingCase = {
   id: string; shopify_order_name: string; customer_email: string | null; customer: Record<string, unknown>;
   project_number?: string | null;
-  total_gross_cents: number; currency: string; payment_method: string; payment_terms_days: number | null;
+  subtotal_net_cents: number; vat_cents: number; total_gross_cents: number; currency: string; payment_method: string; payment_terms_days: number | null;
   tax_treatment: string; tax_review_status: string; vat_id?: string | null; status: string; updated_at: string;
   vat_validation?: Record<string, unknown> | null; billing_address?: Record<string, unknown>; delivery_address?: Record<string, unknown>;
   paid_at?: string | null; delivered_at?: string | null; final_invoice_at?: string | null; current_revision?: number;
@@ -27,9 +27,23 @@ function customerName(row: BillingCase) {
 }
 
 function statusTone(status: string) {
-  if (["SYNC_BLOCKED", "MANUAL_REVIEW"].includes(status)) return "border-rose-200 bg-rose-50 text-rose-800";
-  if (["INVOICED", "PAID"].includes(status)) return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (["SYNC_BLOCKED", "MANUAL_REVIEW", "REJECTED"].includes(status)) return "border-rose-200 bg-rose-50 text-rose-800";
+  if (["INVOICED", "PAID", "APPLIED", "APPROVED"].includes(status)) return "border-emerald-200 bg-emerald-50 text-emerald-800";
   return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+function paymentValue(row: BillingCase) {
+  return row.payment_method === "KAUF_AUF_RECHNUNG" ? `RECHNUNG_${row.payment_terms_days || 14}` : "VORKASSE";
+}
+
+function taxTreatmentLabel(value: string) {
+  const labels: Record<string, string> = {
+    DE_STANDARD: "Deutschland · 19 % Umsatzsteuer",
+    EU_B2B_REVERSE_CHARGE: "EU-Ausland · Reverse Charge",
+    EU_B2C_OSS: "EU-Ausland · Umsatzsteuer",
+    THIRD_COUNTRY_EXPORT: "Drittland · steuerfrei",
+  };
+  return labels[value] || value;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -72,6 +86,14 @@ function AddressSummary({ value }: { value: Record<string, unknown> }) {
   return <span>{[value.company || value.name, value.street, [value.zip, value.city].filter(Boolean).join(" "), value.country].filter(Boolean).map(String).join(", ") || "–"}</span>;
 }
 
+function ComparisonRow({ label, previous, next, nextLabel }: { label: string; previous: ReactNode; next: ReactNode; nextLabel: string }) {
+  return <div className="grid gap-3 border-b border-stone-100 px-4 py-4 last:border-b-0 md:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)]">
+    <strong className="text-xs font-semibold text-stone-950">{label}</strong>
+    <div className="min-w-0 break-words text-sm text-stone-600"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400 md:hidden">Bisher</span>{previous}</div>
+    <div className="min-w-0 break-words text-sm font-medium text-stone-950"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b91c73] md:hidden">{nextLabel}</span>{next}</div>
+  </div>;
+}
+
 function ChangeRequestReview({ change, billingCase, busy, onAction }: {
   change: Record<string, unknown>;
   billingCase: BillingCase;
@@ -96,18 +118,26 @@ function ChangeRequestReview({ change, billingCase, busy, onAction }: {
     setEditing(false);
   }
 
-  return <article className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><p className="text-sm font-semibold text-stone-950">Änderungsanfrage vom {new Date(String(change.created_at)).toLocaleString("de-DE")}</p><p className="mt-1 text-xs text-stone-500">Status: {STATUS_LABELS[status] || status}{change.reviewed_by ? ` · bearbeitet von ${String(change.reviewed_by)}` : ""}</p></div>
-      {status === "PENDING" ? <button type="button" onClick={() => setEditing((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold"><Pencil className="h-4 w-4" /> {editing ? "Bearbeitung schließen" : "Anfrage anpassen"}</button> : null}
+  const decisionLabel = status === "PENDING" ? "Gewünscht" : "Entschieden";
+
+  return <article className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_8px_24px_rgba(28,25,23,0.04)]">
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-100 px-5 py-4">
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-semibold text-stone-950">Anfrage vom {new Date(String(change.created_at)).toLocaleString("de-DE")}</p>
+          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone(status)}`}>{STATUS_LABELS[status] || status}</span>
+        </div>
+        {change.reviewed_by ? <p className="mt-1 text-xs text-stone-500">Bearbeitet von {String(change.reviewed_by)}</p> : <p className="mt-1 text-xs text-stone-500">Bitte Änderungen prüfen und anschließend entscheiden.</p>}
+      </div>
+      {status === "PENDING" ? <button type="button" onClick={() => setEditing((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-800 transition hover:border-stone-400"><Pencil className="h-4 w-4" /> {editing ? "Bearbeitung schließen" : "Anfrage anpassen"}</button> : null}
     </div>
-    {!editing ? <div className="mt-4 overflow-hidden rounded-xl border border-stone-200 bg-white">
-      <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-stone-200 bg-stone-100 px-3 py-2 text-xs font-semibold text-stone-600"><span>Feld</span><span>Bisher</span><span>{status === "PENDING" ? "Gewünscht" : "Entschieden"}</span></div>
-      <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-stone-100 px-3 py-3 text-xs"><strong>Rechnungsanschrift</strong><AddressSummary value={currentAddress} /><AddressSummary value={record(finalValues.billingAddress || requestedAddress)} /></div>
-      <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-stone-100 px-3 py-3 text-xs"><strong>Rechnungs-E-Mail</strong><span>{billingCase.customer_email || "–"}</span><span>{String(finalValues.invoiceEmail ?? requested.invoiceEmail ?? billingCase.customer_email ?? "–")}</span></div>
-      <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 border-b border-stone-100 px-3 py-3 text-xs"><strong>USt-ID</strong><span>{billingCase.vat_id || "–"}</span><span>{String(finalValues.vatId ?? requested.vatId ?? billingCase.vat_id ?? "–") || "–"}</span></div>
-      <div className="grid grid-cols-[9rem_1fr_1fr] gap-3 px-3 py-3 text-xs"><strong>Projektnummer</strong><span>{billingCase.project_number || "–"}</span><span>{String(finalValues.projectNumber ?? requested.projectNumber ?? billingCase.project_number ?? "–") || "–"}</span></div>
-    </div> : <form onSubmit={save} className="mt-4 grid gap-3 rounded-xl border border-stone-200 bg-white p-4 md:grid-cols-2">
+    {!editing ? <div>
+      <div className="hidden grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-stone-200 bg-[#faf8f5] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-500 md:grid"><span>Feld</span><span>Bisher</span><span>{decisionLabel}</span></div>
+      <ComparisonRow label="Rechnungsanschrift" previous={<AddressSummary value={currentAddress} />} next={<AddressSummary value={record(finalValues.billingAddress || requestedAddress)} />} nextLabel={decisionLabel} />
+      <ComparisonRow label="Rechnungs-E-Mail" previous={billingCase.customer_email || "–"} next={String(finalValues.invoiceEmail ?? requested.invoiceEmail ?? billingCase.customer_email ?? "–")} nextLabel={decisionLabel} />
+      <ComparisonRow label="USt-ID" previous={billingCase.vat_id || "–"} next={String(finalValues.vatId ?? requested.vatId ?? billingCase.vat_id ?? "–") || "–"} nextLabel={decisionLabel} />
+      <ComparisonRow label="Projektnummer" previous={billingCase.project_number || "–"} next={String(finalValues.projectNumber ?? requested.projectNumber ?? billingCase.project_number ?? "–") || "–"} nextLabel={decisionLabel} />
+    </div> : <form onSubmit={save} className="grid gap-3 bg-[#faf8f5] p-5 md:grid-cols-2">
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Firma<input className={field} value={form.company} onChange={(event) => setForm({ ...form, company: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Name<input className={field} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600 md:col-span-2">Straße und Hausnummer<input className={field} value={form.street} onChange={(event) => setForm({ ...form, street: event.target.value })} /></label>
@@ -117,12 +147,12 @@ function ChangeRequestReview({ change, billingCase, busy, onAction }: {
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Umsatzsteuer-ID<input className={field} value={form.vatId} onChange={(event) => setForm({ ...form, vatId: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Rechnungs-E-Mail<input type="email" required className={field} value={form.invoiceEmail} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Projektnummer<input className={field} value={form.projectNumber} onChange={(event) => setForm({ ...form, projectNumber: event.target.value })} /></label>
-      <div className="md:col-span-2"><button disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"><Save className="h-4 w-4" /> Intern speichern</button><p className="mt-2 text-xs text-stone-500">Beim internen Speichern wird keine E-Mail versendet.</p></div>
+      <div className="flex flex-wrap items-center gap-3 border-t border-stone-200 pt-4 md:col-span-2"><button disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Save className="h-4 w-4" /> Intern speichern</button><p className="text-xs text-stone-500">Beim internen Speichern wird keine E-Mail versendet.</p></div>
     </form>}
-    {status === "PENDING" ? <div className="mt-4 flex flex-wrap gap-2 border-t border-stone-200 pt-4">
-      <button disabled={Boolean(busy)} onClick={() => void onAction("APPLY_CHANGE_REQUEST", { changeRequestId: change.id, approvedChanges: changePayload(form), note: "In Ops akzeptiert" })} className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Akzeptieren</button>
-      <button disabled={Boolean(busy)} onClick={() => void onAction("REJECT_CHANGE_REQUEST", { changeRequestId: change.id, note: "In Ops abgelehnt" })} className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-800 disabled:opacity-50">Ablehnen</button>
-      <p className="w-full text-xs text-stone-500">Erst diese endgültige Entscheidung versendet genau eine E-Mail an den Kunden. Öffnen, Bearbeiten und internes Speichern bleiben intern.</p>
+    {status === "PENDING" ? <div className="flex flex-wrap items-center gap-2 border-t border-stone-200 bg-white px-5 py-4">
+      <button disabled={Boolean(busy)} onClick={() => void onAction("APPLY_CHANGE_REQUEST", { changeRequestId: change.id, approvedChanges: changePayload(form), note: "In Ops akzeptiert" })} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50">Akzeptieren</button>
+      <button disabled={Boolean(busy)} onClick={() => void onAction("REJECT_CHANGE_REQUEST", { changeRequestId: change.id, note: "In Ops abgelehnt" })} className="rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-800 transition hover:bg-rose-50 disabled:opacity-50">Ablehnen</button>
+      <p className="w-full text-xs leading-5 text-stone-500">Erst diese endgültige Entscheidung versendet genau eine E-Mail an den Kunden.</p>
     </div> : null}
   </article>;
 }
@@ -210,9 +240,9 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, det
   return <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
     <div className={`${opsPageContainerClass} space-y-6`}>
       <OpsPageHeader active="billing" label="Rechnungsabteilung" />
-      <OpsPageIntro eyebrow="Billing Control" title={detailCaseId ? "Bestellung und Rechnungsdaten prüfen" : "Pro-forma, Rechnungen und Korrekturen an einem Ort"} description={detailCaseId ? "Änderungen können intern vorbereitet werden. Erst Akzeptieren oder Ablehnen informiert den Kunden." : "Shopify ist der Auftragsschlüssel. Jeder finanzielle Schritt wird centgenau mit Easybill und dem BillingCase abgeglichen."}>
-        {detailCaseId ? <a href="/ops/rechnungen" className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-stone-950"><ArrowLeft className="h-4 w-4" /> Zur Übersicht</a> : <button onClick={() => void loadCases()} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-stone-950"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Aktualisieren</button>}
-      </OpsPageIntro>
+      {!detailCaseId ? <OpsPageIntro eyebrow="Billing Control" title="Pro-forma, Rechnungen und Korrekturen an einem Ort" description="Shopify ist der Auftragsschlüssel. Jeder finanzielle Schritt wird centgenau mit Easybill und dem BillingCase abgeglichen.">
+        <button onClick={() => void loadCases()} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-stone-950"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Aktualisieren</button>
+      </OpsPageIntro> : null}
       {!detailCaseId ? <>
       <section className="grid gap-3 md:grid-cols-3">
         <OpsStatCard label="Fälle" value={cases.length} icon={<FileText className="h-5 w-5" />} />
@@ -237,42 +267,84 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, det
       </section></> : null}
       {detailCaseId && error ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div> : null}
       {detailCaseId && !selected && !error ? <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center text-sm text-stone-500">Bestellung wird geladen …</div> : null}
-      {selected ? <section className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_16px_44px_rgba(20,16,12,0.07)]">
-        <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#b91c73]">Falldetails</p><h2 className="mt-1 text-2xl font-semibold text-stone-950">{selected.billingCase.shopify_order_name}</h2></div><ShieldCheck className="h-6 w-6 text-emerald-700" /></div>
-        <div className="mt-5 grid gap-4 md:grid-cols-4"><div><p className="text-xs text-stone-500">Zahlungsart</p><p className="mt-1 font-semibold">{selected.billingCase.payment_method}{selected.billingCase.payment_terms_days ? ` · ${selected.billingCase.payment_terms_days} Tage` : ""}</p></div><div><p className="text-xs text-stone-500">Rechnungsversand</p><p className="mt-1 break-all font-semibold">{selected.billingCase.customer_email || "Nicht hinterlegt"}</p><p className="text-xs text-stone-500">{selected.billingCase.project_number ? `Projekt ${selected.billingCase.project_number}` : "Keine Projektnummer"}</p></div><div><p className="text-xs text-stone-500">Steuerfall</p><p className="mt-1 font-semibold">{selected.billingCase.tax_treatment}</p><p className="text-xs text-stone-500">{selected.billingCase.tax_review_status}</p></div><div><p className="text-xs text-stone-500">Dokumente / Änderungen</p><p className="mt-1 font-semibold">{selected.documents.length} / {selected.changes.length}</p></div></div>
-        {notice ? <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p> : null}
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-            <p className="text-sm font-semibold text-stone-950">Zahlungsart</p>
-            <p className="mt-1 text-xs leading-5 text-stone-500">Standard ist Vorkasse. Rechnungskauf wird intern freigegeben; Standardziel sind 14 Tage nach Erhalt der Ware.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button disabled={Boolean(actionBusy)} onClick={() => void runAction("SET_PAYMENT_METHOD", { paymentMethod: "VORKASSE" })} className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">Vorkasse</button>
-              {[7, 14, 30].map((days) => <button key={days} disabled={Boolean(actionBusy)} onClick={() => void runAction("SET_PAYMENT_METHOD", { paymentMethod: "KAUF_AUF_RECHNUNG", paymentTermsDays: days })} className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">Rechnung · {days} Tage</button>)}
+      {selected ? <section aria-labelledby="billing-case-title">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <a href="/ops/rechnungen" className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-800 shadow-sm transition hover:border-stone-400 hover:bg-stone-50"><ArrowLeft className="h-4 w-4" /> Zur Rechnungsübersicht</a>
+          <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${statusTone(selected.billingCase.status)}`}>{STATUS_LABELS[selected.billingCase.status] || selected.billingCase.status}</span>
+        </div>
+        <div className="mb-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#b91c73]">Rechnungsfall</p>
+          <h1 id="billing-case-title" className="mt-1 text-2xl font-semibold tracking-tight text-stone-950 md:text-3xl">{selected.billingCase.shopify_order_name}</h1>
+          <p className="mt-1 text-sm text-stone-500">{customerName(selected.billingCase)}</p>
+        </div>
+        {notice ? <p aria-live="polite" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p> : null}
+
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="min-w-0 space-y-5">
+            <section className="rounded-[22px] border border-stone-200 bg-[#fffdf9] p-4 shadow-[0_14px_36px_rgba(28,25,23,0.05)] md:p-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#b91c73]">Prüfung</p><h2 className="mt-1 text-xl font-semibold text-stone-950">Änderungen zur Rechnung</h2></div>
+                <p className="text-xs text-stone-500">{selected.changes.length} {selected.changes.length === 1 ? "Anfrage" : "Anfragen"}</p>
+              </div>
+              <div className="mt-4 space-y-3">{selected.changes.length ? selected.changes.map((change) => <ChangeRequestReview key={String(change.id)} change={change} billingCase={selected.billingCase} busy={actionBusy} onAction={runAction} />) : <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-6 text-center"><CheckCircle2 className="mx-auto h-5 w-5 text-emerald-700" /><p className="mt-2 text-sm font-medium text-stone-800">Keine Änderungsanfrage offen</p></div>}</div>
+            </section>
+
+            <section className="rounded-[22px] border border-stone-200 bg-white p-4 md:p-5">
+              <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-700" /><h2 className="text-base font-semibold text-stone-950">Steuerprüfung</h2></div>
+              <p className="mt-2 text-sm leading-6 text-stone-600">{selected.billingCase.vat_id ? `USt-ID: ${selected.billingCase.vat_id}` : "Für diesen Fall ist keine USt-ID hinterlegt."}</p>
+              {vatValidation.name ? <p className="mt-2 text-sm text-stone-600"><strong className="text-stone-800">Bei VIES gelistet:</strong> {String(vatValidation.name)}</p> : null}
+              {vatValidation.address ? <p className="mt-1 whitespace-pre-line text-sm text-stone-600"><strong className="text-stone-800">Registeranschrift:</strong> {String(vatValidation.address)}</p> : null}
+              {vatValidation.identityComparison ? <p className="mt-2 text-sm font-semibold text-stone-700">Datenvergleich: {String(vatValidation.identityComparison)}</p> : null}
+              {selected.billingCase.tax_review_status === "REVIEW_REQUIRED" ? <div className="mt-4 flex flex-wrap gap-2"><button disabled={Boolean(actionBusy)} onClick={() => void runAction("CONFIRM_VAT", { taxDecision: "NET", listedName: vatValidation.name, listedAddress: vatValidation.address, note: "Netto intern freigegeben" })} className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Als netto freigeben</button><button disabled={Boolean(actionBusy)} onClick={() => void runAction("CONFIRM_VAT", { taxDecision: "GROSS", listedName: vatValidation.name, listedAddress: vatValidation.address, note: "Brutto intern freigegeben" })} className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">Als brutto behandeln</button></div> : <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Keine offene Steuerfreigabe</p>}
+            </section>
+
+            <details className="group rounded-[22px] border border-stone-200 bg-white">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold text-stone-800 marker:hidden"><span>Weitere interne Aktionen</span><ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
+              <div className="border-t border-stone-200 p-5">
+                <div className="grid gap-3 md:grid-cols-3"><label className="grid gap-1 text-xs font-semibold text-stone-600">Zugestellt am<input type="datetime-local" value={deliveredAt} onChange={(event) => setDeliveredAt(event.target.value)} className="h-10 rounded-xl border border-stone-200 bg-white px-3 font-normal" /></label><label className="grid gap-1 text-xs font-semibold text-stone-600">Nachweis<input value={deliveryEvidence} onChange={(event) => setDeliveryEvidence(event.target.value)} className="h-10 rounded-xl border border-stone-200 bg-white px-3 font-normal" /></label><label className="grid gap-1 text-xs font-semibold text-stone-600">Pflichtgrund<input value={manualReason} onChange={(event) => setManualReason(event.target.value)} className="h-10 rounded-xl border border-stone-200 bg-white px-3 font-normal" /></label></div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button disabled={Boolean(actionBusy) || Boolean(selected.billingCase.final_invoice_at)} onClick={() => void runAction("CREATE_PROFORMA", { reason: "Manuell in Ops neu erstellt" })} className="rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold disabled:opacity-50">Neue Pro-forma-Version</button>
+                  <button disabled={Boolean(actionBusy)} onClick={() => void runAction("MARK_PAID")} className="rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold disabled:opacity-50">Zahlung eingegangen</button>
+                  <button disabled={Boolean(actionBusy)} onClick={() => void runAction("MARK_DELIVERED", { deliveredAt: new Date(deliveredAt).toISOString(), evidenceType: deliveryEvidence, reason: manualReason })} className="rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold disabled:opacity-50">Als vollständig zugestellt markieren</button>
+                  <button disabled={Boolean(actionBusy) || selected.billingCase.tax_review_status === "REVIEW_REQUIRED" || Boolean(selected.billingCase.final_invoice_at)} onClick={() => void runAction("CREATE_INVOICE", { reason: manualReason })} className="rounded-xl bg-stone-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Rechnung jetzt erstellen</button>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-stone-500">Alle Aktionen werden im Audit-Log protokolliert und gegen Doppelausführung geschützt.</p>
+              </div>
+            </details>
+          </div>
+
+          <aside className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_16px_44px_rgba(20,16,12,0.07)] lg:sticky lg:top-5">
+            <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Bestellung</p><p className="mt-1 text-lg font-semibold text-stone-950">{selected.billingCase.shopify_order_name}</p></div><ShieldCheck className="h-5 w-5 text-emerald-700" /></div>
+            <div className="mt-5 rounded-2xl bg-stone-950 p-4 text-white">
+              <p className="text-xs text-stone-400">Gesamtbetrag</p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight">{money(selected.billingCase.total_gross_cents, selected.billingCase.currency)}</p>
+              <dl className="mt-4 space-y-2 border-t border-white/15 pt-3 text-sm">
+                <div className="flex justify-between gap-3"><dt className="text-stone-400">Netto</dt><dd>{money(selected.billingCase.subtotal_net_cents, selected.billingCase.currency)}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-stone-400">Umsatzsteuer</dt><dd>{money(selected.billingCase.vat_cents, selected.billingCase.currency)}</dd></div>
+              </dl>
             </div>
-          </div>
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-            <p className="text-sm font-semibold text-stone-950">Steuerprüfung</p>
-            <p className="mt-1 text-xs leading-5 text-stone-500">{selected.billingCase.vat_id ? `USt-ID: ${selected.billingCase.vat_id}` : "Für diesen Fall ist keine USt-ID hinterlegt."}</p>
-            {vatValidation.name ? <p className="mt-2 text-xs text-stone-600"><strong>Bei VIES gelistet:</strong> {String(vatValidation.name)}</p> : null}
-            {vatValidation.address ? <p className="mt-1 whitespace-pre-line text-xs text-stone-600"><strong>Registeranschrift:</strong> {String(vatValidation.address)}</p> : null}
-            {vatValidation.identityComparison ? <p className="mt-2 text-xs font-semibold text-stone-700">Datenvergleich: {String(vatValidation.identityComparison)}</p> : null}
-            {selected.billingCase.tax_review_status === "REVIEW_REQUIRED" ? <div className="mt-3 flex flex-wrap gap-2"><button disabled={Boolean(actionBusy)} onClick={() => void runAction("CONFIRM_VAT", { taxDecision: "NET", listedName: vatValidation.name, listedAddress: vatValidation.address, note: "Netto intern freigegeben" })} className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Als netto freigeben</button><button disabled={Boolean(actionBusy)} onClick={() => void runAction("CONFIRM_VAT", { taxDecision: "GROSS", listedName: vatValidation.name, listedAddress: vatValidation.address, note: "Brutto intern freigegeben" })} className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">Als brutto behandeln</button></div> : <p className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Keine offene Steuerfreigabe</p>}
-          </div>
-        </div>
-        <div className="mt-4 rounded-2xl border border-stone-200 p-4">
-          <p className="text-sm font-semibold text-stone-950">Manuelle Aktionen</p>
-          <div className="mt-3 grid gap-2 md:grid-cols-3"><label className="grid gap-1 text-xs font-semibold text-stone-600">Zugestellt am<input type="datetime-local" value={deliveredAt} onChange={(event) => setDeliveredAt(event.target.value)} className="h-10 rounded-xl border border-stone-200 bg-white px-3 font-normal" /></label><label className="grid gap-1 text-xs font-semibold text-stone-600">Nachweis<input value={deliveryEvidence} onChange={(event) => setDeliveryEvidence(event.target.value)} className="h-10 rounded-xl border border-stone-200 bg-white px-3 font-normal" /></label><label className="grid gap-1 text-xs font-semibold text-stone-600">Pflichtgrund<input value={manualReason} onChange={(event) => setManualReason(event.target.value)} className="h-10 rounded-xl border border-stone-200 bg-white px-3 font-normal" /></label></div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button disabled={Boolean(actionBusy) || Boolean(selected.billingCase.final_invoice_at)} onClick={() => void runAction("CREATE_PROFORMA", { reason: "Manuell in Ops neu erstellt" })} className="rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold disabled:opacity-50">Neue Pro-forma-Version</button>
-            <button disabled={Boolean(actionBusy)} onClick={() => void runAction("MARK_PAID")} className="rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold disabled:opacity-50">Zahlung eingegangen</button>
-            <button disabled={Boolean(actionBusy)} onClick={() => void runAction("MARK_DELIVERED", { deliveredAt: new Date(deliveredAt).toISOString(), evidenceType: deliveryEvidence, reason: manualReason })} className="rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold disabled:opacity-50">Als vollständig zugestellt markieren</button>
-            <button disabled={Boolean(actionBusy) || selected.billingCase.tax_review_status === "REVIEW_REQUIRED" || Boolean(selected.billingCase.final_invoice_at)} onClick={() => void runAction("CREATE_INVOICE", { reason: manualReason })} className="rounded-xl bg-stone-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Rechnung jetzt erstellen</button>
-          </div>
-          <p className="mt-3 text-xs leading-5 text-stone-500">Jede Aktion erzeugt zuerst einen idempotenten Job. Easybill wird erst durch den später aktivierten Adapter angesprochen; dadurch sind Doppelklicks und Wiederholungen kontrollierbar.</p>
-        </div>
-        <div className="mt-4 rounded-2xl border border-stone-200 p-4">
-          <p className="text-sm font-semibold text-stone-950">Änderungen zur Rechnung</p>
-          <div className="mt-3 space-y-3">{selected.changes.length ? selected.changes.map((change) => <ChangeRequestReview key={String(change.id)} change={change} billingCase={selected.billingCase} busy={actionBusy} onAction={runAction} />) : <p className="text-xs text-stone-500">Keine Änderungsanfragen vorhanden.</p>}</div>
+
+            <label className="mt-5 block text-xs font-semibold text-stone-700" htmlFor="billing-payment-method">Zahlungsart</label>
+            <div className="relative mt-2">
+              <select id="billing-payment-method" value={paymentValue(selected.billingCase)} disabled={Boolean(actionBusy)} onChange={(event) => {
+                const value = event.target.value;
+                if (value === "VORKASSE") void runAction("SET_PAYMENT_METHOD", { paymentMethod: "VORKASSE" });
+                else void runAction("SET_PAYMENT_METHOD", { paymentMethod: "KAUF_AUF_RECHNUNG", paymentTermsDays: Number(value.replace("RECHNUNG_", "")) });
+              }} className="h-11 w-full appearance-none rounded-xl border border-stone-300 bg-white px-3 pr-10 text-sm font-semibold text-stone-900 outline-none transition focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/10 disabled:opacity-50">
+                <option value="VORKASSE">Vorkasse</option>
+                {[7, 14, 30].map((days) => <option key={days} value={`RECHNUNG_${days}`}>Rechnung · {days} Tage</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-stone-500" />
+            </div>
+            <p className="mt-2 text-xs leading-5 text-stone-500">Standard ist Vorkasse. Rechnungskauf wird intern freigegeben.</p>
+
+            <dl className="mt-5 divide-y divide-stone-100 border-y border-stone-100 text-sm">
+              <div className="py-3"><dt className="text-xs text-stone-500">Rechnungs-E-Mail</dt><dd className="mt-1 break-all font-medium text-stone-900">{selected.billingCase.customer_email || "Nicht hinterlegt"}</dd></div>
+              <div className="py-3"><dt className="text-xs text-stone-500">Projektnummer</dt><dd className="mt-1 font-medium text-stone-900">{selected.billingCase.project_number || "Nicht hinterlegt"}</dd></div>
+              <div className="py-3"><dt className="text-xs text-stone-500">Steuerfall</dt><dd className="mt-1 font-medium text-stone-900">{taxTreatmentLabel(selected.billingCase.tax_treatment)}</dd></div>
+              <div className="py-3"><dt className="text-xs text-stone-500">Dokumente · Änderungen</dt><dd className="mt-1 font-medium text-stone-900">{selected.documents.length} · {selected.changes.length}</dd></div>
+            </dl>
+          </aside>
         </div>
       </section> : null}
     </div>
