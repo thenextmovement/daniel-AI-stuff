@@ -31,6 +31,9 @@ test("Ops exposes a dedicated NEONTRIP billing department", () => {
   assert.match(client, /Gesamtbetrag/);
   assert.match(client, /lg:grid-cols-\[minmax\(0,1fr\)_22rem\]/);
   assert.match(client, /Weitere interne Aktionen/);
+  assert.match(client, /admin\.shopify\.com\/store\/galaxybuzzdk\/orders/);
+  assert.match(client, /c496191\.easybill\.de/);
+  assert.match(client, /Aktueller Easybill-Beleg/);
 });
 
 test("customer portal is invoice-only and becomes read-only after final invoice", () => {
@@ -57,4 +60,7 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(download, /getBillingPortalDocument/);
   assert.match(download, /Content-Disposition/);
   assert.match(download, /easybill\.de\/rest\/v1\/documents/);
+  const repository = read("src/lib/ops/billing/repository.ts");
+  assert.match(repository, /selectCurrentBillingDocuments/);
+  assert.doesNotMatch(repository, /id: `eq\.\$\{documentId\}`/);
 });

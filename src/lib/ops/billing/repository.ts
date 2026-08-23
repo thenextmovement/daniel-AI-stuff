@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { buildBillingCaseInput, derivePortalToken, portalTokenHash, type BillingIntake } from "./domain";
+import { selectCurrentBillingDocuments, type BillingDocumentVersion } from "./current-documents";
 
 export type BillingCaseRow = {
   id: string;
@@ -120,7 +121,7 @@ export async function getBillingPortal(token: string) {
       order: "created_at.desc",
     }),
   ]);
-  return { billingCase, documents, changes, readOnly: Boolean(billingCase.final_invoice_at) };
+  return { billingCase, documents: selectCurrentBillingDocuments(documents as Array<BillingDocumentVersion & Record<string, unknown>>), changes, readOnly: Boolean(billingCase.final_invoice_at) };
 }
 
 export async function getBillingPortalDocument(token: string, documentId: string) {
@@ -132,13 +133,12 @@ export async function getBillingPortalDocument(token: string, documentId: string
   });
   const billingCase = cases[0];
   if (!billingCase) return null;
-  const documents = await supabaseRequest<Array<{ id: string; document_number: string; easybill_document_id: string | null; status: string }>>("billing_documents", undefined, {
-    select: "id,document_number,easybill_document_id,status",
-    id: `eq.${documentId}`,
+  const documents = await supabaseRequest<Array<BillingDocumentVersion & { document_number: string; easybill_document_id: string | null }>>("billing_documents", undefined, {
+    select: "id,document_type,revision,document_number,easybill_document_id,status,created_at",
     billing_case_id: `eq.${billingCase.id}`,
-    limit: 1,
+    order: "created_at.desc",
   });
-  const document = documents[0] || null;
+  const document = selectCurrentBillingDocuments(documents).find((entry) => entry.id === documentId) || null;
   return document?.easybill_document_id && ["FINALIZED", "SENT"].includes(document.status) ? document : null;
 }
 

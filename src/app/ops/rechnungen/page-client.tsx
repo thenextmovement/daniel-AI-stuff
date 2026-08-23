@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, FileText, Pencil, RefreshCw, Save, Search, ShieldCheck, WalletCards } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ExternalLink, FileText, Pencil, RefreshCw, Save, Search, ShieldCheck, WalletCards } from "lucide-react";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
 
 type BillingCase = {
-  id: string; shopify_order_name: string; customer_email: string | null; customer: Record<string, unknown>;
+  id: string; shopify_order_id: string; shopify_order_name: string; customer_email: string | null; customer: Record<string, unknown>;
   project_number?: string | null;
   subtotal_net_cents: number; vat_cents: number; total_gross_cents: number; currency: string; payment_method: string; payment_terms_days: number | null;
   tax_treatment: string; tax_review_status: string; vat_id?: string | null; status: string; updated_at: string;
@@ -34,6 +34,24 @@ function statusTone(status: string) {
 
 function paymentValue(row: BillingCase) {
   return row.payment_method === "KAUF_AUF_RECHNUNG" ? `RECHNUNG_${row.payment_terms_days || 14}` : "VORKASSE";
+}
+
+function shopifyAdminUrl(orderId: string) {
+  return /^\d+$/.test(orderId) ? `https://admin.shopify.com/store/galaxybuzzdk/orders/${encodeURIComponent(orderId)}` : null;
+}
+
+function easybillDocumentsUrl(documents: Array<Record<string, unknown>>) {
+  const document = documents.find((entry) => entry.easybill_document_id && !["FAILED", "SUPERSEDED"].includes(String(entry.status)));
+  const pathByType: Record<string, string> = {
+    PROFORMA: "/docs/proforma-invoices/documents",
+    INVOICE: "/docs/invoices/documents",
+    CREDIT: "/docs/credit-notes/documents",
+    CANCELLATION: "/docs/invoices/documents",
+  };
+  return {
+    href: `https://c496191.easybill.de${pathByType[String(document?.document_type)] || "/docs/documents"}`,
+    number: document?.document_number ? String(document.document_number) : null,
+  };
 }
 
 function taxTreatmentLabel(value: string) {
@@ -185,6 +203,8 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, det
   const openIncidents = useMemo(() => cases.filter((entry) => ["SYNC_BLOCKED", "MANUAL_REVIEW"].includes(entry.status)).length, [cases]);
   const waiting = useMemo(() => cases.filter((entry) => !["INVOICED", "CANCELLED", "REFUNDED"].includes(entry.status)).length, [cases]);
   const vatValidation = selected?.billingCase.vat_validation || {};
+  const shopifyUrl = selected ? shopifyAdminUrl(selected.billingCase.shopify_order_id) : null;
+  const easybillLink = selected ? easybillDocumentsUrl(selected.documents) : null;
 
   async function login() {
     const response = await fetch("/api/ops/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: password }) });
@@ -319,6 +339,12 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, det
                 <div className="flex justify-between gap-3"><dt className="text-stone-400">Umsatzsteuer</dt><dd>{money(selected.billingCase.vat_cents, selected.billingCase.currency)}</dd></div>
               </dl>
             </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2" aria-label="Direktlinks zur Bestellung">
+              {shopifyUrl ? <a href={shopifyUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-800 transition hover:border-stone-400 hover:bg-stone-50">Shopify <ExternalLink className="h-3.5 w-3.5" /></a> : null}
+              {easybillLink ? <a href={easybillLink.href} target="_blank" rel="noreferrer" title={easybillLink.number ? `Easybill ${easybillLink.number}` : "Easybill öffnen"} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-800 transition hover:border-stone-400 hover:bg-stone-50">Easybill <ExternalLink className="h-3.5 w-3.5" /></a> : null}
+            </div>
+            {easybillLink?.number ? <p className="mt-2 truncate text-center text-[11px] text-stone-500">Aktueller Easybill-Beleg: {easybillLink.number}</p> : null}
 
             <label className="mt-5 block text-xs font-semibold text-stone-700" htmlFor="billing-payment-method">Zahlungsart</label>
             <div className="relative mt-2">
