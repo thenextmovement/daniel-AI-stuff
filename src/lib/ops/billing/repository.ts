@@ -115,7 +115,7 @@ export async function getBillingPortal(token: string) {
       order: "created_at.desc",
     }),
     supabaseRequest<Record<string, unknown>[]>("billing_change_requests", undefined, {
-      select: "id,status,created_at,reviewed_at",
+      select: "id,status,requested_changes,created_at,reviewed_at",
       billing_case_id: `eq.${billingCase.id}`,
       source: "eq.CUSTOMER_PORTAL",
       order: "created_at.desc",

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   try {
     const validation = await validateVatIdWithVies({
-      deliveryCountry: portal.billingCase.delivery_address?.country,
+      deliveryCountry: body?.deliveryCountry || portal.billingCase.delivery_address?.country,
       vatId: body?.vatId,
       company: body?.company,
     });

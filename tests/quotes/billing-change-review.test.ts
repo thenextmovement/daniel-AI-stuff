@@ -6,6 +6,7 @@ import test from "node:test";
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 const migration = read("supabase/migrations/20260822170000_billing_change_review_detail.sql");
 const verifiedVatMigration = read("supabase/migrations/20260823231000_apply_verified_vat_change_atomically.sql");
+const deliveryCountryMigration = read("supabase/migrations/20260824002000_delivery_country_vat_source_of_truth.sql");
 
 test("billing overview opens a dedicated order detail page", () => {
   const client = read("src/app/ops/rechnungen/page-client.tsx");
@@ -56,4 +57,15 @@ test("a VIES-verified VAT change is confirmed net in the same decision transacti
   assert.match(verifiedVatMigration, /'taxDecision','NET'/);
   assert.match(verifiedVatMigration, /delete from public\.billing_jobs.*job_type='VERIFY_VAT'/s);
   assert.match(verifiedVatMigration, /notificationQueued/);
+});
+
+test("delivery country is the single source of truth for tax and Shopify notes", () => {
+  assert.match(deliveryCountryMigration, /v_tax_treatment := 'DE_STANDARD'/);
+  assert.match(deliveryCountryMigration, /v_tax_treatment := 'EU_B2C_OSS'/);
+  assert.match(deliveryCountryMigration, /v_tax_treatment := 'EU_B2B_REVERSE_CHARGE'/);
+  assert.match(deliveryCountryMigration, /v_tax_treatment := 'EXPORT_THIRD_COUNTRY'/);
+  assert.match(deliveryCountryMigration, /BILLING_VAT_VALIDATION_REQUIRED/);
+  assert.match(deliveryCountryMigration, /deliveryAddressChange/);
+  assert.match(deliveryCountryMigration, /'previous',v_previous_delivery/);
+  assert.match(deliveryCountryMigration, /'next',v_next_delivery/);
 });
