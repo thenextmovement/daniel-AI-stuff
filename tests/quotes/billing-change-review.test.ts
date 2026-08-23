@@ -18,8 +18,15 @@ test("billing overview opens a dedicated order detail page", () => {
 test("Ops can save a reviewed draft without emailing the customer", () => {
   const client = read("src/app/ops/rechnungen/page-client.tsx");
   assert.match(client, /SAVE_CHANGE_REQUEST_DRAFT/);
-  assert.match(client, /Intern speichern/);
+  assert.match(client, /Änderungen speichern/);
+  assert.match(client, /Abbrechen/);
+  assert.match(client, /cancelEditing/);
+  assert.match(client, /setForm\(changeForm\(change, billingCase\)\)/);
   assert.match(client, /Beim internen Speichern wird keine E-Mail versendet/);
+  assert.match(client, /Daten ändern/);
+  assert.match(client, /Annehmen/);
+  assert.match(client, /disabled=\{Boolean\(busy\) \|\| editing\}/);
+  assert.doesNotMatch(client, /Anfrage anpassen/);
   const draftFunction = migration.slice(migration.indexOf("billing_change_request_save_draft"), migration.indexOf("billing_change_request_decide"));
   assert.doesNotMatch(draftFunction, /billing_jobs|NOTIFY_CHANGE_REQUEST/);
   assert.match(draftFunction, /CHANGE_REQUEST_DRAFT_SAVED/);

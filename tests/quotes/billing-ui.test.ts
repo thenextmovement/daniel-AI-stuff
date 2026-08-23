@@ -20,8 +20,8 @@ test("Ops exposes a dedicated NEONTRIP billing department", () => {
   assert.match(client, /Audit-Log protokolliert/);
   assert.match(client, /Rechnungs-E-Mail/);
   assert.match(client, /project_number/);
-  assert.match(client, /Anfrage anpassen/);
-  assert.match(client, /Akzeptieren/);
+  assert.match(client, /Daten ändern/);
+  assert.match(client, /Annehmen/);
   assert.match(client, /Ablehnen/);
   assert.match(client, /Erst diese endgültige Entscheidung versendet genau eine E-Mail/);
   assert.match(client, /Zur Rechnungsübersicht/);
