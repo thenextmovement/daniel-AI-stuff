@@ -44,10 +44,14 @@ export function OpsLoginPageClient({ nextPath }: { nextPath: string }) {
 
   async function login() {
     setError(null);
+    if (operatorName.trim().length < 2) {
+      setError("Bitte zuerst Ihren Namen eingeben.");
+      return;
+    }
     const response = await fetch("/api/ops/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, operatorName: operatorName.trim() }),
     });
     if (!response.ok) {
       setError("Ops-Login fehlgeschlagen.");
