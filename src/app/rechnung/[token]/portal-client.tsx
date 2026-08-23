@@ -362,7 +362,7 @@ export function BillingPortalClient({ token }: { token: string }) {
           city: form.deliveryCity,
           country: form.deliveryCountry,
         },
-        vatId: form.vatId,
+        vatId: deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry) ? form.vatId : "",
         invoiceEmail: form.invoiceEmail,
         projectNumber: form.projectNumber,
         requesterEmail: form.invoiceEmail,
@@ -543,7 +543,7 @@ export function BillingPortalClient({ token }: { token: string }) {
               </label>
               <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
                 <span>Lieferland</span>
-                <select required={editing} value={form.deliveryCountry} disabled={!editing || Boolean(data.readOnly)} onChange={(event) => { setForm({ ...form, deliveryCountry: event.target.value }); setVatCheck({ status: "idle" }); }} className={fieldClass(editing)}>
+                <select required={editing} value={form.deliveryCountry} disabled={!editing || Boolean(data.readOnly)} onChange={(event) => { const deliveryCountry = normalizeCountry(event.target.value); setForm({ ...form, deliveryCountry, vatId: deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry) ? form.vatId : "" }); setVatCheck({ status: "idle" }); }} className={fieldClass(editing)}>
                   <option value="">Land auswählen</option>
                   {COUNTRY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
                 </select>

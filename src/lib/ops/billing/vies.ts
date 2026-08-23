@@ -32,8 +32,12 @@ export function normalizeCountryCode(value: unknown) {
 }
 
 export function requiresEuVatValidation(deliveryCountry: unknown, vatId: unknown) {
+  return Boolean(String(vatId || "").trim()) && isEuVatIdRelevant(deliveryCountry);
+}
+
+export function isEuVatIdRelevant(deliveryCountry: unknown) {
   const countryCode = normalizeCountryCode(deliveryCountry);
-  return Boolean(String(vatId || "").trim()) && countryCode !== "DE" && EU_COUNTRIES.has(countryCode);
+  return countryCode !== "DE" && EU_COUNTRIES.has(countryCode);
 }
 
 export function normalizeVatId(deliveryCountry: unknown, value: unknown) {

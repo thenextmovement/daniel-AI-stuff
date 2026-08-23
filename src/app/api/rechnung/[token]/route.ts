@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBillingPortal, submitBillingPortalChange } from "@/lib/ops/billing/repository";
 import { sanitizePortalChangeBody } from "@/lib/ops/billing/portal-change";
-import { normalizeCountryCode, requiresEuVatValidation, validateVatIdWithVies, VatValidationError } from "@/lib/ops/billing/vies";
+import { isEuVatIdRelevant, normalizeCountryCode, requiresEuVatValidation, validateVatIdWithVies, VatValidationError } from "@/lib/ops/billing/vies";
 
 export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store, private", "X-Robots-Tag": "noindex, nofollow" };
@@ -47,7 +47,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const vatId = sanitized.changes.vatId;
     const deliveryAddress = sanitized.changes.deliveryAddress as Record<string, unknown> | undefined;
     const deliveryCountry = deliveryAddress?.country || portal.billingCase.delivery_address?.country;
-    if (requiresEuVatValidation(deliveryCountry, vatId)) {
+    if (!isEuVatIdRelevant(deliveryCountry)) {
+      sanitized.changes.vatId = "";
+      delete sanitized.changes.vatValidation;
+    } else if (requiresEuVatValidation(deliveryCountry, vatId)) {
       const billingAddress = sanitized.changes.billingAddress as Record<string, unknown> | undefined;
       const validation = await validateVatIdWithVies({
         deliveryCountry,
