@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured, resolveOpsRequestActor } from "@/lib/ops/auth";
-import { applyBillingOpsAction, decideBillingChangeRequest, saveBillingChangeDraft, type BillingOpsAction } from "@/lib/ops/billing/repository";
+import { applyBillingOpsAction, decideBillingChangeRequest, getBillingCase, saveBillingChangeDraft, type BillingOpsAction } from "@/lib/ops/billing/repository";
 import { sanitizePortalChangeBody } from "@/lib/ops/billing/portal-change";
+import { requiresEuVatValidation, validateVatIdWithVies, VatValidationError } from "@/lib/ops/billing/vies";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const approvedChanges = parsed.action === "APPLY_CHANGE_REQUEST" && parsed.payload.approvedChanges
         ? sanitizePortalChangeBody(parsed.payload.approvedChanges).changes
         : undefined;
+      if (parsed.action === "APPLY_CHANGE_REQUEST" && approvedChanges?.vatId) {
+        const current = await getBillingCase(caseId);
+        if (!current) return NextResponse.json({ ok: false, error: "billing_case_not_found" }, { status: 404 });
+        const deliveryCountry = (approvedChanges.deliveryAddress as Record<string, unknown> | undefined)?.country || current.billingCase.delivery_address?.country;
+        if (requiresEuVatValidation(deliveryCountry, approvedChanges.vatId)) {
+          const billingAddress = approvedChanges.billingAddress as Record<string, unknown> | undefined;
+          const validation = await validateVatIdWithVies({ deliveryCountry, vatId: approvedChanges.vatId, company: billingAddress?.company || current.billingCase.billing_address?.company });
+          if (!validation.valid) return NextResponse.json({ ok: false, error: "vat_id_invalid", validation }, { status: 422 });
+          approvedChanges.vatId = validation.normalizedVatId;
+          approvedChanges.vatValidation = validation;
+        }
+      }
       result = await decideBillingChangeRequest({
         caseId,
         changeRequestId,
@@ -60,6 +73,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     return NextResponse.json({ ok: true, result });
   } catch (error) {
+    if (error instanceof VatValidationError) {
+      return NextResponse.json({ ok: false, error: error.code }, { status: error.code === "vat_validation_unavailable" ? 503 : 422 });
+    }
     const message = error instanceof Error ? error.message : "billing_action_failed";
     const expected = /BILLING_(CASE|VAT|TAX|CHANGE|TERMS|PAYMENT|ACTION|ACTOR|IDEMPOTENCY)/.test(message);
     console.error("billing action failed", { caseId, action: parsed.action, actor, message });

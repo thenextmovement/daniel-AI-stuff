@@ -51,6 +51,10 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(portal, /Bestellung \{billing\.shopify_order_name\}/);
   assert.match(portal, /Zahlung ausstehend/);
   assert.match(portal, /Das Lieferland ist für die steuerliche Behandlung maßgeblich/);
+  assert.match(portal, /USt-ID prüfen/);
+  assert.match(portal, /vatCheck\.status === "valid"/);
+  assert.match(portal, /Die USt-IdNr\. wurde beim EU-Dienst bestätigt/);
+  assert.doesNotMatch(portal, /const hasVatId = form\.vatId\.trim\(\)\.length > 0/);
   assert.match(middleware, /rechnung\.neontrip\.de/);
   assert.doesNotMatch(portal, /Kauf auf Rechnung anfragen/);
   assert.match(portal, /PDF öffnen/);

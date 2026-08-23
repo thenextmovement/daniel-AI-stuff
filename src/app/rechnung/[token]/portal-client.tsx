@@ -32,6 +32,14 @@ type InvoiceForm = {
   projectNumber: string;
 };
 
+type VatCheck = {
+  status: "idle" | "checking" | "valid" | "invalid" | "unavailable";
+  normalizedVatId?: string;
+  name?: string | null;
+  address?: string | null;
+  identityComparison?: "MATCH" | "MISMATCH" | "NOT_AVAILABLE";
+};
+
 const EMPTY_FORM: InvoiceForm = {
   company: "",
   street: "",
@@ -174,7 +182,11 @@ function formFromBilling(billing: Record<string, any>): InvoiceForm {
   };
 }
 
-function invoicePreview(billing: Record<string, any>, form: InvoiceForm) {
+function normalizedVatInput(value: string) {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function invoicePreview(billing: Record<string, any>, form: InvoiceForm, vatCheck: VatCheck) {
   const totals = billing.totals || {};
   const storedGross = Number.isFinite(Number(totals.totalGross))
     ? Math.round(Number(totals.totalGross) * 100)
@@ -187,9 +199,9 @@ function invoicePreview(billing: Record<string, any>, form: InvoiceForm) {
     : Math.max(0, storedGross - storedNet);
   const storedRate = storedNet > 0 && storedVat > 0 ? storedVat / storedNet : 0.19;
   const deliveryCountry = normalizeCountry(billing.delivery_address?.country);
-  const hasVatId = form.vatId.trim().length > 0;
+  const hasVerifiedVatId = vatCheck.status === "valid" && vatCheck.normalizedVatId === normalizedVatInput(form.vatId);
   const isThirdCountry = Boolean(deliveryCountry) && !EU_COUNTRIES.has(deliveryCountry);
-  const isEuBusinessPreview = Boolean(deliveryCountry) && deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry) && hasVatId;
+  const isEuBusinessPreview = Boolean(deliveryCountry) && deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry) && hasVerifiedVatId;
   const taxExemptPreview = isThirdCountry || isEuBusinessPreview;
   const vat = taxExemptPreview ? 0 : Math.round(storedNet * storedRate);
 
@@ -223,6 +235,7 @@ export function BillingPortalClient({ token }: { token: string }) {
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [form, setForm] = useState<InvoiceForm>(EMPTY_FORM);
+  const [vatCheck, setVatCheck] = useState<VatCheck>({ status: "idle" });
 
   useEffect(() => {
     void load();
@@ -233,7 +246,14 @@ export function BillingPortalClient({ token }: { token: string }) {
     const payload = await response.json().catch(() => ({ ok: false }));
     setData(payload);
     setLoading(false);
-    if (payload.ok && payload.billingCase) setForm(formFromBilling(payload.billingCase));
+    if (payload.ok && payload.billingCase) {
+      const nextForm = formFromBilling(payload.billingCase);
+      setForm(nextForm);
+      const stored = payload.billingCase.vat_validation;
+      setVatCheck(stored?.checked && stored?.valid && stored?.normalizedVatId === normalizedVatInput(nextForm.vatId)
+        ? { status: "valid", normalizedVatId: stored.normalizedVatId, name: stored.name || stored.listedName || null, address: stored.address || stored.listedAddress || null, identityComparison: stored.identityComparison }
+        : { status: "idle" });
+    }
   }
 
   function cancelEditing() {
@@ -242,9 +262,49 @@ export function BillingPortalClient({ token }: { token: string }) {
     setMessage(null);
   }
 
+  async function checkVatId() {
+    const deliveryCountry = normalizeCountry(data?.billingCase?.delivery_address?.country);
+    const needsCheck = Boolean(form.vatId.trim()) && deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry);
+    if (!needsCheck) {
+      setVatCheck({ status: "idle" });
+      return true;
+    }
+    setVatCheck({ status: "checking" });
+    setMessage(null);
+    const response = await fetch(`/api/rechnung/${encodeURIComponent(token)}/vat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vatId: form.vatId, company: form.company }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (response.ok && payload?.validation?.valid) {
+      setVatCheck({
+        status: "valid",
+        normalizedVatId: payload.validation.normalizedVatId,
+        name: payload.validation.name,
+        address: payload.validation.address,
+        identityComparison: payload.validation.identityComparison,
+      });
+      setForm((current) => ({ ...current, vatId: payload.validation.normalizedVatId }));
+      return true;
+    }
+    const unavailable = response.status === 503;
+    setVatCheck({ status: unavailable ? "unavailable" : "invalid" });
+    setMessage(unavailable
+      ? "Die USt-IdNr. konnte gerade nicht beim EU-Dienst geprüft werden. Bitte versuchen Sie es erneut."
+      : "Diese USt-IdNr. ist für das Lieferland nicht gültig. Bitte prüfen Sie die Eingabe.");
+    return false;
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!editing || data?.readOnly) return;
+    const deliveryCountry = normalizeCountry(data?.billingCase?.delivery_address?.country);
+    const needsVatCheck = Boolean(form.vatId.trim()) && deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry);
+    if (needsVatCheck && (vatCheck.status !== "valid" || vatCheck.normalizedVatId !== normalizedVatInput(form.vatId))) {
+      setMessage("Bitte prüfen Sie die USt-IdNr., bevor Sie die Rechnungsdaten absenden.");
+      return;
+    }
     setSending(true);
     setMessage(null);
     const response = await fetch(`/api/rechnung/${encodeURIComponent(token)}`, {
@@ -273,7 +333,11 @@ export function BillingPortalClient({ token }: { token: string }) {
       setMessage(
         payload?.error === "invoice_already_created"
           ? "Die finale Rechnung wurde bereits erstellt. Änderungen sind nicht mehr möglich."
-          : "Die Rechnungsdaten konnten nicht gesendet werden. Bitte versuchen Sie es erneut oder kontaktieren Sie NEONTRIP.",
+          : payload?.error === "vat_id_invalid" || payload?.error === "vat_id_format_invalid" || payload?.error === "vat_id_country_mismatch"
+            ? "Diese USt-IdNr. ist für das Lieferland nicht gültig. Bitte prüfen Sie die Eingabe."
+            : payload?.error === "vat_validation_unavailable"
+              ? "Die USt-IdNr. konnte gerade nicht beim EU-Dienst geprüft werden. Bitte versuchen Sie es erneut."
+              : "Die Rechnungsdaten konnten nicht gesendet werden. Bitte versuchen Sie es erneut oder kontaktieren Sie NEONTRIP.",
       );
       return;
     }
@@ -300,7 +364,7 @@ export function BillingPortalClient({ token }: { token: string }) {
 
   const billing = data.billingCase;
   const currency = String(billing.currency || billing.totals?.currency || "EUR");
-  const preview = invoicePreview(billing, form);
+  const preview = invoicePreview(billing, form, vatCheck);
   const paymentLabel = billing.payment_method === "VORKASSE" ? "Zahlbar sofort" : `${billing.payment_terms_days || 14} Tage nach Erhalt`;
   const taxLabel = preview.vat === 0 ? (preview.isThirdCountry ? "Steuerfreie Ausfuhr" : "USt-ID wird geprüft") : `${percent(preview.rate)} % Umsatzsteuer`;
   const pendingChange = data.changes?.find((change) => ["PENDING", "OPEN"].includes(String(change.status)));
@@ -394,7 +458,13 @@ export function BillingPortalClient({ token }: { token: string }) {
               </label>
               <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
                 <span>USt-IdNr. (falls vorhanden)</span>
-                <input value={form.vatId} readOnly={!editing} onChange={(event) => setForm({ ...form, vatId: event.target.value })} className={fieldClass(editing)} />
+                <div className="flex gap-2">
+                  <input value={form.vatId} readOnly={!editing} onChange={(event) => { setForm({ ...form, vatId: event.target.value }); setVatCheck({ status: "idle" }); }} onBlur={() => { if (editing && form.vatId.trim()) void checkVatId(); }} className={`${fieldClass(editing)} min-w-0 flex-1`} />
+                  {editing && form.vatId.trim() ? <button type="button" disabled={vatCheck.status === "checking"} onClick={() => void checkVatId()} className="shrink-0 rounded-xl border border-stone-300 bg-white px-3 text-xs font-semibold disabled:opacity-50">{vatCheck.status === "checking" ? "Prüfung …" : "USt-ID prüfen"}</button> : null}
+                </div>
+                {vatCheck.status === "valid" ? <span className="font-medium text-emerald-700">USt-IdNr. gültig{vatCheck.name ? ` · Gelistet als ${vatCheck.name}` : ""}</span> : null}
+                {vatCheck.status === "invalid" ? <span className="font-medium text-red-700">USt-IdNr. ungültig</span> : null}
+                {vatCheck.status === "valid" && vatCheck.identityComparison === "MISMATCH" ? <span className="font-normal text-amber-700">Firmenname oder Anschrift weichen vom Registereintrag ab. Die Bestellung kann trotzdem eingereicht werden; NEONTRIP erhält einen Prüfhinweis.</span> : null}
               </label>
               <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
                 <span>Projektnummer (optional)</span>
@@ -415,7 +485,7 @@ export function BillingPortalClient({ token }: { token: string }) {
                   <X className="h-4 w-4" />
                   Abbrechen
                 </button>
-                <button disabled={sending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-stone-950 px-5 text-sm font-semibold text-white transition hover:bg-[#b91c73] disabled:opacity-50">
+                <button disabled={sending || vatCheck.status === "checking" || (Boolean(form.vatId.trim()) && preview.deliveryCountry !== "DE" && EU_COUNTRIES.has(preview.deliveryCountry) && vatCheck.status !== "valid")} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-stone-950 px-5 text-sm font-semibold text-white transition hover:bg-[#b91c73] disabled:opacity-50">
                   <Send className="h-4 w-4" />
                   {sending ? "Wird gesendet …" : "Speichern und zur Prüfung senden"}
                 </button>
@@ -440,7 +510,7 @@ export function BillingPortalClient({ token }: { token: string }) {
               <p className="mt-2 text-sm font-semibold">Lieferland: {countryLabel(billing.delivery_address?.country)}</p>
               <p className="mt-2 text-xs leading-5 text-stone-500">Das Lieferland ist für die steuerliche Behandlung maßgeblich, nicht das Rechnungsland.</p>
             </div>
-            {preview.isEuBusinessPreview ? <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">Vorläufige Netto-Vorschau. Die USt-ID und Firmendaten werden geprüft; erst nach Freigabe durch NEONTRIP wird die Änderung übernommen.</p> : null}
+            {preview.isEuBusinessPreview ? <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">Die USt-IdNr. wurde beim EU-Dienst bestätigt. Nach Freigabe durch NEONTRIP wird die Rechnung ohne Umsatzsteuer ausgestellt.</p> : null}
             {preview.isThirdCountry ? <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">Für das Lieferland wird aktuell eine steuerfreie Ausfuhr angezeigt.</p> : null}
           </aside>
         </section>
