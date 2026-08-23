@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ExternalLink, File
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
+import { billingChangeBaselines, type BillingHistoryState } from "@/lib/ops/billing/change-history";
 
 type BillingCase = {
   id: string; shopify_order_id: string; shopify_order_name: string; customer_email: string | null; customer: Record<string, unknown>;
@@ -112,9 +113,10 @@ function ComparisonRow({ label, previous, next, nextLabel }: { label: string; pr
   </div>;
 }
 
-function ChangeRequestReview({ change, billingCase, busy, onAction }: {
+function ChangeRequestReview({ change, billingCase, previousValues, busy, onAction }: {
   change: Record<string, unknown>;
   billingCase: BillingCase;
+  previousValues: BillingHistoryState;
   busy: string | null;
   onAction: (action: string, payload: Record<string, unknown>) => Promise<void>;
 }) {
@@ -124,7 +126,7 @@ function ChangeRequestReview({ change, billingCase, busy, onAction }: {
   const requested = record(change.requested_changes);
   const draft = record(change.ops_draft_changes);
   const applied = record(change.applied_changes);
-  const currentAddress = record(billingCase.billing_address);
+  const currentAddress = previousValues.billingAddress;
   const requestedAddress = record(requested.billingAddress);
   const status = String(change.status || "PENDING");
   const finalValues = Object.keys(applied).length ? applied : Object.keys(draft).length ? draft : requested;
@@ -156,9 +158,9 @@ function ChangeRequestReview({ change, billingCase, busy, onAction }: {
     {!editing ? <div>
       <div className="hidden grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-stone-200 bg-[#faf8f5] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-500 md:grid"><span>Feld</span><span>Bisher</span><span>{decisionLabel}</span></div>
       <ComparisonRow label="Rechnungsanschrift" previous={<AddressSummary value={currentAddress} />} next={<AddressSummary value={record(finalValues.billingAddress || requestedAddress)} />} nextLabel={decisionLabel} />
-      <ComparisonRow label="Rechnungs-E-Mail" previous={billingCase.customer_email || "–"} next={String(finalValues.invoiceEmail ?? requested.invoiceEmail ?? billingCase.customer_email ?? "–")} nextLabel={decisionLabel} />
-      <ComparisonRow label="USt-ID" previous={billingCase.vat_id || "–"} next={String(finalValues.vatId ?? requested.vatId ?? billingCase.vat_id ?? "–") || "–"} nextLabel={decisionLabel} />
-      <ComparisonRow label="Projektnummer" previous={billingCase.project_number || "–"} next={String(finalValues.projectNumber ?? requested.projectNumber ?? billingCase.project_number ?? "–") || "–"} nextLabel={decisionLabel} />
+      <ComparisonRow label="Rechnungs-E-Mail" previous={String(previousValues.invoiceEmail || "–")} next={String(finalValues.invoiceEmail ?? requested.invoiceEmail ?? previousValues.invoiceEmail ?? "–")} nextLabel={decisionLabel} />
+      <ComparisonRow label="USt-ID" previous={String(previousValues.vatId || "–")} next={String(finalValues.vatId ?? requested.vatId ?? previousValues.vatId ?? "–") || "–"} nextLabel={decisionLabel} />
+      <ComparisonRow label="Projektnummer" previous={String(previousValues.projectNumber || "–")} next={String(finalValues.projectNumber ?? requested.projectNumber ?? previousValues.projectNumber ?? "–") || "–"} nextLabel={decisionLabel} />
     </div> : <form onSubmit={save} className="grid gap-3 bg-[#faf8f5] p-5 md:grid-cols-2">
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Firma<input className={field} value={form.company} onChange={(event) => setForm({ ...form, company: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Name<input className={field} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
@@ -210,6 +212,10 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, det
   const vatValidation = selected?.billingCase.vat_validation || {};
   const shopifyUrl = selected ? shopifyAdminUrl(selected.billingCase.shopify_order_id) : null;
   const easybillLink = selected ? easybillDocumentsUrl(selected.documents) : null;
+  const changeBaselines = useMemo(
+    () => selected ? billingChangeBaselines(selected.changes, selected.events, selected.billingCase as unknown as Record<string, unknown>) : {},
+    [selected],
+  );
 
   async function login() {
     const response = await fetch("/api/ops/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: password }) });
@@ -307,7 +313,7 @@ export function BillingOpsClient({ initialHasSession, opsEnabled, localMode, det
                 <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#b91c73]">Prüfung</p><h2 className="mt-1 text-xl font-semibold text-stone-950">Änderungen zur Rechnung</h2></div>
                 <p className="text-xs text-stone-500">{selected.changes.length} {selected.changes.length === 1 ? "Anfrage" : "Anfragen"}</p>
               </div>
-              <div className="mt-4 space-y-3">{selected.changes.length ? selected.changes.map((change) => <ChangeRequestReview key={String(change.id)} change={change} billingCase={selected.billingCase} busy={actionBusy} onAction={runAction} />) : <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-6 text-center"><CheckCircle2 className="mx-auto h-5 w-5 text-emerald-700" /><p className="mt-2 text-sm font-medium text-stone-800">Keine Änderungsanfrage offen</p></div>}</div>
+              <div className="mt-4 space-y-3">{selected.changes.length ? selected.changes.map((change) => <ChangeRequestReview key={String(change.id)} change={change} billingCase={selected.billingCase} previousValues={changeBaselines[String(change.id)]} busy={actionBusy} onAction={runAction} />) : <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-6 text-center"><CheckCircle2 className="mx-auto h-5 w-5 text-emerald-700" /><p className="mt-2 text-sm font-medium text-stone-800">Keine Änderungsanfrage offen</p></div>}</div>
             </section>
 
             <section className="rounded-[22px] border border-stone-200 bg-white p-4 md:p-5">

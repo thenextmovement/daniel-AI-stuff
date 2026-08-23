@@ -169,7 +169,7 @@ function formFromBilling(billing: Record<string, any>): InvoiceForm {
     city: String(address.city || ""),
     country: normalizeCountry(address.country) || String(address.country || ""),
     vatId: String(billing.vat_id || ""),
-    invoiceEmail: String(billing.customer_email || address.invoiceEmail || ""),
+    invoiceEmail: String(billing.customer_email || address.invoiceEmail || billing.customer?.invoiceEmail || billing.customer?.email || ""),
     projectNumber: String(billing.project_number || address.projectNumber || ""),
   };
 }
