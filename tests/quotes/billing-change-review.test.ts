@@ -5,6 +5,7 @@ import test from "node:test";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 const migration = read("supabase/migrations/20260822170000_billing_change_review_detail.sql");
+const verifiedVatMigration = read("supabase/migrations/20260823231000_apply_verified_vat_change_atomically.sql");
 
 test("billing overview opens a dedicated order detail page", () => {
   const client = read("src/app/ops/rechnungen/page-client.tsx");
@@ -45,4 +46,14 @@ test("original customer request and reviewed values remain separately auditable"
   assert.match(migration, /requested_changes=v_original/);
   assert.match(migration, /applied_changes=case when v_action='APPLY_CHANGE_REQUEST' then v_reviewed/);
   assert.match(migration, /ops_draft_changes/);
+});
+
+test("a VIES-verified VAT change is confirmed net in the same decision transaction", () => {
+  assert.match(verifiedVatMigration, /BILLING_VAT_VALIDATION_REQUIRED/);
+  assert.match(verifiedVatMigration, /v_vat_validation->>'normalizedVatId'/);
+  assert.match(verifiedVatMigration, /v_vat_validation->>'countryCode'/);
+  assert.match(verifiedVatMigration, /'CONFIRM_VAT'/);
+  assert.match(verifiedVatMigration, /'taxDecision','NET'/);
+  assert.match(verifiedVatMigration, /delete from public\.billing_jobs.*job_type='VERIFY_VAT'/s);
+  assert.match(verifiedVatMigration, /notificationQueued/);
 });

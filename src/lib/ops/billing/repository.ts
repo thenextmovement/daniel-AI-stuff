@@ -101,7 +101,7 @@ export async function getBillingCase(id: string) {
 export async function getBillingPortal(token: string) {
   const hash = portalTokenHash(token);
   const cases = await supabaseRequest<BillingCaseRow[]>("billing_cases", undefined, {
-    select: "id,shopify_order_name,customer_email,project_number,customer,billing_address,delivery_address,line_items,totals,currency,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,status,current_revision,portal_revoked_at,paid_at,delivered_at,final_invoice_at,created_at,updated_at",
+    select: "id,shopify_order_name,customer_email,project_number,customer,billing_address,delivery_address,line_items,totals,currency,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,vat_validation,status,current_revision,portal_revoked_at,paid_at,delivered_at,final_invoice_at,created_at,updated_at",
     portal_token_hash: `eq.${hash}`,
     portal_revoked_at: "is.null",
     limit: 1,
