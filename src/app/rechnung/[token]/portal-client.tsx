@@ -293,6 +293,15 @@ export function BillingPortalClient({ token }: { token: string }) {
   const [message, setMessage] = useState<string | null>(null);
   const [form, setForm] = useState<InvoiceForm>(EMPTY_FORM);
   const [vatCheck, setVatCheck] = useState<VatCheck>({ status: "idle" });
+  const effectiveInvoiceEmail = firstNonEmptyText(
+    form.invoiceEmail,
+    data?.billingCase?.invoiceEmail,
+    data?.billingCase?.customer_email,
+    data?.billingCase?.customerEmail,
+    data?.billingCase?.billing_address?.invoiceEmail,
+    data?.billingCase?.customer?.invoiceEmail,
+    data?.billingCase?.customer?.email,
+  );
 
   useEffect(() => {
     void load();
@@ -394,9 +403,9 @@ export function BillingPortalClient({ token }: { token: string }) {
           deliveryInstructions: form.deliveryInstructions,
         },
         vatId: deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry) ? form.vatId : "",
-        invoiceEmail: form.invoiceEmail,
+        invoiceEmail: effectiveInvoiceEmail,
         projectNumber: form.projectNumber,
-        requesterEmail: form.invoiceEmail,
+        requesterEmail: effectiveInvoiceEmail,
       }),
     });
     const payload = await response.json().catch(() => null);
@@ -558,7 +567,7 @@ export function BillingPortalClient({ token }: { token: string }) {
 
               <section className="grid gap-3 rounded-2xl border border-stone-200 bg-[#f7f4ee] p-4 sm:grid-cols-2 xl:col-span-2">
                 <div className="sm:col-span-2"><p className="text-sm font-semibold text-stone-950">Rechnungsversand</p><p className="mt-1 text-xs text-stone-500">Hierhin senden wir Pro-forma-Rechnung und spätere Rechnungsdokumente.</p></div>
-                <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Rechnungs-E-Mail</span><input required={editing} type="email" value={form.invoiceEmail} readOnly={!editing} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} className={fieldClass(editing)} /></label>
+                <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Rechnungs-E-Mail</span><input required={editing} type="email" value={effectiveInvoiceEmail} readOnly={!editing} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} className={fieldClass(editing)} /></label>
                 <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Projektnummer (optional)</span><input value={form.projectNumber} readOnly={!editing} onChange={(event) => setForm({ ...form, projectNumber: event.target.value })} className={fieldClass(editing)} /></label>
               </section>
             </fieldset>
