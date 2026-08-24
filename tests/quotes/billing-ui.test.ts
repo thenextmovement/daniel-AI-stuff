@@ -77,6 +77,18 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(portal, /PDF öffnen/);
   assert.match(portal, /Projektnummer \(optional\)/);
   assert.match(portal, /projectNumber/);
+  assert.doesNotMatch(portal, /\.at\(-1\)/);
+  assert.match(portal, /Array\.isArray\(payload\.changes\)/);
+  assert.match(portal, /Array\.isArray\(payload\.documents\)/);
+  assert.match(portal, /max-w-\[88rem\]/);
+  assert.match(portal, /h-11 w-full min-w-0/);
+  assert.match(portal, /portal_unavailable/);
+  const portalError = read("src/app/rechnung/[token]/error.tsx");
+  assert.match(portalError, /Portal konnte nicht geladen werden/);
+  assert.match(portalError, /Erneut laden/);
+  const portalRoute = read("src/app/api/rechnung/[token]/route.ts");
+  assert.match(portalRoute, /error: "portal_unavailable"/);
+  assert.match(portalRoute, /status: 503/);
   const download = read("src/app/api/rechnung/[token]/documents/[documentId]/route.ts");
   assert.match(download, /getBillingPortalDocument/);
   assert.match(download, /Content-Disposition/);

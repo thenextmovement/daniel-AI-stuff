@@ -204,7 +204,15 @@ function personName(address: Record<string, any>, fallback = "") {
   if (firstName || lastName) return { firstName, lastName };
   const parts = firstNonEmptyText(address.name, address.contactName, fallback).split(/\s+/).filter(Boolean);
   if (parts.length < 2) return { firstName: parts[0] || "", lastName: "" };
-  return { firstName: parts.slice(0, -1).join(" "), lastName: parts.at(-1) || "" };
+  return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] || "" };
+}
+
+function portalChanges(payload: PortalPayload) {
+  return Array.isArray(payload.changes) ? payload.changes : [];
+}
+
+function portalDocuments(payload: PortalPayload) {
+  return Array.isArray(payload.documents) ? payload.documents : [];
 }
 
 function formFromBilling(billing: Record<string, any>, requested: Record<string, any> = {}): InvoiceForm {
@@ -235,7 +243,7 @@ function formFromBilling(billing: Record<string, any>, requested: Record<string,
 }
 
 function pendingChanges(payload: PortalPayload) {
-  const pending = payload.changes?.find((change) => ["PENDING", "OPEN"].includes(String(change.status)));
+  const pending = portalChanges(payload).find((change) => ["PENDING", "OPEN"].includes(String(change.status)));
   return pending?.requested_changes && typeof pending.requested_changes === "object" ? pending.requested_changes : {};
 }
 
@@ -278,7 +286,7 @@ function percent(value: number) {
 }
 
 function fieldClass(editing: boolean) {
-  return `h-11 rounded-xl border px-3 text-sm font-normal outline-none transition ${
+  return `h-11 w-full min-w-0 rounded-xl border px-3 text-sm font-normal outline-none transition ${
     editing
       ? "border-stone-300 bg-white text-stone-950 focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/10"
       : "cursor-default border-stone-200 bg-stone-50 text-stone-700"
@@ -308,18 +316,24 @@ export function BillingPortalClient({ token }: { token: string }) {
   }, [token]);
 
   async function load() {
-    const response = await fetch(`/api/rechnung/${encodeURIComponent(token)}`, { cache: "no-store" });
-    const payload = await response.json().catch(() => ({ ok: false }));
-    setData(payload);
-    setLoading(false);
-    if (payload.ok && payload.billingCase) {
-      const requested = pendingChanges(payload);
-      const nextForm = formFromBilling(payload.billingCase, requested);
-      setForm(nextForm);
-      const stored = requested.vatValidation || payload.billingCase.vat_validation;
-      setVatCheck(stored?.checked && stored?.valid && stored?.normalizedVatId === normalizedVatInput(nextForm.vatId)
-        ? { status: "valid", normalizedVatId: stored.normalizedVatId, name: stored.name || stored.listedName || null, address: stored.address || stored.listedAddress || null, identityComparison: stored.identityComparison }
-        : { status: "idle" });
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/rechnung/${encodeURIComponent(token)}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({ ok: false, error: "portal_unavailable" }));
+      setData(payload);
+      if (payload.ok && payload.billingCase) {
+        const requested = pendingChanges(payload);
+        const nextForm = formFromBilling(payload.billingCase, requested);
+        setForm(nextForm);
+        const stored = requested.vatValidation || payload.billingCase.vat_validation;
+        setVatCheck(stored?.checked && stored?.valid && stored?.normalizedVatId === normalizedVatInput(nextForm.vatId)
+          ? { status: "valid", normalizedVatId: stored.normalizedVatId, name: stored.name || stored.listedName || null, address: stored.address || stored.listedAddress || null, identityComparison: stored.identityComparison }
+          : { status: "idle" });
+      }
+    } catch {
+      setData({ ok: false, error: "portal_unavailable" });
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -338,12 +352,20 @@ export function BillingPortalClient({ token }: { token: string }) {
     }
     setVatCheck({ status: "checking" });
     setMessage(null);
-    const response = await fetch(`/api/rechnung/${encodeURIComponent(token)}/vat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vatId: form.vatId, company: form.company, deliveryCountry }),
-    });
-    const payload = await response.json().catch(() => null);
+    let response: Response;
+    let payload: any;
+    try {
+      response = await fetch(`/api/rechnung/${encodeURIComponent(token)}/vat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vatId: form.vatId, company: form.company, deliveryCountry }),
+      });
+      payload = await response.json().catch(() => null);
+    } catch {
+      setVatCheck({ status: "unavailable" });
+      setMessage("Die USt-IdNr. konnte gerade nicht beim EU-Dienst geprüft werden. Bitte versuchen Sie es erneut.");
+      return false;
+    }
     if (response.ok && payload?.validation?.valid) {
       setVatCheck({
         status: "valid",
@@ -374,13 +396,18 @@ export function BillingPortalClient({ token }: { token: string }) {
     }
     setSending(true);
     setMessage(null);
-    const response = await fetch(`/api/rechnung/${encodeURIComponent(token)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Idempotency-Key": crypto.randomUUID(),
-      },
-      body: JSON.stringify({
+    const idempotencyKey = globalThis.crypto?.randomUUID?.()
+      || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let response: Response;
+    let payload: any;
+    try {
+      response = await fetch(`/api/rechnung/${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({
         billingAddress: {
           company: form.company,
           name: [form.billingFirstName, form.billingLastName].filter(Boolean).join(" "),
@@ -406,9 +433,14 @@ export function BillingPortalClient({ token }: { token: string }) {
         invoiceEmail: effectiveInvoiceEmail,
         projectNumber: form.projectNumber,
         requesterEmail: effectiveInvoiceEmail,
-      }),
-    });
-    const payload = await response.json().catch(() => null);
+        }),
+      });
+      payload = await response.json().catch(() => null);
+    } catch {
+      setSending(false);
+      setMessage("Die Rechnungsdaten konnten wegen einer unterbrochenen Verbindung nicht gesendet werden. Bitte versuchen Sie es erneut.");
+      return;
+    }
     setSending(false);
     if (!response.ok) {
       setMessage(
@@ -434,12 +466,14 @@ export function BillingPortalClient({ token }: { token: string }) {
   }
 
   if (!data?.ok || !data.billingCase) {
+    const temporarilyUnavailable = data?.error === "portal_unavailable";
     return (
       <main className="grid min-h-screen place-items-center bg-[#f7f4ee] p-6">
         <div className="max-w-md rounded-[24px] border border-stone-200 bg-white p-8 text-center">
           <LockKeyhole className="mx-auto h-8 w-8 text-stone-700" />
-          <h1 className="mt-4 text-xl font-semibold">Link nicht verfügbar</h1>
-          <p className="mt-2 text-sm leading-6 text-stone-500">Der Rechnungslink ist ungültig oder wurde von NEONTRIP widerrufen.</p>
+          <h1 className="mt-4 text-xl font-semibold">{temporarilyUnavailable ? "Portal vorübergehend nicht erreichbar" : "Link nicht verfügbar"}</h1>
+          <p className="mt-2 text-sm leading-6 text-stone-500">{temporarilyUnavailable ? "Bitte laden Sie die Seite erneut. Ihre Rechnungsdaten bleiben unverändert." : "Der Rechnungslink ist ungültig oder wurde von NEONTRIP widerrufen."}</p>
+          {temporarilyUnavailable ? <button type="button" onClick={() => window.location.reload()} className="mt-5 h-11 rounded-xl bg-stone-950 px-5 text-sm font-semibold text-white">Erneut laden</button> : null}
         </div>
       </main>
     );
@@ -449,7 +483,8 @@ export function BillingPortalClient({ token }: { token: string }) {
   const currency = String(billing.currency || billing.totals?.currency || "EUR");
   const preview = invoicePreview(billing, form, vatCheck);
   const paymentLabel = billing.payment_method === "VORKASSE" ? "Zahlbar sofort" : `${billing.payment_terms_days || 14} Tage nach Erhalt`;
-  const pendingChange = data.changes?.find((change) => ["PENDING", "OPEN"].includes(String(change.status)));
+  const documents = portalDocuments(data);
+  const pendingChange = portalChanges(data).find((change) => ["PENDING", "OPEN"].includes(String(change.status)));
   const taxReviewVerified = String(billing.tax_review_status || "") === "VERIFIED";
   const taxLabel = preview.vat === 0
     ? preview.isThirdCountry
@@ -461,7 +496,7 @@ export function BillingPortalClient({ token }: { token: string }) {
 
   return (
     <main className="min-h-screen bg-[#f7f4ee] px-4 py-5 text-[#171412] sm:px-6 sm:py-8">
-      <div className="mx-auto max-w-6xl space-y-5">
+      <div className="mx-auto max-w-[88rem] space-y-5">
         <header className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(250,49,162,0.18),transparent_28%),linear-gradient(135deg,#080807_0%,#171311_62%,#24151c_100%)] px-5 py-6 text-white shadow-[0_24px_70px_rgba(18,14,12,0.2)] sm:px-8">
           <div className="flex items-center justify-between gap-4">
             <img src="/assets/logo_weiss_neontrip.png" alt="NEONTRIP" className="h-8 w-auto" />
@@ -499,8 +534,8 @@ export function BillingPortalClient({ token }: { token: string }) {
           </div>
         </section>
 
-        <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
-          <form onSubmit={submit} className="rounded-[24px] border border-[#ded8d0] bg-[#fffdf9] p-5 shadow-[0_14px_44px_rgba(20,16,12,0.05)] sm:p-7">
+        <section className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <form onSubmit={submit} className="min-w-0 rounded-[24px] border border-[#ded8d0] bg-[#fffdf9] p-5 shadow-[0_14px_44px_rgba(20,16,12,0.05)] sm:p-7">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#b91c73]">Nur Rechnungsdaten</p>
@@ -522,13 +557,13 @@ export function BillingPortalClient({ token }: { token: string }) {
               <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Eine Änderung wird bereits von NEONTRIP geprüft. Sie können die aktuell gespeicherten Daten weiterhin ansehen.</div>
             ) : null}
 
-            <fieldset disabled={Boolean(data.readOnly)} className="mt-6 grid gap-4 xl:grid-cols-2">
-              <section className="rounded-2xl border border-stone-200 bg-white p-4 sm:p-5">
+            <fieldset disabled={Boolean(data.readOnly)} className="mt-6 grid min-w-0 gap-4 xl:grid-cols-2">
+              <section className="min-w-0 rounded-2xl border border-stone-200 bg-white p-4 sm:p-5">
                 <div className="mb-4 border-b border-stone-200 pb-3">
                   <p className="text-sm font-semibold text-stone-950">Rechnungsadresse</p>
                   <p className="mt-1 text-xs leading-5 text-stone-500">Diese Anschrift erscheint auf Ihren Rechnungsdokumenten.</p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2 [&>label]:min-w-0">
                   <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2"><span>Firma / Rechnungsempfänger</span><input required={editing} value={form.company} readOnly={!editing} onChange={(event) => { setForm({ ...form, company: event.target.value }); setVatCheck({ status: "idle" }); }} className={fieldClass(editing)} /></label>
                   <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Vorname</span><input value={form.billingFirstName} readOnly={!editing} onChange={(event) => setForm({ ...form, billingFirstName: event.target.value })} className={fieldClass(editing)} /></label>
                   <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Nachname</span><input value={form.billingLastName} readOnly={!editing} onChange={(event) => setForm({ ...form, billingLastName: event.target.value })} className={fieldClass(editing)} /></label>
@@ -539,12 +574,12 @@ export function BillingPortalClient({ token }: { token: string }) {
                 </div>
               </section>
 
-              <section className="rounded-2xl border border-[#f3bddc] bg-[#fff8fc] p-4 sm:p-5">
+              <section className="min-w-0 rounded-2xl border border-[#f3bddc] bg-[#fff8fc] p-4 sm:p-5">
                 <div className="mb-4 flex gap-3 border-b border-[#f3bddc] pb-3">
                   <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#b91c73]" />
                   <div><p className="text-sm font-semibold text-stone-950">Lieferadresse</p><p className="mt-1 text-xs leading-5 text-stone-600">Wird nach Freigabe direkt in Shopify übernommen. Das Lieferland bestimmt die steuerliche Behandlung.</p></div>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2 [&>label]:min-w-0">
                   <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2"><span>Firma am Lieferort</span><input value={form.deliveryCompany} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryCompany: event.target.value })} className={fieldClass(editing)} /></label>
                   <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Vorname</span><input value={form.deliveryFirstName} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryFirstName: event.target.value })} className={fieldClass(editing)} /></label>
                   <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Nachname</span><input value={form.deliveryLastName} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryLastName: event.target.value })} className={fieldClass(editing)} /></label>
@@ -565,7 +600,7 @@ export function BillingPortalClient({ token }: { token: string }) {
                 </div>
               </section>
 
-              <section className="grid gap-3 rounded-2xl border border-stone-200 bg-[#f7f4ee] p-4 sm:grid-cols-2 xl:col-span-2">
+              <section className="grid min-w-0 gap-3 rounded-2xl border border-stone-200 bg-[#f7f4ee] p-4 sm:grid-cols-2 xl:col-span-2 [&>label]:min-w-0">
                 <div className="sm:col-span-2"><p className="text-sm font-semibold text-stone-950">Rechnungsversand</p><p className="mt-1 text-xs text-stone-500">Hierhin senden wir Pro-forma-Rechnung und spätere Rechnungsdokumente.</p></div>
                 <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Rechnungs-E-Mail</span><input required={editing} type="email" value={effectiveInvoiceEmail} readOnly={!editing} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} className={fieldClass(editing)} /></label>
                 <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Projektnummer (optional)</span><input value={form.projectNumber} readOnly={!editing} onChange={(event) => setForm({ ...form, projectNumber: event.target.value })} className={fieldClass(editing)} /></label>
@@ -590,7 +625,7 @@ export function BillingPortalClient({ token }: { token: string }) {
             {message ? <p aria-live="polite" className="mt-4 rounded-xl bg-stone-100 p-3 text-sm text-stone-700">{message}</p> : null}
           </form>
 
-          <aside className="rounded-[24px] border border-[#ded8d0] bg-white p-5 shadow-[0_14px_44px_rgba(20,16,12,0.06)] lg:sticky lg:top-6">
+          <aside className="min-w-0 rounded-[24px] border border-[#ded8d0] bg-white p-5 shadow-[0_14px_44px_rgba(20,16,12,0.06)] lg:sticky lg:top-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#b91c73]">Live-Vorschau</p>
             <div className="mt-3 flex items-end justify-between gap-4 border-b border-stone-200 pb-4">
               <div><p className="text-xs text-stone-500">Bestellnummer</p><p className="mt-1 font-semibold">{billing.shopify_order_name}</p></div>
@@ -617,10 +652,10 @@ export function BillingPortalClient({ token }: { token: string }) {
               <FileText className="h-4 w-4 text-stone-400" />
               <h2 className="text-sm font-semibold">Dokumente</h2>
             </div>
-            <span className="text-xs text-stone-400">{data.documents?.length || 0} verfügbar</span>
+            <span className="text-xs text-stone-400">{documents.length} verfügbar</span>
           </div>
           <div className="mt-2 divide-y divide-stone-200">
-            {data.documents?.length ? data.documents.map((document) => (
+            {documents.length ? documents.map((document) => (
               <div key={document.id} className="flex items-center justify-between gap-4 py-2.5">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{document.document_number}</p>
