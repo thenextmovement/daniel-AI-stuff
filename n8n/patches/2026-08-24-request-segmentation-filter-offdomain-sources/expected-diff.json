@@ -1,0 +1,17 @@
+{
+  "workflow_id": "ELpwCfdWOCRZ22gy",
+  "forward_operation_count": 1,
+  "reverse_operation_count": 1,
+  "expected": {
+    "changed_node_id": "treatment-shadow-prepare-classification",
+    "changed_field_path": "parameters.jsCode",
+    "before_code_sha256": "d57f88a2b1619dab5b0c5a989eebb5031795cf563af995c055c06925059cd579",
+    "after_code_sha256": "7d41c2f6fc8c3f1d4255c6596d93503cb8127882f2a7bb53ac1cb7930ac97d26",
+    "node_count": 23,
+    "connection_source_count": 20
+  },
+  "every_other_node_field_unchanged": true,
+  "connections_unchanged": true,
+  "settings_unchanged": true,
+  "activation_unchanged": true
+}

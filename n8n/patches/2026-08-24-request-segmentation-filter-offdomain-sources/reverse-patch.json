@@ -1,0 +1,47 @@
+{
+  "artifact_version": "neontrip_n8n_filter_offdomain_sources_v1",
+  "restores_prepared_version": {
+    "draft_path": "/Users/danielklesse/codex-worktrees/neontrip-ops-segmentation-payload-safe-redaction-20260824-120511/n8n/backups/2026-08-24-request-segmentation-filter-offdomain-sources/ELpwCfdWOCRZ22gy.draft-before.json",
+    "active_path": "/Users/danielklesse/codex-worktrees/neontrip-ops-segmentation-payload-safe-redaction-20260824-120511/n8n/backups/2026-08-24-request-segmentation-filter-offdomain-sources/ELpwCfdWOCRZ22gy.published-active-before.json",
+    "captured_at_utc": "2026-08-24T10:24:36Z",
+    "draft_version_id": "f333c2b1-6114-4aaa-8f7d-b18d9e4999b7",
+    "active_version_id": "f333c2b1-6114-4aaa-8f7d-b18d9e4999b7",
+    "version_counter": 137,
+    "draft_file_sha256": "1be54ac1b5b0df58f56f913936056eba536c8b49096c961636c73ec70a882c5c",
+    "active_file_sha256": "9ab352dcbee5288fadb658489dadd793b8882b6fffeb118a4da42b784c925b37",
+    "graph_sha256": "d877f92fdc67bee468998b36e79499aa18235fbabbb25418233ca3b02a1010fe",
+    "prepare_node_sha256": "259096f56d7376226fe55547f6a58ae95debc693514a28d13a221ec35bbd4d5b",
+    "active": true,
+    "node_count": 23,
+    "connection_source_count": 20
+  },
+  "patch": {
+    "id": "ELpwCfdWOCRZ22gy",
+    "intent": "Restore the exact Counter-137 Prepare Treatment Classification source-domain rejection block.",
+    "operations": [
+      {
+        "type": "patchNodeField",
+        "nodeId": "treatment-shadow-prepare-classification",
+        "fieldPath": "parameters.jsCode",
+        "patches": [
+          {
+            "find": "        if (source.researchPlan.lookup_type === \"domain\") {\n          const expectedDomain = normalizeDnsHostname(source.researchPlan.lookup_value);\n          if (!expectedDomain) {\n            fail(\"treatment_shadow_research_domain_scope_invalid\",\n              \"The authorized research domain is invalid.\");\n          }\n          if (parsedUrl.dbHostname !== expectedDomain\n              && !parsedUrl.dbHostname.endsWith(\".\" + expectedDomain)) {\n            return;\n          }\n        }",
+            "replace": "        if (source.researchPlan.lookup_type === \"domain\") {\n          const expectedDomain = normalizeDnsHostname(source.researchPlan.lookup_value);\n          if (!expectedDomain\n              || (parsedUrl.dbHostname !== expectedDomain\n                && !parsedUrl.dbHostname.endsWith(\".\" + expectedDomain))) {\n            fail(\"treatment_shadow_research_domain_scope_invalid\",\n              \"Domain research returned a source outside the authorized domain.\");\n          }\n        }"
+          }
+        ]
+      }
+    ],
+    "continueOnError": false
+  },
+  "safety": {
+    "activation_unchanged": true,
+    "settings_unchanged": true,
+    "connections_unchanged": true,
+    "credentials_unchanged": true,
+    "customer_actions_unchanged_and_disabled": true,
+    "only_exact_domain_or_subdomain_sources_retained": true,
+    "malformed_urls_still_rejected": true,
+    "invalid_authorized_domain_still_rejected": true,
+    "no_manual_execution": true
+  }
+}

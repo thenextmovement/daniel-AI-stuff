@@ -12,6 +12,10 @@ const fullRollback = readFileSync(resolve(root,
   "supabase/rollbacks/20260821063055_prepare_request_segmentation_treatment_shadow_always_on_rollback.sql"), "utf8");
 const operationalRollback = readFileSync(resolve(root,
   "supabase/rollbacks/20260821070000_request_segmentation_treatment_shadow_operational_rollback.sql"), "utf8");
+const trackingRedactionRepair = readFileSync(resolve(root,
+  "supabase/migrations/20260824101129_repair_treatment_shadow_tracking_redaction.sql"), "utf8");
+const trackingRedactionRollback = readFileSync(resolve(root,
+  "supabase/rollbacks/20260824101129_repair_treatment_shadow_tracking_redaction_rollback.sql"), "utf8");
 
 function functionBodyFrom(source: string, name: string) {
   const start = source.search(new RegExp(`create(?: or replace)? function public\\.${name}\\b`, "i"));
@@ -127,4 +131,28 @@ test("full rollback is allowed only before runtime history and restores exact re
   assert.match(fullRollback, /drop function public\.neontrip_get_request_segmentation_treatment_shadow_payload\(uuid\)/i);
   assert.match(fullRollback, /0ab12d2ba650117b1151eb4729949547/i);
   assert.doesNotMatch(fullRollback, /delete\s+from\s+public\.(?:request_segmentation_jobs|request_segment_classifications|request_segmentation_gold_adjudications)/i);
+});
+
+test("tracking redaction repair is bounded, drift-gated and keeps the helper private", () => {
+  assertBalancedSqlQuotes(trackingRedactionRepair, "tracking redaction repair");
+  assert.match(trackingRedactionRepair, /^--[\s\S]*?\nbegin;[\s\S]*\ncommit;\s*$/i);
+  assert.match(trackingRedactionRepair, /fd9cfccc390984564a5091ab39d67612/i);
+  assert.ok(trackingRedactionRepair.includes(
+    "\\m(utm_[[:alnum:]_]+|gclid|gbraid|wbraid|fbclid)\\M"));
+  assert.match(trackingRedactionRepair, /\[TRACKING\]/);
+  assert.match(trackingRedactionRepair,
+    /revoke all on function public\.neontrip_treatment_redact_segmentation_text\(text, integer, text\[\]\)[\s\S]*?from public, anon, authenticated, service_role/i);
+  assert.doesNotMatch(trackingRedactionRepair,
+    /(?:insert|update|delete)\s+(?:into\s+|from\s+)?public\.(?:request_segmentation_jobs|request_segment_classifications|master_requests|segment_research_cache)/i);
+});
+
+test("tracking redaction rollback is exact, idle-gated and non-destructive", () => {
+  assertBalancedSqlQuotes(trackingRedactionRollback, "tracking redaction rollback");
+  assert.match(trackingRedactionRollback, /^--[\s\S]*?\nbegin;[\s\S]*\ncommit;\s*$/i);
+  assert.match(trackingRedactionRollback, /d450996670c9e9c6e1d585468c7a547a/i);
+  assert.match(trackingRedactionRollback, /fd9cfccc390984564a5091ab39d67612/i);
+  assert.match(trackingRedactionRollback,
+    /status = 'processing' or lock_owner is not null or locked_at is not null/i);
+  assert.doesNotMatch(trackingRedactionRollback,
+    /(?:insert|update|delete)\s+(?:into\s+|from\s+)?public\.(?:request_segmentation_jobs|request_segment_classifications|master_requests|segment_research_cache)/i);
 });

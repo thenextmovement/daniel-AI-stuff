@@ -1,0 +1,92 @@
+{
+  "generated_at_utc": "2026-08-24T10:35:02Z",
+  "workflow": {
+    "id": "ELpwCfdWOCRZ22gy",
+    "active": true,
+    "is_archived": false,
+    "before_version_id": "f333c2b1-6114-4aaa-8f7d-b18d9e4999b7",
+    "before_version_counter": 137,
+    "after_version_id": "f1ec1810-60db-42fa-805c-b935a114ca40",
+    "after_version_counter": 138,
+    "draft_active_graphs_equal": true,
+    "node_count": 23,
+    "connection_source_count": 20,
+    "exact_changed_paths": [
+      "nodes.22.parameters.jsCode"
+    ],
+    "before_graph_sha256": "d877f92fdc67bee468998b36e79499aa18235fbabbb25418233ca3b02a1010fe",
+    "after_graph_sha256": "eb4cbe4b16d263370ee8c06be97630e134c72c34a871797583ce1c5993c97bee",
+    "before_prepare_code_sha256": "d57f88a2b1619dab5b0c5a989eebb5031795cf563af995c055c06925059cd579",
+    "after_prepare_code_sha256": "7d41c2f6fc8c3f1d4255c6596d93503cb8127882f2a7bb53ac1cb7930ac97d26",
+    "runtime_validation": {
+      "valid": true,
+      "errors": 0,
+      "warnings": 11,
+      "warnings_preexisting_or_disabled_lane_only": true
+    }
+  },
+  "database": {
+    "migration": "20260824101537_repair_treatment_shadow_tracking_redaction",
+    "before_function_md5": "fd9cfccc390984564a5091ab39d67612",
+    "after_function_md5": "d450996670c9e9c6e1d585468c7a547a",
+    "sample_tracking_markers_redacted": 6,
+    "sample_contains_tracking_after": false,
+    "anon_execute": false,
+    "authenticated_execute": false,
+    "service_role_execute": false,
+    "relevant_security_advisor_notices": 0
+  },
+  "runtime_recovery": {
+    "retained_failure_execution": "5436605",
+    "tracking_retry_executions": [
+      "5436410",
+      "5436501"
+    ],
+    "offdomain_retry_executions": [
+      "5437229",
+      "5437554"
+    ],
+    "original_failed_jobs_recovered": 4,
+    "recovered_completed": 2,
+    "recovered_needs_review": 2,
+    "v7_jobs_total": 37,
+    "v7_jobs_completed": 24,
+    "v7_jobs_needs_review": 13,
+    "v7_jobs_failed": 0,
+    "v7_jobs_pending": 0,
+    "v7_jobs_processing": 0,
+    "v7_job_locks": 0,
+    "v7_classifications_total": 37
+  },
+  "safety": {
+    "active_policy_count": 1,
+    "active_policy": "nt_policy_v6_20260821_treatment_shadow",
+    "active_gate_count": 1,
+    "active_gate": "nt_quality_gate_v6_20260821_treatment_shadow",
+    "policy_rules": 8,
+    "automation_enabled_rules": 0,
+    "rules_with_followups": 0,
+    "rules_with_calls": 0,
+    "rules_with_email_sequences": 0,
+    "master_projection_rows": 0,
+    "v7_research_cache_rows": 0,
+    "v6_activation_approval_rows": 0,
+    "manual_workflow_execution_performed": false,
+    "customer_action_performed": false
+  },
+  "focused_tests": {
+    "tracking_redaction_schema": {
+      "passed": 10,
+      "failed": 0
+    },
+    "offdomain_source": {
+      "passed": 5,
+      "failed": 0
+    }
+  },
+  "repository_verification": {
+    "test_quotes": "passed",
+    "build_voice_runtime": "passed",
+    "next_build": "passed"
+  }
+}
