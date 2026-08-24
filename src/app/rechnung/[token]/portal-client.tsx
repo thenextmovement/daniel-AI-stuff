@@ -229,7 +229,7 @@ function formFromBilling(billing: Record<string, any>, requested: Record<string,
     deliveryCountry: normalizeCountry(delivery.countryCode || delivery.country) || String(delivery.countryCode || delivery.country || ""),
     deliveryInstructions: firstNonEmptyText(delivery.deliveryInstructions, delivery.instructions, delivery.note),
     vatId: String(requested.vatId ?? billing.vat_id ?? ""),
-    invoiceEmail: firstNonEmptyText(requested.invoiceEmail, billing.customer_email, billing.customerEmail, address.invoiceEmail, billing.customer?.invoiceEmail, billing.customer?.email),
+    invoiceEmail: firstNonEmptyText(requested.invoiceEmail, billing.invoiceEmail, billing.customer_email, billing.customerEmail, address.invoiceEmail, billing.customer?.invoiceEmail, billing.customer?.email),
     projectNumber: String(requested.projectNumber ?? billing.project_number ?? address.projectNumber ?? ""),
   };
 }

@@ -39,6 +39,7 @@ test("Ops exposes a dedicated NEONTRIP billing department", () => {
 test("customer portal is invoice-only and becomes read-only after final invoice", () => {
   const portal = read("src/app/rechnung/[token]/portal-client.tsx");
   const middleware = read("src/middleware.ts");
+  const repository = read("src/lib/ops/billing/repository.ts");
   assert.match(portal, /Rechnungsdaten bearbeiten/);
   assert.match(portal, /Speichern und zur Prüfung senden/);
   assert.match(portal, /readOnly=\{!editing\}/);
@@ -61,7 +62,8 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(portal, /firstName: form\.deliveryFirstName/);
   assert.match(portal, /lastName: form\.deliveryLastName/);
   assert.match(portal, /deliveryInstructions/);
-  assert.match(portal, /firstNonEmptyText\(requested\.invoiceEmail, billing\.customer_email/);
+  assert.match(portal, /firstNonEmptyText\(requested\.invoiceEmail, billing\.invoiceEmail, billing\.customer_email/);
+  assert.match(repository, /invoiceEmail:\s*[\s\S]*billingCase\.customer_email/);
   assert.match(portal, /Wird nach Freigabe direkt in Shopify übernommen/);
   assert.match(portal, /pendingChanges\(payload\)/);
   assert.match(portal, /requested\.vatValidation \|\| payload\.billingCase\.vat_validation/);
@@ -75,7 +77,6 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(download, /getBillingPortalDocument/);
   assert.match(download, /Content-Disposition/);
   assert.match(download, /easybill\.de\/rest\/v1\/documents/);
-  const repository = read("src/lib/ops/billing/repository.ts");
   assert.match(repository, /selectCurrentBillingDocuments/);
   assert.match(repository, /id,status,requested_changes,created_at,reviewed_at/);
   assert.doesNotMatch(repository, /id: `eq\.\$\{documentId\}`/);
