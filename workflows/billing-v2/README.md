@@ -20,6 +20,8 @@ The payment adapter is called by the existing bank/Qonto matching workflow. Only
 
 The production Shopify cancel/refund adapter is n8n workflow `I5kUtHRBOuXXl3zg` (`NEONTRIP Billing v2 - Shopify Cancel + Refund Event Adapter`). Shopify is authoritative for order, refund and cancellation events. The adapter resolves the exact original Easybill invoice, derives its VAT rate, and creates or reuses the linked credit/cancellation document. Replayed events are idempotent by their immutable Shopify event ID and exact Easybill document number. A missing BillingCase does not suppress historical Shopify refunds: scheduled reconciliation may use the guarded legacy fallback, but only after an exact source-invoice lookup succeeds.
 
+The universal Shopify order intake polls the 50 newest production orders every minute. It covers offers, configurator sales, duplicated orders and manually converted Draft Orders through the immutable Shopify order ID. Unpaid orders start with a Pro-forma; orders already paid in Shopify start atomically with the final invoice. A successful intake is fingerprinted only after Ops accepts it, while BillingCase, document and delivery jobs remain independently idempotent.
+
 The production daily watchdog is n8n workflow `pp3hOVlqekA00ymn` (`NEONTRIP Shopify ↔ Easybill Daily Reconciliation v2.0`). It runs daily at `12:00 Europe/Berlin` and compares the ten newest Shopify orders with Easybill using exact document numbers:
 
 - invoice: `#NEONT...`

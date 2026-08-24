@@ -22,6 +22,7 @@ export type BillingIntake = {
   totals: BillingMoney;
   vatValidation?: Record<string, unknown> | null;
   acceptedAt?: string | null;
+  initialFinancialStatus?: string | null;
 };
 
 export type BillingTaxDecision = {
@@ -196,6 +197,8 @@ export function buildBillingCaseInput(input: BillingIntake) {
   }
   const invoiceEmail = requestedInvoiceEmail || customerEmail;
   const projectNumber = normalizeProjectNumber(input.projectNumber || input.billingAddress.projectNumber);
+  const initialFinancialStatus = text(input.initialFinancialStatus).toLowerCase();
+  const initiallyPaid = ["paid", "partially_refunded"].includes(initialFinancialStatus);
   const billingAddress = {
     ...input.billingAddress,
     ...(requestedInvoiceEmail ? { invoiceEmail: requestedInvoiceEmail } : {}),
@@ -218,6 +221,7 @@ export function buildBillingCaseInput(input: BillingIntake) {
     invoiceEmail, projectNumber, billingAddress, deliveryAddress: input.deliveryAddress,
     lineItems: input.lineItems, totals: input.totals, tax, vatValidation: input.vatValidation || null,
     acceptedAt: input.acceptedAt || null,
+    initialFinancialStatus: initialFinancialStatus || null,
   };
   return {
     snapshot,
@@ -238,7 +242,11 @@ export function buildBillingCaseInput(input: BillingIntake) {
       payment_terms_days: null, tax_treatment: tax.treatment, tax_review_status: tax.reviewStatus,
       tax_exempt: tax.taxExempt, vat_id: tax.vatId, vat_validation: input.vatValidation || null,
       accepted_at: input.acceptedAt || null,
-      status: tax.reviewStatus === "REVIEW_REQUIRED" ? "MANUAL_REVIEW" : "PROFORMA_PENDING",
+      paid_at: initiallyPaid ? (input.acceptedAt || new Date().toISOString()) : null,
+      initial_document_type: initiallyPaid ? "INVOICE" : "PROFORMA",
+      status: tax.reviewStatus === "REVIEW_REQUIRED"
+        ? "MANUAL_REVIEW"
+        : initiallyPaid ? "INVOICE_PENDING" : "PROFORMA_PENDING",
     },
   };
 }

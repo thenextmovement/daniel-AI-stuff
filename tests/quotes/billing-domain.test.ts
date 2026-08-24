@@ -48,11 +48,30 @@ test("billing intake is cent exact and defaults to prepayment", () => {
   assert.equal(result.caseRecord.billing_address.projectNumber, "PROJ-2026-0815");
   assert.equal(result.snapshot.invoiceEmail, "buchhaltung@example.com");
   assert.equal(result.snapshot.projectNumber, "PROJ-2026-0815");
+  assert.equal(result.caseRecord.initial_document_type, "PROFORMA");
+  assert.equal(result.caseRecord.status, "PROFORMA_PENDING");
+  assert.equal(result.caseRecord.paid_at, null);
   assert.throws(() => buildBillingCaseInput({
     source: "test", sourceEventId: "bad", shopifyOrderId: "1", shopifyOrderName: "#NEONT1",
     customer: {}, billingAddress: {}, deliveryAddress: { country: "DE" }, lineItems: [],
     totals: { subtotalNet: 8.4, vatAmount: 1.59, totalGross: 10, currency: "EUR" },
   }));
+});
+
+test("already paid Shopify orders start with a final invoice instead of a pro-forma", () => {
+  const acceptedAt = "2026-08-24T10:54:19.000Z";
+  const result = buildBillingCaseInput({
+    source: "shopify-universal", sourceEventId: "shopify-universal:2:created",
+    shopifyOrderId: "gid://shopify/Order/2", shopifyOrderName: "#NEONT5013",
+    initialFinancialStatus: "paid", acceptedAt,
+    customer: { email: "test@example.com" }, billingAddress: { country: "DE" },
+    deliveryAddress: { country: "DE" }, lineItems: [],
+    totals: { subtotalNet: 50, vatAmount: 9.5, totalGross: 59.5, currency: "EUR" },
+  });
+  assert.equal(result.caseRecord.initial_document_type, "INVOICE");
+  assert.equal(result.caseRecord.status, "INVOICE_PENDING");
+  assert.equal(result.caseRecord.paid_at, acceptedAt);
+  assert.equal(result.snapshot.initialFinancialStatus, "paid");
 });
 
 test("billing intake rejects invalid invoice destinations and project numbers", () => {
