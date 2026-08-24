@@ -526,17 +526,27 @@ const subjects = {
 };
 if (!subjects[kind]) throw new Error('billing_customer_delivery_kind_invalid');
 const common = [
+  'IHRE BESTELLUNG',
   'Bestellnummer: ' + shopifyOrderName,
-  projectNumber ? 'Projektnummer: ' + projectNumber : '',
+  ...(projectNumber ? ['Projektnummer: ' + projectNumber] : []),
+  '',
+  'RECHNUNGSDATEN UND DOKUMENTE',
   'Rechnungsdaten und Dokumente: ' + portalUrl,
+  'Dort können Sie ausschließlich Änderungen zu Ihren Rechnungsdaten anfragen. Änderungen am Auftrag selbst sind dort nicht möglich.',
+  '',
+  'ALLGEMEINE GESCHÄFTSBEDINGUNGEN',
   'AGB: https://angebote.neontrip.de/legal/agb'
-].filter(Boolean);
+];
 const messages = {
   ORDER_CONFIRMATION_PROFORMA:[
     'vielen Dank für Ihre verbindliche Bestellung bei NEONTRIP. Hiermit bestätigen wir den Eingang und die Annahme Ihres Auftrags.',
+    '',
     'Ihre Pro-forma-Rechnung ' + documentNumber + ' finden Sie als PDF im Anhang.',
-    'Zahlbar sofort. Mit unserer Auftragsbestätigung beginnt die Produktion Ihres individuellen Auftrags bereits. Der Auftrag ist verbindlich. Sollte die Zahlung nicht rechtzeitig eingehen, kann die Produktion vor Fertigstellung pausiert werden. Dadurch kann sich der Liefertermin verschieben.',
-    'Über den folgenden Link können Sie ausschließlich Änderungen zu Ihren Rechnungsdaten anfragen. Änderungen am Auftrag selbst sind dort nicht möglich.'
+    '',
+    'ZAHLUNG UND PRODUKTIONSSTART',
+    'Zahlbar sofort.',
+    'Mit unserer Auftragsbestätigung beginnt die Produktion Ihres individuellen Auftrags bereits. Der Auftrag ist verbindlich.',
+    'Sollte die Zahlung nicht rechtzeitig eingehen, kann die Produktion vor Fertigstellung pausiert werden. Dadurch kann sich der Liefertermin verschieben.'
   ],
   PROFORMA_UPDATE:[
     'die von uns freigegebenen Änderungen an Ihren Rechnungsdaten wurden übernommen.',
@@ -555,7 +565,21 @@ const messages = {
     'Die Stornierung wurde mit dem zugehörigen Shopify-Auftrag abgeglichen.'
   ]
 };
-const message = ['Guten Tag,','',...messages[kind],'',...common,'','Freundliche Grüße','Ihr NEONTRIP-Team'].join('\n');
+const signature = [
+  'Freundliche Grüße',
+  '',
+  'Mika Zangane',
+  'Beratung & Realisierung',
+  'NEONTRIP®',
+  '',
+  'Telefon: +49 211 54257240',
+  'E-Mail: support@neontrip.de',
+  'Web: https://www.neontrip.de',
+  'Bilker Allee 29, 40219 Düsseldorf',
+  '',
+  'FOR UNIQUE BRANDING AND LIGHTING'
+];
+const message = ['Guten Tag,','',...messages[kind],'',...common,'',...signature].join('\n');
 const output = {
   hasJob:true,
   job,

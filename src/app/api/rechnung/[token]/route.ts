@@ -22,7 +22,12 @@ function validateRequiredAddress(value: unknown, errorCode: string) {
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   if (!validToken(token)) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404, headers: NO_STORE });
-  const portal = await getBillingPortal(token).catch(() => null);
+  let portal;
+  try {
+    portal = await getBillingPortal(token);
+  } catch {
+    return NextResponse.json({ ok: false, error: "portal_unavailable" }, { status: 503, headers: NO_STORE });
+  }
   if (!portal) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404, headers: NO_STORE });
   return NextResponse.json({ ok: true, ...portal }, { headers: NO_STORE });
 }

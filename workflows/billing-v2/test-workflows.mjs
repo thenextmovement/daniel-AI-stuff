@@ -321,6 +321,12 @@ test("customer delivery worker is isolated, generated inactive and validates rec
   assert.match(prepared.json.message, /Pro-forma-Rechnung PF-NEONT9999/);
   assert.match(prepared.json.message, /Zahlbar sofort/);
   assert.match(prepared.json.message, /Der Auftrag ist verbindlich/);
+  assert.match(prepared.json.message, /ZAHLUNG UND PRODUKTIONSSTART/);
+  assert.match(prepared.json.message, /IHRE BESTELLUNG/);
+  assert.match(prepared.json.message, /RECHNUNGSDATEN UND DOKUMENTE/);
+  assert.match(prepared.json.message, /Mika Zangane/);
+  assert.match(prepared.json.message, /Beratung & Realisierung/);
+  assert.match(prepared.json.message, /FOR UNIQUE BRANDING AND LIGHTING/);
   assert.doesNotMatch(prepared.json.message, /Zahlungsart Vorkasse/);
   assert.match(prepared.json.message, /rechnung\.neontrip\.de\/test-token/);
   assert.match(prepared.json.message, /angebote\.neontrip\.de\/legal\/agb/);
