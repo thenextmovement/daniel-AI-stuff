@@ -63,6 +63,10 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(portal, /lastName: form\.deliveryLastName/);
   assert.match(portal, /deliveryInstructions/);
   assert.match(portal, /firstNonEmptyText\(requested\.invoiceEmail, billing\.invoiceEmail, billing\.customer_email/);
+  assert.match(portal, /const effectiveInvoiceEmail = firstNonEmptyText\([\s\S]*data\?\.billingCase\?\.customer_email/);
+  assert.match(portal, /value=\{effectiveInvoiceEmail\}/);
+  assert.match(portal, /invoiceEmail: effectiveInvoiceEmail/);
+  assert.match(portal, /requesterEmail: effectiveInvoiceEmail/);
   assert.match(repository, /invoiceEmail:\s*[\s\S]*billingCase\.customer_email/);
   assert.match(portal, /Wird nach Freigabe direkt in Shopify übernommen/);
   assert.match(portal, /pendingChanges\(payload\)/);
