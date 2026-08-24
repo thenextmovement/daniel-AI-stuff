@@ -99,7 +99,7 @@ function strictIf(id, name, leftValue, rightValue, type, operation, position) {
 const nodes = [
   {
     id: "followup-schedule",
-    name: "Every 30 Min Weekdays 09-16",
+    name: "Every 30 Min Daily 09-16",
     type: "n8n-nodes-base.scheduleTrigger",
     typeVersion: 1.2,
     position: [0, 300],
@@ -108,7 +108,7 @@ const nodes = [
         interval: [
           {
             field: "cronExpression",
-            expression: "0 */30 9-15 * * 1-5",
+            expression: "0 */30 9-15 * * *",
           },
         ],
       },
@@ -517,7 +517,7 @@ const nodes = [
 ];
 
 const connections = {
-  "Every 30 Min Weekdays 09-16": {
+  "Every 30 Min Daily 09-16": {
     main: [[{ node: "ClaimFollowupDelivery", type: "main", index: 0 }]],
   },
   ClaimFollowupDelivery: {

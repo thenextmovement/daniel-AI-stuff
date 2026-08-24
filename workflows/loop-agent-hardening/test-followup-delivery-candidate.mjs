@@ -62,10 +62,10 @@ assert.match(serialized, /gpt-5\.5-2026-04-23/);
 assert.match(serialized, /weiss_logo_NEONTRIP/);
 assert.doesNotMatch(serialized, /Math\.random|\$getWorkflowStaticData/);
 
-const schedule = node("Every 30 Min Weekdays 09-16");
+const schedule = node("Every 30 Min Daily 09-16");
 assert.equal(
   schedule.parameters.rule.interval[0].expression,
-  "0 */30 9-15 * * 1-5",
+  "0 */30 9-15 * * *",
 );
 assert.equal(
   workflow.connections.ReplyPreflightSafe.main[1][0].node,

@@ -3,7 +3,7 @@
   "nodes": [
     {
       "id": "followup-schedule",
-      "name": "Every 30 Min Weekdays 09-16",
+      "name": "Every 30 Min Daily 09-16",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -15,7 +15,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 */30 9-15 * * 1-5"
+              "expression": "0 */30 9-15 * * *"
             }
           ]
         }
@@ -634,7 +634,7 @@
     }
   ],
   "connections": {
-    "Every 30 Min Weekdays 09-16": {
+    "Every 30 Min Daily 09-16": {
       "main": [
         [
           {

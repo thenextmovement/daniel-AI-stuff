@@ -231,12 +231,16 @@ begin
   );
 
   if frequent->>'cadence_tier' <> 'frequent'
+     or frequent->>'weekend_allowed' <> 'true'
+     or frequent->>'delay_day_mode' <> 'calendar_days'
      or (frequent->>'max_followups')::integer <> 6
      or (frequent->>'first_delay_business_days')::integer <> 2
      or (frequent->>'next_delay_business_days')::integer <> 3 then
     raise exception 'Frequent cadence fixture failed: %', frequent;
   end if;
   if weekly->>'cadence_tier' <> 'weekly'
+     or weekly->>'weekend_allowed' <> 'false'
+     or weekly->>'delay_day_mode' <> 'business_days'
      or (weekly->>'max_followups')::integer <> 3
      or (weekly->>'first_delay_business_days')::integer <> 5
      or (weekly->>'next_delay_business_days')::integer <> 5 then
@@ -251,7 +255,7 @@ begin
     'Fixture subject',
     '<p>Fixture body</p>'
   );
-  expected_next := public.neontrip_followup_business_slot(
+  expected_next := public.neontrip_followup_calendar_slot(
     now(), 3, 'offer-frequent-sql-test:2'
   );
   if not coalesce((result->>'completed')::boolean, false)
