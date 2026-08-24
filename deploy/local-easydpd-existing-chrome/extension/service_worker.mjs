@@ -18,31 +18,45 @@ const MAX_AUDIT_ENTRIES = 50;
 const RELOAD_REQUIRED_CODES = new Set(["extension_build_mismatch", "extension_protocol_mismatch"]);
 let cycleRunning = false;
 
-function nativeMessage(payload) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendNativeMessage(NATIVE_HOST, {
-      ...payload,
-      bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION,
-      extensionBuildCommit: EXTENSION_BUILD_COMMIT,
-    }, (response) => {
-      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-      if (!response?.ok) {
-        if (RELOAD_REQUIRED_CODES.has(String(response?.code || ""))) {
-          chrome.runtime.reload();
-          return;
-        }
-        return reject(new Error(String(response?.error || "Native Bridge antwortete mit einem Fehler.")));
+function createNativeSession() {
+  const port = chrome.runtime.connectNative(NATIVE_HOST);
+  const pending = [];
+  let closed = false;
+  port.onMessage.addListener((response) => {
+    const request = pending.shift();
+    if (!request) return;
+    if (!response?.ok) {
+      if (RELOAD_REQUIRED_CODES.has(String(response?.code || ""))) {
+        chrome.runtime.reload();
+        return;
       }
-      resolve(response);
-    });
+      request.reject(new Error(String(response?.error || "Native Bridge antwortete mit einem Fehler.")));
+      return;
+    }
+    request.resolve(response);
   });
-}
-
-function keepServiceWorkerAwake(intervalMs = 15_000) {
-  const timer = setInterval(() => {
-    chrome.storage.local.get([STATE_KEY]).catch(() => undefined);
-  }, intervalMs);
-  return () => clearInterval(timer);
+  port.onDisconnect.addListener(() => {
+    closed = true;
+    const message = chrome.runtime.lastError?.message || "Native Bridge wurde getrennt.";
+    while (pending.length > 0) pending.shift().reject(new Error(message));
+  });
+  return {
+    send(payload) {
+      if (closed) return Promise.reject(new Error("Native Bridge ist nicht verbunden."));
+      return new Promise((resolve, reject) => {
+        pending.push({ resolve, reject });
+        port.postMessage({
+          ...payload,
+          bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION,
+          extensionBuildCommit: EXTENSION_BUILD_COMMIT,
+        });
+      });
+    },
+    close() {
+      if (!closed) port.disconnect();
+      closed = true;
+    },
+  };
 }
 
 async function record(state, detail = {}) {
@@ -206,13 +220,12 @@ function waitForDownloadedPdf(tabId, startedAt, orderName, signal, timeoutMs = 9
   });
 }
 
-async function updateJob(job, result, extra = {}) {
-  return nativeMessage({ type: "update", job, result, ...extra });
+async function updateJob(nativeSession, job, result, extra = {}) {
+  return nativeSession.send({ type: "update", job, result, ...extra });
 }
 
-async function processJob(tab, job) {
+async function processJob(nativeSession, tab, job) {
   validateBridgeJob(job);
-  const stopKeepAlive = keepServiceWorkerAwake();
   let dispatchStarted = false;
   let serverCompleted = false;
   let downloadController = null;
@@ -224,7 +237,7 @@ async function processJob(tab, job) {
     const { frameId, prepared } = await validateAndPrepareFrame(tab.id, job);
     if (prepared.existingLabel?.found) {
       const trackingNumbers = prepared.existingLabel.trackingNumbers || [];
-      await updateJob(job, "existing_label", {
+      await updateJob(nativeSession, job, "existing_label", {
         existingDpdTracking: trackingNumbers.length === 1 ? trackingNumbers[0] : null,
         evidence: prepared.existingLabel,
         error: "EasyDPD-History enthält bereits ein Label; kein zweiter Kauf.",
@@ -233,10 +246,10 @@ async function processJob(tab, job) {
       return;
     }
     if (!prepared.ready) throw new Error("EasyDPD-Auftrag ist nicht kaufbereit.");
-    await updateJob(job, "validated");
+    await updateJob(nativeSession, job, "validated");
     const rechecked = await frameMessage(tab.id, frameId, { action: "validate_and_prepare", job });
     if (!rechecked.ready || rechecked.existingLabel?.found) throw new Error("EasyDPD-Zustand änderte sich vor der Kaufgrenze.");
-    await updateJob(job, "dispatching");
+    await updateJob(nativeSession, job, "dispatching");
     dispatchStarted = true;
     const dispatchNonce = crypto.randomUUID();
     await record("dispatching", { jobId: job.id, orderName: job.orderName, dispatchNonce });
@@ -246,7 +259,7 @@ async function processJob(tab, job) {
     const clickResult = await frameMessage(tab.id, frameId, { action: "purchase_once", job, dispatchNonce });
     if (clickResult.clicked !== true) throw new Error("EasyDPD-Kaufklick wurde nicht eindeutig bestätigt.");
     const download = await downloadPromise;
-    const uploaded = await nativeMessage({ type: "upload_artifact", job, filePath: download.filename });
+    const uploaded = await nativeSession.send({ type: "upload_artifact", job, filePath: download.filename });
     serverCompleted = true;
     await record("artifact_uploaded", {
       jobId: job.id,
@@ -258,34 +271,34 @@ async function processJob(tab, job) {
     downloadController?.abort();
     const message = String(error?.message || error).slice(0, 500);
     if (!serverCompleted) {
-      await updateJob(job, dispatchStarted ? "uncertain" : "retryable_error", { error: message }).catch(() => undefined);
+      await updateJob(nativeSession, job, dispatchStarted ? "uncertain" : "retryable_error", { error: message }).catch(() => undefined);
     }
     await record(dispatchStarted ? "manual_review_after_dispatch" : "retryable_error", { jobId: job.id, orderName: job.orderName, error: message });
     throw error;
-  } finally {
-    stopKeepAlive();
   }
 }
 
 async function runCycle(source) {
   if (cycleRunning) return;
   cycleRunning = true;
+  const nativeSession = createNativeSession();
   try {
-    const status = await nativeMessage({ type: "status" });
+    const status = await nativeSession.send({ type: "status" });
     if (status.mode !== "live" || status.liveEnabled !== true) {
       await record("dry_run_ready", { source, extensionId: chrome.runtime.id });
       return;
     }
-    const claimed = await nativeMessage({ type: "claim" });
+    const claimed = await nativeSession.send({ type: "claim" });
     if (!claimed.job) {
       await record(claimed.activeJobPending ? "active_job_pending" : "idle", { source });
       return;
     }
     const tab = await getOrCreateEasyDpdTab(claimed.job);
-    await processJob(tab, claimed.job);
+    await processJob(nativeSession, tab, claimed.job);
   } catch (error) {
     await record("bridge_error", { source, error: String(error?.message || error).slice(0, 500) });
   } finally {
+    nativeSession.close();
     cycleRunning = false;
   }
 }

@@ -127,32 +127,46 @@ export function validateNativeRequest(message, expectedBuildCommit = null) {
   return { ...message, type, extensionBuildCommit };
 }
 
-export async function readNativeMessage(input) {
-  const chunks = [];
-  let byteLength = 0;
-  let declared = null;
-  for await (const chunk of input) {
-    byteLength += chunk.length;
-    if (byteLength > MAX_NATIVE_MESSAGE_BYTES + 4) throw new ExistingChromeBridgeError("Native-Bridge-Nachricht ist zu gross.", 65);
-    chunks.push(chunk);
-    if (declared === null && byteLength >= 4) {
-      declared = Buffer.concat(chunks).readUInt32LE(0);
+export async function* readNativeMessages(input) {
+  let buffer = Buffer.alloc(0);
+  for await (const rawChunk of input) {
+    const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
+    buffer = buffer.length === 0 ? chunk : Buffer.concat([buffer, chunk]);
+    while (buffer.length >= 4) {
+      const declared = buffer.readUInt32LE(0);
       if (declared < 2 || declared > MAX_NATIVE_MESSAGE_BYTES) {
         throw new ExistingChromeBridgeError("Native-Bridge-Nachrichtenlaenge ist ungueltig.", 65);
       }
+      const frameLength = declared + 4;
+      if (buffer.length < frameLength) break;
+      const body = buffer.subarray(4, frameLength);
+      let payload;
+      try {
+        payload = JSON.parse(body.toString("utf8"));
+      } catch {
+        throw new ExistingChromeBridgeError("Native-Bridge-Nachricht enthaelt kein gueltiges JSON.", 65);
+      }
+      yield validateNativeRequest(payload);
+      buffer = buffer.subarray(frameLength);
     }
-    if (declared !== null) {
-      if (byteLength > declared + 4) throw new ExistingChromeBridgeError("Native-Bridge-Nachrichtenlaenge ist ungueltig.", 65);
-      if (byteLength === declared + 4) break;
+    if (buffer.length > MAX_NATIVE_MESSAGE_BYTES + 4) {
+      throw new ExistingChromeBridgeError("Native-Bridge-Nachricht ist zu gross.", 65);
     }
   }
-  const buffer = Buffer.concat(chunks);
-  if (buffer.length < 4) throw new ExistingChromeBridgeError("Native-Bridge-Nachricht ist unvollstaendig.", 65);
-  declared ??= buffer.readUInt32LE(0);
-  if (declared < 2 || declared > MAX_NATIVE_MESSAGE_BYTES || buffer.length !== declared + 4) {
-    throw new ExistingChromeBridgeError("Native-Bridge-Nachrichtenlaenge ist ungueltig.", 65);
+  if (buffer.length > 0 && buffer.length < 4) {
+    throw new ExistingChromeBridgeError("Native-Bridge-Nachricht ist unvollstaendig.", 65);
   }
-  return validateNativeRequest(JSON.parse(buffer.subarray(4).toString("utf8")));
+  if (buffer.length >= 4) {
+    const declared = buffer.readUInt32LE(0);
+    if (declared < 2 || declared > MAX_NATIVE_MESSAGE_BYTES || buffer.length !== declared + 4) {
+      throw new ExistingChromeBridgeError("Native-Bridge-Nachrichtenlaenge ist ungueltig.", 65);
+    }
+  }
+}
+
+export async function readNativeMessage(input) {
+  for await (const message of readNativeMessages(input)) return message;
+  throw new ExistingChromeBridgeError("Native-Bridge-Nachricht ist unvollstaendig.", 65);
 }
 
 export function encodeNativeMessage(payload) {

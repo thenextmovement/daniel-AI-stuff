@@ -6,7 +6,7 @@ import {
   encodeNativeMessage,
   handleNativeRequest,
   loadBridgeConfig,
-  readNativeMessage,
+  readNativeMessages,
   selfTestBridge,
 } from "./easydpd_existing_chrome_bridge_lib.mjs";
 
@@ -19,6 +19,27 @@ function configPathFromArgs(argv) {
   return value;
 }
 
+function errorPayload(error) {
+  return {
+    ok: false,
+    code: error instanceof ExistingChromeBridgeError ? error.nativeCode : null,
+    error: String(error instanceof Error ? error.message : "Unbekannter Native-Bridge-Fehler.").slice(0, 500),
+    postDispatch: Boolean(error?.postDispatch),
+  };
+}
+
+export async function runNativeMessageLoop(config, input, writeResponse, handler = handleNativeRequest) {
+  for await (const request of readNativeMessages(input)) {
+    let response;
+    try {
+      response = await handler(config, request);
+    } catch (error) {
+      response = errorPayload(error);
+    }
+    writeResponse(response);
+  }
+}
+
 async function main(argv = process.argv.slice(2)) {
   const config = await loadBridgeConfig(configPathFromArgs(argv));
   if (argv.includes("--self-test")) {
@@ -26,17 +47,11 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
   try {
-    const request = await readNativeMessage(process.stdin);
-    const response = await handleNativeRequest(config, request);
-    writeFileSync(1, encodeNativeMessage(response));
+    await runNativeMessageLoop(config, process.stdin, (response) => {
+      writeFileSync(1, encodeNativeMessage(response));
+    });
   } catch (error) {
-    const payload = {
-      ok: false,
-      code: error instanceof ExistingChromeBridgeError ? error.nativeCode : null,
-      error: String(error instanceof Error ? error.message : "Unbekannter Native-Bridge-Fehler.").slice(0, 500),
-      postDispatch: Boolean(error?.postDispatch),
-    };
-    writeFileSync(1, encodeNativeMessage(payload));
+    writeFileSync(1, encodeNativeMessage(errorPayload(error)));
   }
 }
 

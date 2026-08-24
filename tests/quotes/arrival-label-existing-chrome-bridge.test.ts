@@ -14,6 +14,7 @@ import {
   encodeNativeMessage,
   readActiveJobState,
   readNativeMessage,
+  readNativeMessages,
   validateBridgeConfig,
   validateNativeRequest,
 } from "../../scripts/easydpd_existing_chrome_bridge_lib.mjs";
@@ -23,7 +24,7 @@ import {
   parseExistingChromeManagerArgs,
   syncExtensionFilesInPlace,
 } from "../../scripts/manage_easydpd_existing_chrome_bridge.mjs";
-import { isExecutedEntryPoint } from "../../scripts/run_easydpd_existing_chrome_host.mjs";
+import { isExecutedEntryPoint, runNativeMessageLoop } from "../../scripts/run_easydpd_existing_chrome_host.mjs";
 import { projectPersistedBrowserManualReview } from "../../src/lib/ops/arrival-labels/service";
 import {
   BRIDGE_PROTOCOL_VERSION,
@@ -57,7 +58,7 @@ test("existing-Chrome extension is pinned to the normal NEONTRIP Shopify/easyDPD
   const nativeManifest = JSON.parse(await readFile("deploy/local-easydpd-existing-chrome/native-host-manifest.json.template", "utf8"));
   assert.equal(EXPECTED_EXTENSION_ID, "bgfphlbhdameagnafljlgpbpjdajmdhk");
   assert.equal(BRIDGE_PROTOCOL_VERSION, EXPECTED_BRIDGE_PROTOCOL_VERSION);
-  assert.equal(manifest.version, "1.1.5");
+  assert.equal(manifest.version, "1.1.6");
   assert.deepEqual(manifest.host_permissions, [
     "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services/*",
     "https://easydpd.247apps.de/*",
@@ -131,6 +132,30 @@ test("native protocol is length-prefixed, bounded and allowlisted", async () => 
       && error.message.includes("veraltet")
       && (error as Error & { nativeCode?: string }).nativeCode === EXTENSION_PROTOCOL_MISMATCH_CODE,
   );
+});
+
+test("native protocol keeps ordered request frames on a long-lived connection", async () => {
+  const status = { type: "status", bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION, extensionBuildCommit: BUILD_COMMIT };
+  const claim = { type: "claim", bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION, extensionBuildCommit: BUILD_COMMIT };
+  const messages = [];
+  for await (const message of readNativeMessages(Readable.from([Buffer.concat([
+    encodeNativeMessage(status),
+    encodeNativeMessage(claim),
+  ])]))) messages.push(message);
+  assert.deepEqual(messages, [status, claim]);
+});
+
+test("native host answers multiple ordered requests before the Chrome port closes", async () => {
+  const status = { type: "status", bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION, extensionBuildCommit: BUILD_COMMIT };
+  const claim = { type: "claim", bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION, extensionBuildCommit: BUILD_COMMIT };
+  const responses: Record<string, unknown>[] = [];
+  await runNativeMessageLoop(
+    {},
+    Readable.from([encodeNativeMessage(status), encodeNativeMessage(claim)]),
+    (response) => responses.push(response),
+    async (_config, request) => ({ ok: true, handled: request.type }),
+  );
+  assert.deepEqual(responses, [{ ok: true, handled: "status" }, { ok: true, handled: "claim" }]);
 });
 
 test("native mismatch codes are stable and bridge heartbeats expire", () => {
@@ -236,18 +261,21 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(service, /chrome[.]tabs[.]create\(\{ url: validateOrderUrl\(job[.]orderUrl\), active: false \}\)/);
   assert.match(service, /easyDpdFrameId\(tabId, timeoutMs = 45_000\)/);
   assert.match(service, /matches[.]length === 1[\s\S]+matches[.]length > 1[\s\S]+setTimeout\(resolve, 500\)/);
-  assert.match(service, /keepServiceWorkerAwake\(intervalMs = 15_000\)/);
-  assert.match(service, /chrome[.]storage[.]local[.]get\(\[STATE_KEY\]\)/);
+  assert.match(service, /chrome[.]runtime[.]connectNative\(NATIVE_HOST\)/);
+  assert.match(service, /nativeSession[.]send\(\{ type: "status" \}\)/);
+  assert.match(service, /nativeSession[.]send\(\{ type: "claim" \}\)/);
+  assert.doesNotMatch(service, /chrome[.]runtime[.]sendNativeMessage/);
+  assert.doesNotMatch(service, /keepServiceWorkerAwake/);
   assert.match(service, /chrome[.]downloads[.]search\(\{ startedAfter:/);
   assert.match(service, /waitForDownloadedPdf\(tab[.]id, startedAt, job[.]orderName/);
   assert.match(service, /isMissingFrameReceiver/);
   assert.match(service, /await chrome[.]tabs[.]reload\(tabId\)/);
   assert.match(service, /await waitForTabComplete\(tabId, job[.]orderUrl\)/);
-  assert.ok(service.indexOf("isMissingFrameReceiver") < service.indexOf('updateJob(job, "validated")'));
+  assert.ok(service.indexOf("isMissingFrameReceiver") < service.indexOf('updateJob(nativeSession, job, "validated")'));
   assert.match(service, /prepared[.]existingLabel[?][.]found/);
-  assert.match(service, /updateJob\(job, "existing_label"/);
-  assert.ok(service.indexOf('nativeMessage({ type: "claim" })') < service.indexOf("getOrCreateEasyDpdTab(claimed.job)"));
-  const dispatch = service.indexOf('updateJob(job, "dispatching")');
+  assert.match(service, /updateJob\(nativeSession, job, "existing_label"/);
+  assert.ok(service.indexOf('nativeSession.send({ type: "claim" })') < service.indexOf("getOrCreateEasyDpdTab(claimed.job)"));
+  const dispatch = service.indexOf('updateJob(nativeSession, job, "dispatching")');
   const purchase = service.indexOf('action: "purchase_once"');
   assert.ok(dispatch >= 0 && purchase > dispatch);
   assert.equal(content.match(/createButton\(\)[.]click\(\)/g)?.length, 1);
@@ -273,6 +301,7 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(nativeHost, /Chrome-Erweiterung ist veraltet/);
   const nativeRunner = await readFile("scripts/run_easydpd_existing_chrome_host.mjs", "utf8");
   assert.match(nativeRunner, /error instanceof ExistingChromeBridgeError \? error[.]nativeCode : null/);
+  assert.match(nativeRunner, /runNativeMessageLoop/);
   const manager = await readFile("scripts/manage_easydpd_existing_chrome_bridge.mjs", "utf8");
   assert.match(manager, /extension_reload_required/);
   assert.match(manager, /extensionClientVerified/);
