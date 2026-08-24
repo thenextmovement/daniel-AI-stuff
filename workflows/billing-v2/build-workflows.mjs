@@ -296,13 +296,16 @@ const exemptions = taxExempt && ctx.billingCase.tax_treatment === 'EU_B2B_REVERS
 const deliveryChange = ctx.job.payload?.deliveryAddressChange;
 const formatAddress = value => {
   const x=value||{};
-  return [x.company||x.name,x.street||x.address1,[x.zip||x.zipCode,x.city].filter(Boolean).join(' '),x.countryCode||x.country].filter(Boolean).map(v=>String(v).trim()).join(', ').slice(0,700);
+  const person=[x.firstName,x.lastName].filter(Boolean).join(' ')||x.name||x.contactName;
+  return [x.company||x.contactCompany,person,x.street||x.address1,[x.zip||x.zipCode,x.city].filter(Boolean).join(' '),x.countryCode||x.country].filter(Boolean).map(v=>String(v).trim()).join(', ').slice(0,700);
 };
 let orderNote=String(order.note||'');
 if(deliveryChange?.changeRequestId){
   const marker='[NEONTRIP-LIEFERADRESSE:'+String(deliveryChange.changeRequestId)+']';
   if(!orderNote.includes(marker)){
-    const block=[marker,'Lieferadresse über das Rechnungsportal geändert.','Vorher: '+formatAddress(deliveryChange.previous),'Neu: '+formatAddress(deliveryChange.next)].join('\\n');
+    const instructions=String(deliveryChange.next?.deliveryInstructions||'').trim().slice(0,500);
+    const divider='────────────────────────────────';
+    const block=[divider,'● LIEFERADRESSE GEÄNDERT',divider,'Vorher:','  '+formatAddress(deliveryChange.previous),'Neu:','  '+formatAddress(deliveryChange.next),...(instructions?['Lieferhinweis:','  '+instructions]:[]),divider,marker].join('\\n');
     orderNote=(block+(orderNote?'\\n\\n'+orderNote:'')).slice(0,5000);
   }
 }
