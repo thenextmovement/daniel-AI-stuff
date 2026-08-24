@@ -121,7 +121,20 @@ export async function getBillingPortal(token: string) {
       order: "created_at.desc",
     }),
   ]);
-  return { billingCase, documents: selectCurrentBillingDocuments(documents as Array<BillingDocumentVersion & Record<string, unknown>>), changes, readOnly: Boolean(billingCase.final_invoice_at) };
+  return {
+    billingCase: {
+      ...billingCase,
+      invoiceEmail:
+        billingCase.customer_email ||
+        String((billingCase.billing_address as Record<string, unknown>)?.invoiceEmail || "") ||
+        String((billingCase.customer as Record<string, unknown>)?.invoiceEmail || "") ||
+        String((billingCase.customer as Record<string, unknown>)?.email || "") ||
+        null,
+    },
+    documents: selectCurrentBillingDocuments(documents as Array<BillingDocumentVersion & Record<string, unknown>>),
+    changes,
+    readOnly: Boolean(billingCase.final_invoice_at),
+  };
 }
 
 export async function getBillingPortalDocument(token: string, documentId: string) {
