@@ -16,6 +16,10 @@ const trackingRedactionRepair = readFileSync(resolve(root,
   "supabase/migrations/20260824101129_repair_treatment_shadow_tracking_redaction.sql"), "utf8");
 const trackingRedactionRollback = readFileSync(resolve(root,
   "supabase/rollbacks/20260824101129_repair_treatment_shadow_tracking_redaction_rollback.sql"), "utf8");
+const reminderTreatmentDecision = readFileSync(resolve(root,
+  "supabase/migrations/20260824110436_add_request_reminder_treatment_decision.sql"), "utf8");
+const reminderTreatmentRollback = readFileSync(resolve(root,
+  "supabase/rollbacks/20260824110436_add_request_reminder_treatment_decision_rollback.sql"), "utf8");
 
 function functionBodyFrom(source: string, name: string) {
   const start = source.search(new RegExp(`create(?: or replace)? function public\\.${name}\\b`, "i"));
@@ -154,5 +158,37 @@ test("tracking redaction rollback is exact, idle-gated and non-destructive", () 
   assert.match(trackingRedactionRollback,
     /status = 'processing' or lock_owner is not null or locked_at is not null/i);
   assert.doesNotMatch(trackingRedactionRollback,
+    /(?:insert|update|delete)\s+(?:into\s+|from\s+)?public\.(?:request_segmentation_jobs|request_segment_classifications|master_requests|segment_research_cache)/i);
+});
+
+test("reminder treatment is a quote-balanced suppression-only decision", () => {
+  assertBalancedSqlQuotes(reminderTreatmentDecision, "reminder treatment decision");
+  assert.match(reminderTreatmentDecision, /^--[\s\S]*?\nbegin;[\s\S]*\ncommit;\s*$/i);
+  assert.match(reminderTreatmentDecision, /4dfc1d420a265ee7c13aa4658dec4e6a/i);
+  assert.match(reminderTreatmentDecision,
+    /segment_classifier_v7_20260821_treatment_shadow[\s\S]*?then 'n8n_cx8_validator_v4'[\s\S]*?else 'n8n_cx8_validator_v1'/i);
+  assert.match(reminderTreatmentDecision,
+    /create function public\.neontrip_get_request_reminder_treatment_decision\([\s\S]*?security invoker/i);
+  assert.match(reminderTreatmentDecision,
+    /c\.evidence_provenance_valid[\s\S]*?c\.mapping_integrity[\s\S]*?cardinality\(coalesce\(c\.risk_flags/i);
+  assert.match(reminderTreatmentDecision,
+    /special_handling_required'\s*=\s*'true'::jsonb[\s\S]*?positive_evidence_valid'\s*=\s*'true'::jsonb/i);
+  assert.match(reminderTreatmentDecision,
+    /'automatic_email_allowed', not personal_followup[\s\S]*?'max_automatic_reminders', case when personal_followup then 0 else 1 end[\s\S]*?'suppression_only', true/i);
+  assert.match(reminderTreatmentDecision,
+    /revoke all on function public\.neontrip_get_request_reminder_treatment_decision\(uuid\)[\s\S]*?grant execute[\s\S]*?to service_role/i);
+  assert.doesNotMatch(reminderTreatmentDecision,
+    /(?:insert|update|delete)\s+(?:into\s+|from\s+)?public\.(?:master_requests|request_segment_classifications|offer_followup_queue|ops_internal_tasks)/i);
+});
+
+test("reminder treatment rollback is idle-gated, exact and non-destructive", () => {
+  assertBalancedSqlQuotes(reminderTreatmentRollback, "reminder treatment rollback");
+  assert.match(reminderTreatmentRollback, /^--[\s\S]*?\nbegin;[\s\S]*\ncommit;\s*$/i);
+  assert.match(reminderTreatmentRollback,
+    /status = 'processing'[\s\S]*?lock_owner is not null[\s\S]*?locked_at is not null/i);
+  assert.match(reminderTreatmentRollback,
+    /drop function public\.neontrip_get_request_reminder_treatment_decision\(uuid\)/i);
+  assert.match(reminderTreatmentRollback, /4dfc1d420a265ee7c13aa4658dec4e6a/i);
+  assert.doesNotMatch(reminderTreatmentRollback,
     /(?:insert|update|delete)\s+(?:into\s+|from\s+)?public\.(?:request_segmentation_jobs|request_segment_classifications|master_requests|segment_research_cache)/i);
 });
