@@ -84,8 +84,8 @@
       }
     },
     {
-      "id": "order-sign",
-      "name": "Validate and Sign BillingCase",
+      "id": "order-prepare",
+      "name": "Validate and Prepare BillingCase",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -94,7 +94,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const x=$json||{};if(!x.sourceEventId||!x.shopifyOrderId||!/^#NEONT\\d+$/.test(String(x.shopifyOrderName||''))||!Array.isArray(x.lineItems)||!x.lineItems.length||!x.totals||!x.billingAddress||!x.deliveryAddress)throw new Error('invalid_shopify_order_billing_intake');const secret=String($env.BILLING_WEBHOOK_SECRET||'');if(secret.length<32)throw new Error('BILLING_WEBHOOK_SECRET missing');const body=JSON.stringify(x);const timestamp=String(Math.floor(Date.now()/1000));const {createHmac}=require('crypto');const signature='sha256='+createHmac('sha256',secret).update(timestamp+'.'+body).digest('hex');const base=String($env.NEONTRIP_OPS_BASE_URL||'https://ops.neontrip.de').replace(/\\/+$/,'');if(!/^https:\\/\\//.test(base))throw new Error('NEONTRIP_OPS_BASE_URL missing');const result={body,timestamp,signature,eventId:String(x.sourceEventId),fingerprint:String(x.fingerprint),url:base+'/api/internal/billing/cases'};return { json: result };"
+        "jsCode": "const x=$json||{};if(!x.sourceEventId||!x.shopifyOrderId||!/^#NEONT\\d+$/.test(String(x.shopifyOrderName||''))||!Array.isArray(x.lineItems)||!x.lineItems.length||!x.totals||!x.billingAddress||!x.deliveryAddress)throw new Error('invalid_shopify_order_billing_intake');return {json:{payload:x,eventId:String(x.sourceEventId),fingerprint:String(x.fingerprint)}};"
       }
     },
     {
@@ -108,18 +108,12 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.url }}",
+        "url": "https://ops.neontrip.de/api/internal/billing/cases",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "X-Neontrip-Timestamp",
-              "value": "={{ $json.timestamp }}"
-            },
-            {
-              "name": "X-Neontrip-Signature",
-              "value": "={{ $json.signature }}"
-            },
             {
               "name": "X-Neontrip-Event-Id",
               "value": "={{ $json.eventId }}"
@@ -127,9 +121,8 @@
           ]
         },
         "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ $json.body }}",
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
         "options": {
           "timeout": 30000,
           "response": {
@@ -138,6 +131,12 @@
               "responseFormat": "json"
             }
           }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_BILLING_WORKER_BEARER",
+          "name": "NEONTRIP Billing Worker"
         }
       },
       "retryOnFail": true,
@@ -156,7 +155,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const signed=$('Validate and Sign BillingCase').item.json;const state=$getWorkflowStaticData('global');state.completed=state.completed||{};state.completed[signed.fingerprint]=new Date().toISOString();const keys=Object.keys(state.completed);for(const key of keys.slice(0,Math.max(0,keys.length-1000)))delete state.completed[key];const result={ok:true,fingerprint:signed.fingerprint,response:$json.body??$json};return { json: result };"
+        "jsCode": "const prepared=$('Validate and Prepare BillingCase').item.json;const state=$getWorkflowStaticData('global');state.completed=state.completed||{};state.completed[prepared.fingerprint]=new Date().toISOString();const keys=Object.keys(state.completed);for(const key of keys.slice(0,Math.max(0,keys.length-1000)))delete state.completed[key];const result={ok:true,fingerprint:prepared.fingerprint,response:$json.body??$json};return { json: result };"
       }
     },
     {
@@ -212,14 +211,14 @@
       "main": [
         [
           {
-            "node": "Validate and Sign BillingCase",
+            "node": "Validate and Prepare BillingCase",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Validate and Sign BillingCase": {
+    "Validate and Prepare BillingCase": {
       "main": [
         [
           {

@@ -9,7 +9,7 @@ const workflow = JSON.parse(fs.readFileSync(path.join(
 ), "utf8")) as {
   active: boolean;
   name: string;
-  nodes: Array<{ name: string; type: string; parameters?: { jsCode?: string; url?: string } }>;
+  nodes: Array<{ name: string; type: string; parameters?: { jsCode?: string; url?: string; authentication?: string }; credentials?: Record<string, { name?: string }> }>;
   connections: Record<string, unknown>;
 };
 const migration = fs.readFileSync(path.join(
@@ -30,6 +30,10 @@ test("universal Shopify billing ingress covers every production order source", (
   assert.match(normalize, /order\.email \|\| order\.contact_email \|\| order\.customer\?\.email/);
   assert.match(normalize, /gid:\/\/shopify\/Order\//);
   assert.match(normalize, /state\.completed\[fingerprint\]/);
+  const intake = workflow.nodes.find((node) => node.name === "Create or Replay BillingCase");
+  assert.equal(intake?.parameters?.authentication, "genericCredentialType");
+  assert.equal(intake?.credentials?.httpHeaderAuth?.name, "NEONTRIP Billing Worker");
+  assert.doesNotMatch(JSON.stringify(workflow), /BILLING_WEBHOOK_SECRET/);
   assert.ok(workflow.connections["Create or Replay BillingCase"]);
 });
 
