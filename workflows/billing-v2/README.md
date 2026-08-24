@@ -16,6 +16,25 @@ The Shopify adapter is called only by an authenticated existing source workflow 
 
 The payment adapter is called by the existing bank/Qonto matching workflow. Only an exact cumulative full payment creates the invoice job automatically. Partial or excess payments remain manual review. Payment projection into Shopify and Easybill is handled by separate idempotent jobs, never by marking an unpaid order paid merely to unlock a refund.
 
+## Active production refund recovery and reconciliation
+
+The production Shopify cancel/refund adapter is n8n workflow `I5kUtHRBOuXXl3zg` (`NEONTRIP Billing v2 - Shopify Cancel + Refund Event Adapter`). Shopify is authoritative for order, refund and cancellation events. The adapter resolves the exact original Easybill invoice, derives its VAT rate, and creates or reuses the linked credit/cancellation document. Replayed events are idempotent by their immutable Shopify event ID and exact Easybill document number. A missing BillingCase does not suppress historical Shopify refunds: scheduled reconciliation may use the guarded legacy fallback, but only after an exact source-invoice lookup succeeds.
+
+The production daily watchdog is n8n workflow `pp3hOVlqekA00ymn` (`NEONTRIP Shopify ↔ Easybill Daily Reconciliation v2.0`). It runs daily at `12:00 Europe/Berlin` and compares the ten newest Shopify orders with Easybill using exact document numbers:
+
+- invoice: `#NEONT...`
+- Pro-forma: `PF-NEONT...`
+- credit: `GS-NEONT...`
+- cancellation: the Easybill cancellation linked to the source invoice
+
+The watchdog compares original and current gross totals, successful Shopify refunds, Easybill credit totals and cancellation state. It never mutates accounting documents and never contacts customers. A mismatch sends one deduplicated urgent internal message to `info@neontrip.de`; healthy runs remain silent. Every external request has a bounded timeout, retry policy and explicit failure path.
+
+Production evidence from 2026-08-24:
+
+- adapter version 15, successful creation of `GS-NEONT4534` (EUR 7.69) and `GS-NEONT4575` (EUR 7.64)
+- replay execution `5447149` reused both existing credits and created no duplicate
+- watchdog version 8, exact ten-order reconciliation execution `5447320` completed successfully
+
 Before any import or activation:
 
 1. Bind `CONFIGURE_EASYBILL_BEARER` to the existing scoped Easybill REST credential and `CONFIGURE_BILLING_WORKER_BEARER` to a dedicated Ops worker token.
