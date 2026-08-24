@@ -76,6 +76,11 @@ assert.equal(
   "BlockFollowupDelivery",
 );
 
+const offerLookup = node("SearchModernOffer");
+assert.match(offerLookup.parameters.url, /api\/internal\/offers\/\{\{/);
+assert.doesNotMatch(offerLookup.parameters.url, /\/search/);
+assert.equal(offerLookup.parameters.sendQuery, undefined);
+
 const send = node("SendFollowupOutlook");
 assert.equal(send.retryOnFail, false);
 assert.equal(send.onError, "continueErrorOutput");
@@ -141,16 +146,13 @@ const modernLookup = (name) => {
 };
 const modernGood = await validateModern(
   {
-    results: [
-      {
-        matchType: "exact",
-        status: "SENT",
-        offerId: "offer-1",
-        offerNumber: "A/N 14100",
-        documentReference: "AN-14100",
-        publicUrl: "https://angebote.neontrip.de/offer/public-token",
-      },
-    ],
+    offer: {
+      status: "SENT",
+      offerId: "offer-1",
+      offerNumber: "A/N 14100",
+      documentReference: "AN-14100",
+      publicUrl: "https://angebote.neontrip.de/offer/public-token",
+    },
   },
   modernLookup,
 );
@@ -159,16 +161,13 @@ assert.equal(modernGood[0].json.offer_id, "offer-1");
 
 const modernWrongIdentity = await validateModern(
   {
-    results: [
-      {
-        matchType: "exact",
-        status: "SENT",
-        offerId: "offer-2",
-        offerNumber: "A/N 14101",
-        documentReference: "AN-14101",
-        publicUrl: "https://angebote.neontrip.de/offer/other-token",
-      },
-    ],
+    offer: {
+      status: "SENT",
+      offerId: "offer-2",
+      offerNumber: "A/N 14101",
+      documentReference: "AN-14101",
+      publicUrl: "https://angebote.neontrip.de/offer/other-token",
+    },
   },
   modernLookup,
 );
@@ -180,41 +179,25 @@ assert.equal(
 
 const modernClosed = await validateModern(
   {
-    results: [
-      {
-        matchType: "exact",
-        status: "ACCEPTED",
-        offerId: "offer-1",
-        publicUrl: "https://angebote.neontrip.de/offer/public-token",
-      },
-    ],
+    offer: {
+      status: "ACCEPTED",
+      offerId: "offer-1",
+      publicUrl: "https://angebote.neontrip.de/offer/public-token",
+    },
   },
   modernLookup,
 );
 assert.equal(modernClosed[0].json.preflight_ok, false);
 assert.equal(modernClosed[0].json.block_reason, "modern_offer_closed");
 
-const modernAmbiguous = await validateModern(
+const modernMissing = await validateModern(
   {
-    results: [
-      {
-        matchType: "exact",
-        status: "SENT",
-        offerId: "offer-1",
-        publicUrl: "https://angebote.neontrip.de/offer/one",
-      },
-      {
-        matchType: "exact",
-        status: "VIEWED",
-        offerId: "offer-1",
-        publicUrl: "https://angebote.neontrip.de/offer/two",
-      },
-    ],
+    ok: true,
   },
   modernLookup,
 );
-assert.equal(modernAmbiguous[0].json.preflight_ok, false);
-assert.equal(modernAmbiguous[0].json.block_reason, "modern_offer_ambiguous");
+assert.equal(modernMissing[0].json.preflight_ok, false);
+assert.equal(modernMissing[0].json.block_reason, "modern_offer_identity_mismatch");
 
 const analyze = new AsyncFunction(
   "$input",

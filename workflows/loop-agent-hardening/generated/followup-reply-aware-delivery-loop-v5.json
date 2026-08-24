@@ -156,22 +156,9 @@
         180
       ],
       "parameters": {
-        "url": "https://angebote.neontrip.de/api/internal/offers/search",
+        "url": "=https://angebote.neontrip.de/api/internal/offers/{{ encodeURIComponent($json.document_id) }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "q",
-              "value": "={{ $('PrepareCandidate').item.json.request_id }}"
-            },
-            {
-              "name": "limit",
-              "value": "5"
-            }
-          ]
-        },
         "options": {
           "timeout": 30000
         }
@@ -197,7 +184,7 @@
         180
       ],
       "parameters": {
-        "jsCode": "const item = $('PrepareCandidate').item.json;\nconst response = $json || {};\nconst results = Array.isArray(response.results) ? response.results : [];\nconst closed = new Set(['ACCEPTED', 'COMPLETED', 'DOWNLOADED', 'EXPIRED', 'LOST']);\nconst sendable = new Set(['SENT', 'VIEWED']);\nconst exact = results.filter(offer => offer && offer.matchType === 'exact');\nconst identityMatches = exact.filter(offer => String(offer.offerId || '').trim() === String(item.document_id || '').trim());\nconst closedMatches = identityMatches.filter(offer => closed.has(String(offer.status || '').toUpperCase()));\nconst sendableMatches = identityMatches.filter(offer => sendable.has(String(offer.status || '').toUpperCase()) && /^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(String(offer.publicUrl || '')));\nlet ok = false;\nlet link = null;\nlet offerId = null;\nlet offerNumber = null;\nlet documentReference = null;\nlet reason = 'modern_offer_not_sendable';\nif (response.error || response.code === 'UNAUTHORIZED' || response.message === 'Unauthorized') reason = 'modern_offer_lookup_failed';\nelse if (identityMatches.length === 0) reason = 'modern_offer_identity_mismatch';\nelse if (closedMatches.length > 0) reason = 'modern_offer_closed';\nelse if (sendableMatches.length > 1) reason = 'modern_offer_ambiguous';\nelse if (sendableMatches.length === 1) {\n  ok = true;\n  link = sendableMatches[0].publicUrl;\n  offerId = String(sendableMatches[0].offerId || '').trim() || null;\n  offerNumber = String(sendableMatches[0].offerNumber || '').trim() || null;\n  documentReference = String(sendableMatches[0].documentReference || '').trim() || null;\n  if (!offerId) { ok = false; reason = 'modern_offer_identity_missing'; } else reason = null;\n}\nreturn [{ json: { ...item, preflight_ok: ok, offer_link: link, offer_id: offerId, offer_number: offerNumber, document_reference: documentReference, block_reason: reason } }];"
+        "jsCode": "const item = $('PrepareCandidate').item.json;\nconst response = $json || {};\nconst closed = new Set(['ACCEPTED', 'COMPLETED', 'DOWNLOADED', 'EXPIRED', 'LOST']);\nconst sendable = new Set(['SENT', 'VIEWED']);\nconst offer = response.offer && typeof response.offer === 'object' && !Array.isArray(response.offer) ? response.offer : null;\nlet ok = false;\nlet link = null;\nlet offerId = null;\nlet offerNumber = null;\nlet documentReference = null;\nlet reason = 'modern_offer_not_sendable';\nif (response.error || response.code === 'UNAUTHORIZED' || response.message === 'Unauthorized') reason = 'modern_offer_lookup_failed';\nelse if (!offer || String(offer.offerId || '').trim() !== String(item.document_id || '').trim()) reason = 'modern_offer_identity_mismatch';\nelse if (closed.has(String(offer.status || '').toUpperCase())) reason = 'modern_offer_closed';\nelse if (sendable.has(String(offer.status || '').toUpperCase()) && /^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(String(offer.publicUrl || ''))) {\n  ok = true;\n  link = offer.publicUrl;\n  offerId = String(offer.offerId || '').trim() || null;\n  offerNumber = String(offer.offerNumber || '').trim() || null;\n  documentReference = String(offer.documentReference || '').trim() || null;\n  reason = null;\n}\nreturn [{ json: { ...item, preflight_ok: ok, offer_link: link, offer_id: offerId, offer_number: offerNumber, document_reference: documentReference, block_reason: reason } }];"
       }
     },
     {
