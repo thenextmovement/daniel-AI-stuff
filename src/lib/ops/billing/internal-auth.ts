@@ -13,3 +13,9 @@ export function isBillingWorkerAuthorized(headers: Headers) {
   const token = authorization.replace(/^Bearer\s+/i, "").trim();
   return Boolean(token) && safeEqual(token, expected);
 }
+
+export function billingWorkerEventId(headers: Headers, payloadEventId: unknown) {
+  if (!isBillingWorkerAuthorized(headers)) return null;
+  const eventId = String(headers.get("x-neontrip-event-id") || payloadEventId || "").trim();
+  return /^[A-Za-z0-9:._/-]{8,200}$/.test(eventId) ? eventId : null;
+}

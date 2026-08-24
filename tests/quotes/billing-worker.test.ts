@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { isBillingWorkerAuthorized } from "@/lib/ops/billing/internal-auth";
+import { billingWorkerEventId, isBillingWorkerAuthorized } from "@/lib/ops/billing/internal-auth";
 
 const migration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260819183000_create_billing_job_worker.sql"), "utf8");
 const rollback = fs.readFileSync(path.join(process.cwd(), "supabase/rollbacks/20260819183000_create_billing_job_worker_rollback.sql"), "utf8");
@@ -32,6 +32,9 @@ test("billing worker API requires a constant-time bearer token", () => {
     assert.equal(isBillingWorkerAuthorized(new Headers({ authorization: "Bearer billing-worker-test-token-123456789" })), true);
     assert.equal(isBillingWorkerAuthorized(new Headers({ authorization: "Bearer wrong-token" })), false);
     assert.equal(isBillingWorkerAuthorized(new Headers()), false);
+    assert.equal(billingWorkerEventId(new Headers({ authorization: "Bearer billing-worker-test-token-123456789" }), "shopify-universal:8469663678731"), "shopify-universal:8469663678731");
+    assert.equal(billingWorkerEventId(new Headers({ authorization: "Bearer billing-worker-test-token-123456789" }), "bad event"), null);
+    assert.equal(billingWorkerEventId(new Headers({ authorization: "Bearer wrong-token" }), "shopify-universal:8469663678731"), null);
   } finally {
     if (original === undefined) delete process.env.BILLING_WORKER_API_TOKEN;
     else process.env.BILLING_WORKER_API_TOKEN = original;
