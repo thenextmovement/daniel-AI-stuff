@@ -16,7 +16,7 @@ type BillingCase = {
   paid_at?: string | null; delivered_at?: string | null; final_invoice_at?: string | null; current_revision?: number;
 };
 type Detail = { billingCase: BillingCase; documents: Array<Record<string, unknown>>; changes: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>; incidents: Array<Record<string, unknown>>; payments: Array<Record<string, unknown>> };
-type ChangeForm = { company: string; name: string; street: string; zip: string; city: string; country: string; deliveryCompany: string; deliveryName: string; deliveryStreet: string; deliveryZip: string; deliveryCity: string; deliveryCountry: string; vatId: string; invoiceEmail: string; projectNumber: string };
+type ChangeForm = { company: string; firstName: string; lastName: string; street: string; zip: string; city: string; country: string; deliveryCompany: string; deliveryFirstName: string; deliveryLastName: string; deliveryStreet: string; deliveryZip: string; deliveryCity: string; deliveryCountry: string; deliveryInstructions: string; vatId: string; invoiceEmail: string; projectNumber: string };
 
 function money(cents: number, currency: string) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(Number(cents || 0) / 100);
@@ -75,25 +75,35 @@ function record(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function splitName(value: unknown) {
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  return { firstName: parts.shift() || "", lastName: parts.join(" ") };
+}
+
 function changeForm(change: Record<string, unknown>, billingCase: BillingCase): ChangeForm {
   const requested = record(change.ops_draft_changes || change.requested_changes);
   const requestedAddress = record(requested.billingAddress);
   const requestedDelivery = record(requested.deliveryAddress);
   const currentAddress = record(billingCase.billing_address);
   const currentDelivery = record(billingCase.delivery_address);
+  const billingName = splitName(requestedAddress.name ?? currentAddress.name);
+  const deliveryName = splitName(requestedDelivery.name ?? currentDelivery.name);
   return {
     company: String(requestedAddress.company ?? currentAddress.company ?? ""),
-    name: String(requestedAddress.name ?? currentAddress.name ?? ""),
+    firstName: String(requestedAddress.firstName ?? currentAddress.firstName ?? billingName.firstName),
+    lastName: String(requestedAddress.lastName ?? currentAddress.lastName ?? billingName.lastName),
     street: String(requestedAddress.street ?? currentAddress.street ?? ""),
     zip: String(requestedAddress.zip ?? currentAddress.zip ?? ""),
     city: String(requestedAddress.city ?? currentAddress.city ?? ""),
     country: String(requestedAddress.country ?? currentAddress.country ?? ""),
     deliveryCompany: String(requestedDelivery.company ?? currentDelivery.company ?? ""),
-    deliveryName: String(requestedDelivery.name ?? currentDelivery.name ?? ""),
+    deliveryFirstName: String(requestedDelivery.firstName ?? currentDelivery.firstName ?? deliveryName.firstName),
+    deliveryLastName: String(requestedDelivery.lastName ?? currentDelivery.lastName ?? deliveryName.lastName),
     deliveryStreet: String(requestedDelivery.street ?? currentDelivery.street ?? ""),
     deliveryZip: String(requestedDelivery.zip ?? currentDelivery.zip ?? ""),
     deliveryCity: String(requestedDelivery.city ?? currentDelivery.city ?? ""),
     deliveryCountry: String(requestedDelivery.country ?? currentDelivery.country ?? ""),
+    deliveryInstructions: String(requestedDelivery.deliveryInstructions ?? currentDelivery.deliveryInstructions ?? currentDelivery.note ?? ""),
     vatId: String(requested.vatId ?? billingCase.vat_id ?? ""),
     invoiceEmail: String(requested.invoiceEmail ?? billingCase.customer_email ?? ""),
     projectNumber: String(requested.projectNumber ?? billingCase.project_number ?? ""),
@@ -101,9 +111,11 @@ function changeForm(change: Record<string, unknown>, billingCase: BillingCase): 
 }
 
 function changePayload(form: ChangeForm) {
+  const billingName = [form.firstName, form.lastName].filter(Boolean).join(" ").trim();
+  const deliveryName = [form.deliveryFirstName, form.deliveryLastName].filter(Boolean).join(" ").trim();
   return {
-    billingAddress: { company: form.company, name: form.name, street: form.street, zip: form.zip, city: form.city, country: form.country },
-    deliveryAddress: { company: form.deliveryCompany, name: form.deliveryName, street: form.deliveryStreet, zip: form.deliveryZip, city: form.deliveryCity, country: form.deliveryCountry },
+    billingAddress: { company: form.company, firstName: form.firstName, lastName: form.lastName, name: billingName, street: form.street, zip: form.zip, city: form.city, country: form.country },
+    deliveryAddress: { company: form.deliveryCompany, firstName: form.deliveryFirstName, lastName: form.deliveryLastName, name: deliveryName, street: form.deliveryStreet, zip: form.deliveryZip, city: form.deliveryCity, country: form.deliveryCountry, deliveryInstructions: form.deliveryInstructions },
     vatId: form.vatId,
     invoiceEmail: form.invoiceEmail,
     projectNumber: form.projectNumber,
@@ -111,7 +123,8 @@ function changePayload(form: ChangeForm) {
 }
 
 function AddressSummary({ value }: { value: Record<string, unknown> }) {
-  return <span>{[value.company || value.name, value.street, [value.zip, value.city].filter(Boolean).join(" "), value.country].filter(Boolean).map(String).join(", ") || "–"}</span>;
+  const name = value.name || [value.firstName, value.lastName].filter(Boolean).join(" ");
+  return <span>{[value.company || name, value.street, [value.zip, value.city].filter(Boolean).join(" "), value.country, value.deliveryInstructions ? `Hinweis: ${value.deliveryInstructions}` : null].filter(Boolean).map(String).join(", ") || "–"}</span>;
 }
 
 function ComparisonRow({ label, previous, next, nextLabel }: { label: string; previous: ReactNode; next: ReactNode; nextLabel: string }) {
@@ -181,18 +194,21 @@ function ChangeRequestReview({ change, billingCase, previousValues, busy, onActi
       </div> : null}
     </div> : <form onSubmit={save} className="grid gap-3 bg-[#faf8f5] p-5 md:grid-cols-2">
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Firma<input className={field} value={form.company} onChange={(event) => setForm({ ...form, company: event.target.value })} /></label>
-      <label className="grid gap-1 text-xs font-semibold text-stone-600">Name<input className={field} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Vorname<input className={field} value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Nachname<input className={field} value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600 md:col-span-2">Straße und Hausnummer<input className={field} value={form.street} onChange={(event) => setForm({ ...form, street: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">PLZ<input className={field} value={form.zip} onChange={(event) => setForm({ ...form, zip: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Ort<input className={field} value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Land<input className={field} value={form.country} onChange={(event) => setForm({ ...form, country: event.target.value })} /></label>
       <p className="border-t border-stone-200 pt-4 text-sm font-semibold text-stone-950 md:col-span-2">Lieferadresse</p>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Firma am Lieferort<input className={field} value={form.deliveryCompany} onChange={(event) => setForm({ ...form, deliveryCompany: event.target.value })} /></label>
-      <label className="grid gap-1 text-xs font-semibold text-stone-600">Ansprechpartner<input className={field} value={form.deliveryName} onChange={(event) => setForm({ ...form, deliveryName: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Vorname am Lieferort<input className={field} value={form.deliveryFirstName} onChange={(event) => setForm({ ...form, deliveryFirstName: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600">Nachname am Lieferort<input className={field} value={form.deliveryLastName} onChange={(event) => setForm({ ...form, deliveryLastName: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600 md:col-span-2">Lieferstraße und Hausnummer<input className={field} value={form.deliveryStreet} onChange={(event) => setForm({ ...form, deliveryStreet: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Liefer-PLZ<input className={field} value={form.deliveryZip} onChange={(event) => setForm({ ...form, deliveryZip: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Lieferort<input className={field} value={form.deliveryCity} onChange={(event) => setForm({ ...form, deliveryCity: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Lieferland<input className={field} value={form.deliveryCountry} onChange={(event) => setForm({ ...form, deliveryCountry: event.target.value })} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-stone-600 md:col-span-2">Zusätzliche Lieferhinweise<textarea maxLength={500} rows={3} className={`${field} h-auto min-h-20 resize-y py-3`} value={form.deliveryInstructions} onChange={(event) => setForm({ ...form, deliveryInstructions: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Umsatzsteuer-ID<input className={field} value={form.vatId} onChange={(event) => setForm({ ...form, vatId: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Rechnungs-E-Mail<input type="email" required className={field} value={form.invoiceEmail} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} /></label>
       <label className="grid gap-1 text-xs font-semibold text-stone-600">Projektnummer<input className={field} value={form.projectNumber} onChange={(event) => setForm({ ...form, projectNumber: event.target.value })} /></label>
