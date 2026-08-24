@@ -66,7 +66,7 @@ test("a VIES-verified VAT change is confirmed net in the same decision transacti
   assert.match(verifiedVatMigration, /v_vat_validation->>'countryCode'/);
   assert.match(verifiedVatMigration, /'CONFIRM_VAT'/);
   assert.match(verifiedVatMigration, /'taxDecision','NET'/);
-  assert.match(verifiedVatMigration, /delete from public\.billing_jobs.*job_type='VERIFY_VAT'/s);
+  assert.match(verifiedVatMigration, /delete from public\.billing_jobs[\s\S]*job_type='VERIFY_VAT'/);
   assert.match(verifiedVatMigration, /notificationQueued/);
 });
 
