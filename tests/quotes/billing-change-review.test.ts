@@ -7,6 +7,7 @@ const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "
 const migration = read("supabase/migrations/20260822170000_billing_change_review_detail.sql");
 const verifiedVatMigration = read("supabase/migrations/20260823231000_apply_verified_vat_change_atomically.sql");
 const deliveryCountryMigration = read("supabase/migrations/20260824002000_delivery_country_vat_source_of_truth.sql");
+const preserveDeliveryDetailsMigration = read("supabase/migrations/20260824074500_preserve_delivery_change_details.sql");
 
 test("billing overview opens a dedicated order detail page", () => {
   const client = read("src/app/ops/rechnungen/page-client.tsx");
@@ -47,6 +48,16 @@ test("original customer request and reviewed values remain separately auditable"
   assert.match(migration, /requested_changes=v_original/);
   assert.match(migration, /applied_changes=case when v_action='APPLY_CHANGE_REQUEST' then v_reviewed/);
   assert.match(migration, /ops_draft_changes/);
+});
+
+test("Ops acceptance preserves separated names and customer delivery instructions", () => {
+  const client = read("src/app/ops/rechnungen/page-client.tsx");
+  assert.match(client, /deliveryInstructions/);
+  assert.match(client, /deliveryFirstName/);
+  assert.match(client, /deliveryLastName/);
+  assert.match(preserveDeliveryDetailsMigration, /v_original->'deliveryAddress'/);
+  assert.match(preserveDeliveryDetailsMigration, /v_reviewed->'deliveryAddress'/);
+  assert.match(preserveDeliveryDetailsMigration, /never drops names/);
 });
 
 test("a VIES-verified VAT change is confirmed net in the same decision transaction", () => {
