@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ExternalLink, FileText, Pencil, RefreshCw, Save, Search, ShieldCheck, WalletCards } from "lucide-react";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
@@ -17,6 +17,7 @@ type BillingCase = {
 };
 type Detail = { billingCase: BillingCase; documents: Array<Record<string, unknown>>; changes: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>; incidents: Array<Record<string, unknown>>; payments: Array<Record<string, unknown>> };
 type ChangeForm = { company: string; firstName: string; lastName: string; street: string; zip: string; city: string; country: string; deliveryCompany: string; deliveryFirstName: string; deliveryLastName: string; deliveryStreet: string; deliveryZip: string; deliveryCity: string; deliveryCountry: string; deliveryInstructions: string; vatId: string; invoiceEmail: string; projectNumber: string };
+type ComparisonField = { label: string; previous: string; next: string };
 
 function money(cents: number, currency: string) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(Number(cents || 0) / 100);
@@ -122,17 +123,55 @@ function changePayload(form: ChangeForm) {
   };
 }
 
-function AddressSummary({ value }: { value: Record<string, unknown> }) {
-  const name = value.name || [value.firstName, value.lastName].filter(Boolean).join(" ");
-  return <span>{[value.company || name, value.street, [value.zip, value.city].filter(Boolean).join(" "), value.country, value.deliveryInstructions ? `Hinweis: ${value.deliveryInstructions}` : null].filter(Boolean).map(String).join(", ") || "–"}</span>;
+function comparisonValue(value: unknown) {
+  return String(value ?? "").trim().replace(/\s+/g, " ") || "–";
 }
 
-function ComparisonRow({ label, previous, next, nextLabel }: { label: string; previous: ReactNode; next: ReactNode; nextLabel: string }) {
-  return <div className="grid gap-3 border-b border-stone-100 px-4 py-4 last:border-b-0 md:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)]">
-    <strong className="text-xs font-semibold text-stone-950">{label}</strong>
-    <div className="min-w-0 break-words text-sm text-stone-600"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400 md:hidden">Bisher</span>{previous}</div>
-    <div className="min-w-0 break-words text-sm font-medium text-stone-950"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b91c73] md:hidden">{nextLabel}</span>{next}</div>
+function addressComparisonFields(previous: Record<string, unknown>, next: Record<string, unknown>, delivery = false): ComparisonField[] {
+  const previousName = splitName(previous.name);
+  const nextName = splitName(next.name);
+  const fieldValue = (value: Record<string, unknown>, key: string, fallback = "") => comparisonValue(value[key] !== undefined ? value[key] : fallback);
+  const fields: ComparisonField[] = [
+    { label: delivery ? "Firma am Lieferort" : "Firma", previous: fieldValue(previous, "company"), next: fieldValue(next, "company") },
+    { label: "Vorname", previous: fieldValue(previous, "firstName", previousName.firstName), next: fieldValue(next, "firstName", nextName.firstName) },
+    { label: "Nachname", previous: fieldValue(previous, "lastName", previousName.lastName), next: fieldValue(next, "lastName", nextName.lastName) },
+    { label: "Straße und Hausnummer", previous: fieldValue(previous, "street"), next: fieldValue(next, "street") },
+    { label: "PLZ", previous: fieldValue(previous, "zip"), next: fieldValue(next, "zip") },
+    { label: "Ort", previous: fieldValue(previous, "city"), next: fieldValue(next, "city") },
+    { label: delivery ? "Lieferland" : "Rechnungsland", previous: fieldValue(previous, "country"), next: fieldValue(next, "country") },
+  ];
+  if (delivery) {
+    fields.push({
+      label: "Zusätzliche Lieferhinweise",
+      previous: fieldValue(previous, "deliveryInstructions", String(previous.note || "")),
+      next: fieldValue(next, "deliveryInstructions", String(next.note || "")),
+    });
+  }
+  return fields;
+}
+
+function ComparisonRow({ field, nextLabel }: { field: ComparisonField; nextLabel: string }) {
+  const changed = field.previous !== field.next;
+  return <div className={`grid gap-3 px-4 py-4 md:grid-cols-[minmax(8rem,10rem)_minmax(0,1fr)_minmax(0,1fr)] ${changed ? "m-2 rounded-xl border border-rose-300 bg-rose-50/70 shadow-[0_1px_0_rgba(190,24,93,0.04)]" : "border-b border-stone-100 last:border-b-0"}`}>
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <strong className="text-xs font-semibold text-stone-950">{field.label}</strong>
+      {changed ? <span className="rounded-full border border-rose-300 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-rose-700">Geändert</span> : null}
+    </div>
+    <div className="min-w-0 break-words text-sm text-stone-600"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-400 md:hidden">Bisher</span>{field.previous}</div>
+    <div className={`min-w-0 break-words text-sm font-medium ${changed ? "text-rose-950" : "text-stone-950"}`}><span className={`mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] md:hidden ${changed ? "text-rose-700" : "text-[#b91c73]"}`}>{nextLabel}</span>{field.next}</div>
   </div>;
+}
+
+function ComparisonSection({ title, fields, nextLabel }: { title: string; fields: ComparisonField[]; nextLabel: string }) {
+  const changedCount = fields.filter((field) => field.previous !== field.next).length;
+  return <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 bg-[#faf8f5] px-4 py-3">
+      <h3 className="text-sm font-semibold text-stone-950">{title}</h3>
+      <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${changedCount ? "border-rose-200 bg-rose-50 text-rose-800" : "border-stone-200 bg-white text-stone-500"}`}>{changedCount ? `${changedCount} ${changedCount === 1 ? "Feld" : "Felder"} geändert` : "Keine Änderung"}</span>
+    </div>
+    <div className="hidden grid-cols-[minmax(8rem,10rem)_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-stone-100 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-400 md:grid"><span>Feld</span><span>Bisher</span><span>{nextLabel}</span></div>
+    <div>{fields.map((field) => <ComparisonRow key={field.label} field={field} nextLabel={nextLabel} />)}</div>
+  </section>;
 }
 
 function ChangeRequestReview({ change, billingCase, previousValues, busy, onAction }: {
@@ -153,6 +192,8 @@ function ChangeRequestReview({ change, billingCase, previousValues, busy, onActi
   const requestedDelivery = record(requested.deliveryAddress);
   const status = String(change.status || "PENDING");
   const finalValues = Object.keys(applied).length ? applied : Object.keys(draft).length ? draft : requested;
+  const finalBillingAddress = { ...currentAddress, ...requestedAddress, ...record(finalValues.billingAddress) };
+  const finalDeliveryAddress = { ...previousValues.deliveryAddress, ...requestedDelivery, ...record(finalValues.deliveryAddress) };
   const requestVatValidation = record(finalValues.vatValidation || requested.vatValidation);
   const field = "h-10 rounded-xl border border-stone-300 bg-white px-3 text-sm outline-none focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/10";
 
@@ -179,14 +220,15 @@ function ChangeRequestReview({ change, billingCase, previousValues, busy, onActi
         {change.reviewed_by ? <p className="mt-1 text-xs text-stone-500">Bearbeitet von {String(change.reviewed_by)}</p> : <p className="mt-1 text-xs text-stone-500">Bitte Änderungen prüfen und anschließend entscheiden.</p>}
       </div>
     </div>
-    {!editing ? <div>
-      <div className="hidden grid-cols-[9rem_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-stone-200 bg-[#faf8f5] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-500 md:grid"><span>Feld</span><span>Bisher</span><span>{decisionLabel}</span></div>
-      <ComparisonRow label="Rechnungsanschrift" previous={<AddressSummary value={currentAddress} />} next={<AddressSummary value={record(finalValues.billingAddress || requestedAddress)} />} nextLabel={decisionLabel} />
-      <ComparisonRow label="Lieferadresse" previous={<AddressSummary value={previousValues.deliveryAddress} />} next={<AddressSummary value={record(finalValues.deliveryAddress || requestedDelivery)} />} nextLabel={decisionLabel} />
-      <ComparisonRow label="Rechnungs-E-Mail" previous={String(previousValues.invoiceEmail || "–")} next={String(finalValues.invoiceEmail ?? requested.invoiceEmail ?? previousValues.invoiceEmail ?? "–")} nextLabel={decisionLabel} />
-      <ComparisonRow label="USt-ID" previous={String(previousValues.vatId || "–")} next={String(finalValues.vatId ?? requested.vatId ?? previousValues.vatId ?? "–") || "–"} nextLabel={decisionLabel} />
-      <ComparisonRow label="Projektnummer" previous={String(previousValues.projectNumber || "–")} next={String(finalValues.projectNumber ?? requested.projectNumber ?? previousValues.projectNumber ?? "–") || "–"} nextLabel={decisionLabel} />
-      {requestVatValidation.valid ? <div className={`m-4 rounded-xl border p-4 text-sm ${requestVatValidation.identityComparison === "MISMATCH" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
+    {!editing ? <div className="space-y-4 bg-[#faf8f5] p-4 sm:p-5">
+      <ComparisonSection title="Rechnungsanschrift" fields={addressComparisonFields(currentAddress, finalBillingAddress)} nextLabel={decisionLabel} />
+      <ComparisonSection title="Lieferadresse" fields={addressComparisonFields(previousValues.deliveryAddress, finalDeliveryAddress, true)} nextLabel={decisionLabel} />
+      <ComparisonSection title="Weitere Rechnungsdaten" nextLabel={decisionLabel} fields={[
+        { label: "Rechnungs-E-Mail", previous: comparisonValue(previousValues.invoiceEmail), next: comparisonValue(finalValues.invoiceEmail ?? requested.invoiceEmail ?? previousValues.invoiceEmail) },
+        { label: "USt-ID", previous: comparisonValue(previousValues.vatId), next: comparisonValue(finalValues.vatId ?? requested.vatId ?? previousValues.vatId) },
+        { label: "Projektnummer", previous: comparisonValue(previousValues.projectNumber), next: comparisonValue(finalValues.projectNumber ?? requested.projectNumber ?? previousValues.projectNumber) },
+      ]} />
+      {requestVatValidation.valid ? <div className={`rounded-xl border p-4 text-sm ${requestVatValidation.identityComparison === "MISMATCH" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
         <p className="font-semibold">USt-ID bei VIES gültig</p>
         {requestVatValidation.name ? <p className="mt-2"><strong>Gelistetes Unternehmen:</strong> {String(requestVatValidation.name)}</p> : null}
         {requestVatValidation.address ? <p className="mt-1 whitespace-pre-line"><strong>Registeranschrift:</strong> {String(requestVatValidation.address)}</p> : null}

@@ -60,6 +60,21 @@ test("Ops acceptance preserves separated names and customer delivery instruction
   assert.match(preserveDeliveryDetailsMigration, /never drops names/);
 });
 
+test("Ops review compares every address field and clearly marks only changed values", () => {
+  const client = read("src/app/ops/rechnungen/page-client.tsx");
+  assert.match(client, /function addressComparisonFields/);
+  assert.match(client, /title="Rechnungsanschrift"/);
+  assert.match(client, /title="Lieferadresse"/);
+  assert.match(client, /title="Weitere Rechnungsdaten"/);
+  assert.match(client, /Firma am Lieferort/);
+  assert.match(client, /Straße und Hausnummer/);
+  assert.match(client, /Zusätzliche Lieferhinweise/);
+  assert.match(client, /field\.previous !== field\.next/);
+  assert.match(client, />Geändert<\/span>/);
+  assert.match(client, /border-rose-300 bg-rose-50\/70/);
+  assert.doesNotMatch(client, /function AddressSummary/);
+});
+
 test("a VIES-verified VAT change is confirmed net in the same decision transaction", () => {
   assert.match(verifiedVatMigration, /BILLING_VAT_VALIDATION_REQUIRED/);
   assert.match(verifiedVatMigration, /v_vat_validation->>'normalizedVatId'/);
