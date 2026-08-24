@@ -468,20 +468,115 @@ const proformaVoidWorkflow = {
 };
 
 const shopifyOrderIntakeWorkflow = {
-  name: "NEONTRIP Billing v2 - Shopify Order Intake Adapter (INACTIVE)", active: false,
+  name: "NEONTRIP Billing v2 - Universal Shopify Order Intake (INACTIVE)", active: false,
   nodes: [
-    node("order-trigger", "Called by Shopify Order Source", "n8n-nodes-base.executeWorkflowTrigger", [-420, 0], { inputSource: "passthrough" }),
-    node("order-sign", "Validate and Sign BillingCase", "n8n-nodes-base.code", [-180, 0], { jsCode: "const x=$input.first()?.json||{};if(!x.sourceEventId||!x.shopifyOrderId||!/^#NEONT\\d+$/.test(String(x.shopifyOrderName||''))||!Array.isArray(x.lineItems)||!x.lineItems.length||!x.totals||!x.billingAddress||!x.deliveryAddress)throw new Error('invalid_shopify_order_billing_intake');const secret=String($env.BILLING_WEBHOOK_SECRET||'');if(secret.length<32)throw new Error('BILLING_WEBHOOK_SECRET missing');const payload={...x,source:'shopify',sourceEventId:String(x.sourceEventId)};const body=JSON.stringify(payload);const timestamp=String(Math.floor(Date.now()/1000));const {createHmac}=require('crypto');const signature='sha256='+createHmac('sha256',secret).update(timestamp+'.'+body).digest('hex');const base=String($env.NEONTRIP_OPS_BASE_URL||'https://ops.neontrip.de').replace(/\\/+$/,'');if(!/^https:\\/\\//.test(base))throw new Error('NEONTRIP_OPS_BASE_URL missing');return [{json:{body,timestamp,signature,eventId:String(x.sourceEventId),url:base+'/api/internal/billing/cases'}}];" }),
-    node("order-post", "Create BillingCase", "n8n-nodes-base.httpRequest", [80, 0], { method: "POST", url: "={{ $json.url }}", sendHeaders: true, headerParameters: { parameters: [{ name: "X-Neontrip-Timestamp", value: "={{ $json.timestamp }}" }, { name: "X-Neontrip-Signature", value: "={{ $json.signature }}" }, { name: "X-Neontrip-Event-Id", value: "={{ $json.eventId }}" }] }, sendBody: true, contentType: "raw", rawContentType: "application/json", body: "={{ $json.body }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { onError: "continueErrorOutput" }),
-    node("order-error", "Raise Shopify Intake Error", "n8n-nodes-base.code", [320, 160], { jsCode: "throw new Error('Fehler Rechnung Shopify/Easybill: Shopify-Bestellung konnte nicht als BillingCase angelegt werden.');" })
+    node("order-schedule", "Every Minute", "n8n-nodes-base.scheduleTrigger", [-920, -100], { rule: { interval: [{ field: "minutes", minutesInterval: 1 }] } }, { typeVersion: 1.3 }),
+    node("order-manual", "Manual Test", "n8n-nodes-base.manualTrigger", [-920, 100], {}),
+    node("order-read", "Read Recent Shopify Orders", "n8n-nodes-base.httpRequest", [-680, 0], { url: "https://galaxybuzzdk.myshopify.com/admin/api/2025-10/orders.json?status=any&limit=50&order=created_at%20desc", authentication: "predefinedCredentialType", nodeCredentialType: "shopifyAccessTokenApi", sendHeaders: true, headerParameters: { parameters: [{ name: "Accept", value: "application/json" }] }, options: { timeout: 30000 } }, { typeVersion: 4.3, credentials: { shopifyAccessTokenApi: { id: "WZah58udMOwKiRR3", name: "Shopify Access Token account" } }, retryOnFail: true, maxTries: 3, waitBetweenTries: 3000 }),
+    node("order-normalize", "Normalize Unseen Shopify Orders", "n8n-nodes-base.code", [-440, 0], { mode: "runOnceForAllItems", jsCode: String.raw`
+const payload = $input.first()?.json || {};
+const orders = Array.isArray(payload.orders) ? payload.orders : [];
+const state = $getWorkflowStaticData('global');
+state.completed = state.completed || {};
+const cents = value => Math.round(Number(value || 0) * 100);
+const text = value => String(value || '').trim();
+const attr = (order, matcher) => {
+  const row = (Array.isArray(order.note_attributes) ? order.note_attributes : []).find(entry => matcher.test(text(entry.name)));
+  return text(row?.value);
+};
+const address = (value, fallbackEmail='') => {
+  const source = value || {};
+  const firstName = text(source.first_name);
+  const lastName = text(source.last_name);
+  return {
+    company:text(source.company),
+    name:text(source.name) || [firstName,lastName].filter(Boolean).join(' '),
+    firstName,
+    lastName,
+    street:[text(source.address1),text(source.address2)].filter(Boolean).join(', '),
+    zip:text(source.zip),
+    city:text(source.city),
+    country:text(source.country_code || source.country),
+    phone:text(source.phone),
+    email:text(source.email || fallbackEmail)
+  };
+};
+const distribute = (total, quantity) => {
+  const count = Math.max(1, Number(quantity || 1));
+  const base = Math.trunc(total / count);
+  const remainder = total - base * count;
+  return Array.from({length:count}, (_,index) => base + (index < remainder ? 1 : 0));
+};
+const output = [];
+for (const order of orders) {
+  const orderName = text(order.name).toUpperCase();
+  if (!/^#NEONT\d+$/.test(orderName)) continue;
+  const shopifyOrderId = 'gid://shopify/Order/' + text(order.id);
+  const fingerprint = text(order.id) + ':created';
+  if (state.completed[fingerprint]) continue;
+  const email = text(attr(order,/rechnungs.?e.?mail|invoice.?email/i) || order.email || order.contact_email || order.customer?.email).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('FATAL_shopify_order_invoice_email_missing:' + orderName);
+  const billingAddress = address(order.billing_address || order.shipping_address, email);
+  const deliveryAddress = address(order.shipping_address || order.billing_address, email);
+  billingAddress.invoiceEmail = email;
+  billingAddress.projectNumber = attr(order,/projekt.?nummer|project.?number/i);
+  billingAddress.vatId = attr(order,/ust.?id|umsatzsteuer|vat.?id/i);
+  const lineItems = [];
+  for (const line of (Array.isArray(order.line_items) ? order.line_items : [])) {
+    const quantity = Math.max(1, Number(line.quantity || 1));
+    const gross = cents(line.price) * quantity - (Array.isArray(line.discount_allocations) ? line.discount_allocations.reduce((sum,row)=>sum+cents(row.amount),0) : 0);
+    const tax = Array.isArray(line.tax_lines) ? line.tax_lines.reduce((sum,row)=>sum+cents(row.price),0) : 0;
+    for (const unitNet of distribute(gross - tax, quantity)) lineItems.push({title:text(line.title || line.name || 'Position'),section:'produkt',quantity:1,normalizedQuantity:1,unitPriceNet:unitNet/100});
+  }
+  for (const shipping of (Array.isArray(order.shipping_lines) ? order.shipping_lines : [])) {
+    const gross = cents(shipping.discounted_price ?? shipping.price);
+    const tax = Array.isArray(shipping.tax_lines) ? shipping.tax_lines.reduce((sum,row)=>sum+cents(row.price),0) : 0;
+    lineItems.push({title:text(shipping.title || shipping.code || 'Versand'),section:'versand',quantity:1,normalizedQuantity:1,unitPriceNet:(gross-tax)/100});
+  }
+  if (!lineItems.length) throw new Error('shopify_order_line_items_missing:' + orderName);
+  const totalGrossCents = cents(order.total_price);
+  const vatCents = cents(order.total_tax);
+  const subtotalNetCents = totalGrossCents - vatCents;
+  const itemNetCents = lineItems.reduce((sum,row)=>sum+cents(row.unitPriceNet),0);
+  lineItems[lineItems.length - 1].unitPriceNet = (cents(lineItems[lineItems.length - 1].unitPriceNet) + subtotalNetCents - itemNetCents) / 100;
+  const vatId = text(billingAddress.vatId).toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const vatValidation = vatId ? {checked:false,valid:false,normalizedVatId:vatId,countryCode:vatId.slice(0,2)} : null;
+  const customerName = text(order.customer?.first_name || deliveryAddress.firstName) + ' ' + text(order.customer?.last_name || deliveryAddress.lastName);
+  const normalized = {
+    fingerprint,
+    source:'shopify-universal',
+    sourceEventId:'shopify-universal:' + text(order.id) + ':created',
+    shopifyOrderId,
+    shopifyOrderName:orderName,
+    invoiceEmail:email,
+    projectNumber:billingAddress.projectNumber || null,
+    customer:{name:customerName.trim() || billingAddress.name || deliveryAddress.name,company:billingAddress.company || deliveryAddress.company,email,phone:text(order.customer?.phone || deliveryAddress.phone)},
+    billingAddress,
+    deliveryAddress,
+    lineItems,
+    totals:{subtotalNet:subtotalNetCents/100,vatAmount:vatCents/100,totalGross:totalGrossCents/100,currency:text(order.currency || 'EUR').toUpperCase()},
+    vatValidation,
+    acceptedAt:order.created_at || order.processed_at || new Date().toISOString(),
+    initialFinancialStatus:(order.cancelled_at || (Array.isArray(order.refunds)&&order.refunds.length)) ? 'paid' : text(order.financial_status)
+  };
+  output.push({ json: normalized });
+}
+return output;` }),
+    node("order-sign", "Validate and Sign BillingCase", "n8n-nodes-base.code", [-180, 0], { mode: "runOnceForEachItem", jsCode: "const x=$json||{};if(!x.sourceEventId||!x.shopifyOrderId||!/^#NEONT\\d+$/.test(String(x.shopifyOrderName||''))||!Array.isArray(x.lineItems)||!x.lineItems.length||!x.totals||!x.billingAddress||!x.deliveryAddress)throw new Error('invalid_shopify_order_billing_intake');const secret=String($env.BILLING_WEBHOOK_SECRET||'');if(secret.length<32)throw new Error('BILLING_WEBHOOK_SECRET missing');const body=JSON.stringify(x);const timestamp=String(Math.floor(Date.now()/1000));const {createHmac}=require('crypto');const signature='sha256='+createHmac('sha256',secret).update(timestamp+'.'+body).digest('hex');const base=String($env.NEONTRIP_OPS_BASE_URL||'https://ops.neontrip.de').replace(/\\/+$/,'');if(!/^https:\\/\\//.test(base))throw new Error('NEONTRIP_OPS_BASE_URL missing');const result={body,timestamp,signature,eventId:String(x.sourceEventId),fingerprint:String(x.fingerprint),url:base+'/api/internal/billing/cases'};return { json: result };" }),
+    node("order-post", "Create or Replay BillingCase", "n8n-nodes-base.httpRequest", [80, 0], { method: "POST", url: "={{ $json.url }}", sendHeaders: true, headerParameters: { parameters: [{ name: "X-Neontrip-Timestamp", value: "={{ $json.timestamp }}" }, { name: "X-Neontrip-Signature", value: "={{ $json.signature }}" }, { name: "X-Neontrip-Event-Id", value: "={{ $json.eventId }}" }] }, sendBody: true, contentType: "raw", rawContentType: "application/json", body: "={{ $json.body }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { typeVersion: 4.3, retryOnFail: true, maxTries: 3, waitBetweenTries: 3000, onError: "continueErrorOutput" }),
+    node("order-mark", "Mark Shopify Order Ingested", "n8n-nodes-base.code", [320, -80], { mode: "runOnceForEachItem", jsCode: "const signed=$('Validate and Sign BillingCase').item.json;const state=$getWorkflowStaticData('global');state.completed=state.completed||{};state.completed[signed.fingerprint]=new Date().toISOString();const keys=Object.keys(state.completed);for(const key of keys.slice(0,Math.max(0,keys.length-1000)))delete state.completed[key];const result={ok:true,fingerprint:signed.fingerprint,response:$json.body??$json};return { json: result };" }),
+    node("order-error", "Raise Shopify Intake Error", "n8n-nodes-base.code", [320, 160], { mode: "runOnceForEachItem", jsCode: "throw new Error('FATAL Fehler Rechnung Shopify/Easybill: Shopify-Bestellung konnte nicht als BillingCase angelegt werden. ' + String($json.error?.message||$json.message||''));return { json: $json };" })
   ],
   connections: {
-    "Called by Shopify Order Source": { main: [[{ node: "Validate and Sign BillingCase", type: "main", index: 0 }]] },
-    "Validate and Sign BillingCase": { main: [[{ node: "Create BillingCase", type: "main", index: 0 }]] },
-    "Create BillingCase": { main: [[], [{ node: "Raise Shopify Intake Error", type: "main", index: 0 }]] }
+    "Every Minute": { main: [[{ node: "Read Recent Shopify Orders", type: "main", index: 0 }]] },
+    "Manual Test": { main: [[{ node: "Read Recent Shopify Orders", type: "main", index: 0 }]] },
+    "Read Recent Shopify Orders": { main: [[{ node: "Normalize Unseen Shopify Orders", type: "main", index: 0 }]] },
+    "Normalize Unseen Shopify Orders": { main: [[{ node: "Validate and Sign BillingCase", type: "main", index: 0 }]] },
+    "Validate and Sign BillingCase": { main: [[{ node: "Create or Replay BillingCase", type: "main", index: 0 }]] },
+    "Create or Replay BillingCase": { main: [[{ node: "Mark Shopify Order Ingested", type: "main", index: 0 }], [{ node: "Raise Shopify Intake Error", type: "main", index: 0 }]] }
   },
-  settings: { executionOrder: "v1", timezone: "Europe/Berlin", saveDataErrorExecution: "all", saveDataSuccessExecution: "all", errorWorkflow: "M4uG1HAtN9Zggxww", callerPolicy: "workflowsFromSameOwner", availableInMCP: false },
-  versionId: "neontrip-billing-v2-shopify-order-intake-adapter-inactive"
+  settings: { executionOrder: "v1", timezone: "Europe/Berlin", saveDataErrorExecution: "all", saveDataSuccessExecution: "all", errorWorkflow: "M4uG1HAtN9Zggxww", availableInMCP: false },
+  versionId: "neontrip-billing-v2-universal-shopify-order-intake-inactive"
 };
 
 fs.mkdirSync(generated, { recursive: true });
