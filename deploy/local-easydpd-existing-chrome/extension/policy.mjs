@@ -26,6 +26,18 @@ export function validateOrderUrl(rawUrl) {
   return url.toString();
 }
 
+export function validateEasyDpdLabelDownloadUrl(rawUrl) {
+  const url = new URL(String(rawUrl || ""));
+  if (url.origin !== EASYDPD_FRAME_ORIGIN
+    || url.username
+    || url.password
+    || url.hash
+    || !/^\/labels\/\d+\/download\//.test(url.pathname)) {
+    throw new Error("EasyDPD-Label-Download liegt ausserhalb der freigegebenen Route.");
+  }
+  return url.toString();
+}
+
 export function validateBridgeJob(job) {
   if (!job || typeof job !== "object") throw new Error("Browser-Auftrag fehlt.");
   if (!/^[0-9a-f-]{36}$/i.test(String(job.id || ""))) throw new Error("Browser-Auftrags-ID ist ungueltig.");
@@ -46,13 +58,13 @@ export function validateBridgeJob(job) {
 }
 
 export function existingLabelEvidence(hrefs) {
-  const labelUrls = [];
+  const labelUrls = new Set();
   const trackingNumbers = new Set();
   for (const rawHref of Array.isArray(hrefs) ? hrefs : []) {
     let url;
     try { url = new URL(String(rawHref)); } catch { continue; }
     if (url.origin === EASYDPD_FRAME_ORIGIN && /^\/labels\/\d+\/download\//.test(url.pathname)) {
-      labelUrls.push(url.toString());
+      labelUrls.add(url.toString());
     }
     if (url.hostname === "tracking.dpd.de") {
       const match = url.pathname.match(/\/parcel\/(\d{11,20})(?:\/|$)/);
@@ -60,8 +72,8 @@ export function existingLabelEvidence(hrefs) {
     }
   }
   return {
-    found: labelUrls.length > 0 || trackingNumbers.size > 0,
-    labelCount: labelUrls.length,
+    found: labelUrls.size > 0 || trackingNumbers.size > 0,
+    labelCount: labelUrls.size,
     trackingNumbers: [...trackingNumbers],
   };
 }

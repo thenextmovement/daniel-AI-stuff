@@ -31,6 +31,7 @@ import {
   existingLabelEvidence,
   matchingDownloadedPdf,
   validateBridgeJob,
+  validateEasyDpdLabelDownloadUrl,
   validateOrderUrl,
 } from "../../deploy/local-easydpd-existing-chrome/extension/policy.mjs";
 
@@ -58,7 +59,7 @@ test("existing-Chrome extension is pinned to the normal NEONTRIP Shopify/easyDPD
   const nativeManifest = JSON.parse(await readFile("deploy/local-easydpd-existing-chrome/native-host-manifest.json.template", "utf8"));
   assert.equal(EXPECTED_EXTENSION_ID, "bgfphlbhdameagnafljlgpbpjdajmdhk");
   assert.equal(BRIDGE_PROTOCOL_VERSION, EXPECTED_BRIDGE_PROTOCOL_VERSION);
-  assert.equal(manifest.version, "1.1.6");
+  assert.equal(manifest.version, "1.1.7");
   assert.deepEqual(manifest.host_permissions, [
     "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services/*",
     "https://easydpd.247apps.de/*",
@@ -86,6 +87,15 @@ test("EasyDPD history evidence blocks on label downloads or exact DPD tracking",
   assert.equal(evidence.found, true);
   assert.equal(evidence.labelCount, 1);
   assert.deepEqual(evidence.trackingNumbers, ["01476817855492"]);
+  assert.equal(existingLabelEvidence([
+    "https://easydpd.247apps.de/labels/3580043/download/label-neont4532.pdf?signature=redacted",
+    "https://easydpd.247apps.de/labels/3580043/download/label-neont4532.pdf?signature=redacted",
+  ]).labelCount, 1);
+  assert.match(validateEasyDpdLabelDownloadUrl(
+    "https://easydpd.247apps.de/labels/3580043/download/label-neont4532.pdf?signature=redacted",
+  ), /^https:\/\/easydpd[.]247apps[.]de\/labels\//);
+  assert.throws(() => validateEasyDpdLabelDownloadUrl("https://evil.example/labels/1/download/label.pdf"), /freigegebenen Route/);
+  assert.throws(() => validateEasyDpdLabelDownloadUrl("https://easydpd.247apps.de/settings"), /freigegebenen Route/);
 });
 
 test("download capture requires the same Shopify tab or the exact EasyDPD order label after dispatch", () => {
@@ -248,10 +258,10 @@ test("manager updates the unpacked extension without replacing its stable root d
   }
 });
 
-test("service worker reuses or creates one background tab, blocks existing labels and dispatches before one click", async () => {
+test("service worker creates a fresh background tab, recovers from live history and dispatches before one click", async () => {
   const service = await readFile("deploy/local-easydpd-existing-chrome/extension/service_worker.mjs", "utf8");
   const content = await readFile("deploy/local-easydpd-existing-chrome/extension/content_script.js", "utf8");
-  assert.match(service, /findExistingEasyDpdTab/);
+  assert.doesNotMatch(service, /findExistingEasyDpdTab|getOrCreateEasyDpdTab/);
   assert.match(service, /bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION/);
   assert.match(service, /extensionBuildCommit: EXTENSION_BUILD_COMMIT/);
   assert.match(service, /RELOAD_REQUIRED_CODES/);
@@ -259,6 +269,7 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(service, /__NEONTRIP_EXTENSION_BUILD_COMMIT__/);
   assert.doesNotMatch(service, /chrome[.]windows[.]create/);
   assert.match(service, /chrome[.]tabs[.]create\(\{ url: validateOrderUrl\(job[.]orderUrl\), active: false \}\)/);
+  assert.match(service, /createFreshEasyDpdTab\(claimed[.]job\)/);
   assert.match(service, /easyDpdFrameId\(tabId, timeoutMs = 45_000\)/);
   assert.match(service, /matches[.]length === 1[\s\S]+matches[.]length > 1[\s\S]+setTimeout\(resolve, 500\)/);
   assert.match(service, /chrome[.]runtime[.]connectNative\(NATIVE_HOST\)/);
@@ -269,18 +280,24 @@ test("service worker reuses or creates one background tab, blocks existing label
   assert.match(service, /chrome[.]downloads[.]search\(\{ startedAfter:/);
   assert.match(service, /waitForDownloadedPdf\(tab[.]id, startedAt, job[.]orderName/);
   assert.match(service, /isMissingFrameReceiver/);
-  assert.match(service, /await chrome[.]tabs[.]reload\(tabId\)/);
-  assert.match(service, /await waitForTabComplete\(tabId, job[.]orderUrl\)/);
+  assert.match(service, /chrome[.]tabs[.]reload\(tabId, \{ bypassCache: true \}\)/);
+  assert.match(service, /reloadAndWaitForTabComplete\(tabId, job[.]orderUrl\)/);
+  assert.match(service, /action: "inspect_history"/);
+  assert.match(service, /chrome[.]downloads[.]download\(\{ url: downloadUrl, saveAs: false, conflictAction: "uniquify" \}\)/);
+  assert.match(service, /post_dispatch_download_recovered/);
+  assert.match(service, /EasyDPD-History blieb nach frischem Reload ohne Label; kein automatischer Wiederholungskauf/);
   assert.ok(service.indexOf("isMissingFrameReceiver") < service.indexOf('updateJob(nativeSession, job, "validated")'));
   assert.match(service, /prepared[.]existingLabel[?][.]found/);
   assert.match(service, /updateJob\(nativeSession, job, "existing_label"/);
-  assert.ok(service.indexOf('nativeSession.send({ type: "claim" })') < service.indexOf("getOrCreateEasyDpdTab(claimed.job)"));
+  assert.ok(service.indexOf('nativeSession.send({ type: "claim" })') < service.indexOf("createFreshEasyDpdTab(claimed.job)"));
   const dispatch = service.indexOf('updateJob(nativeSession, job, "dispatching")');
   const purchase = service.indexOf('action: "purchase_once"');
   assert.ok(dispatch >= 0 && purchase > dispatch);
   assert.equal(content.match(/createButton\(\)[.]click\(\)/g)?.length, 1);
   assert.match(content, /sessionStorage[.]setItem\(purchaseKey/);
   assert.match(content, /collectExistingLabelEvidence/);
+  assert.match(content, /inspectHistoryWhenReady/);
+  assert.match(content, /message[.]action === "inspect_history"/);
   assert.match(content, /const PREPARE_READY_TIMEOUT_MS = 20_000/);
   assert.match(content, /async function validateAndPrepareWhenReady\(job\)/);
   assert.match(content, /isTransientPreparationError\(error\)/);
@@ -403,4 +420,30 @@ test("database existing-label stopper is pre-dispatch, audited and service-role 
   assert.match(sqlTest, /status <> 'manual_review'[\s\S]+lease_owner is not null[\s\S]+dpd_tracking_number <> '01476817855492'/i);
   assert.match(sqlTest, /has_function_privilege\('anon'[\s\S]+has_function_privilege\('service_role'/i);
   assert.match(sqlTest, /rollback;/i);
+});
+
+test("confirmed-empty EasyDPD recovery is one-time, audited and rejects downstream evidence", async () => {
+  const sql = await readFile(
+    "supabase/migrations/20260824174459_reconcile_arrival_browser_no_label_retry.sql",
+    "utf8",
+  );
+  const rollback = await readFile(
+    "supabase/rollbacks/20260824174459_reconcile_arrival_browser_no_label_retry_rollback.sql",
+    "utf8",
+  );
+  const sqlTest = await readFile("supabase/tests/arrival_label_browser_no_label_requeue.sql", "utf8");
+  assert.match(sql, /status <> 'manual_review'/i);
+  assert.match(sql, /easydpd_live_history_after_forced_reload/i);
+  assert.match(sql, /no_label_no_tracking/i);
+  assert.match(sql, /labelCount'[)]::numeric <> 0/i);
+  assert.match(sql, /jsonb_array_length\(p_evidence -> 'trackingNumbers'\) <> 0/i);
+  assert.match(sql, /existing_dpd_tracking is not null[\s\S]+dpd_tracking_number is not null[\s\S]+original_pdf_sha256 is not null[\s\S]+print_job_id is not null/i);
+  assert.match(sql, /artifact_kind in \('original_pdf', 'annotated_pdf', 'rendered_preview'\)/i);
+  assert.match(sql, /document_kind = 'label'/i);
+  assert.match(sql, /confirmed-no-label-requeue/i);
+  assert.match(sql, /browser_purchase_requeued_after_confirmed_no_label/i);
+  assert.match(sql, /status = 'queued'[\s\S]+attempts = 0[\s\S]+status = 'label_planned'/i);
+  assert.match(sql, /revoke execute[\s\S]+from public, anon, authenticated[\s\S]+grant execute[\s\S]+to service_role/i);
+  assert.match(rollback, /drop function if exists public[.]arrival_labels_requeue_browser_purchase_after_confirmed_no_label/i);
+  assert.match(sqlTest, /v_job[.]status <> 'queued'[\s\S]+v_job[.]attempts <> 0[\s\S]+v_event_count <> 1/i);
 });

@@ -2,11 +2,9 @@ import {
   BRIDGE_PROTOCOL_VERSION,
   EASYDPD_FRAME_ORIGIN,
   NATIVE_HOST,
-  SHOPIFY_APP_PATH,
-  SHOPIFY_ORIGIN,
-  SHOPIFY_PATH,
   matchingDownloadedPdf,
   validateBridgeJob,
+  validateEasyDpdLabelDownloadUrl,
   validateOrderUrl,
 } from "./policy.mjs";
 
@@ -15,6 +13,7 @@ const EXTENSION_BUILD_COMMIT = "__NEONTRIP_EXTENSION_BUILD_COMMIT__";
 const STATE_KEY = "neontripEasyDpdBridgeState";
 const AUDIT_KEY = "neontripEasyDpdBridgeAudit";
 const MAX_AUDIT_ENTRIES = 50;
+const POST_DISPATCH_HISTORY_TIMEOUT_MS = 45_000;
 const RELOAD_REQUIRED_CODES = new Set(["extension_build_mismatch", "extension_protocol_mismatch"]);
 let cycleRunning = false;
 
@@ -67,27 +66,10 @@ async function record(state, detail = {}) {
   await chrome.storage.local.set({ [STATE_KEY]: entry, [AUDIT_KEY]: audit.slice(-MAX_AUDIT_ENTRIES) });
 }
 
-async function findExistingEasyDpdTab() {
-  const tabs = await chrome.tabs.query({
-    url: [`${SHOPIFY_ORIGIN}${SHOPIFY_APP_PATH}`, `${SHOPIFY_ORIGIN}${SHOPIFY_APP_PATH}/*`],
-  });
-  const candidates = tabs.filter((tab) => {
-    try {
-      const url = new URL(tab.url || "");
-      return url.origin === SHOPIFY_ORIGIN
-        && (url.pathname === SHOPIFY_APP_PATH || url.pathname.startsWith(`${SHOPIFY_APP_PATH}/`));
-    } catch {
-      return false;
-    }
-  });
-  candidates.sort((a, b) => Number(b.active) - Number(a.active) || Number(b.lastAccessed || 0) - Number(a.lastAccessed || 0));
-  return candidates[0] || null;
-}
-
-async function getOrCreateEasyDpdTab(job) {
-  const existing = await findExistingEasyDpdTab();
-  if (existing) return existing;
-  return chrome.tabs.create({ url: validateOrderUrl(job.orderUrl), active: false });
+async function createFreshEasyDpdTab(job) {
+  const tab = await chrome.tabs.create({ url: validateOrderUrl(job.orderUrl), active: false });
+  if (!Number.isInteger(tab.id)) throw new Error("Frischer Shopify/easyDPD-Tab konnte nicht angelegt werden.");
+  return tab;
 }
 
 function waitForTabComplete(tabId, expectedUrl, timeoutMs = 45_000) {
@@ -122,6 +104,35 @@ function waitForTabComplete(tabId, expectedUrl, timeoutMs = 45_000) {
   });
 }
 
+function reloadAndWaitForTabComplete(tabId, expectedUrl, timeoutMs = 45_000) {
+  return new Promise((resolve, reject) => {
+    let sawLoading = false;
+    let settled = false;
+    const cleanup = (error, tab) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      chrome.tabs.onUpdated.removeListener(listener);
+      if (error) reject(error);
+      else resolve(tab);
+    };
+    const deadline = setTimeout(() => cleanup(new Error("Shopify/easyDPD-Tab wurde nicht rechtzeitig frisch geladen.")), timeoutMs);
+    const listener = (updatedId, changeInfo, tab) => {
+      if (updatedId !== tabId) return;
+      if (changeInfo.status === "loading") sawLoading = true;
+      if (!sawLoading || changeInfo.status !== "complete") return;
+      try {
+        if (validateOrderUrl(tab.url) !== validateOrderUrl(expectedUrl)) return;
+      } catch {
+        return;
+      }
+      cleanup(null, tab);
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.reload(tabId, { bypassCache: true }).catch((error) => cleanup(error));
+  });
+}
+
 async function easyDpdFrameId(tabId, timeoutMs = 45_000) {
   const deadline = Date.now() + timeoutMs;
   do {
@@ -146,17 +157,31 @@ function isMissingFrameReceiver(error) {
   return /Could not establish connection|Receiving end does not exist/i.test(String(error?.message || error));
 }
 
+async function frameMessageWhenReady(tabId, frameId, payload, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+  do {
+    try {
+      return await frameMessage(tabId, frameId, payload);
+    } catch (error) {
+      if (!isMissingFrameReceiver(error)) throw error;
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  } while (Date.now() < deadline);
+  throw lastError || new Error("EasyDPD-App-Frame antwortete nicht rechtzeitig.");
+}
+
 async function validateAndPrepareFrame(tabId, job) {
   let frameId = await easyDpdFrameId(tabId);
   try {
-    return { frameId, prepared: await frameMessage(tabId, frameId, { action: "validate_and_prepare", job }) };
+    return { frameId, prepared: await frameMessageWhenReady(tabId, frameId, { action: "validate_and_prepare", job }) };
   } catch (error) {
     if (!isMissingFrameReceiver(error)) throw error;
     await record("content_script_reload", { jobId: job.id, orderName: job.orderName });
-    await chrome.tabs.reload(tabId);
-    await waitForTabComplete(tabId, job.orderUrl);
+    await reloadAndWaitForTabComplete(tabId, job.orderUrl);
     frameId = await easyDpdFrameId(tabId);
-    return { frameId, prepared: await frameMessage(tabId, frameId, { action: "validate_and_prepare", job }) };
+    return { frameId, prepared: await frameMessageWhenReady(tabId, frameId, { action: "validate_and_prepare", job }) };
   }
 }
 
@@ -220,6 +245,91 @@ function waitForDownloadedPdf(tabId, startedAt, orderName, signal, timeoutMs = 9
   });
 }
 
+function waitForDownloadId(downloadId, startedAt, expectedUrl, timeoutMs = 45_000) {
+  const validatedExpectedUrl = validateEasyDpdLabelDownloadUrl(expectedUrl);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = (error, item) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      clearInterval(reconcileInterval);
+      chrome.downloads.onChanged.removeListener(onChanged);
+      if (error) reject(error);
+      else resolve(item);
+    };
+    const consider = (item) => {
+      if (!item || item.id !== downloadId) return;
+      const start = Date.parse(String(item.startTime || ""));
+      if (!Number.isFinite(start) || start < startedAt - 2_000) {
+        cleanup(new Error("EasyDPD-History-Download liegt ausserhalb des Recovery-Zeitfensters."));
+        return;
+      }
+      let source;
+      try { source = validateEasyDpdLabelDownloadUrl(item.url); } catch {
+        cleanup(new Error("EasyDPD-History-Download stammt nicht von der freigegebenen Route."));
+        return;
+      }
+      if (source !== validatedExpectedUrl) {
+        cleanup(new Error("EasyDPD-History-Download stimmt nicht mit dem belegten Label ueberein."));
+        return;
+      }
+      if (item.state === "interrupted") cleanup(new Error("EasyDPD-History-Download wurde unterbrochen."));
+      else if (item.state === "complete") {
+        if (String(item.filename || "").toLowerCase().endsWith(".pdf") !== true) {
+          cleanup(new Error("EasyDPD-History-Download ist keine PDF-Datei."));
+        } else cleanup(null, item);
+      }
+    };
+    const reconcile = async () => {
+      const items = await chrome.downloads.search({ id: downloadId });
+      if (items.length === 1) consider(items[0]);
+    };
+    const onChanged = (delta) => {
+      if (delta.id === downloadId && delta.state) reconcile().catch((error) => cleanup(error));
+    };
+    const deadline = setTimeout(() => cleanup(new Error("EasyDPD-History-PDF-Download wurde nicht bestaetigt.")), timeoutMs);
+    const reconcileInterval = setInterval(() => reconcile().catch((error) => cleanup(error)), 500);
+    chrome.downloads.onChanged.addListener(onChanged);
+    reconcile().catch((error) => cleanup(error));
+  });
+}
+
+function safeHistoryEvidence(evidence) {
+  return {
+    found: evidence?.found === true,
+    labelCount: Number(evidence?.labelCount || 0),
+    trackingNumbers: Array.isArray(evidence?.trackingNumbers) ? evidence.trackingNumbers : [],
+  };
+}
+
+async function recoverPostDispatchDownload(tabId, job, settleDelayMs = 0) {
+  if (settleDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
+  await reloadAndWaitForTabComplete(tabId, job.orderUrl);
+  const frameId = await easyDpdFrameId(tabId);
+  const deadline = Date.now() + POST_DISPATCH_HISTORY_TIMEOUT_MS;
+  let observed = null;
+  do {
+    observed = await frameMessageWhenReady(tabId, frameId, { action: "inspect_history", job });
+    if (observed?.found) break;
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  } while (Date.now() < deadline);
+
+  const evidence = safeHistoryEvidence(observed);
+  await record("post_dispatch_history_checked", { jobId: job.id, orderName: job.orderName, evidence });
+  if (!evidence.found) throw new Error("EasyDPD-History blieb nach frischem Reload ohne Label; kein automatischer Wiederholungskauf.");
+  if (evidence.labelCount !== 1 || evidence.trackingNumbers.length > 1 || typeof observed.downloadUrl !== "string") {
+    throw new Error("EasyDPD-History ist nach dem Dispatch nicht eindeutig einem Label-Download zuzuordnen.");
+  }
+  const downloadUrl = validateEasyDpdLabelDownloadUrl(observed.downloadUrl);
+  const startedAt = Date.now();
+  const downloadId = await chrome.downloads.download({ url: downloadUrl, saveAs: false, conflictAction: "uniquify" });
+  if (!Number.isInteger(downloadId)) throw new Error("EasyDPD-History-Download konnte nicht gestartet werden.");
+  const download = await waitForDownloadId(downloadId, startedAt, downloadUrl);
+  await record("post_dispatch_download_recovered", { jobId: job.id, orderName: job.orderName, evidence });
+  return download;
+}
+
 async function updateJob(nativeSession, job, result, extra = {}) {
   return nativeSession.send({ type: "update", job, result, ...extra });
 }
@@ -229,10 +339,10 @@ async function processJob(nativeSession, tab, job) {
   let dispatchStarted = false;
   let serverCompleted = false;
   let downloadController = null;
+  let downloadPromise = null;
+  let postDispatchReconciliationAttempted = false;
+  let artifactUploadStarted = false;
   try {
-    if (validateOrderUrl(tab.url) !== validateOrderUrl(job.orderUrl)) {
-      await chrome.tabs.update(tab.id, { url: job.orderUrl, active: false });
-    }
     await waitForTabComplete(tab.id, job.orderUrl);
     const { frameId, prepared } = await validateAndPrepareFrame(tab.id, job);
     if (prepared.existingLabel?.found) {
@@ -255,10 +365,23 @@ async function processJob(nativeSession, tab, job) {
     await record("dispatching", { jobId: job.id, orderName: job.orderName, dispatchNonce });
     const startedAt = Date.now();
     downloadController = new AbortController();
-    const downloadPromise = waitForDownloadedPdf(tab.id, startedAt, job.orderName, downloadController.signal);
+    downloadPromise = waitForDownloadedPdf(tab.id, startedAt, job.orderName, downloadController.signal);
     const clickResult = await frameMessage(tab.id, frameId, { action: "purchase_once", job, dispatchNonce });
     if (clickResult.clicked !== true) throw new Error("EasyDPD-Kaufklick wurde nicht eindeutig bestätigt.");
-    const download = await downloadPromise;
+    let download;
+    try {
+      download = await downloadPromise;
+    } catch (error) {
+      downloadController.abort();
+      postDispatchReconciliationAttempted = true;
+      await record("post_dispatch_download_missing", {
+        jobId: job.id,
+        orderName: job.orderName,
+        error: String(error?.message || error).slice(0, 500),
+      });
+      download = await recoverPostDispatchDownload(tab.id, job);
+    }
+    artifactUploadStarted = true;
     const uploaded = await nativeSession.send({ type: "upload_artifact", job, filePath: download.filename });
     serverCompleted = true;
     await record("artifact_uploaded", {
@@ -269,12 +392,33 @@ async function processJob(nativeSession, tab, job) {
     }).catch(() => undefined);
   } catch (error) {
     downloadController?.abort();
-    const message = String(error?.message || error).slice(0, 500);
+    await downloadPromise?.catch(() => undefined);
+    let finalError = error;
+    if (dispatchStarted && !serverCompleted && !postDispatchReconciliationAttempted && !artifactUploadStarted) {
+      postDispatchReconciliationAttempted = true;
+      try {
+        const download = await recoverPostDispatchDownload(tab.id, job, 5_000);
+        artifactUploadStarted = true;
+        const uploaded = await nativeSession.send({ type: "upload_artifact", job, filePath: download.filename });
+        serverCompleted = true;
+        await record("artifact_uploaded", {
+          jobId: job.id,
+          orderName: job.orderName,
+          dpdTrackingNumber: uploaded.dpdTrackingNumber,
+          printJobId: uploaded.printJobId,
+          recoveredAfterDispatchError: true,
+        }).catch(() => undefined);
+        return;
+      } catch (recoveryError) {
+        finalError = new Error(`${String(error?.message || error)} Post-Dispatch-Abgleich: ${String(recoveryError?.message || recoveryError)}`);
+      }
+    }
+    const message = String(finalError?.message || finalError).slice(0, 500);
     if (!serverCompleted) {
       await updateJob(nativeSession, job, dispatchStarted ? "uncertain" : "retryable_error", { error: message }).catch(() => undefined);
     }
     await record(dispatchStarted ? "manual_review_after_dispatch" : "retryable_error", { jobId: job.id, orderName: job.orderName, error: message });
-    throw error;
+    throw finalError;
   }
 }
 
@@ -293,8 +437,9 @@ async function runCycle(source) {
       await record(claimed.activeJobPending ? "active_job_pending" : "idle", { source });
       return;
     }
-    const tab = await getOrCreateEasyDpdTab(claimed.job);
+    const tab = await createFreshEasyDpdTab(claimed.job);
     await processJob(nativeSession, tab, claimed.job);
+    await chrome.tabs.remove(tab.id).catch(() => undefined);
   } catch (error) {
     await record("bridge_error", { source, error: String(error?.message || error).slice(0, 500) });
   } finally {

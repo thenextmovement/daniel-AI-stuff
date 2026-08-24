@@ -80,18 +80,36 @@
   }
 
   function collectExistingLabelEvidence() {
-    const labelUrls = [];
+    const labelUrls = new Set();
     const trackingNumbers = new Set();
     for (const anchor of document.querySelectorAll("a[href]")) {
       let url;
       try { url = new URL(anchor.href); } catch { continue; }
-      if (url.origin === FRAME_ORIGIN && /^\/labels\/\d+\/download\//.test(url.pathname)) labelUrls.push(url.toString());
+      if (url.origin === FRAME_ORIGIN && /^\/labels\/\d+\/download\//.test(url.pathname)) labelUrls.add(url.toString());
       if (url.hostname === "tracking.dpd.de") {
         const match = url.pathname.match(/\/parcel\/(\d{11,20})(?:\/|$)/);
         if (match) trackingNumbers.add(match[1]);
       }
     }
-    return { found: labelUrls.length > 0 || trackingNumbers.size > 0, labelCount: labelUrls.length, trackingNumbers: [...trackingNumbers] };
+    return {
+      found: labelUrls.size > 0 || trackingNumbers.size > 0,
+      labelCount: labelUrls.size,
+      trackingNumbers: [...trackingNumbers],
+      downloadUrl: labelUrls.size === 1 ? [...labelUrls][0] : null,
+    };
+  }
+
+  function safeExistingLabelEvidence(evidence) {
+    return {
+      found: evidence.found,
+      labelCount: evidence.labelCount,
+      trackingNumbers: evidence.trackingNumbers,
+    };
+  }
+
+  function inspectHistory(job) {
+    orderLink(job);
+    return collectExistingLabelEvidence();
   }
 
   function validateAndPrepare(job) {
@@ -104,7 +122,7 @@
     const weight = weightInput();
     const button = createButton();
     const evidence = collectExistingLabelEvidence();
-    if (evidence.found) return { ready: false, existingLabel: evidence };
+    if (evidence.found) return { ready: false, existingLabel: safeExistingLabelEvidence(evidence) };
     selectLabel(product, job.productLabel);
     selectLabel(format, job.labelFormat);
     setNativeValue(weight, String(job.packageWeightGrams));
@@ -117,7 +135,7 @@
     }
     return {
       ready: true,
-      existingLabel: evidence,
+      existingLabel: safeExistingLabelEvidence(evidence),
       observed: { orderName: normalized(orderLink(job).textContent), product: currentLabel(product), format: currentLabel(format), weightGrams: Number(weight.value) },
     };
   }
@@ -143,6 +161,21 @@
     throw lastError || new Error("EasyDPD-Auftrag wurde nicht rechtzeitig kaufbereit.");
   }
 
+  async function inspectHistoryWhenReady(job) {
+    const deadline = Date.now() + PREPARE_READY_TIMEOUT_MS;
+    let lastError = null;
+    do {
+      try {
+        return inspectHistory(job);
+      } catch (error) {
+        if (!isTransientPreparationError(error)) throw error;
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, PREPARE_READY_INTERVAL_MS));
+      }
+    } while (Date.now() < deadline);
+    throw lastError || new Error("EasyDPD-History wurde nicht rechtzeitig geladen.");
+  }
+
   function purchaseOnce(job, dispatchNonce) {
     const prepared = validateAndPrepare(job);
     if (!prepared.ready || prepared.existingLabel.found) throw new Error("Vor dem Kauf wurde ein vorhandenes EasyDPD-Label erkannt.");
@@ -158,6 +191,12 @@
     if (!message || message.target !== "neontrip-easydpd-frame") return undefined;
     if (message.action === "validate_and_prepare") {
       validateAndPrepareWhenReady(message.job)
+        .then((result) => sendResponse({ ok: true, result }))
+        .catch((error) => sendResponse({ ok: false, error: String(error?.message || error).slice(0, 500) }));
+      return true;
+    }
+    if (message.action === "inspect_history") {
+      inspectHistoryWhenReady(message.job)
         .then((result) => sendResponse({ ok: true, result }))
         .catch((error) => sendResponse({ ok: false, error: String(error?.message || error).slice(0, 500) }));
       return true;
