@@ -152,7 +152,7 @@ test("native host answers multiple ordered requests before the Chrome port close
   await runNativeMessageLoop(
     {},
     Readable.from([encodeNativeMessage(status), encodeNativeMessage(claim)]),
-    (response) => responses.push(response),
+    (response: Record<string, unknown>) => responses.push(response),
     async (_config, request) => ({ ok: true, handled: request.type }),
   );
   assert.deepEqual(responses, [{ ok: true, handled: "status" }, { ok: true, handled: "claim" }]);
