@@ -8,7 +8,7 @@ type PortalChangeBody = {
 };
 
 const ROOT_FIELDS = new Set(["billingAddress", "deliveryAddress", "vatId", "invoiceEmail", "projectNumber", "requesterEmail"]);
-const ADDRESS_FIELDS = new Set(["company", "name", "firstName", "lastName", "street", "zip", "city", "country"]);
+const ADDRESS_FIELDS = new Set(["company", "name", "firstName", "lastName", "street", "zip", "city", "country", "deliveryInstructions"]);
 
 function plainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -25,7 +25,8 @@ function address(value: unknown) {
   if (!plainRecord(value)) throw new Error("invalid_portal_change");
   if (Object.keys(value).some((key) => !ADDRESS_FIELDS.has(key))) throw new Error("invalid_portal_change");
   const result: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) result[key] = boundedText(entry, key === "street" ? 200 : 120);
+  for (const [key, entry] of Object.entries(value))
+    result[key] = boundedText(entry, key === "deliveryInstructions" ? 500 : key === "street" ? 200 : 120);
   return result;
 }
 

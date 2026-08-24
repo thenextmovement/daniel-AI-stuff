@@ -58,9 +58,11 @@ test("customer portal is invoice-only and becomes read-only after final invoice"
   assert.match(portal, /USt-ID geprüft · Freigabe ausstehend/);
   assert.match(portal, /deliveryAddress/);
   assert.match(portal, /delivery\.contactCompany/);
-  assert.match(portal, /delivery\.contactName/);
+  assert.match(portal, /firstName: form\.deliveryFirstName/);
+  assert.match(portal, /lastName: form\.deliveryLastName/);
+  assert.match(portal, /deliveryInstructions/);
   assert.match(portal, /firstNonEmptyText\(requested\.invoiceEmail, billing\.customer_email/);
-  assert.match(portal, /Lieferstraße und Hausnummer/);
+  assert.match(portal, /Wird nach Freigabe direkt in Shopify übernommen/);
   assert.match(portal, /pendingChanges\(payload\)/);
   assert.match(portal, /requested\.vatValidation \|\| payload\.billingCase\.vat_validation/);
   assert.doesNotMatch(portal, /const hasVatId = form\.vatId\.trim\(\)\.length > 0/);

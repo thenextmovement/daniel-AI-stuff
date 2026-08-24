@@ -2,9 +2,11 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import {
+  BadgeCheck,
   CheckCircle2,
   FileText,
   LockKeyhole,
+  MapPin,
   Pencil,
   ReceiptText,
   Send,
@@ -27,12 +29,16 @@ type InvoiceForm = {
   zip: string;
   city: string;
   country: string;
+  billingFirstName: string;
+  billingLastName: string;
   deliveryCompany: string;
-  deliveryName: string;
+  deliveryFirstName: string;
+  deliveryLastName: string;
   deliveryStreet: string;
   deliveryZip: string;
   deliveryCity: string;
   deliveryCountry: string;
+  deliveryInstructions: string;
   vatId: string;
   invoiceEmail: string;
   projectNumber: string;
@@ -52,12 +58,16 @@ const EMPTY_FORM: InvoiceForm = {
   zip: "",
   city: "",
   country: "",
+  billingFirstName: "",
+  billingLastName: "",
   deliveryCompany: "",
-  deliveryName: "",
+  deliveryFirstName: "",
+  deliveryLastName: "",
   deliveryStreet: "",
   deliveryZip: "",
   deliveryCity: "",
   deliveryCountry: "",
+  deliveryInstructions: "",
   vatId: "",
   invoiceEmail: "",
   projectNumber: "",
@@ -188,21 +198,36 @@ function firstNonEmptyText(...values: unknown[]) {
   return "";
 }
 
+function personName(address: Record<string, any>, fallback = "") {
+  const firstName = firstNonEmptyText(address.firstName);
+  const lastName = firstNonEmptyText(address.lastName);
+  if (firstName || lastName) return { firstName, lastName };
+  const parts = firstNonEmptyText(address.name, address.contactName, fallback).split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return { firstName: parts[0] || "", lastName: "" };
+  return { firstName: parts.slice(0, -1).join(" "), lastName: parts.at(-1) || "" };
+}
+
 function formFromBilling(billing: Record<string, any>, requested: Record<string, any> = {}): InvoiceForm {
   const address = { ...(billing.billing_address || {}), ...(requested.billingAddress || {}) };
   const delivery = { ...(billing.delivery_address || {}), ...(requested.deliveryAddress || {}) };
+  const billingPerson = personName(address, firstNonEmptyText(billing.customer?.name, billing.customer_name));
+  const deliveryPerson = personName(delivery);
   return {
     company: String(address.company || ""),
     street: String(address.street || ""),
     zip: String(address.zip || ""),
     city: String(address.city || ""),
     country: normalizeCountry(address.country) || String(address.country || ""),
+    billingFirstName: billingPerson.firstName,
+    billingLastName: billingPerson.lastName,
     deliveryCompany: firstNonEmptyText(delivery.company, delivery.contactCompany),
-    deliveryName: firstNonEmptyText(delivery.name, delivery.contactName, [delivery.firstName, delivery.lastName].filter(Boolean).join(" ")),
+    deliveryFirstName: deliveryPerson.firstName,
+    deliveryLastName: deliveryPerson.lastName,
     deliveryStreet: String(delivery.street || delivery.address1 || ""),
     deliveryZip: String(delivery.zip || delivery.zipCode || ""),
     deliveryCity: String(delivery.city || ""),
     deliveryCountry: normalizeCountry(delivery.countryCode || delivery.country) || String(delivery.countryCode || delivery.country || ""),
+    deliveryInstructions: firstNonEmptyText(delivery.deliveryInstructions, delivery.instructions, delivery.note),
     vatId: String(requested.vatId ?? billing.vat_id ?? ""),
     invoiceEmail: firstNonEmptyText(requested.invoiceEmail, billing.customer_email, billing.customerEmail, address.invoiceEmail, billing.customer?.invoiceEmail, billing.customer?.email),
     projectNumber: String(requested.projectNumber ?? billing.project_number ?? address.projectNumber ?? ""),
@@ -349,6 +374,9 @@ export function BillingPortalClient({ token }: { token: string }) {
       body: JSON.stringify({
         billingAddress: {
           company: form.company,
+          name: [form.billingFirstName, form.billingLastName].filter(Boolean).join(" "),
+          firstName: form.billingFirstName,
+          lastName: form.billingLastName,
           street: form.street,
           zip: form.zip,
           city: form.city,
@@ -356,11 +384,14 @@ export function BillingPortalClient({ token }: { token: string }) {
         },
         deliveryAddress: {
           company: form.deliveryCompany,
-          name: form.deliveryName,
+          name: [form.deliveryFirstName, form.deliveryLastName].filter(Boolean).join(" "),
+          firstName: form.deliveryFirstName,
+          lastName: form.deliveryLastName,
           street: form.deliveryStreet,
           zip: form.deliveryZip,
           city: form.deliveryCity,
           country: form.deliveryCountry,
+          deliveryInstructions: form.deliveryInstructions,
         },
         vatId: deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry) ? form.vatId : "",
         invoiceEmail: form.invoiceEmail,
@@ -482,79 +513,54 @@ export function BillingPortalClient({ token }: { token: string }) {
               <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Eine Änderung wird bereits von NEONTRIP geprüft. Sie können die aktuell gespeicherten Daten weiterhin ansehen.</div>
             ) : null}
 
-            <fieldset disabled={Boolean(data.readOnly)} className="mt-6 grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
-                <span>Firma / Rechnungsempfänger</span>
-                <input required={editing} value={form.company} readOnly={!editing} onChange={(event) => { setForm({ ...form, company: event.target.value }); setVatCheck({ status: "idle" }); }} className={fieldClass(editing)} />
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
-                <span>Straße und Hausnummer</span>
-                <input required={editing} value={form.street} readOnly={!editing} onChange={(event) => setForm({ ...form, street: event.target.value })} className={fieldClass(editing)} />
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
-                <span>PLZ</span>
-                <input required={editing} value={form.zip} readOnly={!editing} onChange={(event) => setForm({ ...form, zip: event.target.value })} className={fieldClass(editing)} />
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
-                <span>Ort</span>
-                <input required={editing} value={form.city} readOnly={!editing} onChange={(event) => setForm({ ...form, city: event.target.value })} className={fieldClass(editing)} />
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
-                <span>Rechnungsland</span>
-                <select required={editing} value={form.country} disabled={!editing || Boolean(data.readOnly)} onChange={(event) => setForm({ ...form, country: event.target.value })} className={fieldClass(editing)}>
-                  <option value="">Land auswählen</option>
-                  {COUNTRY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
-                </select>
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
-                <span>USt-IdNr. (falls vorhanden)</span>
-                <div className="flex gap-2">
-                  <input value={form.vatId} readOnly={!editing} onChange={(event) => { setForm({ ...form, vatId: event.target.value }); setVatCheck({ status: "idle" }); }} onBlur={() => { if (editing && form.vatId.trim()) void checkVatId(); }} className={`${fieldClass(editing)} min-w-0 flex-1`} />
-                  {editing && form.vatId.trim() ? <button type="button" disabled={vatCheck.status === "checking"} onClick={() => void checkVatId()} className="shrink-0 rounded-xl border border-stone-300 bg-white px-3 text-xs font-semibold disabled:opacity-50">{vatCheck.status === "checking" ? "Prüfung …" : "USt-ID prüfen"}</button> : null}
+            <fieldset disabled={Boolean(data.readOnly)} className="mt-6 grid gap-4 xl:grid-cols-2">
+              <section className="rounded-2xl border border-stone-200 bg-white p-4 sm:p-5">
+                <div className="mb-4 border-b border-stone-200 pb-3">
+                  <p className="text-sm font-semibold text-stone-950">Rechnungsadresse</p>
+                  <p className="mt-1 text-xs leading-5 text-stone-500">Diese Anschrift erscheint auf Ihren Rechnungsdokumenten.</p>
                 </div>
-                {vatCheck.status === "valid" ? <span className="font-medium text-emerald-700">USt-IdNr. gültig{vatCheck.name ? ` · Gelistet als ${vatCheck.name}` : ""}</span> : null}
-                {vatCheck.status === "invalid" ? <span className="font-medium text-red-700">USt-IdNr. ungültig</span> : null}
-                {vatCheck.status === "valid" && vatCheck.identityComparison === "MISMATCH" ? <span className="font-normal text-amber-700">Firmenname oder Anschrift weichen vom Registereintrag ab. Die Bestellung kann trotzdem eingereicht werden; NEONTRIP erhält einen Prüfhinweis.</span> : null}
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
-                <span>Projektnummer (optional)</span>
-                <input value={form.projectNumber} readOnly={!editing} onChange={(event) => setForm({ ...form, projectNumber: event.target.value })} className={fieldClass(editing)} />
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
-                <span>Rechnungs-E-Mail</span>
-                <input required={editing} type="email" value={form.invoiceEmail} readOnly={!editing} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} className={fieldClass(editing)} />
-              </label>
-              <div className="mt-3 border-t border-stone-200 pt-5 sm:col-span-2">
-                <p className="text-sm font-semibold text-stone-950">Lieferadresse</p>
-                <p className="mt-1 text-xs leading-5 text-stone-500">Das Lieferland bestimmt die steuerliche Behandlung. Eine Änderung wird deshalb gemeinsam mit der USt-ID geprüft.</p>
-              </div>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
-                <span>Firma am Lieferort</span>
-                <input value={form.deliveryCompany} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryCompany: event.target.value })} className={fieldClass(editing)} />
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
-                <span>Ansprechpartner</span>
-                <input value={form.deliveryName} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryName: event.target.value })} className={fieldClass(editing)} />
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
-                <span>Lieferstraße und Hausnummer</span>
-                <input required={editing} value={form.deliveryStreet} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryStreet: event.target.value })} className={fieldClass(editing)} />
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
-                <span>Liefer-PLZ</span>
-                <input required={editing} value={form.deliveryZip} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryZip: event.target.value })} className={fieldClass(editing)} />
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600">
-                <span>Lieferort</span>
-                <input required={editing} value={form.deliveryCity} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryCity: event.target.value })} className={fieldClass(editing)} />
-              </label>
-              <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2">
-                <span>Lieferland</span>
-                <select required={editing} value={form.deliveryCountry} disabled={!editing || Boolean(data.readOnly)} onChange={(event) => { const deliveryCountry = normalizeCountry(event.target.value); setForm({ ...form, deliveryCountry, vatId: deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry) ? form.vatId : "" }); setVatCheck({ status: "idle" }); }} className={fieldClass(editing)}>
-                  <option value="">Land auswählen</option>
-                  {COUNTRY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
-                </select>
-              </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2"><span>Firma / Rechnungsempfänger</span><input required={editing} value={form.company} readOnly={!editing} onChange={(event) => { setForm({ ...form, company: event.target.value }); setVatCheck({ status: "idle" }); }} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Vorname</span><input value={form.billingFirstName} readOnly={!editing} onChange={(event) => setForm({ ...form, billingFirstName: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Nachname</span><input value={form.billingLastName} readOnly={!editing} onChange={(event) => setForm({ ...form, billingLastName: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2"><span>Straße und Hausnummer</span><input required={editing} value={form.street} readOnly={!editing} onChange={(event) => setForm({ ...form, street: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>PLZ</span><input required={editing} value={form.zip} readOnly={!editing} onChange={(event) => setForm({ ...form, zip: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Ort</span><input required={editing} value={form.city} readOnly={!editing} onChange={(event) => setForm({ ...form, city: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2"><span>Rechnungsland</span><select required={editing} value={form.country} disabled={!editing || Boolean(data.readOnly)} onChange={(event) => setForm({ ...form, country: event.target.value })} className={fieldClass(editing)}><option value="">Land auswählen</option>{COUNTRY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-[#f3bddc] bg-[#fff8fc] p-4 sm:p-5">
+                <div className="mb-4 flex gap-3 border-b border-[#f3bddc] pb-3">
+                  <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#b91c73]" />
+                  <div><p className="text-sm font-semibold text-stone-950">Lieferadresse</p><p className="mt-1 text-xs leading-5 text-stone-600">Wird nach Freigabe direkt in Shopify übernommen. Das Lieferland bestimmt die steuerliche Behandlung.</p></div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2"><span>Firma am Lieferort</span><input value={form.deliveryCompany} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryCompany: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Vorname</span><input value={form.deliveryFirstName} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryFirstName: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Nachname</span><input value={form.deliveryLastName} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryLastName: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2"><span>Straße und Hausnummer</span><input required={editing} value={form.deliveryStreet} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryStreet: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>PLZ</span><input required={editing} value={form.deliveryZip} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryZip: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Ort</span><input required={editing} value={form.deliveryCity} readOnly={!editing} onChange={(event) => setForm({ ...form, deliveryCity: event.target.value })} className={fieldClass(editing)} /></label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2"><span>Lieferland</span><select required={editing} value={form.deliveryCountry} disabled={!editing || Boolean(data.readOnly)} onChange={(event) => { const deliveryCountry = normalizeCountry(event.target.value); setForm({ ...form, deliveryCountry, vatId: deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry) ? form.vatId : "" }); setVatCheck({ status: "idle" }); }} className={fieldClass(editing)}><option value="">Land auswählen</option>{COUNTRY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
+
+                  <div className="rounded-2xl border-2 border-[#e554aa] bg-white p-4 shadow-[0_8px_24px_rgba(185,28,115,0.08)] sm:col-span-2">
+                    <div className="flex gap-3"><BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#b91c73]" /><div><p className="text-sm font-semibold text-stone-950">Umsatzsteuer-ID prüfen</p><p className="mt-1 text-xs leading-5 text-stone-600">Die Länderkennung der USt-ID muss zum Lieferland passen. Bei gültiger EU-USt-ID sehen Sie rechts sofort den Betrag ohne Umsatzsteuer.</p></div></div>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={form.vatId} readOnly={!editing} onChange={(event) => { setForm({ ...form, vatId: event.target.value }); setVatCheck({ status: "idle" }); }} onBlur={() => { if (editing && form.vatId.trim()) void checkVatId(); }} className={`${fieldClass(editing)} min-w-0 flex-1`} placeholder={form.deliveryCountry === "AT" ? "z. B. ATU12345678" : "USt-IdNr. eingeben"} />{editing && form.vatId.trim() ? <button type="button" disabled={vatCheck.status === "checking"} onClick={() => void checkVatId()} className="h-11 shrink-0 rounded-xl bg-stone-950 px-4 text-xs font-semibold text-white disabled:opacity-50">{vatCheck.status === "checking" ? "Prüfung …" : "USt-ID prüfen"}</button> : null}</div>
+                    {vatCheck.status === "valid" ? <p className="mt-2 text-xs font-semibold text-emerald-700">✓ USt-IdNr. gültig{vatCheck.name ? ` · Gelistet als ${vatCheck.name}` : ""}</p> : null}
+                    {vatCheck.status === "invalid" ? <p className="mt-2 text-xs font-semibold text-red-700">Ungültige Umsatzsteuer-ID für das ausgewählte Lieferland.</p> : null}
+                    {vatCheck.status === "valid" && vatCheck.identityComparison === "MISMATCH" ? <p className="mt-2 text-xs leading-5 text-amber-700">Firmierung oder Anschrift weichen vom Registereintrag ab. NEONTRIP erhält dazu einen Prüfhinweis.</p> : null}
+                  </div>
+
+                  <label className="grid gap-1.5 text-xs font-semibold text-stone-600 sm:col-span-2"><span>Zusätzliche Lieferhinweise (optional)</span><textarea value={form.deliveryInstructions} readOnly={!editing} maxLength={500} rows={3} onChange={(event) => setForm({ ...form, deliveryInstructions: event.target.value })} className={`${fieldClass(editing)} h-auto min-h-20 resize-y py-3`} placeholder="z. B. Ansprechpartner vor Ort, Anlieferzeit oder Zufahrt" /></label>
+                </div>
+              </section>
+
+              <section className="grid gap-3 rounded-2xl border border-stone-200 bg-[#f7f4ee] p-4 sm:grid-cols-2 xl:col-span-2">
+                <div className="sm:col-span-2"><p className="text-sm font-semibold text-stone-950">Rechnungsversand</p><p className="mt-1 text-xs text-stone-500">Hierhin senden wir Pro-forma-Rechnung und spätere Rechnungsdokumente.</p></div>
+                <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Rechnungs-E-Mail</span><input required={editing} type="email" value={form.invoiceEmail} readOnly={!editing} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} className={fieldClass(editing)} /></label>
+                <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Projektnummer (optional)</span><input value={form.projectNumber} readOnly={!editing} onChange={(event) => setForm({ ...form, projectNumber: event.target.value })} className={fieldClass(editing)} /></label>
+              </section>
             </fieldset>
 
             {!editing && !data.readOnly ? (
