@@ -5,6 +5,7 @@
   const PURCHASE_KEY_PREFIX = "neontrip-easydpd-dispatched-job:";
   const PREPARE_READY_TIMEOUT_MS = 20_000;
   const PREPARE_READY_INTERVAL_MS = 250;
+  const MAX_ALERT_TEXT_LENGTH = 500;
   const PRODUCT_LABELS = new Set([
     "B2C",
     "B2C Predict",
@@ -61,18 +62,21 @@
   }
 
   function setNativeValue(element, value) {
+    const nextValue = String(value);
+    if (element.value === nextValue) return false;
     const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
     if (!setter) throw new Error("EasyDPD-Eingabewert kann nicht gesetzt werden.");
-    setter.call(element, value);
+    setter.call(element, nextValue);
     element.dispatchEvent(new Event("input", { bubbles: true }));
     element.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
   }
 
   function selectLabel(element, label) {
     const option = [...element.options].find((entry) => normalized(entry.textContent) === label);
     if (!option) throw new Error(`EasyDPD-Auswahl fehlt: ${label}`);
-    setNativeValue(element, option.value);
+    return setNativeValue(element, option.value);
   }
 
   function currentLabel(element) {
@@ -107,6 +111,12 @@
     };
   }
 
+  function currentAlertTexts() {
+    return [...new Set([...document.querySelectorAll('[role="alert"]')]
+      .map((element) => normalized(element.textContent).slice(0, MAX_ALERT_TEXT_LENGTH))
+      .filter(Boolean))];
+  }
+
   function inspectHistory(job) {
     orderLink(job);
     return collectExistingLabelEvidence();
@@ -123,9 +133,11 @@
     const button = createButton();
     const evidence = collectExistingLabelEvidence();
     if (evidence.found) return { ready: false, existingLabel: safeExistingLabelEvidence(evidence) };
-    selectLabel(product, job.productLabel);
-    selectLabel(format, job.labelFormat);
-    setNativeValue(weight, String(job.packageWeightGrams));
+    const changed = [
+      selectLabel(product, job.productLabel),
+      selectLabel(format, job.labelFormat),
+      setNativeValue(weight, String(job.packageWeightGrams)),
+    ].some(Boolean);
     if (currentLabel(product) !== job.productLabel
       || currentLabel(format) !== job.labelFormat
       || Number(weight.value) !== job.packageWeightGrams
@@ -135,6 +147,7 @@
     }
     return {
       ready: true,
+      changed,
       existingLabel: safeExistingLabelEvidence(evidence),
       observed: { orderName: normalized(orderLink(job).textContent), product: currentLabel(product), format: currentLabel(format), weightGrams: Number(weight.value) },
     };
@@ -149,14 +162,19 @@
   async function validateAndPrepareWhenReady(job) {
     const deadline = Date.now() + PREPARE_READY_TIMEOUT_MS;
     let lastError = null;
+    let stablePasses = 0;
     do {
       try {
-        return validateAndPrepare(job);
+        const prepared = validateAndPrepare(job);
+        if (!prepared.ready) return prepared;
+        stablePasses = prepared.changed ? 0 : stablePasses + 1;
+        if (stablePasses >= 2) return prepared;
       } catch (error) {
         if (!isTransientPreparationError(error)) throw error;
         lastError = error;
-        await new Promise((resolve) => setTimeout(resolve, PREPARE_READY_INTERVAL_MS));
+        stablePasses = 0;
       }
+      await new Promise((resolve) => setTimeout(resolve, PREPARE_READY_INTERVAL_MS));
     } while (Date.now() < deadline);
     throw lastError || new Error("EasyDPD-Auftrag wurde nicht rechtzeitig kaufbereit.");
   }
@@ -179,12 +197,25 @@
   function purchaseOnce(job, dispatchNonce) {
     const prepared = validateAndPrepare(job);
     if (!prepared.ready || prepared.existingLabel.found) throw new Error("Vor dem Kauf wurde ein vorhandenes EasyDPD-Label erkannt.");
+    if (prepared.changed) throw new Error("EasyDPD-Felder waren an der Kaufgrenze noch nicht stabil; kein Klick.");
     const purchaseKey = `${PURCHASE_KEY_PREFIX}${job.id}`;
     const existing = sessionStorage.getItem(purchaseKey);
     if (existing) throw new Error("Dieser EasyDPD-Tab hat bereits einen Kauf-Dispatch erhalten; kein zweiter Klick.");
+    const baselineAlertTexts = currentAlertTexts();
     sessionStorage.setItem(purchaseKey, JSON.stringify({ jobId: job.id, dispatchNonce, at: new Date().toISOString() }));
     createButton().click();
-    return { clicked: true };
+    return { clicked: true, baselineAlertTexts };
+  }
+
+  function inspectPostDispatch(job, baselineAlertTexts) {
+    orderLink(job);
+    const alerts = currentAlertTexts();
+    const baseline = new Set(Array.isArray(baselineAlertTexts) ? baselineAlertTexts.map(normalized) : []);
+    return {
+      history: collectExistingLabelEvidence(),
+      alertTexts: alerts,
+      newAlertTexts: alerts.filter((text) => !baseline.has(text)),
+    };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -203,6 +234,7 @@
     }
     try {
       if (message.action === "purchase_once") sendResponse({ ok: true, result: purchaseOnce(message.job, message.dispatchNonce) });
+      else if (message.action === "inspect_post_dispatch") sendResponse({ ok: true, result: inspectPostDispatch(message.job, message.baselineAlertTexts) });
       else sendResponse({ ok: false, error: "Unbekannte EasyDPD-Bridge-Aktion." });
     } catch (error) {
       sendResponse({ ok: false, error: String(error?.message || error).slice(0, 500) });

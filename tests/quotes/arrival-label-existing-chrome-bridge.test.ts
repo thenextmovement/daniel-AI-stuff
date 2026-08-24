@@ -59,7 +59,7 @@ test("existing-Chrome extension is pinned to the normal NEONTRIP Shopify/easyDPD
   const nativeManifest = JSON.parse(await readFile("deploy/local-easydpd-existing-chrome/native-host-manifest.json.template", "utf8"));
   assert.equal(EXPECTED_EXTENSION_ID, "bgfphlbhdameagnafljlgpbpjdajmdhk");
   assert.equal(BRIDGE_PROTOCOL_VERSION, EXPECTED_BRIDGE_PROTOCOL_VERSION);
-  assert.equal(manifest.version, "1.1.7");
+  assert.equal(manifest.version, "1.1.8");
   assert.deepEqual(manifest.host_permissions, [
     "https://admin.shopify.com/store/galaxybuzzdk/apps/dpd-versand-services/*",
     "https://easydpd.247apps.de/*",
@@ -285,6 +285,11 @@ test("service worker creates a fresh background tab, recovers from live history 
   assert.match(service, /action: "inspect_history"/);
   assert.match(service, /chrome[.]downloads[.]download\(\{ url: downloadUrl, saveAs: false, conflictAction: "uniquify" \}\)/);
   assert.match(service, /post_dispatch_download_recovered/);
+  assert.match(service, /waitForPostDispatchPageError/);
+  assert.match(service, /action: "inspect_post_dispatch"/);
+  assert.match(service, /post_dispatch_page_error/);
+  assert.match(service, /EasyDPD meldet nach dem Kaufversuch/);
+  assert.match(service, /Post-Dispatch-Abgleich/);
   assert.match(service, /EasyDPD-History blieb nach frischem Reload ohne Label; kein automatischer Wiederholungskauf/);
   assert.ok(service.indexOf("isMissingFrameReceiver") < service.indexOf('updateJob(nativeSession, job, "validated")'));
   assert.match(service, /prepared[.]existingLabel[?][.]found/);
@@ -303,6 +308,12 @@ test("service worker creates a fresh background tab, recovers from live history 
   assert.match(content, /isTransientPreparationError\(error\)/);
   assert.match(content, /setTimeout\(resolve, PREPARE_READY_INTERVAL_MS\)/);
   assert.match(content, /validateAndPrepareWhenReady\(message[.]job\)/);
+  assert.match(content, /stablePasses >= 2/);
+  assert.match(content, /if \(element[.]value === nextValue\) return false/);
+  assert.match(content, /if \(prepared[.]changed\) throw new Error/);
+  assert.match(content, /currentAlertTexts/);
+  assert.match(content, /message[.]action === "inspect_post_dispatch"/);
+  assert.match(content, /newAlertTexts/);
   const nativeHost = await readFile("scripts/easydpd_existing_chrome_bridge_lib.mjs", "utf8");
   assert.match(nativeHost, /JOB_BINDING_FIELDS/);
   assert.match(nativeHost, /stimmt nicht mit dem lokal gebundenen Claim ueberein/);

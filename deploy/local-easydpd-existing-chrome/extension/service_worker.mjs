@@ -303,6 +303,52 @@ function safeHistoryEvidence(evidence) {
   };
 }
 
+function waitForPostDispatchPageError(tabId, frameId, job, baselineAlertTexts, signal) {
+  return new Promise((resolve, reject) => {
+    let timer = null;
+    let settled = false;
+    const cleanup = (error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      if (error) reject(error);
+      else resolve(null);
+    };
+    const onAbort = () => cleanup(null);
+    const poll = async () => {
+      if (settled) return;
+      try {
+        const observed = await frameMessageWhenReady(tabId, frameId, {
+          action: "inspect_post_dispatch",
+          job,
+          baselineAlertTexts,
+        });
+        if (settled) return;
+        const newAlertTexts = Array.isArray(observed?.newAlertTexts)
+          ? observed.newAlertTexts.map((value) => String(value || "").replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 3)
+          : [];
+        if (newAlertTexts.length > 0) {
+          const message = `EasyDPD meldet nach dem Kaufversuch: ${newAlertTexts.join(" | ")}`.slice(0, 500);
+          await record("post_dispatch_page_error", { jobId: job.id, orderName: job.orderName, error: message }).catch(() => undefined);
+          cleanup(new Error(message));
+          return;
+        }
+      } catch (error) {
+        if (settled) return;
+        if (!isMissingFrameReceiver(error)) {
+          cleanup(error);
+          return;
+        }
+      }
+      if (settled) return;
+      timer = setTimeout(poll, 500);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    poll();
+  });
+}
+
 async function recoverPostDispatchDownload(tabId, job, settleDelayMs = 0) {
   if (settleDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
   await reloadAndWaitForTabComplete(tabId, job.orderUrl);
@@ -340,6 +386,8 @@ async function processJob(nativeSession, tab, job) {
   let serverCompleted = false;
   let downloadController = null;
   let downloadPromise = null;
+  let pageErrorController = null;
+  let pageErrorPromise = null;
   let postDispatchReconciliationAttempted = false;
   let artifactUploadStarted = false;
   try {
@@ -368,18 +416,34 @@ async function processJob(nativeSession, tab, job) {
     downloadPromise = waitForDownloadedPdf(tab.id, startedAt, job.orderName, downloadController.signal);
     const clickResult = await frameMessage(tab.id, frameId, { action: "purchase_once", job, dispatchNonce });
     if (clickResult.clicked !== true) throw new Error("EasyDPD-Kaufklick wurde nicht eindeutig bestätigt.");
+    pageErrorController = new AbortController();
+    pageErrorPromise = waitForPostDispatchPageError(
+      tab.id,
+      frameId,
+      job,
+      clickResult.baselineAlertTexts,
+      pageErrorController.signal,
+    );
     let download;
     try {
-      download = await downloadPromise;
+      download = await Promise.race([downloadPromise, pageErrorPromise]);
     } catch (error) {
       downloadController.abort();
+      pageErrorController.abort();
       postDispatchReconciliationAttempted = true;
       await record("post_dispatch_download_missing", {
         jobId: job.id,
         orderName: job.orderName,
         error: String(error?.message || error).slice(0, 500),
       });
-      download = await recoverPostDispatchDownload(tab.id, job);
+      try {
+        download = await recoverPostDispatchDownload(tab.id, job);
+      } catch (recoveryError) {
+        throw new Error(`${String(error?.message || error)} Post-Dispatch-Abgleich: ${String(recoveryError?.message || recoveryError)}`);
+      }
+    } finally {
+      pageErrorController.abort();
+      await pageErrorPromise.catch(() => undefined);
     }
     artifactUploadStarted = true;
     const uploaded = await nativeSession.send({ type: "upload_artifact", job, filePath: download.filename });
@@ -392,7 +456,9 @@ async function processJob(nativeSession, tab, job) {
     }).catch(() => undefined);
   } catch (error) {
     downloadController?.abort();
+    pageErrorController?.abort();
     await downloadPromise?.catch(() => undefined);
+    await pageErrorPromise?.catch(() => undefined);
     let finalError = error;
     if (dispatchStarted && !serverCompleted && !postDispatchReconciliationAttempted && !artifactUploadStarted) {
       postDispatchReconciliationAttempted = true;
