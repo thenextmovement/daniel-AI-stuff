@@ -1,6 +1,6 @@
 {
   "workflowId": "S4gjf0YeZjP0pqFR",
-  "reason": "Only an explicit internal [STOP] or [STOPP] marker at the beginning of the Trello card title may select the 30-minute delivery pause.",
+  "reason": "Only an uppercase STOP or STOPP marker at the beginning of the Trello card title, optionally bracketed, may select the 30-minute delivery pause.",
   "operations": [
     {
       "type": "patchNodeField",
@@ -8,8 +8,8 @@
       "fieldPath": "parameters.jsonBody",
       "patches": [
         {
-          "find": "const stopRequested = /(^|[^A-Za-z0-9])STOPP?([^A-Za-z0-9]|$)/i.test(title);",
-          "replace": "const stopRequested = /^\\s*\\[STOPP?\\](?:\\s|$)/i.test(title);"
+          "find": "const stopRequested = /^\\s*\\[STOPP?\\](?:\\s|$)/i.test(title);",
+          "replace": "const stopRequested = /^\\s*(?:STOPP?|\\[STOPP?\\])(?:\\s|$)/.test(title);"
         }
       ]
     }
@@ -17,6 +17,6 @@
   "rollback": {
     "kind": "workflow_version",
     "workflowId": "S4gjf0YeZjP0pqFR",
-    "versionId": 536
+    "versionId": 590
   }
 }

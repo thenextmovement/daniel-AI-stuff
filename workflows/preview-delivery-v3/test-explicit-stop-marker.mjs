@@ -18,7 +18,15 @@ const node = source.nodes.find((candidate) => candidate.name === operation.nodeN
 assert.ok(node, `missing source node: ${operation.nodeName}`);
 assert.equal(operation.fieldPath, "parameters.jsonBody");
 
-let body = node.parameters.jsonBody;
+const historicalStopLine =
+  "const stopRequested = /(^|[^A-Za-z0-9])STOPP?([^A-Za-z0-9]|$)/i.test(title);";
+const deployedStopLine = operation.patches[0].find;
+assert.equal(
+  node.parameters.jsonBody.split(historicalStopLine).length - 1,
+  1,
+  "historical source must contain the predecessor stop rule exactly once"
+);
+let body = node.parameters.jsonBody.replace(historicalStopLine, deployedStopLine);
 for (const patch of operation.patches) {
   assert.equal(
     body.split(patch.find).length - 1,
@@ -33,9 +41,13 @@ assert.ok(match, "patched stop marker expression must remain present");
 const stopMarker = Function(`return ${match[1]}`)();
 
 for (const title of [
+  "STOPP Interner Versandhalt",
+  "STOP Interner Versandhalt",
+  "  STOPP Interner Versandhalt",
+  "STOPP",
   "[STOP] Interner Versandhalt",
   "[STOPP] Interner Versandhalt",
-  "  [stop] Interner Versandhalt",
+  "  [STOP] Interner Versandhalt",
   "[STOP]"
 ]) {
   assert.equal(stopMarker.test(title), true, `explicit marker must pause: ${title}`);
@@ -45,7 +57,12 @@ for (const title of [
   "Design: #stop med fakes",
   "#stop med fakes",
   "Stop Med Fakes",
+  "Stopp Interner Versandhalt",
+  "stop Interner Versandhalt",
+  "stopp Interner Versandhalt",
+  "⚠️ STOPP Interner Versandhalt",
   "Kundentext [STOP]",
+  "STOPPDesign",
   "[STOP]Design",
   "LED Neon Flex"
 ]) {
