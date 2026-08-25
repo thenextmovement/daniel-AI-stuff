@@ -1,0 +1,62 @@
+{
+  "schema": "neontrip.n8n.partial-workflow.v1",
+  "ticket": "TICKET-159",
+  "workflowId": "DomnXhPG8ambg9qb",
+  "workflowName": "TICKET-099 | LIVE | 3 Reports + Alerts",
+  "validation": {
+    "validatedOn": "2026-08-26",
+    "applied": false
+  },
+  "operations": [
+    {
+      "type": "addNode",
+      "node": {
+        "id": "court-insolvency-scan",
+        "name": "Run Official Insolvency Single Checks",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.3,
+        "position": [220, 40],
+        "parameters": {
+          "method": "POST",
+          "url": "https://ops.neontrip.de/api/internal/ops/dunning/insolvency-scan",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "={{ 'Bearer ' + ($env.OPS_INTERNAL_API_KEY || $env.QUOTE_INTERNAL_API_TOKEN || $env.INTERNAL_API_KEY || '') }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ limit: 3 }) }}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json",
+                "fullResponse": true,
+                "neverError": false
+              }
+            },
+            "timeout": 180000
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 5000,
+        "onError": "continueRegularOutput",
+        "notes": "Official free single-case insolvency-publication checks for cases already in court_review. Never starts legal action or customer communication."
+      }
+    },
+    {
+      "type": "addConnection",
+      "source": "Reports and Alerts Every 15 Minutes",
+      "target": "Run Official Insolvency Single Checks"
+    }
+  ]
+}
