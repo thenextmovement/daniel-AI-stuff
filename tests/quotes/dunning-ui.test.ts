@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
+const read = (file: string) =>
+  fs.readFileSync(path.join(process.cwd(), file), "utf8");
 
 test("Ops exposes a dedicated searchable dunning work center", () => {
   const switcher = read("src/app/ops/ops-app-switcher.tsx");
@@ -11,15 +12,28 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   assert.match(switcher, /label: "Mahnwesen"/);
   assert.match(switcher, /href: "\/ops\/mahnwesen"/);
   assert.match(client, /active="dunning"/);
-  assert.match(client, /Bestellnummer, Firma, Name, E-Mail oder Rechnung/);
+  assert.match(
+    client,
+    /Name, Firma, E-Mail, Telefon, Bestellung oder Rechnung/,
+  );
   assert.match(client, /Arbeitsstatus/);
   assert.match(client, /Mahnstufe/);
+  assert.match(client, /Zahlung/);
   assert.match(client, /Lieferung/);
   assert.match(client, /Überfälligkeit/);
+  assert.match(client, /Auftragsalter/);
+  assert.match(client, /Kontakt/);
   assert.match(client, /Mindestbetrag/);
-  assert.match(client, /Gericht prüfen/);
+  assert.match(client, /Höchstbetrag/);
+  assert.match(client, /Letzte Frist/);
+  assert.match(client, /Solvenz\/Gericht/);
+  assert.match(client, /Keine Telefonnummer/);
+  assert.match(client, /Nächste Aktion/);
   assert.match(client, /Fallakte/);
-  assert.match(client, /Chronologisch aus Shopify, Easybill, Outlook und Mahnnachweisen/);
+  assert.match(
+    client,
+    /Chronologisch aus Shopify, Easybill, Outlook und\s+Mahnnachweisen/,
+  );
   assert.doesNotMatch(client, /dangerouslySetInnerHTML/);
 });
 
