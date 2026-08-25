@@ -4,6 +4,7 @@ import {
   buildDunningCases,
   createDunningActionPreview,
   dunningCaseMatchesQuery,
+  dunningPaymentExceptionTag,
   dunningStageLabel,
   nextDunningSchedule,
   normalizeDunningOrderNumber,
@@ -142,6 +143,8 @@ test("a fresh, due live candidate becomes an actionable first-stage case", () =>
   assert.equal(entry?.nextStage, 1);
   assert.equal(entry?.state, "action_required");
   assert.equal(entry?.sendEligible, true);
+  assert.equal(entry?.nextActionKind, "customer_email");
+  assert.equal(entry?.nextActionAt, entry?.scheduledAt);
   assert.deepEqual(entry?.blockers, []);
   const preview = createDunningActionPreview(entry!);
   assert.equal(preview?.confirmationPhrase, "MAHNSTUFE 1 SENDEN #NEONT5000");
@@ -361,15 +364,73 @@ test("legacy final-warning cases such as NEONT2993 go to court review, never bac
   assert.equal(entry?.sendEligible, false);
 });
 
-test("paid, stopped and conflicting cases fail closed", () => {
-  const [paid] = buildDunningCases(
+test("paid cases are omitted unless an explicit waiting-for-payment tag keeps them for manual review", () => {
+  const paid = buildDunningCases(
     input({
       orders: [order({ financial_status: "paid", total_outstanding: 0 })],
     }),
   );
-  assert.equal(paid?.state, "closed");
-  assert.equal(paid?.sendEligible, false);
+  assert.deepEqual(paid, []);
 
+  const [exception] = buildDunningCases(
+    input({
+      orders: [
+        order({
+          financial_status: "paid",
+          total_outstanding: 0,
+          tags: "VIP,   warten   auf ZAHLUNG ",
+        }),
+      ],
+    }),
+  );
+  assert.equal(
+    dunningPaymentExceptionTag("VIP,   warten   auf ZAHLUNG "),
+    "WARTEN AUF ZAHLUNG",
+  );
+  assert.equal(exception?.state, "data_issue");
+  assert.equal(exception?.paymentException, true);
+  assert.equal(exception?.paymentExceptionTag, "WARTEN AUF ZAHLUNG");
+  assert.equal(exception?.amountCents, 0);
+  assert.equal(exception?.nextStage, null);
+  assert.equal(exception?.nextActionKind, "manual_review");
+  assert.equal(exception?.nextActionAt, null);
+  assert.equal(exception?.sendEligible, false);
+  assert.match(exception?.nextActionLabel || "", /keine Mahn-E-Mail/);
+});
+
+test("shipment records expose tracking and carrier-confirmed delivery without treating both as the same proof", () => {
+  const [entry] = buildDunningCases(
+    input({
+      shipments: [
+        {
+          id: "shipment-1",
+          shopify_order_id: "1234567890",
+          shopify_order_number: "NEONT5000",
+          shopify_fulfillment_id: "fulfillment-1",
+          carrier: "dpd",
+          tracking_number: "05228900012345",
+          tracking_url: "https://tracking.example/05228900012345",
+          status: "delivered",
+          status_reason: null,
+          shipped_at: "2026-08-05T08:00:00.000Z",
+          delivered_at: "2026-08-06T12:10:00.000Z",
+          last_event_at: "2026-08-06T12:10:00.000Z",
+          last_carrier_sync_at: "2026-08-06T12:20:00.000Z",
+          created_at: "2026-08-05T08:00:00.000Z",
+          updated_at: "2026-08-06T12:20:00.000Z",
+        },
+      ],
+    }),
+  );
+  assert.equal(entry?.hasTracking, true);
+  assert.equal(entry?.carrierDeliveryConfirmed, true);
+  assert.equal(entry?.shipments[0]?.trackingNumber, "05228900012345");
+  assert.equal(entry?.shipments[0]?.deliveryEvidence, "carrier_confirmed");
+  assert.equal(dunningCaseMatchesQuery(entry!, "05228900012345"), true);
+  assert.equal(dunningCaseMatchesQuery(entry!, "DPD"), true);
+});
+
+test("stopped and conflicting cases fail closed", () => {
   const [stopped] = buildDunningCases(
     input({ orders: [order({ tags: "VIP, Keine Zahlungserinnerung n8n" })] }),
   );

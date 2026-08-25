@@ -39,6 +39,24 @@ type ShopifyOrderRow = {
   phone: string | null;
 };
 
+type DunningShipmentRow = {
+  id: string;
+  shopify_order_id: string | null;
+  shopify_order_number: string | null;
+  shopify_fulfillment_id: string | null;
+  carrier: string;
+  tracking_number: string | null;
+  tracking_url: string | null;
+  status: string;
+  status_reason: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  last_event_at: string | null;
+  last_carrier_sync_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 type DunningStatusRow = {
   shopify_order_number: string;
   mahnstufe: number | null;
@@ -135,6 +153,25 @@ type T099Candidate = {
   preliminary_only?: boolean;
 };
 
+export type DunningShipment = {
+  id: string;
+  shopifyFulfillmentId: string | null;
+  carrier: string;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  status: string;
+  statusReason: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  lastEventAt: string | null;
+  lastCarrierSyncAt: string | null;
+  deliveryEvidence:
+    "carrier_confirmed" | "tracking_only" | "shipment_record_only";
+};
+
+export type DunningNextActionKind =
+  "customer_email" | "manual_review" | "court_review" | "none";
+
 export type DunningTimelineEntry = {
   id: string;
   occurredAt: string;
@@ -172,6 +209,10 @@ export type DunningCaseSummary = {
   scheduledAt: string | null;
   lastSentAt: string | null;
   lastActivityAt: string | null;
+  nextActionAt: string | null;
+  nextActionKind: DunningNextActionKind;
+  paymentException: boolean;
+  paymentExceptionTag: string | null;
   lastContactAt: string | null;
   nextDueAt: string | null;
   paused: boolean;
@@ -194,6 +235,9 @@ export type DunningCaseSummary = {
   legalReviewReady: boolean;
   finalReminderWaiting: boolean;
   courtReview: boolean;
+  shipments: DunningShipment[];
+  hasTracking: boolean;
+  carrierDeliveryConfirmed: boolean;
   insolvencyIdentity: DunningInsolvencyIdentity;
   insolvencyCheck: DunningInsolvencyCheck | null;
   easybillDocumentId: string | null;
@@ -286,6 +330,25 @@ function cleanText(value: unknown, max = 300) {
 function normalizeEmail(value: unknown) {
   const email = cleanText(value, 254)?.toLowerCase() || "";
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+function normalizedDunningTags(value: unknown) {
+  return (Array.isArray(value) ? value : String(value || "").split(","))
+    .map((tag) =>
+      String(tag || "")
+        .normalize("NFKC")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLocaleLowerCase("de-DE"),
+    )
+    .filter(Boolean);
+}
+
+export function dunningPaymentExceptionTag(value: unknown) {
+  const tags = normalizedDunningTags(value);
+  if (tags.includes("warten auf zahlung")) return "WARTEN AUF ZAHLUNG";
+  if (tags.includes("warten auf za")) return "WARTEN AUF ZA";
+  return null;
 }
 
 export function normalizeDunningOrderNumber(value: unknown) {
@@ -682,6 +745,10 @@ export function dunningCaseMatchesQuery(
       summary.email,
       summary.phone,
       summary.amountCents / 100,
+      ...summary.shipments.flatMap((shipment) => [
+        shipment.trackingNumber,
+        shipment.carrier,
+      ]),
     ]
       .filter((value) => value !== null && value !== undefined)
       .join(" "),
@@ -707,6 +774,7 @@ export function buildDunningCases(input: {
   candidates: T099Candidate[];
   intakeFresh: boolean;
   insolvencyChecks?: ReadonlyMap<string, DunningInsolvencyCheck>;
+  shipments?: DunningShipmentRow[];
   now?: Date;
 }) {
   const now = input.now || new Date();
@@ -750,6 +818,23 @@ export function buildDunningCases(input: {
     const id = cleanText(candidate.shopify_order_id, 40);
     if (order) candidateByOrder.set(order, candidate);
     if (id) candidateById.set(id, candidate);
+  }
+
+  const shipmentsByOrder = new Map<string, DunningShipmentRow[]>();
+  const shipmentsByOrderId = new Map<string, DunningShipmentRow[]>();
+  for (const shipment of input.shipments || []) {
+    const number = normalizeDunningOrderNumber(shipment.shopify_order_number);
+    const id = cleanText(shipment.shopify_order_id, 40);
+    if (number)
+      shipmentsByOrder.set(number, [
+        ...(shipmentsByOrder.get(number) || []),
+        shipment,
+      ]);
+    if (id)
+      shipmentsByOrderId.set(id, [
+        ...(shipmentsByOrderId.get(id) || []),
+        shipment,
+      ]);
   }
 
   const orderByNumber = new Map<string, ShopifyOrderRow>();
@@ -847,14 +932,13 @@ export function buildDunningCases(input: {
     const lastContactAt = latestIso(lastReplyAt, lastOutboundAt);
     const customerReplied = Boolean(
       lastReplyAt &&
-        (!lastOutboundAt ||
-          Date.parse(lastReplyAt) >= Date.parse(lastOutboundAt)),
+      (!lastOutboundAt ||
+        Date.parse(lastReplyAt) >= Date.parse(lastOutboundAt)),
     );
     const tags = cleanText(order?.tags, 2000) || "";
-    const stopTag = tags
-      .split(",")
-      .map((tag) => tag.trim().toLowerCase())
-      .includes("keine zahlungserinnerung n8n");
+    const normalizedTags = normalizedDunningTags(tags);
+    const stopTag = normalizedTags.includes("keine zahlungserinnerung n8n");
+    const waitingPaymentTag = dunningPaymentExceptionTag(tags);
     const paused = Boolean(statusRow?.paused);
     const email = normalizeEmail(
       order?.kunde_email ||
@@ -906,17 +990,64 @@ export function buildDunningCases(input: {
       amountCents,
       validIso(order?.cancelled_at),
     );
+    const paymentException = Boolean(closed && waitingPaymentTag);
+    const displayAmountCents =
+      closed && order ? numericCents(order.total_outstanding) : amountCents;
     const preliminaryOnly = candidate?.preliminary_only === true;
     const orderCreatedAt = validIso(
       order?.created_at || candidate?.shopify_order_created_at,
     );
+    const shipmentRows = [
+      ...(shipmentsByOrder.get(orderNumber) || []),
+      ...(orderId ? shipmentsByOrderId.get(orderId) || [] : []),
+    ];
+    const shipments: DunningShipment[] = [
+      ...new Map(shipmentRows.map((row) => [row.id, row])).values(),
+    ]
+      .sort(
+        (left, right) =>
+          Date.parse(
+            right.delivered_at ||
+              right.last_event_at ||
+              right.shipped_at ||
+              right.updated_at ||
+              right.created_at ||
+              "1970-01-01",
+          ) -
+          Date.parse(
+            left.delivered_at ||
+              left.last_event_at ||
+              left.shipped_at ||
+              left.updated_at ||
+              left.created_at ||
+              "1970-01-01",
+          ),
+      )
+      .map((row) => ({
+        id: row.id,
+        shopifyFulfillmentId: cleanText(row.shopify_fulfillment_id, 80),
+        carrier: cleanText(row.carrier, 40) || "unknown",
+        trackingNumber: cleanText(row.tracking_number, 120),
+        trackingUrl: cleanText(row.tracking_url, 1000),
+        status: cleanText(row.status, 60) || "unknown",
+        statusReason: cleanText(row.status_reason, 300),
+        shippedAt: validIso(row.shipped_at),
+        deliveredAt: validIso(row.delivered_at),
+        lastEventAt: validIso(row.last_event_at),
+        lastCarrierSyncAt: validIso(row.last_carrier_sync_at),
+        deliveryEvidence: row.delivered_at
+          ? "carrier_confirmed"
+          : row.tracking_number
+            ? "tracking_only"
+            : "shipment_record_only",
+      }));
     const dueDate = cleanText(candidate?.easybill_due_date, 20);
     const daysOverdue = daysSince(atNineBerlinDate(dueDate), now);
     const orderAgeDays = daysSince(orderCreatedAt, now);
     const stageSourcesConflict =
       hasLegacy && hasT099 && legacyStage !== currentT099Stage;
     const nextStage =
-      candidate && currentT099Stage < 6 && !stageSourcesConflict
+      !closed && candidate && currentT099Stage < 6 && !stageSourcesConflict
         ? currentT099Stage + 1
         : null;
     const previousStageLock =
@@ -945,24 +1076,28 @@ export function buildDunningCases(input: {
     const legalReviewDueAt = plusCalendarDays(finalReminderSentAt, 7);
     const finalReminderWaiting = Boolean(
       !closed &&
-        !paused &&
-        !stopTag &&
-        !customerReplied &&
-        finalStageReached &&
-        legalReviewDueAt &&
-        Date.parse(legalReviewDueAt) > now.getTime(),
+      !paused &&
+      !stopTag &&
+      !customerReplied &&
+      finalStageReached &&
+      legalReviewDueAt &&
+      Date.parse(legalReviewDueAt) > now.getTime(),
     );
     const legalReviewReady = Boolean(
       !closed &&
-        !paused &&
-        !stopTag &&
-        !customerReplied &&
-        finalStageReached &&
-        legalReviewDueAt &&
-        Date.parse(legalReviewDueAt) <= now.getTime(),
+      !paused &&
+      !stopTag &&
+      !customerReplied &&
+      finalStageReached &&
+      legalReviewDueAt &&
+      Date.parse(legalReviewDueAt) <= now.getTime(),
     );
     const courtReview = legalReviewReady;
     const blockers: string[] = [];
+    if (paymentException)
+      blockers.push(
+        `Shopify-Ausnahmetag ${waitingPaymentTag} trotz ausgeglichener Forderung`,
+      );
     if (closed) blockers.push("Forderung ist nicht mehr offen");
     if (paused) blockers.push("Mahnwesen ist pausiert");
     if (stopTag) blockers.push("Shopify-Sperrtag ist gesetzt");
@@ -993,7 +1128,8 @@ export function buildDunningCases(input: {
     const sendEligible =
       uniqueBlockers.length === 0 && Boolean(orderId && email && nextStage);
     let state: DunningCaseState = "scheduled";
-    if (closed) state = "closed";
+    if (paymentException) state = "data_issue";
+    else if (closed) state = "closed";
     else if (paused || stopTag) state = "paused";
     else if (customerReplied) state = "reply_received";
     else if (legalReviewReady) state = "court_review";
@@ -1019,18 +1155,34 @@ export function buildDunningCases(input: {
       cleanText(order?.phone, 60) ||
       addressText(order?.bill_address || null, ["phone"]) ||
       addressText(order?.ship_address || null, ["phone"]);
+    let nextActionKind: DunningNextActionKind = "manual_review";
+    let nextActionAt: string | null = null;
     let nextActionLabel = "Fall prüfen";
-    if (closed) nextActionLabel = "Keine Aktion – Forderung erledigt";
-    else if (paused || stopTag) nextActionLabel = "Pause oder Sperre prüfen";
+    if (paymentException) {
+      nextActionLabel = `${waitingPaymentTag} prüfen – keine Mahn-E-Mail`;
+    } else if (closed) {
+      nextActionKind = "none";
+      nextActionLabel = "Keine Aktion – Forderung erledigt";
+    } else if (paused || stopTag) nextActionLabel = "Pause oder Sperre prüfen";
     else if (customerReplied) nextActionLabel = "Kundenantwort bearbeiten";
-    else if (legalReviewReady) nextActionLabel = "Solvenz und Gericht prüfen";
-    else if (finalReminderWaiting)
-      nextActionLabel = `Prüfung ab ${legalReviewDueAt!.slice(0, 10)}`;
-    else if (sendEligible && nextStage)
-      nextActionLabel = `${dunningStageLabel(nextStage, "t099")} ist fällig`;
-    else if (nextStage && scheduledAt)
-      nextActionLabel = `${dunningStageLabel(nextStage, "t099")} am ${scheduledAt.slice(0, 10)}`;
-    else if (uniqueBlockers.length) nextActionLabel = uniqueBlockers[0]!;
+    else if (legalReviewReady) {
+      nextActionKind = "court_review";
+      nextActionAt = legalReviewDueAt;
+      nextActionLabel = "Solvenz und Gericht prüfen";
+    } else if (finalReminderWaiting) {
+      nextActionKind = "court_review";
+      nextActionAt = legalReviewDueAt;
+      nextActionLabel = "Gerichtsprüfung nach letzter Frist";
+    } else if (
+      (state === "scheduled" || state === "action_required") &&
+      nextStage &&
+      scheduledAt
+    ) {
+      nextActionKind = "customer_email";
+      nextActionAt = scheduledAt;
+      nextActionLabel = `Stufe ${nextStage} E-Mail: ${dunningStageLabel(nextStage, "t099")}`;
+    } else if (uniqueBlockers.length) nextActionLabel = uniqueBlockers[0]!;
+    if (closed && !paymentException) continue;
     cases.push({
       key: orderNumber.slice(1),
       orderNumber,
@@ -1040,7 +1192,7 @@ export function buildDunningCases(input: {
       email,
       phone,
       hasPhone: Boolean(phone),
-      amountCents,
+      amountCents: displayAmountCents,
       orderTotalCents,
       currency,
       financialStatus,
@@ -1056,6 +1208,10 @@ export function buildDunningCases(input: {
       scheduledAt,
       lastSentAt,
       lastActivityAt,
+      nextActionAt,
+      nextActionKind,
+      paymentException,
+      paymentExceptionTag: paymentException ? waitingPaymentTag : null,
       lastContactAt,
       nextDueAt: validIso(statusRow?.next_due_at),
       paused,
@@ -1078,6 +1234,13 @@ export function buildDunningCases(input: {
       legalReviewReady,
       finalReminderWaiting,
       courtReview,
+      shipments,
+      hasTracking: shipments.some((shipment) =>
+        Boolean(shipment.trackingNumber),
+      ),
+      carrierDeliveryConfirmed: shipments.some((shipment) =>
+        Boolean(shipment.deliveredAt),
+      ),
       insolvencyIdentity,
       insolvencyCheck,
       easybillDocumentId,
@@ -1149,6 +1312,15 @@ async function loadRelevantShopifyOrders(
     },
     3000,
   );
+  const taggedPaymentExceptions = await pagedRequest<ShopifyOrderRow>(
+    "shopify_orders",
+    {
+      select,
+      tags: "ilike.*warten auf za*",
+      order: "created_at.desc",
+    },
+    3000,
+  );
   const extra: ShopifyOrderRow[] = [];
   for (let index = 0; index < orderNames.length; index += 80) {
     const chunk = orderNames.slice(index, index + 80);
@@ -1174,9 +1346,50 @@ async function loadRelevantShopifyOrders(
   }
   return [
     ...new Map(
-      [...positive, ...extra].map((row) => [row.shopify_order_id, row]),
+      [...positive, ...taggedPaymentExceptions, ...extra].map((row) => [
+        row.shopify_order_id,
+        row,
+      ]),
     ).values(),
   ];
+}
+
+async function loadRelevantShippingShipments(
+  orderNames: string[],
+  orderIds: string[],
+) {
+  const select =
+    "id,shopify_order_id,shopify_order_number,shopify_fulfillment_id,carrier,tracking_number,tracking_url,status,status_reason,shipped_at,delivered_at,last_event_at,last_carrier_sync_at,created_at,updated_at";
+  const rows: DunningShipmentRow[] = [];
+  const names = [
+    ...new Set(
+      orderNames.flatMap((name) => {
+        const normalized = normalizeDunningOrderNumber(name);
+        return normalized ? [normalized, normalized.slice(1)] : [];
+      }),
+    ),
+  ];
+  for (let index = 0; index < names.length; index += 80) {
+    const chunk = names.slice(index, index + 80);
+    rows.push(
+      ...(await supabaseRequest<DunningShipmentRow[]>(
+        "shipping_shipments",
+        undefined,
+        { select, shopify_order_number: inFilter(chunk), limit: 1000 },
+      )),
+    );
+  }
+  for (let index = 0; index < orderIds.length; index += 80) {
+    const chunk = orderIds.slice(index, index + 80);
+    rows.push(
+      ...(await supabaseRequest<DunningShipmentRow[]>(
+        "shipping_shipments",
+        undefined,
+        { select, shopify_order_id: inFilter(chunk), limit: 1000 },
+      )),
+    );
+  }
+  return [...new Map(rows.map((row) => [row.id, row])).values()];
 }
 
 function dunningSendConfigured() {
@@ -1286,8 +1499,8 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     latestAudit?.status === "success" && metadata.source_complete === true;
   const intakeFresh = Boolean(
     intakeComplete &&
-      intakeFreshUntil &&
-      Date.parse(intakeFreshUntil) >= Date.now(),
+    intakeFreshUntil &&
+    Date.parse(intakeFreshUntil) >= Date.now(),
   );
   const orderNames = [
     ...new Set(
@@ -1315,6 +1528,24 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     ),
   ];
   const orders = await loadRelevantShopifyOrders(orderNames, orderIds);
+  const shipmentOrderNames = [
+    ...new Set(
+      orders
+        .map((order) => normalizeDunningOrderNumber(order.name))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+  const shipmentOrderIds = [
+    ...new Set(
+      orders
+        .map((order) => cleanText(order.shopify_order_id, 40))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+  const shipments = await loadRelevantShippingShipments(
+    shipmentOrderNames,
+    shipmentOrderIds,
+  );
   const messages = [
     ...new Map(
       [...inboundMessages, ...senderMessages].map((row) => [row.id, row]),
@@ -1330,8 +1561,9 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     candidates,
     intakeFresh,
     insolvencyChecks,
+    shipments,
   });
-  const openCases = cases.filter((entry) => entry.state !== "closed");
+  const openCases = cases.filter((entry) => !entry.paymentException);
   return {
     generatedAt: new Date().toISOString(),
     sourceHealth: {
@@ -1391,6 +1623,38 @@ function timelineFromCase(summary: DunningCaseSummary) {
         direction: "internal",
         stage: null,
         status: "due",
+      });
+  }
+  for (const shipment of summary.shipments) {
+    const trackingDetail = [
+      shipment.carrier.toUpperCase(),
+      shipment.trackingNumber,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    if (shipment.shippedAt)
+      entries.push({
+        id: `shipment:${shipment.id}:shipped`,
+        occurredAt: shipment.shippedAt,
+        kind: "status",
+        title: "Sendung an Carrier übergeben",
+        detail: trackingDetail || null,
+        source: "Versandakte",
+        direction: "internal",
+        stage: null,
+        status: shipment.status,
+      });
+    if (shipment.deliveredAt)
+      entries.push({
+        id: `shipment:${shipment.id}:delivered`,
+        occurredAt: shipment.deliveredAt,
+        kind: "evidence",
+        title: "Zustellung im Carrier-Tracking bestätigt",
+        detail: trackingDetail || null,
+        source: "Versandakte",
+        direction: "internal",
+        stage: null,
+        status: "delivered",
       });
   }
   if (summary.legalReviewDueAt)

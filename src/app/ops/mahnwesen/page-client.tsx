@@ -50,22 +50,8 @@ type Filters = {
   query: string;
   state: "all" | DunningCaseState;
   stage: string;
-  payment: "all" | "open" | "closed";
-  fulfillment: "all" | "fulfilled" | "unfulfilled";
-  overdue: "all" | "due" | "7" | "14" | "30" | "60" | "90" | "180";
-  orderAge: "all" | "30" | "90" | "180" | "365";
-  contact: "all" | "replied" | "no_reply" | "phone_present" | "phone_missing";
-  email: "all" | "present" | "missing";
-  source: "all" | "legacy" | "t099" | "mixed" | "open_order";
-  insolvency:
-    | "all"
-    | "pending"
-    | "checked"
-    | "notice"
-    | "review"
-    | "failed";
-  minAmount: string;
-  maxAmount: string;
+  delivery: "all" | "fulfilled" | "tracking" | "delivered" | "evidence_missing";
+  insolvency: "all" | "pending" | "checked" | "notice" | "review" | "failed";
   sort: "priority" | "overdue" | "amount" | "activity" | "stage";
 };
 
@@ -73,16 +59,8 @@ const INITIAL_FILTERS: Filters = {
   query: "",
   state: "all",
   stage: "all",
-  payment: "all",
-  fulfillment: "all",
-  overdue: "all",
-  orderAge: "all",
-  contact: "all",
-  email: "all",
-  source: "all",
+  delivery: "all",
   insolvency: "all",
-  minAmount: "",
-  maxAmount: "",
   sort: "priority",
 };
 
@@ -109,6 +87,10 @@ function caseMatchesQuery(entry: DunningCaseSummary, query: string) {
       entry.email,
       entry.phone,
       entry.amountCents / 100,
+      ...entry.shipments.flatMap((shipment) => [
+        shipment.carrier,
+        shipment.trackingNumber,
+      ]),
     ]
       .filter((value) => value !== null && value !== undefined)
       .join(" "),
@@ -165,36 +147,24 @@ function relativeDue(entry: DunningCaseSummary) {
 }
 
 function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
-  const minAmountCents = Math.round(
-    Number(filters.minAmount.replace(",", ".") || 0) * 100,
-  );
-  const maxAmountCents = Math.round(
-    Number(filters.maxAmount.replace(",", ".") || 0) * 100,
-  );
   const visible = cases.filter((entry) => {
     if (!caseMatchesQuery(entry, filters.query)) return false;
     if (filters.state !== "all" && entry.state !== filters.state) return false;
     if (filters.stage !== "all" && entry.currentStage !== Number(filters.stage))
       return false;
-    if (filters.payment === "open" && entry.state === "closed") return false;
-    if (filters.payment === "closed" && entry.state !== "closed") return false;
     if (
-      filters.fulfillment === "fulfilled" &&
+      filters.delivery === "fulfilled" &&
       entry.fulfillmentStatus.toLowerCase() !== "fulfilled"
     )
       return false;
-    if (
-      filters.fulfillment === "unfulfilled" &&
-      entry.fulfillmentStatus.toLowerCase() === "fulfilled"
-    )
+    if (filters.delivery === "tracking" && !entry.hasTracking) return false;
+    if (filters.delivery === "delivered" && !entry.carrierDeliveryConfirmed)
       return false;
-    if (filters.email === "present" && !entry.hasEmail) return false;
-    if (filters.email === "missing" && entry.hasEmail) return false;
-    if (filters.contact === "replied" && !entry.customerReplied) return false;
-    if (filters.contact === "no_reply" && entry.customerReplied) return false;
-    if (filters.contact === "phone_present" && !entry.hasPhone) return false;
-    if (filters.contact === "phone_missing" && entry.hasPhone) return false;
-    if (filters.source !== "all" && entry.source !== filters.source)
+    if (
+      filters.delivery === "evidence_missing" &&
+      (entry.fulfillmentStatus.toLowerCase() !== "fulfilled" ||
+        entry.carrierDeliveryConfirmed)
+    )
       return false;
     if (filters.insolvency !== "all") {
       const check = entry.insolvencyCheck;
@@ -228,25 +198,6 @@ function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
       )
         return false;
     }
-    if (minAmountCents > 0 && entry.amountCents < minAmountCents) return false;
-    if (maxAmountCents > 0 && entry.amountCents > maxAmountCents) return false;
-    if (
-      filters.overdue === "due" &&
-      (entry.daysOverdue === null || entry.daysOverdue < 0)
-    )
-      return false;
-    if (
-      ["7", "14", "30", "60", "90", "180"].includes(filters.overdue) &&
-      (entry.daysOverdue === null ||
-        entry.daysOverdue < Number(filters.overdue))
-    )
-      return false;
-    if (
-      filters.orderAge !== "all" &&
-      (entry.orderAgeDays === null ||
-        entry.orderAgeDays < Number(filters.orderAge))
-    )
-      return false;
     return true;
   });
   return visible.sort((left, right) => {
@@ -393,12 +344,19 @@ function FilterPanel({
 }) {
   const update = <K extends keyof Filters>(key: K, value: Filters[K]) =>
     setFilters((current) => ({ ...current, [key]: value }));
+  const advancedCount = [
+    filters.state !== "all",
+    filters.stage !== "all",
+    filters.delivery !== "all",
+    filters.insolvency !== "all",
+    filters.sort !== "priority",
+  ].filter(Boolean).length;
   return (
     <section
       aria-label="Mahnfälle filtern"
       className="overflow-hidden rounded-[22px] border border-[#ded8d0] bg-[#fffdf9] shadow-[0_16px_44px_rgba(20,16,12,0.05)]"
     >
-      <div className="flex flex-col gap-3 border-b border-[#e6e0d8] p-4 lg:flex-row lg:items-end">
+      <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-end">
         <label className="grid min-w-0 flex-1 gap-1.5 text-xs font-semibold text-stone-600">
           <span>Suche</span>
           <span className="relative block">
@@ -406,7 +364,7 @@ function FilterPanel({
             <input
               value={filters.query}
               onChange={(event) => update("query", event.target.value)}
-              placeholder="Name, Firma, E-Mail, Telefon, Bestellung oder Rechnung"
+              placeholder="Name, Firma, E-Mail, Telefon, Bestellung, Rechnung oder Sendungsnummer"
               className="h-10 w-full rounded-xl border border-stone-200 bg-white pl-10 pr-3 text-sm font-normal text-stone-800 outline-none placeholder:text-stone-400 focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/15"
             />
           </span>
@@ -420,177 +378,15 @@ function FilterPanel({
           onClick={() => setFilters(INITIAL_FILTERS)}
           className="h-10 rounded-xl border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
         >
-          Filter löschen
+          Zurücksetzen
         </button>
       </div>
-      <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
-        <SelectField
-          label="Arbeitsstatus"
-          value={filters.state}
-          onChange={(value) => update("state", value as Filters["state"])}
-        >
-          <option value="all">Alle Status</option>
-          <option value="action_required">Aktion fällig</option>
-          <option value="reply_received">Antwort prüfen</option>
-          <option value="final_wait">Letzte Frist läuft</option>
-          <option value="court_review">Solvenz/Gericht prüfen</option>
-          <option value="data_issue">Daten prüfen</option>
-          <option value="scheduled">Termin geplant</option>
-          <option value="paused">Pausiert</option>
-          <option value="closed">Erledigt</option>
-        </SelectField>
-        <SelectField
-          label="Mahnstufe"
-          value={filters.stage}
-          onChange={(value) => update("stage", value)}
-        >
-          <option value="all">Alle Stufen</option>
-          {Array.from({ length: 7 }, (_, stage) => (
-            <option key={stage} value={stage}>
-              Stufe {stage}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
-          label="Zahlung"
-          value={filters.payment}
-          onChange={(value) => update("payment", value as Filters["payment"])}
-        >
-          <option value="all">Alle Zahlungsstatus</option>
-          <option value="open">Forderung offen</option>
-          <option value="closed">Bezahlt / erledigt</option>
-        </SelectField>
-        <SelectField
-          label="Lieferung"
-          value={filters.fulfillment}
-          onChange={(value) =>
-            update("fulfillment", value as Filters["fulfillment"])
-          }
-        >
-          <option value="all">Alle Lieferstatus</option>
-          <option value="fulfilled">Erfüllt / geliefert</option>
-          <option value="unfulfilled">Nicht erfüllt</option>
-        </SelectField>
-        <SelectField
-          label="Überfälligkeit"
-          value={filters.overdue}
-          onChange={(value) => update("overdue", value as Filters["overdue"])}
-        >
-          <option value="all">Alle Zeiträume</option>
-          <option value="due">Jetzt fällig</option>
-          <option value="7">Mindestens 7 Tage</option>
-          <option value="14">Mindestens 14 Tage</option>
-          <option value="30">Mindestens 30 Tage</option>
-          <option value="60">Mindestens 60 Tage</option>
-          <option value="90">Mindestens 90 Tage</option>
-          <option value="180">Mindestens 180 Tage</option>
-        </SelectField>
-        <SelectField
-          label="Auftragsalter"
-          value={filters.orderAge}
-          onChange={(value) => update("orderAge", value as Filters["orderAge"])}
-        >
-          <option value="all">Jedes Auftragsalter</option>
-          <option value="30">Mindestens 30 Tage</option>
-          <option value="90">Mindestens 3 Monate</option>
-          <option value="180">Mindestens 6 Monate</option>
-          <option value="365">Mindestens 1 Jahr</option>
-        </SelectField>
-        <SelectField
-          label="Kontakt"
-          value={filters.contact}
-          onChange={(value) => update("contact", value as Filters["contact"])}
-        >
-          <option value="all">Alle Kontaktstatus</option>
-          <option value="replied">Kundenantwort vorhanden</option>
-          <option value="no_reply">Keine offene Antwort</option>
-          <option value="phone_present">Telefon vorhanden</option>
-          <option value="phone_missing">Telefon fehlt</option>
-        </SelectField>
-        <SelectField
-          label="E-Mail"
-          value={filters.email}
-          onChange={(value) => update("email", value as Filters["email"])}
-        >
-          <option value="all">Alle E-Mail-Status</option>
-          <option value="present">E-Mail vorhanden</option>
-          <option value="missing">E-Mail fehlt</option>
-        </SelectField>
-        <SelectField
-          label="Datenquelle"
-          value={filters.source}
-          onChange={(value) => update("source", value as Filters["source"])}
-        >
-          <option value="all">Alle Quellen</option>
-          <option value="t099">T099 aktuell</option>
-          <option value="legacy">Altbestand</option>
-          <option value="mixed">Gemischt</option>
-          <option value="open_order">Nur Shopify offen</option>
-        </SelectField>
-        <SelectField
-          label="Insolvenzprüfung"
-          value={filters.insolvency}
-          onChange={(value) =>
-            update("insolvency", value as Filters["insolvency"])
-          }
-        >
-          <option value="all">Alle Prüfstatus</option>
-          <option value="pending">Prüfung ausstehend</option>
-          <option value="checked">Daten geprüft – kein Hinweis</option>
-          <option value="notice">Amtlicher Hinweis gefunden</option>
-          <option value="review">Treffer oder Daten prüfen</option>
-          <option value="failed">Technischer Fehler</option>
-        </SelectField>
-        <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-stone-600">
-          <span>Mindestbetrag</span>
-          <input
-            inputMode="decimal"
-            value={filters.minAmount}
-            onChange={(event) =>
-              update(
-                "minAmount",
-                event.target.value.replace(/[^\d,.]/g, "").slice(0, 12),
-              )
-            }
-            placeholder="0,00 EUR"
-            className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/15"
-          />
-        </label>
-        <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-stone-600">
-          <span>Höchstbetrag</span>
-          <input
-            inputMode="decimal"
-            value={filters.maxAmount}
-            onChange={(event) =>
-              update(
-                "maxAmount",
-                event.target.value.replace(/[^\d,.]/g, "").slice(0, 12),
-              )
-            }
-            placeholder="Unbegrenzt"
-            className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/15"
-          />
-        </label>
-        <SelectField
-          label="Sortierung"
-          value={filters.sort}
-          onChange={(value) => update("sort", value as Filters["sort"])}
-        >
-          <option value="priority">Priorität</option>
-          <option value="overdue">Überfälligkeit</option>
-          <option value="amount">Betrag</option>
-          <option value="activity">Letzte Aktivität</option>
-          <option value="stage">Mahnstufe</option>
-        </SelectField>
-      </div>
-      <div className="flex flex-wrap gap-2 border-t border-[#e6e0d8] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-t border-[#e6e0d8] px-4 py-3">
         {(
           [
             ["Aktion fällig", "action_required", Send],
             ["Antwort prüfen", "reply_received", MessageSquareReply],
-            ["Letzte Frist", "final_wait", Clock3],
             ["Solvenz/Gericht", "court_review", Gavel],
-            ["Pausiert", "paused", CirclePause],
           ] as const
         ).map(([label, state, Icon]) => (
           <button
@@ -605,8 +401,159 @@ function FilterPanel({
             {label}
           </button>
         ))}
+        <span className="ml-auto text-xs text-stone-500">
+          Bezahlte Fälle sind ausgeblendet. Ausnahme: Shopify-Tag „WARTEN AUF
+          ZA(HLUNG)“.
+        </span>
       </div>
+      <details className="border-t border-[#e6e0d8]">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-stone-700 marker:content-none">
+          <Filter className="h-4 w-4" />
+          Weitere Filter
+          {advancedCount ? (
+            <span className="rounded-full bg-stone-950 px-2 py-0.5 text-xs text-white">
+              {advancedCount}
+            </span>
+          ) : null}
+        </summary>
+        <div className="grid gap-3 border-t border-[#eee8df] bg-[#faf7f2] p-4 sm:grid-cols-2 lg:grid-cols-5">
+          <SelectField
+            label="Arbeitsstatus"
+            value={filters.state}
+            onChange={(value) => update("state", value as Filters["state"])}
+          >
+            <option value="all">Alle Status</option>
+            <option value="action_required">Aktion fällig</option>
+            <option value="reply_received">Antwort prüfen</option>
+            <option value="final_wait">Letzte Frist läuft</option>
+            <option value="court_review">Solvenz/Gericht prüfen</option>
+            <option value="data_issue">Daten prüfen</option>
+            <option value="scheduled">Termin geplant</option>
+            <option value="paused">Pausiert</option>
+          </SelectField>
+          <SelectField
+            label="Mahnstufe"
+            value={filters.stage}
+            onChange={(value) => update("stage", value)}
+          >
+            <option value="all">Alle Stufen</option>
+            {Array.from({ length: 7 }, (_, stage) => (
+              <option key={stage} value={stage}>
+                Stufe {stage}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="Versandnachweis"
+            value={filters.delivery}
+            onChange={(value) =>
+              update("delivery", value as Filters["delivery"])
+            }
+          >
+            <option value="all">Alle Versandstatus</option>
+            <option value="fulfilled">Fulfilled</option>
+            <option value="tracking">Sendungsnummer vorhanden</option>
+            <option value="delivered">Carrier-Zustellung bestätigt</option>
+            <option value="evidence_missing">
+              Fulfilled, Zustellbeleg fehlt
+            </option>
+          </SelectField>
+          <SelectField
+            label="Insolvenzprüfung"
+            value={filters.insolvency}
+            onChange={(value) =>
+              update("insolvency", value as Filters["insolvency"])
+            }
+          >
+            <option value="all">Alle Prüfstatus</option>
+            <option value="pending">Prüfung ausstehend</option>
+            <option value="checked">Daten geprüft – kein Hinweis</option>
+            <option value="notice">Amtlicher Hinweis gefunden</option>
+            <option value="review">Treffer oder Daten prüfen</option>
+            <option value="failed">Technischer Fehler</option>
+          </SelectField>
+          <SelectField
+            label="Sortierung"
+            value={filters.sort}
+            onChange={(value) => update("sort", value as Filters["sort"])}
+          >
+            <option value="priority">Priorität</option>
+            <option value="overdue">Überfälligkeit</option>
+            <option value="amount">Betrag</option>
+            <option value="activity">Letzte Aktivität</option>
+            <option value="stage">Mahnstufe</option>
+          </SelectField>
+        </div>
+      </details>
     </section>
+  );
+}
+
+function NextActionSchedule({ entry }: { entry: DunningCaseSummary }) {
+  if (!entry.nextActionAt)
+    return (
+      <p className="mt-1 text-xs text-stone-500">
+        Kein automatischer Versand geplant
+      </p>
+    );
+  return (
+    <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-stone-600">
+      <Clock3 className="h-3.5 w-3.5 shrink-0" />
+      {entry.nextActionKind === "customer_email" ? "Geplant" : "Fällig"}:{" "}
+      {dateLabel(entry.nextActionAt, true)}
+    </p>
+  );
+}
+
+function ShipmentSummary({ entry }: { entry: DunningCaseSummary }) {
+  const shipment = entry.shipments[0];
+  return (
+    <div className="max-w-[17rem]">
+      <div className="flex items-center gap-2 text-xs font-semibold text-stone-700">
+        <Truck className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+        {entry.fulfillmentStatus}
+      </div>
+      {shipment?.trackingNumber ? (
+        <div className="mt-2">
+          {shipment.trackingUrl ? (
+            <a
+              href={shipment.trackingUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex max-w-full items-center gap-1 break-all text-xs font-semibold text-stone-800 underline decoration-stone-300 underline-offset-2"
+            >
+              {shipment.carrier.toUpperCase()} {shipment.trackingNumber}
+              <ExternalLink className="h-3 w-3 shrink-0" />
+            </a>
+          ) : (
+            <p className="break-all text-xs font-semibold text-stone-800">
+              {shipment.carrier.toUpperCase()} {shipment.trackingNumber}
+            </p>
+          )}
+          {shipment.deliveredAt ? (
+            <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-emerald-700">
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+              Carrier-Zustellung {dateLabel(shipment.deliveredAt, true)}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs leading-4 text-amber-700">
+              Tracking vorhanden, Zustellung noch nicht belegt
+            </p>
+          )}
+          {entry.shipments.length > 1 ? (
+            <p className="mt-1 text-xs text-stone-500">
+              + {entry.shipments.length - 1} weitere Sendung(en)
+            </p>
+          ) : null}
+        </div>
+      ) : entry.fulfillmentStatus.toLowerCase() === "fulfilled" ? (
+        <p className="mt-2 text-xs font-semibold leading-4 text-amber-700">
+          Fulfilled, aber keine Sendungsnummer in der Versandakte
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-stone-500">Noch keine Sendung</p>
+      )}
+    </div>
   );
 }
 
@@ -630,7 +577,7 @@ function CaseTable({
               <th className="px-4 py-3">Bestellung</th>
               <th className="px-4 py-3">Kunde</th>
               <th className="px-4 py-3">Offen</th>
-              <th className="px-4 py-3">Lieferung / Zahlung</th>
+              <th className="px-4 py-3">Versand / Zustellung</th>
               <th className="px-4 py-3">Mahnstufe</th>
               <th className="px-4 py-3">Nächste Aktion</th>
               <th className="px-4 py-3">Status</th>
@@ -685,10 +632,7 @@ function CaseTable({
                   </p>
                 </td>
                 <td className="px-4 py-4">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-stone-700">
-                    <Truck className="h-3.5 w-3.5 text-stone-400" />
-                    {entry.fulfillmentStatus}
-                  </div>
+                  <ShipmentSummary entry={entry} />
                   <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
                     <WalletCards className="h-3.5 w-3.5" />
                     {entry.financialStatus}
@@ -701,6 +645,7 @@ function CaseTable({
                   <p className="max-w-[16rem] text-xs font-semibold leading-5 text-stone-800">
                     {entry.nextActionLabel}
                   </p>
+                  <NextActionSchedule entry={entry} />
                   <p className="mt-1 text-xs text-stone-500">
                     Letzter Kontakt {dateLabel(entry.lastContactAt, true)}
                   </p>
@@ -731,11 +676,13 @@ function CaseTable({
                     disabled={loadingKey === entry.key}
                     className="inline-flex items-center gap-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-800 transition hover:border-stone-500 disabled:opacity-50"
                   >
-                    {entry.legalReviewReady
-                      ? "Prüfung öffnen"
-                      : entry.nextStage
-                        ? "Nächste Stufe"
-                        : "Details"}
+                    {entry.paymentException
+                      ? "Klärfall öffnen"
+                      : entry.legalReviewReady
+                        ? "Prüfung öffnen"
+                        : entry.nextStage
+                          ? "Nächste Stufe"
+                          : "Details"}
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 </td>
@@ -780,9 +727,18 @@ function CaseTable({
               <p className="mt-1 text-sm font-semibold text-stone-800">
                 {entry.nextActionLabel}
               </p>
+              <NextActionSchedule entry={entry} />
               <p className="mt-1 text-xs text-stone-500">
                 Rechnung {entry.easybillInvoiceNumber || "nicht zugeordnet"}
               </p>
+            </div>
+            <div className="mt-3 rounded-xl border border-stone-200 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+                Versand / Zustellung
+              </p>
+              <div className="mt-2">
+                <ShipmentSummary entry={entry} />
+              </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-[#f8f5f0] p-3">
               <div>
@@ -943,8 +899,8 @@ function InsolvencyCheckModal({
           ) : null}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-200 p-4">
             <p className="max-w-xl text-xs leading-5 text-stone-500">
-              Quelle: deutsche Insolvenzgerichte. Veröffentlichungen werden
-              nach gesetzlichen Fristen gelöscht; der Abruf ist deshalb keine
+              Quelle: deutsche Insolvenzgerichte. Veröffentlichungen werden nach
+              gesetzlichen Fristen gelöscht; der Abruf ist deshalb keine
               vollständige Bonitätsauskunft. Es wurde weder ein Mahnantrag
               gestellt noch eine Kundenmail versendet.
             </p>
@@ -1094,10 +1050,117 @@ function DetailDrawer({
               <p className="mt-2 text-sm font-semibold text-stone-900">
                 {entry.nextActionLabel}
               </p>
+              <NextActionSchedule entry={entry} />
               <p className="mt-1 text-xs text-stone-500">
                 Letzter Kontakt {dateLabel(entry.lastContactAt, true)}
               </p>
             </div>
+          </section>
+          {entry.paymentException ? (
+            <section className="rounded-[22px] border border-amber-200 bg-amber-50 p-5 text-amber-950">
+              <h3 className="font-semibold">Bezahlter Shopify-Ausnahmefall</h3>
+              <p className="mt-1 text-sm leading-6">
+                Die Forderung ist ausgeglichen, aber der Tag „
+                {entry.paymentExceptionTag}“ ist gesetzt. Der Fall bleibt nur
+                zur manuellen Datenprüfung sichtbar; es wird keine weitere
+                Mahn-E-Mail geplant.
+              </p>
+            </section>
+          ) : null}
+          <section className="rounded-[22px] border border-stone-200 bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-stone-950">
+                  Versand- und Zustellnachweis
+                </h3>
+                <p className="mt-1 max-w-xl text-sm leading-6 text-stone-500">
+                  Eine Sendungsnummer belegt den Versandweg. Erst ein
+                  gespeicherter Carrier-Zustellzeitpunkt belegt in dieser Akte
+                  die Zustellung; ein separates POD-Dokument ist damit noch
+                  nicht archiviert.
+                </p>
+              </div>
+              <span
+                className={`rounded-full border px-3 py-1 text-xs font-semibold ${entry.carrierDeliveryConfirmed ? "border-emerald-200 bg-emerald-50 text-emerald-800" : entry.hasTracking ? "border-amber-200 bg-amber-50 text-amber-800" : "border-stone-200 bg-stone-50 text-stone-600"}`}
+              >
+                {entry.carrierDeliveryConfirmed
+                  ? "Carrier-Zustellung bestätigt"
+                  : entry.hasTracking
+                    ? "Nur Tracking vorhanden"
+                    : "Kein Tracking hinterlegt"}
+              </span>
+            </div>
+            {entry.shipments.length ? (
+              <div className="mt-4 grid gap-3">
+                {entry.shipments.map((shipment) => (
+                  <article
+                    key={shipment.id}
+                    className="rounded-2xl border border-stone-200 bg-[#faf8f4] p-4"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                          {shipment.carrier}
+                        </p>
+                        {shipment.trackingNumber ? (
+                          <p className="mt-1 break-all font-semibold text-stone-950">
+                            {shipment.trackingNumber}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-sm text-stone-600">
+                            Keine Sendungsnummer
+                          </p>
+                        )}
+                      </div>
+                      {shipment.trackingUrl ? (
+                        <a
+                          href={shipment.trackingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-800"
+                        >
+                          Tracking öffnen{" "}
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : null}
+                    </div>
+                    <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+                      <div>
+                        <dt className="text-xs text-stone-500">Versandt</dt>
+                        <dd className="mt-1 font-semibold text-stone-800">
+                          {dateLabel(shipment.shippedAt, true)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-stone-500">Zugestellt</dt>
+                        <dd className="mt-1 font-semibold text-stone-800">
+                          {dateLabel(shipment.deliveredAt, true)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-stone-500">
+                          Letzter Carrier-Abgleich
+                        </dt>
+                        <dd className="mt-1 font-semibold text-stone-800">
+                          {dateLabel(shipment.lastCarrierSyncAt, true)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                {entry.fulfillmentStatus.toLowerCase() === "fulfilled"
+                  ? "Shopify meldet Fulfilled, aber in der Versandakte fehlt noch eine Sendungsnummer."
+                  : "Für diese Bestellung ist noch keine Sendung in der Versandakte vorhanden."}
+              </p>
+            )}
+            <p className="mt-4 text-xs leading-5 text-stone-500">
+              Empfohlen für die nächste Ausbaustufe: Carrier-POD oder
+              Zustell-PDF automatisch abrufen und dauerhaft an dieser Fallakte
+              archivieren, bevor der Carrier-Link abläuft.
+            </p>
           </section>
           {entry.courtReview || entry.insolvencyCheck ? (
             <section className="rounded-[22px] border border-violet-200 bg-violet-50 p-5">
@@ -1108,9 +1171,9 @@ function DetailDrawer({
                   </h3>
                   <p className="mt-1 max-w-xl text-sm leading-6 text-violet-800">
                     Beim Status „Gericht prüfen“ wird die kostenlose amtliche
-                    Insolvenzbekanntmachung automatisch als Einzelabruf
-                    geprüft. Das Ergebnis entscheidet nicht automatisch über
-                    einen gerichtlichen Mahnantrag.
+                    Insolvenzbekanntmachung automatisch als Einzelabruf geprüft.
+                    Das Ergebnis entscheidet nicht automatisch über einen
+                    gerichtlichen Mahnantrag.
                   </p>
                 </div>
                 <InsolvencyCheckButton
@@ -1148,6 +1211,7 @@ function DetailDrawer({
               className={`mt-4 rounded-xl border p-4 text-sm ${entry.legalReviewReady ? "border-violet-200 bg-violet-50 text-violet-900" : entry.finalReminderWaiting ? "border-indigo-200 bg-indigo-50 text-indigo-900" : "border-stone-200 bg-stone-50 text-stone-700"}`}
             >
               <p className="font-semibold">{entry.nextActionLabel}</p>
+              <NextActionSchedule entry={entry} />
               {entry.legalReviewReady ? (
                 <p className="mt-1">
                   Die letzte Mahnstufe liegt mindestens sieben Tage zurück. Die
