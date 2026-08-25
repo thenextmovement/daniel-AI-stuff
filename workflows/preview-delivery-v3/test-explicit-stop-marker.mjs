@@ -41,12 +41,10 @@ assert.ok(match, "patched stop marker expression must remain present");
 const stopMarker = Function(`return ${match[1]}`)();
 
 for (const title of [
-  "STOPP Interner Versandhalt",
   "STOP Interner Versandhalt",
-  "  STOPP Interner Versandhalt",
-  "STOPP",
+  "  STOP Interner Versandhalt",
+  "STOP",
   "[STOP] Interner Versandhalt",
-  "[STOPP] Interner Versandhalt",
   "  [STOP] Interner Versandhalt",
   "[STOP]"
 ]) {
@@ -57,6 +55,8 @@ for (const title of [
   "Design: #stop med fakes",
   "#stop med fakes",
   "Stop Med Fakes",
+  "STOPP Interner Versandhalt",
+  "[STOPP] Interner Versandhalt",
   "Stopp Interner Versandhalt",
   "stop Interner Versandhalt",
   "stopp Interner Versandhalt",
