@@ -1,0 +1,1435 @@
+"use client";
+
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  CirclePause,
+  Clock3,
+  ExternalLink,
+  FileWarning,
+  Filter,
+  Gavel,
+  MailCheck,
+  MessageSquareReply,
+  Phone,
+  ReceiptText,
+  RefreshCw,
+  Search,
+  Send,
+  ShieldAlert,
+  Truck,
+  WalletCards,
+  X,
+} from "lucide-react";
+import { OpsLoginCard } from "../ops-login-card";
+import { OpsPageHeader } from "../ops-page-header";
+import {
+  OpsPageIntro,
+  OpsStatCard,
+  opsPageContainerClass,
+  opsPageShellClass,
+} from "../ops-design";
+import type {
+  DunningActionPreview,
+  DunningCaseDetail,
+  DunningCaseState,
+  DunningCaseSummary,
+  DunningDashboard,
+} from "@/lib/ops/dunning";
+
+type Filters = {
+  query: string;
+  state: "all" | DunningCaseState;
+  stage: string;
+  payment: "all" | "open" | "closed";
+  fulfillment: "all" | "fulfilled" | "unfulfilled";
+  overdue: "all" | "due" | "7" | "14" | "30" | "60" | "90" | "180";
+  orderAge: "all" | "30" | "90" | "180" | "365";
+  contact: "all" | "replied" | "no_reply" | "phone_present" | "phone_missing";
+  email: "all" | "present" | "missing";
+  source: "all" | "legacy" | "t099" | "mixed" | "open_order";
+  minAmount: string;
+  maxAmount: string;
+  sort: "priority" | "overdue" | "amount" | "activity" | "stage";
+};
+
+const INITIAL_FILTERS: Filters = {
+  query: "",
+  state: "all",
+  stage: "all",
+  payment: "all",
+  fulfillment: "all",
+  overdue: "all",
+  orderAge: "all",
+  contact: "all",
+  email: "all",
+  source: "all",
+  minAmount: "",
+  maxAmount: "",
+  sort: "priority",
+};
+
+function normalizedSearchValue(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("de-DE")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function caseMatchesQuery(entry: DunningCaseSummary, query: string) {
+  const normalizedQuery = normalizedSearchValue(query);
+  if (!normalizedQuery) return true;
+  const corpus = normalizedSearchValue(
+    [
+      entry.orderNumber,
+      entry.shopifyOrderId,
+      entry.easybillInvoiceNumber,
+      entry.easybillDocumentId,
+      entry.customerName,
+      entry.company,
+      entry.email,
+      entry.phone,
+      entry.amountCents / 100,
+    ]
+      .filter((value) => value !== null && value !== undefined)
+      .join(" "),
+  );
+  const phoneDigits = String(entry.phone || "").replace(/\D/g, "");
+  return normalizedQuery
+    .split(" ")
+    .filter(Boolean)
+    .every((term) => {
+      if (corpus.includes(term)) return true;
+      const digits = term.replace(/\D/g, "");
+      return digits.length >= 3 && phoneDigits.includes(digits);
+    });
+}
+
+const stateTone: Record<DunningCaseState, string> = {
+  action_required: "border-rose-200 bg-rose-50 text-rose-800",
+  scheduled: "border-sky-200 bg-sky-50 text-sky-800",
+  final_wait: "border-indigo-200 bg-indigo-50 text-indigo-800",
+  reply_received: "border-amber-200 bg-amber-50 text-amber-900",
+  paused: "border-stone-300 bg-stone-100 text-stone-700",
+  court_review: "border-violet-200 bg-violet-50 text-violet-800",
+  data_issue: "border-orange-200 bg-orange-50 text-orange-800",
+  closed: "border-emerald-200 bg-emerald-50 text-emerald-800",
+};
+
+function money(cents: number, currency = "EUR") {
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(
+    Number(cents || 0) / 100,
+  );
+}
+
+function dateLabel(value: string | null, withTime = false) {
+  if (!value) return "Nicht belegt";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "Nicht belegt";
+  return new Intl.DateTimeFormat(
+    "de-DE",
+    withTime
+      ? { dateStyle: "medium", timeStyle: "short" }
+      : { dateStyle: "medium" },
+  ).format(date);
+}
+
+function relativeDue(entry: DunningCaseSummary) {
+  if (entry.daysOverdue === null)
+    return entry.scheduledAt
+      ? `Nächste Stufe ${dateLabel(entry.scheduledAt)}`
+      : "Keine belegte Fälligkeit";
+  if (entry.daysOverdue < 0)
+    return `Fällig in ${Math.abs(entry.daysOverdue)} Tagen`;
+  if (entry.daysOverdue === 0) return "Heute fällig";
+  return `${entry.daysOverdue} Tage überfällig`;
+}
+
+function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
+  const minAmountCents = Math.round(
+    Number(filters.minAmount.replace(",", ".") || 0) * 100,
+  );
+  const maxAmountCents = Math.round(
+    Number(filters.maxAmount.replace(",", ".") || 0) * 100,
+  );
+  const visible = cases.filter((entry) => {
+    if (!caseMatchesQuery(entry, filters.query)) return false;
+    if (filters.state !== "all" && entry.state !== filters.state) return false;
+    if (filters.stage !== "all" && entry.currentStage !== Number(filters.stage))
+      return false;
+    if (filters.payment === "open" && entry.state === "closed") return false;
+    if (filters.payment === "closed" && entry.state !== "closed") return false;
+    if (
+      filters.fulfillment === "fulfilled" &&
+      entry.fulfillmentStatus.toLowerCase() !== "fulfilled"
+    )
+      return false;
+    if (
+      filters.fulfillment === "unfulfilled" &&
+      entry.fulfillmentStatus.toLowerCase() === "fulfilled"
+    )
+      return false;
+    if (filters.email === "present" && !entry.hasEmail) return false;
+    if (filters.email === "missing" && entry.hasEmail) return false;
+    if (filters.contact === "replied" && !entry.customerReplied) return false;
+    if (filters.contact === "no_reply" && entry.customerReplied) return false;
+    if (filters.contact === "phone_present" && !entry.hasPhone) return false;
+    if (filters.contact === "phone_missing" && entry.hasPhone) return false;
+    if (filters.source !== "all" && entry.source !== filters.source)
+      return false;
+    if (minAmountCents > 0 && entry.amountCents < minAmountCents) return false;
+    if (maxAmountCents > 0 && entry.amountCents > maxAmountCents) return false;
+    if (
+      filters.overdue === "due" &&
+      (entry.daysOverdue === null || entry.daysOverdue < 0)
+    )
+      return false;
+    if (
+      ["7", "14", "30", "60", "90", "180"].includes(filters.overdue) &&
+      (entry.daysOverdue === null ||
+        entry.daysOverdue < Number(filters.overdue))
+    )
+      return false;
+    if (
+      filters.orderAge !== "all" &&
+      (entry.orderAgeDays === null ||
+        entry.orderAgeDays < Number(filters.orderAge))
+    )
+      return false;
+    return true;
+  });
+  return visible.sort((left, right) => {
+    if (filters.sort === "overdue")
+      return (right.daysOverdue ?? -9999) - (left.daysOverdue ?? -9999);
+    if (filters.sort === "amount") return right.amountCents - left.amountCents;
+    if (filters.sort === "activity")
+      return (
+        Date.parse(right.lastActivityAt || "1970-01-01") -
+        Date.parse(left.lastActivityAt || "1970-01-01")
+      );
+    if (filters.sort === "stage")
+      return (
+        right.currentStage - left.currentStage ||
+        right.amountCents - left.amountCents
+      );
+    const priority: Record<DunningCaseState, number> = {
+      court_review: 0,
+      reply_received: 1,
+      action_required: 2,
+      data_issue: 3,
+      final_wait: 4,
+      paused: 5,
+      scheduled: 6,
+      closed: 7,
+    };
+    return (
+      priority[left.state] - priority[right.state] ||
+      (right.daysOverdue ?? -9999) - (left.daysOverdue ?? -9999) ||
+      right.amountCents - left.amountCents
+    );
+  });
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-stone-600">
+      <span>{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 min-w-0 rounded-xl border border-stone-200 bg-white px-3 text-sm font-normal text-stone-800 outline-none focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/15"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function StatusBadge({ entry }: { entry: DunningCaseSummary }) {
+  return (
+    <span
+      className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${stateTone[entry.state]}`}
+    >
+      {entry.stateLabel}
+    </span>
+  );
+}
+
+function StageBadge({ entry }: { entry: DunningCaseSummary }) {
+  return (
+    <div>
+      <span className="inline-flex rounded-lg bg-stone-950 px-2.5 py-1 text-xs font-semibold text-white">
+        Stufe {entry.currentStage}
+      </span>
+      <p className="mt-1 max-w-[15rem] text-xs leading-4 text-stone-500">
+        {entry.currentStageLabel}
+      </p>
+    </div>
+  );
+}
+
+function FilterPanel({
+  filters,
+  setFilters,
+  count,
+  total,
+}: {
+  filters: Filters;
+  setFilters: Dispatch<SetStateAction<Filters>>;
+  count: number;
+  total: number;
+}) {
+  const update = <K extends keyof Filters>(key: K, value: Filters[K]) =>
+    setFilters((current) => ({ ...current, [key]: value }));
+  return (
+    <section
+      aria-label="Mahnfälle filtern"
+      className="overflow-hidden rounded-[22px] border border-[#ded8d0] bg-[#fffdf9] shadow-[0_16px_44px_rgba(20,16,12,0.05)]"
+    >
+      <div className="flex flex-col gap-3 border-b border-[#e6e0d8] p-4 lg:flex-row lg:items-end">
+        <label className="grid min-w-0 flex-1 gap-1.5 text-xs font-semibold text-stone-600">
+          <span>Suche</span>
+          <span className="relative block">
+            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-stone-400" />
+            <input
+              value={filters.query}
+              onChange={(event) => update("query", event.target.value)}
+              placeholder="Name, Firma, E-Mail, Telefon, Bestellung oder Rechnung"
+              className="h-10 w-full rounded-xl border border-stone-200 bg-white pl-10 pr-3 text-sm font-normal text-stone-800 outline-none placeholder:text-stone-400 focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/15"
+            />
+          </span>
+        </label>
+        <div className="flex items-center gap-2 text-sm text-stone-500">
+          <Filter className="h-4 w-4" />
+          <strong className="text-stone-900">{count}</strong> von {total} Fällen
+        </div>
+        <button
+          type="button"
+          onClick={() => setFilters(INITIAL_FILTERS)}
+          className="h-10 rounded-xl border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+        >
+          Filter löschen
+        </button>
+      </div>
+      <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+        <SelectField
+          label="Arbeitsstatus"
+          value={filters.state}
+          onChange={(value) => update("state", value as Filters["state"])}
+        >
+          <option value="all">Alle Status</option>
+          <option value="action_required">Aktion fällig</option>
+          <option value="reply_received">Antwort prüfen</option>
+          <option value="final_wait">Letzte Frist läuft</option>
+          <option value="court_review">Solvenz/Gericht prüfen</option>
+          <option value="data_issue">Daten prüfen</option>
+          <option value="scheduled">Termin geplant</option>
+          <option value="paused">Pausiert</option>
+          <option value="closed">Erledigt</option>
+        </SelectField>
+        <SelectField
+          label="Mahnstufe"
+          value={filters.stage}
+          onChange={(value) => update("stage", value)}
+        >
+          <option value="all">Alle Stufen</option>
+          {Array.from({ length: 7 }, (_, stage) => (
+            <option key={stage} value={stage}>
+              Stufe {stage}
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          label="Zahlung"
+          value={filters.payment}
+          onChange={(value) => update("payment", value as Filters["payment"])}
+        >
+          <option value="all">Alle Zahlungsstatus</option>
+          <option value="open">Forderung offen</option>
+          <option value="closed">Bezahlt / erledigt</option>
+        </SelectField>
+        <SelectField
+          label="Lieferung"
+          value={filters.fulfillment}
+          onChange={(value) =>
+            update("fulfillment", value as Filters["fulfillment"])
+          }
+        >
+          <option value="all">Alle Lieferstatus</option>
+          <option value="fulfilled">Erfüllt / geliefert</option>
+          <option value="unfulfilled">Nicht erfüllt</option>
+        </SelectField>
+        <SelectField
+          label="Überfälligkeit"
+          value={filters.overdue}
+          onChange={(value) => update("overdue", value as Filters["overdue"])}
+        >
+          <option value="all">Alle Zeiträume</option>
+          <option value="due">Jetzt fällig</option>
+          <option value="7">Mindestens 7 Tage</option>
+          <option value="14">Mindestens 14 Tage</option>
+          <option value="30">Mindestens 30 Tage</option>
+          <option value="60">Mindestens 60 Tage</option>
+          <option value="90">Mindestens 90 Tage</option>
+          <option value="180">Mindestens 180 Tage</option>
+        </SelectField>
+        <SelectField
+          label="Auftragsalter"
+          value={filters.orderAge}
+          onChange={(value) => update("orderAge", value as Filters["orderAge"])}
+        >
+          <option value="all">Jedes Auftragsalter</option>
+          <option value="30">Mindestens 30 Tage</option>
+          <option value="90">Mindestens 3 Monate</option>
+          <option value="180">Mindestens 6 Monate</option>
+          <option value="365">Mindestens 1 Jahr</option>
+        </SelectField>
+        <SelectField
+          label="Kontakt"
+          value={filters.contact}
+          onChange={(value) => update("contact", value as Filters["contact"])}
+        >
+          <option value="all">Alle Kontaktstatus</option>
+          <option value="replied">Kundenantwort vorhanden</option>
+          <option value="no_reply">Keine offene Antwort</option>
+          <option value="phone_present">Telefon vorhanden</option>
+          <option value="phone_missing">Telefon fehlt</option>
+        </SelectField>
+        <SelectField
+          label="E-Mail"
+          value={filters.email}
+          onChange={(value) => update("email", value as Filters["email"])}
+        >
+          <option value="all">Alle E-Mail-Status</option>
+          <option value="present">E-Mail vorhanden</option>
+          <option value="missing">E-Mail fehlt</option>
+        </SelectField>
+        <SelectField
+          label="Datenquelle"
+          value={filters.source}
+          onChange={(value) => update("source", value as Filters["source"])}
+        >
+          <option value="all">Alle Quellen</option>
+          <option value="t099">T099 aktuell</option>
+          <option value="legacy">Altbestand</option>
+          <option value="mixed">Gemischt</option>
+          <option value="open_order">Nur Shopify offen</option>
+        </SelectField>
+        <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-stone-600">
+          <span>Mindestbetrag</span>
+          <input
+            inputMode="decimal"
+            value={filters.minAmount}
+            onChange={(event) =>
+              update(
+                "minAmount",
+                event.target.value.replace(/[^\d,.]/g, "").slice(0, 12),
+              )
+            }
+            placeholder="0,00 EUR"
+            className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/15"
+          />
+        </label>
+        <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-stone-600">
+          <span>Höchstbetrag</span>
+          <input
+            inputMode="decimal"
+            value={filters.maxAmount}
+            onChange={(event) =>
+              update(
+                "maxAmount",
+                event.target.value.replace(/[^\d,.]/g, "").slice(0, 12),
+              )
+            }
+            placeholder="Unbegrenzt"
+            className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm font-normal outline-none focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/15"
+          />
+        </label>
+        <SelectField
+          label="Sortierung"
+          value={filters.sort}
+          onChange={(value) => update("sort", value as Filters["sort"])}
+        >
+          <option value="priority">Priorität</option>
+          <option value="overdue">Überfälligkeit</option>
+          <option value="amount">Betrag</option>
+          <option value="activity">Letzte Aktivität</option>
+          <option value="stage">Mahnstufe</option>
+        </SelectField>
+      </div>
+      <div className="flex flex-wrap gap-2 border-t border-[#e6e0d8] px-4 py-3">
+        {(
+          [
+            ["Aktion fällig", "action_required", Send],
+            ["Antwort prüfen", "reply_received", MessageSquareReply],
+            ["Letzte Frist", "final_wait", Clock3],
+            ["Solvenz/Gericht", "court_review", Gavel],
+            ["Pausiert", "paused", CirclePause],
+          ] as const
+        ).map(([label, state, Icon]) => (
+          <button
+            key={state}
+            type="button"
+            onClick={() =>
+              update("state", filters.state === state ? "all" : state)
+            }
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${filters.state === state ? "border-stone-950 bg-stone-950 text-white" : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"}`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CaseTable({
+  cases,
+  onOpen,
+  loadingKey,
+}: {
+  cases: DunningCaseSummary[];
+  onOpen: (entry: DunningCaseSummary) => void;
+  loadingKey: string | null;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[22px] border border-[#ded8d0] bg-white shadow-[0_16px_44px_rgba(20,16,12,0.05)]">
+      <div className="hidden overflow-x-auto lg:block">
+        <table className="w-full min-w-[1480px] border-collapse text-left">
+          <thead className="bg-[#f5f1ea] text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+            <tr>
+              <th className="px-4 py-3">Bestellung</th>
+              <th className="px-4 py-3">Kunde</th>
+              <th className="px-4 py-3">Offen</th>
+              <th className="px-4 py-3">Lieferung / Zahlung</th>
+              <th className="px-4 py-3">Mahnstufe</th>
+              <th className="px-4 py-3">Nächste Aktion</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">Aktion</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-100">
+            {cases.map((entry) => (
+              <tr
+                key={entry.key}
+                className="align-top transition hover:bg-[#fcfaf7]"
+              >
+                <td className="px-4 py-4">
+                  <button
+                    onClick={() => onOpen(entry)}
+                    className="font-semibold text-stone-950 underline-offset-4 hover:underline"
+                  >
+                    {entry.orderNumber}
+                  </button>
+                  <p className="mt-1 text-xs text-stone-500">
+                    {dateLabel(entry.orderCreatedAt)}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-stone-600">
+                    Rechnung {entry.easybillInvoiceNumber || "nicht zugeordnet"}
+                  </p>
+                </td>
+                <td className="max-w-[18rem] px-4 py-4">
+                  <p className="truncate text-sm font-semibold text-stone-850">
+                    {entry.company || entry.customerName || "Kunde unbekannt"}
+                  </p>
+                  {entry.company &&
+                  entry.customerName &&
+                  entry.customerName !== entry.company ? (
+                    <p className="truncate text-xs text-stone-500">
+                      {entry.customerName}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 truncate text-xs text-stone-500">
+                    {entry.email || "Keine E-Mail"}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 truncate text-xs text-stone-500">
+                    <Phone className="h-3 w-3 shrink-0" />
+                    {entry.phone || "Keine Telefonnummer"}
+                  </p>
+                </td>
+                <td className="px-4 py-4">
+                  <p className="whitespace-nowrap text-sm font-semibold text-stone-950">
+                    {money(entry.amountCents, entry.currency)}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    {relativeDue(entry)}
+                  </p>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-stone-700">
+                    <Truck className="h-3.5 w-3.5 text-stone-400" />
+                    {entry.fulfillmentStatus}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
+                    <WalletCards className="h-3.5 w-3.5" />
+                    {entry.financialStatus}
+                  </div>
+                </td>
+                <td className="px-4 py-4">
+                  <StageBadge entry={entry} />
+                </td>
+                <td className="px-4 py-4">
+                  <p className="max-w-[16rem] text-xs font-semibold leading-5 text-stone-800">
+                    {entry.nextActionLabel}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    Letzter Kontakt {dateLabel(entry.lastContactAt, true)}
+                  </p>
+                </td>
+                <td className="px-4 py-4">
+                  <StatusBadge entry={entry} />
+                  {entry.customerReplied ? (
+                    <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-amber-800">
+                      <MessageSquareReply className="h-3.5 w-3.5" /> Antwort
+                      vorhanden
+                    </p>
+                  ) : null}
+                  {entry.state === "data_issue" && entry.primaryBlocker ? (
+                    <p className="mt-2 max-w-[14rem] text-xs leading-4 text-orange-800">
+                      {entry.primaryBlocker}
+                    </p>
+                  ) : null}
+                </td>
+                <td className="px-4 py-4 text-right">
+                  <button
+                    onClick={() => onOpen(entry)}
+                    disabled={loadingKey === entry.key}
+                    className="inline-flex items-center gap-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-800 transition hover:border-stone-500 disabled:opacity-50"
+                  >
+                    {entry.legalReviewReady
+                      ? "Prüfung öffnen"
+                      : entry.nextStage
+                        ? "Nächste Stufe"
+                        : "Details"}
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="divide-y divide-stone-100 lg:hidden">
+        {cases.map((entry) => (
+          <article key={entry.key} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <button
+                  onClick={() => onOpen(entry)}
+                  className="text-left text-base font-semibold text-stone-950"
+                >
+                  {entry.orderNumber}
+                </button>
+                <p className="mt-1 text-sm text-stone-700">
+                  {entry.company || entry.customerName || "Kunde unbekannt"}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  {entry.email || "Keine E-Mail"}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  {entry.phone || "Keine Telefonnummer"}
+                </p>
+              </div>
+              <StatusBadge entry={entry} />
+            </div>
+            <div className="mt-3 rounded-xl border border-stone-200 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+                Nächste Aktion
+              </p>
+              <p className="mt-1 text-sm font-semibold text-stone-800">
+                {entry.nextActionLabel}
+              </p>
+              <p className="mt-1 text-xs text-stone-500">
+                Rechnung {entry.easybillInvoiceNumber || "nicht zugeordnet"}
+              </p>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-[#f8f5f0] p-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+                  Offen
+                </p>
+                <p className="mt-1 font-semibold text-stone-950">
+                  {money(entry.amountCents, entry.currency)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+                  Stufe
+                </p>
+                <p className="mt-1 text-sm font-semibold text-stone-800">
+                  {entry.currentStage}: {entry.currentStageLabel}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => onOpen(entry)}
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Fall öffnen
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </article>
+        ))}
+      </div>
+      {!cases.length ? (
+        <div className="p-10 text-center">
+          <CheckCircle2 className="mx-auto h-6 w-6 text-emerald-700" />
+          <p className="mt-3 text-sm font-semibold text-stone-800">
+            Keine Fälle für diese Filter
+          </p>
+          <p className="mt-1 text-xs text-stone-500">
+            Filter ändern oder zurücksetzen.
+          </p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function DetailDrawer({
+  detail,
+  preview,
+  loading,
+  actionBusy,
+  sendConfigured,
+  confirmation,
+  note,
+  error,
+  notice,
+  onClose,
+  onPreview,
+  onSend,
+  setConfirmation,
+  setNote,
+}: {
+  detail: DunningCaseDetail;
+  preview: DunningActionPreview | null;
+  loading: boolean;
+  actionBusy: boolean;
+  sendConfigured: boolean;
+  confirmation: string;
+  note: string;
+  error: string | null;
+  notice: string | null;
+  onClose: () => void;
+  onPreview: () => void;
+  onSend: () => void;
+  setConfirmation: (value: string) => void;
+  setNote: (value: string) => void;
+}) {
+  const entry = detail.case;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-stone-950/40 backdrop-blur-sm"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dunning-detail-title"
+        className="h-full w-full max-w-3xl overflow-y-auto bg-[#f7f4ee] shadow-2xl"
+      >
+        <header className="sticky top-0 z-10 border-b border-stone-200 bg-[#f7f4ee]/95 px-5 py-4 backdrop-blur md:px-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold text-[#b91c73]">Mahnfall</p>
+              <h2
+                id="dunning-detail-title"
+                className="mt-1 text-2xl font-semibold text-stone-950"
+              >
+                {entry.orderNumber}
+              </h2>
+              <p className="mt-1 text-sm text-stone-500">
+                {entry.company || entry.customerName || "Kunde unbekannt"}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-stone-300 bg-white text-stone-700"
+              aria-label="Fall schließen"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </header>
+        <div className="space-y-5 p-5 md:p-6">
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-stone-200 bg-white p-4">
+              <p className="text-xs text-stone-500">Offener Betrag</p>
+              <p className="mt-2 text-xl font-semibold">
+                {money(entry.amountCents, entry.currency)}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-stone-200 bg-white p-4">
+              <p className="text-xs text-stone-500">Aktuelle Stufe</p>
+              <p className="mt-2 text-sm font-semibold">
+                {entry.currentStage}: {entry.currentStageLabel}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-stone-200 bg-white p-4">
+              <p className="text-xs text-stone-500">Fälligkeit</p>
+              <p className="mt-2 text-sm font-semibold">
+                {entry.dueDate ? dateLabel(entry.dueDate) : "Nicht belegt"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-stone-200 bg-white p-4">
+              <p className="text-xs text-stone-500">Arbeitsstatus</p>
+              <div className="mt-2">
+                <StatusBadge entry={entry} />
+              </div>
+            </div>
+          </section>
+          <section className="grid gap-3 rounded-[22px] border border-stone-200 bg-white p-5 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                Kunde und Kontakt
+              </p>
+              <p className="mt-2 text-sm font-semibold text-stone-950">
+                {entry.company || "Keine Firma"}
+              </p>
+              <p className="mt-1 text-sm text-stone-600">
+                {entry.customerName || "Keine Kontaktperson"}
+              </p>
+              <p className="mt-2 break-all text-sm text-stone-600">
+                {entry.email || "Keine E-Mail"}
+              </p>
+              <p className="mt-1 text-sm text-stone-600">
+                {entry.phone || "Keine Telefonnummer"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                Forderung und Fristen
+              </p>
+              <p className="mt-2 flex items-center gap-2 text-sm text-stone-700">
+                <ReceiptText className="h-4 w-4 text-stone-400" />
+                {entry.easybillInvoiceNumber || "Keine Rechnungsnummer"}
+              </p>
+              <p className="mt-2 text-sm text-stone-700">
+                Lieferung: {entry.fulfillmentStatus} · Zahlung:{" "}
+                {entry.financialStatus}
+              </p>
+              <p className="mt-2 text-sm font-semibold text-stone-900">
+                {entry.nextActionLabel}
+              </p>
+              <p className="mt-1 text-xs text-stone-500">
+                Letzter Kontakt {dateLabel(entry.lastContactAt, true)}
+              </p>
+            </div>
+          </section>
+          <section className="rounded-[22px] border border-stone-200 bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-stone-950">
+                  Nächste Aktion
+                </h3>
+                <p className="mt-1 text-sm text-stone-500">
+                  Vor jedem Versand werden Shopify, Easybill, Sperren, Antworten
+                  und der Einmal-Schlüssel erneut geprüft.
+                </p>
+              </div>
+              {entry.nextStage && sendConfigured ? (
+                <button
+                  onClick={onPreview}
+                  disabled={loading || actionBusy}
+                  className="inline-flex items-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
+                >
+                  <ShieldAlert className="h-4 w-4" />
+                  {loading
+                    ? "Prüfung läuft"
+                    : `Stufe ${entry.nextStage} prüfen`}
+                </button>
+              ) : null}
+            </div>
+            <div
+              className={`mt-4 rounded-xl border p-4 text-sm ${entry.legalReviewReady ? "border-violet-200 bg-violet-50 text-violet-900" : entry.finalReminderWaiting ? "border-indigo-200 bg-indigo-50 text-indigo-900" : "border-stone-200 bg-stone-50 text-stone-700"}`}
+            >
+              <p className="font-semibold">{entry.nextActionLabel}</p>
+              {entry.legalReviewReady ? (
+                <p className="mt-1">
+                  Die dritte Mahnung liegt mindestens sieben Tage zurück.
+                  Zahlung, Kundenantwort, Solvenz und Gerichtsweg müssen jetzt
+                  manuell geprüft werden.
+                </p>
+              ) : entry.finalReminderWaiting ? (
+                <p className="mt-1">
+                  Die letzte Frist läuft bis{" "}
+                  {dateLabel(entry.legalReviewDueAt, true)}. Bis dahin ist noch
+                  keine gerichtliche Prüfung fällig.
+                </p>
+              ) : entry.nextStage ? (
+                <p className="mt-1">
+                  Der bestehende TICKET-099-Sender übernimmt die nächste Stufe
+                  automatisch zum belegten Termin. Ein manueller Sonderversand
+                  ist nur bei gesonderter Freischaltung möglich.
+                </p>
+              ) : (
+                <p className="mt-1">
+                  Für diesen Fall ist keine weitere automatische E-Mail-Stufe
+                  bestimmbar. Sperren und Datenhinweise in der Fallakte prüfen.
+                </p>
+              )}
+            </div>
+            {preview ? (
+              <div className="mt-4 space-y-4 rounded-2xl border border-stone-200 bg-[#faf8f4] p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-stone-500">Nächster Schritt</p>
+                    <p className="mt-1 font-semibold text-stone-900">
+                      Stufe {preview.nextStage}: {preview.nextStageLabel}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-stone-500">Empfänger</p>
+                    <p className="mt-1 break-all font-semibold text-stone-900">
+                      {preview.recipient}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-stone-500">Geplanter Termin</p>
+                    <p className="mt-1 font-semibold text-stone-900">
+                      {dateLabel(preview.scheduledAt, true)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-stone-500">Anlage</p>
+                    <p className="mt-1 font-semibold text-stone-900">
+                      {preview.attachmentRequired
+                        ? "Easybill-Rechnung erforderlich"
+                        : "Keine Anlage"}
+                    </p>
+                  </div>
+                </div>
+                {preview.blockers.length ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-sm font-semibold text-amber-900">
+                      Versand ist blockiert
+                    </p>
+                    <ul className="mt-2 grid gap-1 text-sm text-amber-900">
+                      {preview.blockers.map((blocker) => (
+                        <li key={blocker}>- {blocker}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+                    Vorprüfung bestanden. Der Versand-Workflow prüft die
+                    Live-Daten unmittelbar vor der E-Mail noch einmal.
+                  </div>
+                )}
+                {preview.allowed ? (
+                  <div className="grid gap-3">
+                    <label className="grid gap-1.5 text-sm font-semibold text-stone-700">
+                      <span>Optionale interne Notiz</span>
+                      <textarea
+                        value={note}
+                        onChange={(event) => setNote(event.target.value)}
+                        maxLength={500}
+                        rows={2}
+                        className="rounded-xl border border-stone-300 bg-white px-3 py-2 font-normal outline-none focus:border-[#fa31a2]"
+                        placeholder="Warum wird diese Stufe jetzt manuell angestoßen?"
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-sm font-semibold text-stone-700">
+                      <span>Zur Bestätigung exakt eingeben</span>
+                      <code className="w-fit rounded-lg bg-stone-950 px-2 py-1 text-xs text-white">
+                        {preview.confirmationPhrase}
+                      </code>
+                      <input
+                        value={confirmation}
+                        onChange={(event) =>
+                          setConfirmation(event.target.value)
+                        }
+                        className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal outline-none focus:border-[#fa31a2]"
+                        autoComplete="off"
+                      />
+                    </label>
+                    <button
+                      onClick={onSend}
+                      disabled={
+                        actionBusy ||
+                        confirmation !== preview.confirmationPhrase ||
+                        !sendConfigured
+                      }
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-rose-700 px-4 text-sm font-semibold text-white transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Send className="h-4 w-4" />
+                      {actionBusy
+                        ? "Versand wird geprüft"
+                        : `Stufe ${preview.nextStage} jetzt senden`}
+                    </button>
+                    {!sendConfigured ? (
+                      <p className="text-xs leading-5 text-amber-800">
+                        Der geschützte manuelle Versandkanal ist in dieser
+                        Umgebung noch nicht freigeschaltet. Vorschau und alle
+                        Prüfungen funktionieren bereits; ohne Freigabe kann
+                        keine Kundenmail ausgelöst werden.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {error ? (
+              <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                {error}
+              </p>
+            ) : null}
+            {notice ? (
+              <p
+                aria-live="polite"
+                className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"
+              >
+                {notice}
+              </p>
+            ) : null}
+          </section>
+          <section className="rounded-[22px] border border-stone-200 bg-white p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-stone-950">
+                  Fallakte
+                </h3>
+                <p className="mt-1 text-sm text-stone-500">
+                  Chronologisch aus Shopify, Easybill, Outlook und
+                  Mahnnachweisen.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {entry.shopifyUrl ? (
+                  <a
+                    href={entry.shopifyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold"
+                  >
+                    Shopify
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : null}
+                {entry.easybillUrl ? (
+                  <a
+                    href={entry.easybillUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold"
+                  >
+                    Easybill
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : null}
+              </div>
+            </div>
+            <ol className="mt-5 space-y-0">
+              {detail.timeline.map((item, index) => (
+                <li
+                  key={item.id}
+                  className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-3"
+                >
+                  <div className="flex flex-col items-center">
+                    <span
+                      className={`mt-1 h-3 w-3 rounded-full ${item.direction === "inbound" ? "bg-amber-500" : item.direction === "outbound" ? "bg-[#fa31a2]" : "bg-stone-400"}`}
+                    />
+                    {index < detail.timeline.length - 1 ? (
+                      <span className="min-h-14 w-px flex-1 bg-stone-200" />
+                    ) : null}
+                  </div>
+                  <div className="pb-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-stone-900">
+                        {item.title}
+                      </p>
+                      <time className="text-xs text-stone-500">
+                        {dateLabel(item.occurredAt, true)}
+                      </time>
+                    </div>
+                    {item.detail ? (
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-stone-600">
+                        {item.detail}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-stone-400">
+                      {item.source}
+                      {item.stage ? ` - Stufe ${item.stage}` : ""}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            {!detail.timeline.length ? (
+              <p className="mt-4 text-sm text-stone-500">
+                Noch keine Verlaufseinträge.
+              </p>
+            ) : null}
+          </section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function DunningOpsClient({
+  initialHasSession,
+  opsEnabled,
+  localMode,
+}: {
+  initialHasSession: boolean;
+  opsEnabled: boolean;
+  localMode: boolean;
+}) {
+  const [hasSession, setHasSession] = useState(initialHasSession);
+  const [password, setPassword] = useState("");
+  const [dashboard, setDashboard] = useState<DunningDashboard | null>(null);
+  const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<DunningCaseDetail | null>(null);
+  const [detailLoadingKey, setDetailLoadingKey] = useState<string | null>(null);
+  const [preview, setPreview] = useState<DunningActionPreview | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (hasSession || localMode) void loadDashboard();
+  }, [hasSession, localMode]);
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search).get("q")?.trim();
+    if (query) setFilters((current) => ({ ...current, query }));
+  }, []);
+  const visibleCases = useMemo(
+    () => applyFilters(dashboard?.cases || [], filters),
+    [dashboard, filters],
+  );
+
+  async function login() {
+    setError(null);
+    const response = await fetch("/api/ops/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: password }),
+    });
+    if (!response.ok) return setError("Ops-Login fehlgeschlagen.");
+    setHasSession(true);
+    setPassword("");
+  }
+
+  async function loadDashboard() {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/ops/dunning", { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok)
+        throw new Error(
+          payload.error || "Mahnwesen konnte nicht geladen werden.",
+        );
+      setDashboard(payload.dashboard);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error ? loadError.message : "Unbekannter Fehler.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openCase(entry: DunningCaseSummary) {
+    setDetailLoadingKey(entry.key);
+    setActionError(null);
+    setNotice(null);
+    setPreview(null);
+    setConfirmation("");
+    setNote("");
+    try {
+      const response = await fetch(
+        `/api/ops/dunning/${encodeURIComponent(entry.key)}`,
+        { cache: "no-store" },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload.ok)
+        throw new Error(
+          payload.error || "Fallakte konnte nicht geladen werden.",
+        );
+      setSelected(payload.detail);
+    } catch (detailError) {
+      setError(
+        detailError instanceof Error
+          ? detailError.message
+          : "Fallakte konnte nicht geladen werden.",
+      );
+    } finally {
+      setDetailLoadingKey(null);
+    }
+  }
+
+  async function previewNextStage() {
+    if (!selected) return;
+    setActionBusy(true);
+    setActionError(null);
+    setNotice(null);
+    setConfirmation("");
+    try {
+      const response = await fetch(
+        `/api/ops/dunning/${encodeURIComponent(selected.case.key)}/actions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "preview_next_stage" }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload.ok)
+        throw new Error(
+          payload.blockers?.join("; ") ||
+            payload.error ||
+            "Nächste Stufe konnte nicht geprüft werden.",
+        );
+      setPreview(payload.preview);
+    } catch (previewError) {
+      setActionError(
+        previewError instanceof Error
+          ? previewError.message
+          : "Vorprüfung fehlgeschlagen.",
+      );
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function sendNextStage() {
+    if (!selected || !preview) return;
+    setActionBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const idempotencyKey = `ops-dunning:${selected.case.shopifyOrderId}:S${preview.nextStage}:${crypto.randomUUID()}`;
+      const response = await fetch(
+        `/api/ops/dunning/${encodeURIComponent(selected.case.key)}/actions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "send_next_stage",
+            confirmation,
+            expectedStage: preview.nextStage,
+            expectedSnapshotHash: preview.snapshotHash,
+            idempotencyKey,
+            note,
+          }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload.ok)
+        throw new Error(
+          payload.error || "Versand konnte nicht gestartet werden.",
+        );
+      setNotice(
+        "Versandprüfung wurde angenommen. Die Live-Gates und der Versandnachweis laufen jetzt im Mahnworkflow.",
+      );
+      setPreview(null);
+      setConfirmation("");
+      setNote("");
+      await Promise.all([loadDashboard(), openCase(selected.case)]);
+    } catch (sendError) {
+      setActionError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Versand fehlgeschlagen.",
+      );
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  if (!opsEnabled)
+    return (
+      <main className="min-h-screen bg-stone-100 p-8 text-stone-700">
+        Ops Portal ist nicht konfiguriert.
+      </main>
+    );
+  if (!hasSession && !localMode)
+    return (
+      <OpsLoginCard
+        eyebrow="Mahnwesen"
+        title="Forderungsmanagement anmelden"
+        description="Melde dich mit deinem internen Zugang an. Mahnaktionen werden serverseitig geprüft und protokolliert."
+        activeApp="dunning"
+        showOperatorName={false}
+        password={password}
+        error={error}
+        buttonLabel="Einloggen"
+        onPasswordChange={setPassword}
+        onSubmit={login}
+      />
+    );
+
+  return (
+    <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
+      <div className={`${opsPageContainerClass} space-y-6`}>
+        <OpsPageHeader active="dunning" label="Forderungsmanagement" />
+        <OpsPageIntro
+          eyebrow="Mahnwesen"
+          title="Offene Forderungen vom ersten Hinweis bis zum Gericht"
+          description="Shopify-Saldo, Easybill-Fälligkeit, E-Mail-Verlauf und Versandnachweise werden je Bestellung in einer Fallakte zusammengeführt."
+        >
+          <button
+            onClick={() => void loadDashboard()}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-stone-950 disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Aktualisieren
+          </button>
+        </OpsPageIntro>
+        {dashboard ? (
+          <>
+            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+              <OpsStatCard
+                label="Offene Fälle"
+                value={dashboard.stats.open}
+                icon={<WalletCards className="h-5 w-5" />}
+                detail={money(dashboard.stats.totalOutstandingCents)}
+              />
+              <OpsStatCard
+                label="Versand fällig"
+                value={dashboard.stats.actionRequired}
+                tone={dashboard.stats.actionRequired ? "danger" : "success"}
+                icon={<Send className="h-5 w-5" />}
+              />
+              <OpsStatCard
+                label="Antworten"
+                value={dashboard.stats.replies}
+                tone={dashboard.stats.replies ? "warning" : "neutral"}
+                icon={<MessageSquareReply className="h-5 w-5" />}
+              />
+              <OpsStatCard
+                label="Letzte Frist"
+                value={dashboard.stats.finalReminderWaiting}
+                tone={dashboard.stats.finalReminderWaiting ? "info" : "neutral"}
+                icon={<Clock3 className="h-5 w-5" />}
+              />
+              <OpsStatCard
+                label="Solvenz/Gericht"
+                value={dashboard.stats.courtReview}
+                tone={dashboard.stats.courtReview ? "info" : "neutral"}
+                icon={<Gavel className="h-5 w-5" />}
+              />
+              <OpsStatCard
+                label="Pausiert"
+                value={dashboard.stats.paused}
+                tone="neutral"
+                icon={<CirclePause className="h-5 w-5" />}
+              />
+              <OpsStatCard
+                label="Daten prüfen"
+                value={dashboard.stats.dataIssues}
+                tone={dashboard.stats.dataIssues ? "warning" : "success"}
+                icon={<FileWarning className="h-5 w-5" />}
+              />
+            </section>
+            <section
+              className={`flex flex-col gap-3 rounded-[18px] border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${dashboard.sourceHealth.intakeFresh ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}
+            >
+              <div className="flex items-start gap-2">
+                {dashboard.sourceHealth.intakeFresh ? (
+                  <MailCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                )}
+                <div>
+                  <p className="font-semibold">
+                    {dashboard.sourceHealth.intakeFresh
+                      ? "Live-Daten vollständig und frisch"
+                      : "Versand bleibt wegen nicht frischer Live-Daten blockiert"}
+                  </p>
+                  <p className="mt-0.5 text-xs opacity-75">
+                    Letzter T099-Stand{" "}
+                    {dateLabel(dashboard.sourceHealth.intakeObservedAt, true)} -{" "}
+                    {dashboard.sourceHealth.candidateCount} Live-Kandidaten -
+                    Altbestand zuletzt{" "}
+                    {dateLabel(dashboard.sourceHealth.legacyUpdatedAt)}
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-semibold">
+                Manueller Sonderversand:{" "}
+                {dashboard.sendConfigured ? "freigeschaltet" : "gesperrt"}
+              </span>
+            </section>
+            <FilterPanel
+              filters={filters}
+              setFilters={setFilters}
+              count={visibleCases.length}
+              total={dashboard.cases.length}
+            />
+            <CaseTable
+              cases={visibleCases}
+              onOpen={(entry) => void openCase(entry)}
+              loadingKey={detailLoadingKey}
+            />
+          </>
+        ) : null}
+        {loading && !dashboard ? (
+          <section className="grid gap-3">
+            <div className="h-24 animate-pulse rounded-[22px] bg-stone-200" />
+            <div className="h-96 animate-pulse rounded-[22px] bg-stone-200" />
+          </section>
+        ) : null}
+        {error ? (
+          <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+            {error}
+          </p>
+        ) : null}
+        {selected ? (
+          <DetailDrawer
+            detail={selected}
+            preview={preview}
+            loading={actionBusy}
+            actionBusy={actionBusy}
+            sendConfigured={Boolean(dashboard?.sendConfigured)}
+            confirmation={confirmation}
+            note={note}
+            error={actionError}
+            notice={notice}
+            onClose={() => {
+              setSelected(null);
+              setPreview(null);
+            }}
+            onPreview={() => void previewNextStage()}
+            onSend={() => void sendNextStage()}
+            setConfirmation={setConfirmation}
+            setNote={setNote}
+          />
+        ) : null}
+      </div>
+    </main>
+  );
+}

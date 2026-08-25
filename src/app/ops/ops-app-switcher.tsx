@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, BookOpenCheck, BrainCircuit, Building2, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, ReceiptText, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { BadgeEuro, BarChart3, BookOpenCheck, BrainCircuit, Building2, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, ReceiptText, Truck, type LucideIcon, UsersRound } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -13,6 +13,7 @@ export type OpsAppKey =
   | "design"
   | "offers"
   | "billing"
+  | "dunning"
   | "supplierSales"
   | "euSupplierQuotes"
   | "shipping"
@@ -108,6 +109,13 @@ const OPS_APPS: Array<{
     helper: "Pro-forma & Belege",
     href: "/ops/rechnungen",
     Icon: ReceiptText,
+  },
+  {
+    key: "dunning",
+    label: "Mahnwesen",
+    helper: "Forderungen & Mahnstufen",
+    href: "/ops/mahnwesen",
+    Icon: BadgeEuro,
   },
   {
     key: "supplierSales",
