@@ -6,7 +6,7 @@ Supabase remains the source of truth. Trello is only a projection after a suppli
 
 ## Shopify Supplier Tag Sync
 
-The Sales-Vergabe app can regularly reconcile active, not-yet-assigned rows against Shopify Admin tags. This catches orders that were tagged in Shopify outside the Ops UI, especially:
+The Sales-Vergabe app can regularly reconcile active, not-yet-assigned rows against Shopify Admin tags and cancellation state. This catches orders that were tagged or cancelled in Shopify outside the Ops UI, especially:
 
 ```text
 Quentin (noch bezahlen)
@@ -49,7 +49,7 @@ SUPPLIER_SALES_AGENT_API_TOKEN
 NEONTRIP_OFFERS_INTERNAL_API_KEY
 ```
 
-The Ops app keeps the batch bounded to max. 100 active rows. Replays are safe: existing Shopify tags update the Supabase row to assigned, and already assigned rows are skipped by the active-row query.
+The Ops app keeps the batch bounded to max. 100 active rows. Replays are safe: existing Shopify tags update the Supabase row to assigned, Shopify `cancelledAt` updates it to `canceled`, and rows already outside the active states are skipped by the active-row query.
 
 ## Supplier Trello
 
@@ -141,7 +141,7 @@ The workflow rejects invalid payloads and missing payment links.
 4. Assign one safe test sale to Quentin. Expected: a Trello card appears in the configured Quentin list.
 5. Trigger one payment reminder on a safe test sale with a real payment link. Expected: one Outlook email is sent and `supplier_payment_reminders.status` becomes `sent`.
 6. Trigger the same reminder again with the same idempotency key. Expected: no duplicate email.
-7. Manually execute the Shopify Supplier Tag Sync workflow once. Expected: HTTP 200 with `shopifySupplierTagSync.status` as `synced` or `skipped`. If an active Shopify order already has `Quentin (noch bezahlen)`, it should disappear from the active Sales-Vergabe view after reload.
+7. Manually execute the Shopify Supplier Tag Sync workflow once. Expected: HTTP 200 with `shopifySupplierTagSync.status` as `synced` or `skipped`. If an active Shopify order already has `Quentin (noch bezahlen)` or has been cancelled, it should disappear from the active Sales-Vergabe view after reload.
 
 ## Rollback
 

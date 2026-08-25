@@ -82,7 +82,7 @@
 
 - `[verifiziert]` Default-Tags: `Quentin (noch bezahlen)` und `Saeid (schon bezahlt)`. Der Inbound-Abgleich erkennt zusätzlich den historischen Alias `Quentin (schon bezahlt)`.
 - `[verifiziert]` Tag-Vergleiche trimmen und kleinschreiben, normalisieren aber keine internen Leerzeichen oder Satzzeichen. Exakte Schreibweise bleibt relevant.
-- `[verifiziert]` Bereits extern getaggte oder als `fulfilled`, `shipped`, `delivered`, `complete` oder `completed` erkannte Rows werden nach Reconcile nicht im aktiven Board gezeigt.
+- `[verifiziert]` Bereits extern getaggte, über Shopify `cancelledAt` stornierte oder als `fulfilled`, `shipped`, `delivered`, `complete` oder `completed` erkannte Rows werden nach Reconcile nicht im aktiven Board gezeigt.
 - `[verifiziert]` Wenn eine Shopify-Order bekannt wird, kann der Titel aller zum `request_id` gehörenden Quell-Trello-Karten idempotent mit `#ORDER | ` vorangestellt beziehungsweise aktualisiert werden.
 - `[verifiziert]` Die Erstellung einer Supplier-Trello-Karte ist standardmäßig deaktiviert und benötigt zusätzlich `SUPPLIER_TRELLO_PROJECTION_ENABLED=true` sowie Zugang und Listen-ID.
 

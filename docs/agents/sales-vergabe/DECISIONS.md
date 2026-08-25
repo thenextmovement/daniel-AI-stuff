@@ -15,7 +15,7 @@
 | Eine tatsächlich angeforderte Änderung ist blockierend. | `[verifiziert]` | Die Änderung muss quittiert werden, bevor die API eine Vergabe akzeptiert. |
 | Unbezahlte Vergabe erfordert `manual_approved_unpaid`. | `[verifiziert]` | `wait_for_payment` blockiert; die Freigabe muss bestätigt und protokolliert werden. |
 | Standard-Supplier-Tags sind exakt festgelegt. | `[verifiziert]` | Quentin: `Quentin (noch bezahlen)`; Saeid: `Saeid (schon bezahlt)`. |
-| Bereits extern vergebene/abgeschlossene Sales verschwinden nach Shopify-Reconcile aus `active`. | `[verifiziert]` | Der Shopify-Tag-/Fulfillment-Abgleich muss regelmäßig und beobachtbar laufen. |
+| Bereits extern vergebene, abgeschlossene oder in Shopify stornierte Sales verschwinden nach Shopify-Reconcile aus `active`. | `[verifiziert]` | Der Shopify-Tag-/Fulfillment-/Storno-Abgleich muss regelmäßig und beobachtbar laufen. |
 | Kundenkommunikation geschieht nie ungeprüft aus einem Poller. | `[verifiziert]` | Erinnerung und AB werden explizit ausgelöst, validiert und idempotent reserviert. |
 | Automatische private Zahlungserinnerung nach fünf Minuten ist nicht beschlossen/implementiert. | `[verifiziert]` | Eine solche Funktion braucht eigene fachliche Freigabe, Opt-out, Timing- und Datenschutzregeln. |
 | Supplier-Trello-Projektion ist opt-in. | `[verifiziert]` | Sie bleibt ohne `SUPPLIER_TRELLO_PROJECTION_ENABLED=true` aus. |

@@ -999,6 +999,18 @@ function shopifyFulfillmentStatusFromPayload(payload: JsonRecord) {
   );
 }
 
+function shopifyCancellationFromPayload(payload: JsonRecord) {
+  const order = jsonRecord(payload.order);
+  return {
+    cancelledAt:
+      recordString(payload, ["cancelled_at", "cancelledAt"], 80) ||
+      recordString(order, ["cancelled_at", "cancelledAt"], 80),
+    cancelReason:
+      recordString(payload, ["cancel_reason", "cancelReason"], 120) ||
+      recordString(order, ["cancel_reason", "cancelReason"], 120),
+  };
+}
+
 function isCompletedShopifyFulfillmentStatus(value: unknown) {
   const status = normalizedTag(value);
   return [
@@ -1522,6 +1534,8 @@ function parseShopifyOrderPayload(payload: JsonRecord): SupplierSalePayloadParse
         payment_link: paymentLinkFromPayload(source),
         admin_graphql_api_id: shopifyGraphqlId,
         fulfillment_status: shopifyFulfillmentStatusFromPayload(source) || null,
+        shopify_cancelled_at: shopifyCancellationFromPayload(source).cancelledAt,
+        shopify_cancel_reason: shopifyCancellationFromPayload(source).cancelReason,
         idempotency_key: references.idempotencyKey,
       },
       idempotencyKey: recordString(payload, ["idempotencyKey", "idempotency_key"], 260) || recordString(source, ["idempotencyKey", "idempotency_key"], 260) || references.idempotencyKey,
@@ -3174,21 +3188,39 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
   const recommendation = deriveSupplierRecommendation(lineItems);
   const source = nullableText(input.source, 80) || "shopify";
   const completedOfferSource = source === "neontrip-offers" && recordString(input.metadata || {}, ["source_event"], 80) === "offer.completed";
+  const rawShopify = Object.keys(input.rawShopify || {}).length ? input.rawShopify || {} : existing?.raw_shopify || {};
+  const incomingCancellation = shopifyCancellationFromPayload(rawShopify);
+  const existingCancellation = shopifyCancellationFromPayload(existing?.raw_shopify || {});
+  const shopifyCancelledAt =
+    incomingCancellation.cancelledAt ||
+    nullableText(input.metadata?.shopify_cancelled_at, 80) ||
+    nullableText(existing?.metadata?.shopify_cancelled_at, 80) ||
+    existingCancellation.cancelledAt;
+  const shopifyCancelReason =
+    incomingCancellation.cancelReason ||
+    nullableText(input.metadata?.shopify_cancel_reason, 120) ||
+    nullableText(existing?.metadata?.shopify_cancel_reason, 120) ||
+    existingCancellation.cancelReason;
+  const shopifyCanceled = Boolean(shopifyCancelledAt || shopifyCancelReason);
   const paymentStatus = normalizeShopifyPaymentStatus(input.shopifyPaymentStatus);
-  const paymentDecision = derivePaymentDecisionStatus(paymentStatus, existing?.payment_decision_status);
+  const paymentDecision = shopifyCanceled
+    ? "canceled"
+    : derivePaymentDecisionStatus(paymentStatus, existing?.payment_decision_status);
   const taggedSupplier = assignedSupplierFromShopifyTags(input);
   const assignedSupplier = existing?.assigned_supplier || taggedSupplier || null;
   const detectedTagValue = taggedSupplier ? supplierTagValue(taggedSupplier) : null;
   const existingTagStatus = existing?.shopify_tag_sync_status;
-  const fulfillmentCompleted = isCompletedShopifyFulfillmentStatus(shopifyFulfillmentStatusFromPayload(input.rawShopify || {}));
-  const assignmentStatus = fulfillmentCompleted && source === "shopify"
-    ? "completed"
-    : deriveAssignmentStatus({
-    paymentDecisionStatus: paymentDecision,
-    assignedSupplier,
-    currentStatus: existing?.assignment_status,
-    completedOfferSource,
-  });
+  const fulfillmentCompleted = isCompletedShopifyFulfillmentStatus(shopifyFulfillmentStatusFromPayload(rawShopify));
+  const assignmentStatus = shopifyCanceled
+    ? "canceled"
+    : fulfillmentCompleted && source === "shopify"
+      ? "completed"
+      : deriveAssignmentStatus({
+        paymentDecisionStatus: paymentDecision,
+        assignedSupplier,
+        currentStatus: existing?.assignment_status,
+        completedOfferSource,
+      });
 
   return {
     sale_key: cleanText(input.saleKey, 260),
@@ -3230,13 +3262,15 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
     shopify_tag_error: detectedTagValue ? null : existing?.shopify_tag_error || null,
     product_summary: nullableText(input.productSummary, 600) || lineItems.map((item) => cleanText(item.title, 120)).filter(Boolean).slice(0, 3).join(", ") || existing?.product_summary || null,
     primary_image_url: nullableText(input.primaryImageUrl, 1000) || lineItems.map((item) => nullableText(item.imageUrl, 1000)).find(Boolean) || existing?.primary_image_url || null,
-    raw_shopify: Object.keys(input.rawShopify || {}).length ? input.rawShopify : existing?.raw_shopify || {},
+    raw_shopify: rawShopify,
     offer_snapshot: Object.keys(input.offerSnapshot || {}).length ? input.offerSnapshot : existing?.offer_snapshot || {},
     metadata: {
       ...(existing?.metadata || {}),
       ...(input.metadata || {}),
       supplier_rule_version: SUPPLIER_RULE_VERSION,
-      fulfillment_status: shopifyFulfillmentStatusFromPayload(input.rawShopify || {}) || nullableText(input.metadata?.fulfillment_status, 120) || nullableText(existing?.metadata?.fulfillment_status, 120) || null,
+      fulfillment_status: shopifyFulfillmentStatusFromPayload(rawShopify) || nullableText(input.metadata?.fulfillment_status, 120) || nullableText(existing?.metadata?.fulfillment_status, 120) || null,
+      shopify_cancelled_at: shopifyCancelledAt || null,
+      shopify_cancel_reason: shopifyCancelReason || null,
     },
   };
 }
@@ -3597,6 +3631,8 @@ function shopifyOrderPayloadFromGraphql(order: JsonRecord, domain: string) {
     name: recordString(order, ["name"], 120),
     admin_url: numericId ? `https://${domain}/admin/orders/${numericId}` : null,
     order_status_url: recordString(order, ["statusPageUrl"], 1000),
+    cancelled_at: recordString(order, ["cancelledAt"], 80),
+    cancel_reason: recordString(order, ["cancelReason"], 120),
     financial_status: recordString(order, ["displayFinancialStatus"], 80)?.toLowerCase(),
     fulfillment_status: recordString(order, ["displayFulfillmentStatus"], 120)?.toLowerCase(),
     tags: Array.isArray(order.tags) ? order.tags.map((tag) => cleanText(tag, 120)).filter(Boolean) : [],
@@ -3800,6 +3836,8 @@ async function syncRecentShopifyOrdersFromAdmin(
                   statusPageUrl
                   createdAt
                   processedAt
+                  cancelledAt
+                  cancelReason
                   displayFinancialStatus
                   displayFulfillmentStatus
                   customAttributes { key value }
@@ -3937,6 +3975,8 @@ async function fetchShopifyOrderByGid(config: NonNullable<ReturnType<typeof shop
               statusPageUrl
               createdAt
               processedAt
+              cancelledAt
+              cancelReason
               displayFinancialStatus
               displayFulfillmentStatus
               customAttributes { key value }

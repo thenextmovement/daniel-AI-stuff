@@ -41,6 +41,7 @@ import {
   supplierSaleTrelloConfirmed,
   supplierSaleVisibleInActiveOverview,
   syncCompletedOffersFromOffersApp,
+  syncSupplierSalesShopifyTags,
   uploadSupplierSaleApprovedDesign,
   upsertSupplierSale,
   type SupplierSaleItemRow,
@@ -4056,6 +4057,110 @@ test("supplier sales sync_shopify_supplier_tags accepts automation bearer access
   assert.equal(activeRowsLookupCount, 1);
   assert.equal(shopifyNodeLookupCount, 1);
   assert.equal(salePatchCount, 1);
+});
+
+test("Shopify tag sync removes a cancelled order and offer recovery keeps it removed", async () => {
+  const cancelledAt = "2026-08-25T08:15:00Z";
+  let salePatchCount = 0;
+  let currentRow = saleRow({
+    id: "sale-route-cancelled-order",
+    sale_key: "shopify:order:987654779",
+    source: "shopify",
+    shopify_order_id: "987654779",
+    shopify_order_name: "#1279",
+    assigned_supplier: null,
+    assignment_status: "ready_to_assign",
+    payment_decision_status: "pending",
+    shopify_payment_status: "pending",
+    shopify_tag_value: null,
+    shopify_tag_sync_status: "not_started",
+    trello_card_id: null,
+    request_id: null,
+    raw_shopify: { tags: [] },
+  });
+
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      const body = JSON.parse(String(init?.body || "{}"));
+      assert.match(String(body.query || ""), /\bcancelledAt\b/);
+      assert.match(String(body.query || ""), /\bcancelReason\b/);
+      assert.equal(body.variables.id, "gid://shopify/Order/987654779");
+      return Response.json({
+        data: {
+          node: {
+            id: "gid://shopify/Order/987654779",
+            name: "#1279",
+            cancelledAt,
+            cancelReason: "CUSTOMER",
+            displayFinancialStatus: "PENDING",
+            lineItems: {
+              nodes: [{
+                id: "gid://shopify/LineItem/9",
+                title: "LED Neon",
+                quantity: 1,
+              }],
+            },
+          },
+        },
+      });
+    }
+
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
+      if (url.searchParams.get("assignment_status") === "eq.assigned") return Response.json([]);
+      if (
+        url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)" &&
+        url.searchParams.get("shopify_order_id") === "not.is.null"
+      ) return Response.json([currentRow]);
+      if (url.searchParams.get("shopify_order_id") === "eq.987654779") return Response.json([currentRow]);
+      if (url.searchParams.get("offer_id") === `eq.${currentRow.offer_id}`) return Response.json([currentRow]);
+      if (url.searchParams.get("id") === `eq.${currentRow.id}`) return Response.json([currentRow]);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
+      salePatchCount += 1;
+      const patch = JSON.parse(String(init?.body || "{}"));
+      assert.equal(patch.assignment_status, "canceled");
+      assert.equal(patch.payment_decision_status, "canceled");
+      assert.equal(patch.metadata?.shopify_cancelled_at, cancelledAt);
+      assert.equal(patch.metadata?.shopify_cancel_reason, "CUSTOMER");
+      currentRow = { ...currentRow, ...patch };
+      return Response.json([currentRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") {
+      return Response.json([itemRow({ sale_id: currentRow.id })]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
+      return Response.json([itemRow({ sale_id: currentRow.id })]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events")) return Response.json(method === "GET" ? [] : {});
+    return Response.json([]);
+  }, async () => {
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    const result = await syncSupplierSalesShopifyTags({ operatorName: "Ops" }, { limit: 50 });
+    assert.equal(result.status, "synced", JSON.stringify(result));
+    assert.equal(result.checked, 1);
+    assert.equal(result.upserted, 1);
+
+    const recoveredSale = await upsertSupplierSale({
+      saleKey: currentRow.sale_key,
+      source: "neontrip-offers",
+      offerId: currentRow.offer_id,
+      offerNumber: currentRow.offer_number,
+      customerEmail: currentRow.customer_email,
+      totalPrice: currentRow.total_price,
+      metadata: { source_event: "offer.completed" },
+      lineItems: [{ lineItemKey: "offer-line-1", title: "LED Neon", quantity: 1 }],
+    });
+    assert.equal(recoveredSale.assignmentStatus, "canceled");
+    assert.equal(recoveredSale.paymentDecisionStatus, "canceled");
+  });
+
+  assert.equal(salePatchCount, 2);
+  assert.equal(currentRow.assignment_status, "canceled");
 });
 
 test("supplier sale action sets Shopify no payment reminder tag", async () => {

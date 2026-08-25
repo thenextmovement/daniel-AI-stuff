@@ -21,7 +21,7 @@
 ### Produktiver Sync-/Workflow-Zustand ist nicht belegt
 
 - `[nur aus Thread erinnert]` Der Payment-Reminder-Workflow `h2Eye2kArl2CBx3k` wurde als aktiv gemeldet.
-- `[nur aus Thread erinnert]` Der Shopify-Tag-Sync `WlSmT7zlLcR4TlUG` wurde zuletzt ausdrücklich inaktiv nach einem 401 beschrieben; spätere Auth-Code-Fixes belegen keine Aktivierung.
+- `[verifiziert, Read-only 2026-08-25]` Der Shopify-Tag-Sync `WlSmT7zlLcR4TlUG` ist weiterhin inaktiv (`active:false`, kein `activeVersionId`); ohne manuellen `Sync + Laden` oder eine sichere Reaktivierung läuft daher kein regelmäßiger Storno-/Tag-Abgleich.
 - `[offen]` Completed-Offers- und AB-Workflow haben keine verifizierte produktive ID oder Aktivierungsprüfung.
 - `[offen]` Es fehlt ein kontrollierter End-to-End-Beleg: neue Annahme erscheint zeitnah, Shopify-Zahlung/Tag reconciled, Vergabe setzt exaktes Tag, freigegebene Testmail und Trello-Projektion erzeugen genau einen Side Effect.
 
