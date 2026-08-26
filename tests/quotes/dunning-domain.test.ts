@@ -9,6 +9,8 @@ import {
   nextDunningSchedule,
   normalizeDunningOrderNumber,
 } from "../../src/lib/ops/dunning";
+import type { DunningCaseSummary } from "../../src/lib/ops/dunning";
+import { sortDunningCases } from "../../src/lib/ops/dunning-sort";
 
 type BuildInput = Parameters<typeof buildDunningCases>[0];
 
@@ -89,6 +91,74 @@ test("order numbers and current stage labels are normalized deterministically", 
   assert.equal(
     dunningStageLabel(4, "legacy"),
     "Letzte Mahnung vor Inkasso (Altbestand)",
+  );
+});
+
+test("dunning cases sort in both directions with missing dates always last", () => {
+  const [base] = buildDunningCases(input());
+  assert.ok(base);
+  const cases: DunningCaseSummary[] = [
+    {
+      ...base,
+      key: "charlie",
+      orderNumber: "#NEONT5003",
+      company: "Charlie GmbH",
+      customerName: "Clara Beispiel",
+      amountCents: 30000,
+      currentStage: 2,
+      daysOverdue: null,
+      nextActionAt: null,
+      orderCreatedAt: null,
+      lastActivityAt: null,
+    },
+    {
+      ...base,
+      key: "alpha",
+      orderNumber: "#NEONT5001",
+      company: "Alpha GmbH",
+      customerName: "Anna Beispiel",
+      amountCents: 10000,
+      currentStage: 5,
+      daysOverdue: 20,
+      nextActionAt: "2026-08-28T08:00:00.000Z",
+      orderCreatedAt: "2026-01-01T08:00:00.000Z",
+      lastActivityAt: "2026-08-25T08:00:00.000Z",
+    },
+    {
+      ...base,
+      key: "beta",
+      orderNumber: "#NEONT5002",
+      company: "Beta GmbH",
+      customerName: "Ben Beispiel",
+      amountCents: 20000,
+      currentStage: 1,
+      daysOverdue: 5,
+      nextActionAt: "2026-08-27T08:00:00.000Z",
+      orderCreatedAt: "2026-06-01T08:00:00.000Z",
+      lastActivityAt: "2026-08-20T08:00:00.000Z",
+    },
+  ];
+  const keys = (sort: Parameters<typeof sortDunningCases>[1]) =>
+    sortDunningCases(cases, sort).map((entry) => entry.key);
+
+  assert.deepEqual(keys("priority"), ["alpha", "beta", "charlie"]);
+  assert.deepEqual(keys("amount_desc"), ["charlie", "beta", "alpha"]);
+  assert.deepEqual(keys("amount_asc"), ["alpha", "beta", "charlie"]);
+  assert.deepEqual(keys("stage_desc"), ["alpha", "charlie", "beta"]);
+  assert.deepEqual(keys("stage_asc"), ["beta", "charlie", "alpha"]);
+  assert.deepEqual(keys("next_action_asc"), ["beta", "alpha", "charlie"]);
+  assert.deepEqual(keys("next_action_desc"), ["alpha", "beta", "charlie"]);
+  assert.deepEqual(keys("overdue_desc"), ["alpha", "beta", "charlie"]);
+  assert.deepEqual(keys("overdue_asc"), ["beta", "alpha", "charlie"]);
+  assert.deepEqual(keys("order_oldest"), ["alpha", "beta", "charlie"]);
+  assert.deepEqual(keys("order_newest"), ["beta", "alpha", "charlie"]);
+  assert.deepEqual(keys("activity_desc"), ["alpha", "beta", "charlie"]);
+  assert.deepEqual(keys("activity_asc"), ["beta", "alpha", "charlie"]);
+  assert.deepEqual(keys("party_asc"), ["alpha", "beta", "charlie"]);
+  assert.deepEqual(keys("party_desc"), ["charlie", "beta", "alpha"]);
+  assert.deepEqual(
+    cases.map((entry) => entry.key),
+    ["charlie", "alpha", "beta"],
   );
 });
 

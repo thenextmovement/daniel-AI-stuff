@@ -45,6 +45,10 @@ import type {
   DunningCaseSummary,
   DunningDashboard,
 } from "@/lib/ops/dunning";
+import {
+  sortDunningCases,
+  type DunningCaseSort,
+} from "@/lib/ops/dunning-sort";
 
 type Filters = {
   query: string;
@@ -52,7 +56,7 @@ type Filters = {
   stage: string;
   delivery: "all" | "fulfilled" | "tracking" | "delivered" | "evidence_missing";
   insolvency: "all" | "pending" | "checked" | "notice" | "review" | "failed";
-  sort: "priority" | "overdue" | "amount" | "activity" | "stage";
+  sort: DunningCaseSort;
 };
 
 const INITIAL_FILTERS: Filters = {
@@ -200,36 +204,7 @@ function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
     }
     return true;
   });
-  return visible.sort((left, right) => {
-    if (filters.sort === "overdue")
-      return (right.daysOverdue ?? -9999) - (left.daysOverdue ?? -9999);
-    if (filters.sort === "amount") return right.amountCents - left.amountCents;
-    if (filters.sort === "activity")
-      return (
-        Date.parse(right.lastActivityAt || "1970-01-01") -
-        Date.parse(left.lastActivityAt || "1970-01-01")
-      );
-    if (filters.sort === "stage")
-      return (
-        right.currentStage - left.currentStage ||
-        right.amountCents - left.amountCents
-      );
-    const priority: Record<DunningCaseState, number> = {
-      court_review: 0,
-      reply_received: 1,
-      action_required: 2,
-      data_issue: 3,
-      final_wait: 4,
-      paused: 5,
-      scheduled: 6,
-      closed: 7,
-    };
-    return (
-      priority[left.state] - priority[right.state] ||
-      (right.daysOverdue ?? -9999) - (left.daysOverdue ?? -9999) ||
-      right.amountCents - left.amountCents
-    );
-  });
+  return sortDunningCases(visible, filters.sort);
 }
 
 function SelectField({
@@ -349,7 +324,6 @@ function FilterPanel({
     filters.stage !== "all",
     filters.delivery !== "all",
     filters.insolvency !== "all",
-    filters.sort !== "priority",
   ].filter(Boolean).length;
   return (
     <section
@@ -369,6 +343,43 @@ function FilterPanel({
             />
           </span>
         </label>
+        <div className="w-full lg:w-[19rem]">
+          <SelectField
+            label="Sortieren"
+            value={filters.sort}
+            onChange={(value) => update("sort", value as DunningCaseSort)}
+          >
+            <option value="priority">Empfohlen: Priorität</option>
+            <optgroup label="Offener Betrag">
+              <option value="amount_desc">Höchster Betrag zuerst</option>
+              <option value="amount_asc">Niedrigster Betrag zuerst</option>
+            </optgroup>
+            <optgroup label="Mahnstufe">
+              <option value="stage_desc">Höchste Mahnstufe zuerst</option>
+              <option value="stage_asc">Niedrigste Mahnstufe zuerst</option>
+            </optgroup>
+            <optgroup label="Nächste Aktion">
+              <option value="next_action_asc">Früheste Aktion zuerst</option>
+              <option value="next_action_desc">Späteste Aktion zuerst</option>
+            </optgroup>
+            <optgroup label="Überfälligkeit">
+              <option value="overdue_desc">Meiste Tage überfällig</option>
+              <option value="overdue_asc">Wenigste Tage überfällig</option>
+            </optgroup>
+            <optgroup label="Bestellalter">
+              <option value="order_oldest">Älteste Bestellung zuerst</option>
+              <option value="order_newest">Neueste Bestellung zuerst</option>
+            </optgroup>
+            <optgroup label="Letzte Aktivität">
+              <option value="activity_desc">Neueste Aktivität zuerst</option>
+              <option value="activity_asc">Älteste Aktivität zuerst</option>
+            </optgroup>
+            <optgroup label="Name / Firma">
+              <option value="party_asc">Name / Firma: A–Z</option>
+              <option value="party_desc">Name / Firma: Z–A</option>
+            </optgroup>
+          </SelectField>
+        </div>
         <div className="flex items-center gap-2 text-sm text-stone-500">
           <Filter className="h-4 w-4" />
           <strong className="text-stone-900">{count}</strong> von {total} Fällen
@@ -416,7 +427,7 @@ function FilterPanel({
             </span>
           ) : null}
         </summary>
-        <div className="grid gap-3 border-t border-[#eee8df] bg-[#faf7f2] p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 border-t border-[#eee8df] bg-[#faf7f2] p-4 sm:grid-cols-2 lg:grid-cols-4">
           <SelectField
             label="Arbeitsstatus"
             value={filters.state}
@@ -471,17 +482,6 @@ function FilterPanel({
             <option value="notice">Amtlicher Hinweis gefunden</option>
             <option value="review">Treffer oder Daten prüfen</option>
             <option value="failed">Technischer Fehler</option>
-          </SelectField>
-          <SelectField
-            label="Sortierung"
-            value={filters.sort}
-            onChange={(value) => update("sort", value as Filters["sort"])}
-          >
-            <option value="priority">Priorität</option>
-            <option value="overdue">Überfälligkeit</option>
-            <option value="amount">Betrag</option>
-            <option value="activity">Letzte Aktivität</option>
-            <option value="stage">Mahnstufe</option>
           </SelectField>
         </div>
       </details>
