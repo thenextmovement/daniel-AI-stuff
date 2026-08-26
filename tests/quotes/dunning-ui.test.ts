@@ -24,6 +24,14 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   assert.match(client, /Älter als 2 Monate/);
   assert.match(client, /Älter als 3 Monate/);
   assert.match(client, /matchesDunningOrderAge\(entry\.orderCreatedAt, filters\.orderAge\)/);
+  assert.match(client, /label="Bestelljahr"/);
+  assert.match(client, /2024 \+ index/);
+  assert.match(client, /length: 11/);
+  assert.match(client, /Exakt Stufe/);
+  assert.match(client, /Mindestens Stufe/);
+  assert.match(client, /matchesDunningStage\(entry\.currentStage, filters\.stage\)/);
+  assert.match(client, /Erstellte Mahnanträge ausblenden/);
+  assert.match(client, /hasCreatedDunningCourtApplication\(entry\.courtEvents\)/);
   assert.match(client, /Versandnachweis/);
   assert.match(client, /Sendungsnummer vorhanden/);
   assert.match(client, /Carrier-Zustellung bestätigt/);
