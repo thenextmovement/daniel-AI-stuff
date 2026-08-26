@@ -3,7 +3,11 @@ import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import {
   dunningCourtNextAction,
   loadDunningCourtEvents,
+  loadDunningCourtProfile,
+  loadLatestDunningCourtDraftJob,
+  type DunningCourtDraftJob,
   type DunningCourtEvent,
+  type DunningCourtProfile,
 } from "@/lib/ops/dunning-court";
 import {
   buildDunningInsolvencyIdentity,
@@ -212,6 +216,7 @@ export type DunningCaseSummary = {
   financialStatus: string;
   fulfillmentStatus: string;
   orderCreatedAt: string | null;
+  invoiceDate: string | null;
   orderAgeDays: number | null;
   dueDate: string | null;
   daysOverdue: number | null;
@@ -289,6 +294,8 @@ export type DunningDashboard = {
 export type DunningCaseDetail = {
   case: DunningCaseSummary;
   timeline: DunningTimelineEntry[];
+  courtProfile: DunningCourtProfile | null;
+  courtDraftJob: DunningCourtDraftJob | null;
   generatedAt: string;
 };
 
@@ -1234,6 +1241,7 @@ export function buildDunningCases(input: {
       financialStatus,
       fulfillmentStatus,
       orderCreatedAt,
+      invoiceDate: validIso(candidate?.easybill_document_created_at),
       orderAgeDays,
       dueDate,
       daysOverdue,
@@ -1761,7 +1769,15 @@ export async function getDunningCaseDetail(
     (entry) => entry.orderNumber === normalized,
   );
   if (!summary) return null;
-  const [logs, sendlogs, messages, locks, audits] = await Promise.all([
+  const [
+    logs,
+    sendlogs,
+    messages,
+    locks,
+    audits,
+    courtProfile,
+    courtDraftJob,
+  ] = await Promise.all([
     supabaseRequest<DunningLogRow[]>("dunning_log", undefined, {
       select: "id,created_at,action,shopify_order_number,mahnstufe,actor",
       shopify_order_number: `eq.${normalized}`,
@@ -1804,6 +1820,8 @@ export async function getDunningCaseDetail(
           limit: 1000,
         })
       : Promise.resolve([]),
+    loadDunningCourtProfile(normalized),
+    loadLatestDunningCourtDraftJob(normalized),
   ]);
 
   const timeline = timelineFromCase(summary);
@@ -1902,6 +1920,8 @@ export async function getDunningCaseDetail(
   return {
     case: summary,
     timeline: deduped,
+    courtProfile,
+    courtDraftJob,
     generatedAt: dashboard.generatedAt,
   };
 }

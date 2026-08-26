@@ -162,3 +162,56 @@ test("court application steps remain visibly distinct and seed only the real pil
   assert.doesNotMatch(seededPilot, /application_submitted/);
   assert.doesNotMatch(seededPilot, /court_order_served/);
 });
+
+test("one-click court preparation uses the official portal and sends only an internal PDF", () => {
+  const client = read("src/app/ops/mahnwesen/page-client.tsx");
+  const route = read("src/app/api/ops/dunning/[orderKey]/actions/route.ts");
+  const profileRoute = read(
+    "src/app/api/ops/dunning/[orderKey]/court-profile/route.ts",
+  );
+  const application = read("src/lib/ops/dunning-court-application.ts");
+  const migration = read(
+    "supabase/migrations/20260826143000_create_dunning_court_events.sql",
+  );
+  assert.match(client, /Gerichtsdaten prüfen/);
+  assert.match(client, /Amtlichen Antrag vorbereiten/);
+  assert.match(client, /PDF erstellen und intern senden/);
+  assert.match(client, /reicht nichts beim Gericht ein/);
+  assert.match(client, /versendet keine Kundenmail/);
+  assert.match(route, /preview_court_application/);
+  assert.match(route, /prepare_court_application/);
+  assert.match(route, /expectedSnapshotHash/);
+  assert.match(route, /confirmation_mismatch/);
+  assert.match(route, /ops-court:/);
+  assert.match(profileRoute, /resolveOpsRequestActor/);
+  assert.match(profileRoute, /communicationReviewed/);
+  assert.match(profileRoute, /unternehmensregister[.]de/);
+  assert.match(profileRoute, /handelsregister[.]de/);
+  assert.match(application, /https:\/\/www[.]online-mahnantrag[.]de\//);
+  assert.match(application, /DUNNING_COURT_PORTAL_ORIGIN_INVALID/);
+  assert.match(application, /hostname[.]toLowerCase\(\) ===/);
+  assert.match(application, /_bVersandart/);
+  assert.match(application, /Barcode/);
+  assert.match(application, /Ich stimme zu/);
+  assert.match(application, /Werkvertrag\/Werklieferungsvertrag/);
+  assert.match(application, /Amtsgericht Hagen/);
+  assert.match(
+    application,
+    /Der erste\/einzige Antragsteller ist Kontoinhaber/,
+  );
+  assert.match(application, /PDFDocument[.]load/);
+  assert.match(application, /Command=barcodeMB/);
+  assert.match(application, /application\/pdf/);
+  assert.match(application, /DUNNING_COURT_INTERNAL_RECIPIENT/);
+  assert.match(application, /neontrip\[\.\]de\|daranova\[\.\]de/);
+  assert.doesNotMatch(application, /summary[.]email/);
+  assert.match(application, /status: "email_dispatching"/);
+  assert.match(application, /status: "manual_review"/);
+  assert.match(application, /\["pending", "retryable_error"\]/);
+  assert.match(application, /DUNNING_COURT_GRAPH_SEND_UNCERTAIN/);
+  assert.match(application, /nicht beim Gericht eingereicht/);
+  assert.match(migration, /create table public[.]dunning_court_profiles/);
+  assert.match(migration, /create table public[.]dunning_court_draft_jobs/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /to service_role/);
+});
