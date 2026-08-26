@@ -24,6 +24,17 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   assert.match(client, /Carrier-Zustellung bestätigt/);
   assert.match(client, /Fulfilled, Zustellbeleg fehlt/);
   assert.match(client, /Weitere Filter/);
+  const primaryControls = client.split("<details")[0] || "";
+  assert.match(primaryControls, /label="Sortieren"/);
+  assert.match(primaryControls, /Empfohlen: Priorität/);
+  assert.match(client, /sort: "priority"/);
+  assert.match(primaryControls, /Höchster Betrag zuerst/);
+  assert.match(primaryControls, /Niedrigster Betrag zuerst/);
+  assert.match(primaryControls, /Höchste Mahnstufe zuerst/);
+  assert.match(primaryControls, /Niedrigste Mahnstufe zuerst/);
+  assert.match(primaryControls, /Früheste Aktion zuerst/);
+  assert.match(primaryControls, /Älteste Bestellung zuerst/);
+  assert.match(primaryControls, /Name \/ Firma: A–Z/);
   assert.doesNotMatch(client, /Bezahlt \/ erledigt/);
   assert.doesNotMatch(client, /Mindestbetrag/);
   assert.doesNotMatch(client, /Höchstbetrag/);
