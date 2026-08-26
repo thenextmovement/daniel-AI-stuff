@@ -218,6 +218,8 @@ test("one-click court preparation uses the official portal and sends only an int
   assert.match(application, /status: "manual_review"/);
   assert.match(application, /\["pending", "retryable_error"\]/);
   assert.match(application, /DUNNING_COURT_GRAPH_SEND_UNCERTAIN/);
+  assert.match(application, /MICROSOFT_GRAPH_CLIENT_ID_NEXT/);
+  assert.match(application, /MICROSOFT_GRAPH_CLIENT_SECRET_NEXT/);
   assert.match(application, /nicht beim Gericht eingereicht/);
   assert.match(migration, /create table public[.]dunning_court_profiles/);
   assert.match(migration, /create table public[.]dunning_court_draft_jobs/);
