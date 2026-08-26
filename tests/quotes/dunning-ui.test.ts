@@ -14,18 +14,19 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   assert.match(client, /active="dunning"/);
   assert.match(
     client,
-    /Name, Firma, E-Mail, Telefon, Bestellung oder Rechnung/,
+    /Name, Firma, E-Mail, Telefon, Bestellung, Rechnung oder Sendungsnummer/,
   );
+  assert.match(client, /shipment\.trackingNumber/);
   assert.match(client, /Arbeitsstatus/);
   assert.match(client, /Mahnstufe/);
-  assert.match(client, /Zahlung/);
-  assert.match(client, /Lieferung/);
-  assert.match(client, /Überfälligkeit/);
-  assert.match(client, /Auftragsalter/);
-  assert.match(client, /Kontakt/);
-  assert.match(client, /Mindestbetrag/);
-  assert.match(client, /Höchstbetrag/);
-  assert.match(client, /Letzte Frist/);
+  assert.match(client, /Versandnachweis/);
+  assert.match(client, /Sendungsnummer vorhanden/);
+  assert.match(client, /Carrier-Zustellung bestätigt/);
+  assert.match(client, /Fulfilled, Zustellbeleg fehlt/);
+  assert.match(client, /Weitere Filter/);
+  assert.doesNotMatch(client, /Bezahlt \/ erledigt/);
+  assert.doesNotMatch(client, /Mindestbetrag/);
+  assert.doesNotMatch(client, /Höchstbetrag/);
   assert.match(client, /Solvenz\/Gericht/);
   assert.match(client, /Insolvenzprüfung/);
   assert.match(client, /Daten geprüft – kein Hinweis/);
@@ -34,6 +35,15 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   assert.match(client, /Es wurde weder ein Mahnantrag/);
   assert.match(client, /Keine Telefonnummer/);
   assert.match(client, /Nächste Aktion/);
+  assert.match(client, /Kein automatischer Versand geplant/);
+  assert.match(client, /Bezahlte Fälle sind ausgeblendet/);
+  assert.match(client, /Bezahlter Shopify-Ausnahmefall/);
+  assert.match(client, /Versand- und Zustellnachweis/);
+  assert.match(
+    client,
+    /ein separates POD-Dokument ist damit noch\s+nicht archiviert/,
+  );
+  assert.match(client, /Carrier-POD oder/);
   assert.match(client, /Fallakte/);
   assert.match(
     client,
@@ -59,10 +69,7 @@ test("the automated insolvency check is internal-only, bounded and never starts 
   assert.match(route, /entry\.state === "court_review"/);
   assert.match(route, /legalActionTriggered: false/);
   assert.match(route, /customerCommunicationSent: false/);
-  assert.match(
-    lookup,
-    /hostname !== "neu\.insolvenzbekanntmachungen\.de"/,
-  );
+  assert.match(lookup, /hostname !== "neu\.insolvenzbekanntmachungen\.de"/);
   assert.match(lookup, /redirect: "error"/);
   assert.doesNotMatch(lookup, /solvent/i);
   assert.match(migration, /enable row level security/);
