@@ -11,6 +11,8 @@ import {
 } from "../../src/lib/ops/dunning";
 import type { DunningCaseSummary } from "../../src/lib/ops/dunning";
 import { sortDunningCases } from "../../src/lib/ops/dunning-sort";
+import { createDunningCourtApplicationPreview } from "../../src/lib/ops/dunning-court-application";
+import type { DunningCourtProfile } from "../../src/lib/ops/dunning-court";
 
 type BuildInput = Parameters<typeof buildDunningCases>[0];
 
@@ -527,4 +529,163 @@ test("stopped and conflicting cases fail closed", () => {
       "Alt- und Neuverlauf haben unterschiedliche Mahnstufen",
     ),
   );
+});
+
+test("a created court application is auditable without pretending it was submitted", () => {
+  const courtEvents: NonNullable<BuildInput["courtEvents"]> = new Map([
+    [
+      "#NEONT5000",
+      [
+        {
+          id: "court-event-1",
+          orderNumber: "#NEONT5000",
+          eventKey:
+            "ticket-test-neont5000-application-draft-created-2026-08-25",
+          eventType: "application_draft_created",
+          eventLabel: "Mahnantrag erstellt",
+          occurredOn: "2026-08-25",
+          sourceReference: "TICKET-157",
+          actor: null,
+          note: "Barcode-PDF-Entwurf; nicht eingereicht.",
+          createdAt: "2026-08-25T14:30:00.000Z",
+        },
+      ],
+    ],
+  ]);
+  const [entry] = buildDunningCases(input({ courtEvents }));
+  assert.equal(entry?.courtEvent?.eventType, "application_draft_created");
+  assert.equal(entry?.courtEvent?.occurredOn, "2026-08-25");
+  assert.equal(
+    entry?.nextActionLabel,
+    "Mahnantrag prüfen und beim Gericht einreichen",
+  );
+  assert.equal(entry?.nextActionKind, "manual_review");
+  assert.equal(entry?.nextActionAt, null);
+});
+
+test("official court PDF preparation fails closed and treats tracking-only evidence as a warning", () => {
+  const previous = {
+    iban: process.env.DUNNING_COURT_APPLICANT_IBAN,
+    bic: process.env.DUNNING_COURT_APPLICANT_BIC,
+    recipient: process.env.DUNNING_COURT_INTERNAL_RECIPIENT,
+    tenant: process.env.MICROSOFT_GRAPH_TENANT_ID,
+    client: process.env.MICROSOFT_GRAPH_CLIENT_ID,
+    secret: process.env.MICROSOFT_GRAPH_CLIENT_SECRET,
+    mailbox: process.env.MICROSOFT_GRAPH_MAILBOX,
+  };
+  process.env.DUNNING_COURT_APPLICANT_IBAN = "DE00000000000000000000";
+  process.env.DUNNING_COURT_APPLICANT_BIC = "TESTDEFFXXX";
+  process.env.DUNNING_COURT_INTERNAL_RECIPIENT = "gericht@daranova.de";
+  process.env.MICROSOFT_GRAPH_TENANT_ID = "tenant-test";
+  process.env.MICROSOFT_GRAPH_CLIENT_ID = "client-test";
+  process.env.MICROSOFT_GRAPH_CLIENT_SECRET = "secret-test";
+  process.env.MICROSOFT_GRAPH_MAILBOX = "sender@daranova.de";
+  try {
+    const [base] = buildDunningCases(input());
+    assert.ok(base);
+    const now = new Date().toISOString();
+    const summary: DunningCaseSummary = {
+      ...base,
+      state: "court_review",
+      courtReview: true,
+      legalReviewReady: true,
+      customerReplied: false,
+      invoiceDate: "2026-08-01T11:00:00.000Z",
+      easybillInvoiceNumber: "2026-0815",
+      hasTracking: true,
+      carrierDeliveryConfirmed: false,
+      shipments: [
+        {
+          id: "shipment-court",
+          shopifyFulfillmentId: "fulfillment-court",
+          carrier: "dpd",
+          trackingNumber: "05228900012345",
+          trackingUrl: null,
+          status: "shipped",
+          statusReason: null,
+          shippedAt: "2026-08-05T08:00:00.000Z",
+          deliveredAt: null,
+          lastEventAt: null,
+          lastCarrierSyncAt: null,
+          deliveryEvidence: "tracking_only",
+        },
+      ],
+      insolvencyCheck: {
+        id: "insolvency-check",
+        orderNumber: "#NEONT5000",
+        eventKey: "insolvency-check-neont5000",
+        identityHash: "a".repeat(64),
+        identity: base.insolvencyIdentity,
+        status: "completed",
+        resultCode: "no_public_notice_found",
+        resultLabel: "Keine öffentliche Bekanntmachung gefunden",
+        sourceUrl: "https://neu.insolvenzbekanntmachungen.de/ap/",
+        sourceLabel: "Insolvenzbekanntmachungen",
+        checkedAt: now,
+        matchCount: 0,
+        matches: [],
+        attemptCount: 1,
+        nextAttemptAt: null,
+        lastErrorCode: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      courtEvents: [],
+      courtEvent: null,
+    };
+    const profile: DunningCourtProfile = {
+      orderNumber: "#NEONT5000",
+      debtorType: "company",
+      legalName: "Muster",
+      legalForm: "GmbH",
+      street: "Musterstraße 1",
+      postalCode: "40210",
+      city: "Düsseldorf",
+      countryCode: "DE",
+      representatives: [{ function: "Geschäftsführer", name: "Max Muster" }],
+      registerCourt: "Amtsgericht Düsseldorf",
+      registerType: "HRB",
+      registerNumber: "12345",
+      sourceUrl: "https://www.unternehmensregister.de/",
+      sourceCheckedAt: now,
+      communicationCheckedAt: now,
+      verifiedAt: now,
+      verifiedBy: "operator@example.test",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const preview = createDunningCourtApplicationPreview({
+      summary,
+      profile,
+      latestJob: null,
+    });
+    assert.equal(preview.allowed, true);
+    assert.deepEqual(preview.blockers, []);
+    assert.match(preview.warnings.join(" "), /Zustellnachweis/);
+    assert.equal(preview.internalRecipient, "gericht@daranova.de");
+    assert.equal(preview.officialPortal, "https://www.online-mahnantrag.de/");
+    assert.match(preview.snapshotHash, /^[a-f0-9]{64}$/);
+
+    delete process.env.DUNNING_COURT_INTERNAL_RECIPIENT;
+    const blocked = createDunningCourtApplicationPreview({
+      summary,
+      profile,
+      latestJob: null,
+    });
+    assert.equal(blocked.allowed, false);
+    assert.match(blocked.blockers.join(" "), /nicht vollständig konfiguriert/);
+  } finally {
+    for (const [name, value] of Object.entries({
+      DUNNING_COURT_APPLICANT_IBAN: previous.iban,
+      DUNNING_COURT_APPLICANT_BIC: previous.bic,
+      DUNNING_COURT_INTERNAL_RECIPIENT: previous.recipient,
+      MICROSOFT_GRAPH_TENANT_ID: previous.tenant,
+      MICROSOFT_GRAPH_CLIENT_ID: previous.client,
+      MICROSOFT_GRAPH_CLIENT_SECRET: previous.secret,
+      MICROSOFT_GRAPH_MAILBOX: previous.mailbox,
+    })) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
 });

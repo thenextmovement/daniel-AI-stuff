@@ -45,6 +45,11 @@ import type {
   DunningCaseSummary,
   DunningDashboard,
 } from "@/lib/ops/dunning";
+import type { DunningCourtApplicationPreview } from "@/lib/ops/dunning-court-application";
+import type {
+  DunningCourtProfile,
+  DunningCourtRepresentative,
+} from "@/lib/ops/dunning-court";
 import {
   sortDunningCases,
   type DunningCaseSort,
@@ -94,6 +99,11 @@ function caseMatchesQuery(entry: DunningCaseSummary, query: string) {
       ...entry.shipments.flatMap((shipment) => [
         shipment.carrier,
         shipment.trackingNumber,
+      ]),
+      ...entry.courtEvents.flatMap((event) => [
+        event.eventLabel,
+        event.occurredOn,
+        event.sourceReference,
       ]),
     ]
       .filter((value) => value !== null && value !== undefined)
@@ -302,6 +312,33 @@ function StageBadge({ entry }: { entry: DunningCaseSummary }) {
       <p className="mt-1 max-w-[15rem] text-xs leading-4 text-stone-500">
         {entry.currentStageLabel}
       </p>
+    </div>
+  );
+}
+
+function CourtStatusBadge({ entry }: { entry: DunningCaseSummary }) {
+  const event = entry.courtEvent;
+  if (!event) return null;
+  const isDraft = event.eventType === "application_draft_created";
+  const tone = isDraft
+    ? "border-amber-200 bg-amber-50 text-amber-900"
+    : "border-violet-200 bg-violet-50 text-violet-900";
+  return (
+    <div className="max-w-[16rem]">
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}
+      >
+        <Gavel className="h-3.5 w-3.5 shrink-0" />
+        {event.eventLabel}
+      </span>
+      <p className="mt-1 text-xs font-semibold text-stone-700">
+        {dateLabel(event.occurredOn)}
+      </p>
+      {isDraft ? (
+        <p className="mt-1 text-xs leading-4 text-amber-800">
+          Noch nicht beim Gericht eingereicht
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -658,6 +695,11 @@ function CaseTable({
                     />
                   </div>
                   <StatusBadge entry={entry} />
+                  {entry.courtEvent ? (
+                    <div className="mt-2">
+                      <CourtStatusBadge entry={entry} />
+                    </div>
+                  ) : null}
                   {entry.customerReplied ? (
                     <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-amber-800">
                       <MessageSquareReply className="h-3.5 w-3.5" /> Antwort
@@ -714,6 +756,7 @@ function CaseTable({
               </div>
               <div className="grid justify-items-end gap-2">
                 <StatusBadge entry={entry} />
+                <CourtStatusBadge entry={entry} />
                 <InsolvencyCheckButton
                   entry={entry}
                   onOpen={onInsolvencyOpen}
@@ -919,37 +962,435 @@ function InsolvencyCheckModal({
   );
 }
 
+const COURT_LEGAL_FORMS = [
+  "GmbH",
+  "UG (haftungsbeschränkt)",
+  "AG",
+  "eG",
+  "GmbH & Co KG",
+  "GmbH & Co OHG",
+  "KG",
+  "OHG",
+  "Partnerschaft",
+  "Partnerschaft mbB",
+  "SE",
+] as const;
+
+const COURT_REPRESENTATIVE_FUNCTIONS: DunningCourtRepresentative["function"][] =
+  [
+    "Geschäftsführer",
+    "Geschäftsführerin",
+    "Geschäftsführender Gesellschafter",
+    "Geschäftsführende Gesellschafterin",
+    "Managing Director",
+  ];
+
+type CourtProfileForm = {
+  legalName: string;
+  legalForm: string;
+  street: string;
+  postalCode: string;
+  city: string;
+  representatives: DunningCourtRepresentative[];
+  registerCourt: string;
+  registerType: string;
+  registerNumber: string;
+  sourceUrl: string;
+  communicationReviewed: boolean;
+};
+
+function courtProfileForm(
+  profile: DunningCourtProfile | null,
+): CourtProfileForm {
+  return {
+    legalName: profile?.legalName || "",
+    legalForm: profile?.legalForm || "GmbH",
+    street: profile?.street || "",
+    postalCode: profile?.postalCode || "",
+    city: profile?.city || "",
+    representatives: profile?.representatives.length
+      ? profile.representatives
+      : [{ function: "Geschäftsführer", name: "" }],
+    registerCourt: profile?.registerCourt || "",
+    registerType: profile?.registerType || "HRB",
+    registerNumber: profile?.registerNumber || "",
+    sourceUrl: profile?.sourceUrl || "https://www.unternehmensregister.de/",
+    communicationReviewed: false,
+  };
+}
+
+function CourtProfileModal({
+  detail,
+  onClose,
+  onSaved,
+}: {
+  detail: DunningCaseDetail;
+  onClose: () => void;
+  onSaved: (profile: DunningCourtProfile) => void;
+}) {
+  const [form, setForm] = useState(() => courtProfileForm(detail.courtProfile));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function updateRepresentative(
+    index: number,
+    patch: Partial<DunningCourtRepresentative>,
+  ) {
+    setForm((current) => ({
+      ...current,
+      representatives: current.representatives.map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, ...patch } : entry,
+      ),
+    }));
+  }
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/ops/dunning/${encodeURIComponent(detail.case.key)}/court-profile`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "verify_profile",
+            ...form,
+            communicationReviewed: form.communicationReviewed || undefined,
+          }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload.ok)
+        throw new Error(
+          payload.error || "Gerichtsdaten konnten nicht gespeichert werden.",
+        );
+      onSaved(payload.profile);
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Gerichtsdaten konnten nicht gespeichert werden.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-stone-950/50 p-4 backdrop-blur-sm">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="court-profile-title"
+        className="my-6 w-full max-w-3xl rounded-[24px] bg-[#f7f4ee] shadow-2xl"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-stone-200 p-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+              Gerichtliche Vorbereitung
+            </p>
+            <h2 id="court-profile-title" className="mt-1 text-xl font-semibold">
+              Schuldnerdaten amtlich prüfen
+            </h2>
+            <p className="mt-1 text-sm text-stone-600">
+              {detail.case.orderNumber}: Firmenname ohne Rechtsform eingeben.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-stone-300 bg-white"
+            aria-label="Gerichtsdaten schließen"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+        <div className="grid gap-5 p-5">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+            Übernimm Firma, Zustellanschrift und Vertretungsberechtigte aus dem
+            aktuellen Handels- oder Unternehmensregister. Diese Prüfung ist
+            Voraussetzung; der Button reicht noch nichts beim Gericht ein.
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1 text-sm font-semibold text-stone-700">
+              Firma ohne Rechtsform
+              <input
+                value={form.legalName}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    legalName: event.target.value,
+                  }))
+                }
+                className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold text-stone-700">
+              Rechtsform
+              <select
+                value={form.legalForm}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    legalForm: event.target.value,
+                  }))
+                }
+                className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+              >
+                {COURT_LEGAL_FORMS.map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm font-semibold text-stone-700 sm:col-span-2">
+              Zustellfähige Straße und Hausnummer
+              <input
+                value={form.street}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, street: event.target.value }))
+                }
+                className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold text-stone-700">
+              PLZ
+              <input
+                value={form.postalCode}
+                inputMode="numeric"
+                maxLength={5}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    postalCode: event.target.value,
+                  }))
+                }
+                className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold text-stone-700">
+              Ort
+              <input
+                value={form.city}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, city: event.target.value }))
+                }
+                className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+              />
+            </label>
+          </div>
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-semibold">Vertretungsberechtigte</h3>
+              <button
+                type="button"
+                disabled={form.representatives.length >= 6}
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    representatives: [
+                      ...current.representatives,
+                      { function: "Geschäftsführer", name: "" },
+                    ],
+                  }))
+                }
+                className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+              >
+                Person hinzufügen
+              </button>
+            </div>
+            <div className="mt-3 grid gap-3">
+              {form.representatives.map((representative, index) => (
+                <div
+                  key={index}
+                  className="grid gap-2 rounded-xl border border-stone-200 bg-white p-3 sm:grid-cols-[0.9fr_1.1fr_auto]"
+                >
+                  <select
+                    aria-label={`Funktion Person ${index + 1}`}
+                    value={representative.function}
+                    onChange={(event) =>
+                      updateRepresentative(index, {
+                        function: event.target
+                          .value as DunningCourtRepresentative["function"],
+                      })
+                    }
+                    className="h-11 rounded-lg border border-stone-300 px-3 text-sm"
+                  >
+                    {COURT_REPRESENTATIVE_FUNCTIONS.map((value) => (
+                      <option key={value}>{value}</option>
+                    ))}
+                  </select>
+                  <input
+                    aria-label={`Name Person ${index + 1}`}
+                    value={representative.name}
+                    onChange={(event) =>
+                      updateRepresentative(index, { name: event.target.value })
+                    }
+                    placeholder="Vor- und Nachname"
+                    className="h-11 rounded-lg border border-stone-300 px-3 text-sm"
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Person ${index + 1} entfernen`}
+                    disabled={form.representatives.length === 1}
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        representatives: current.representatives.filter(
+                          (_, entryIndex) => entryIndex !== index,
+                        ),
+                      }))
+                    }
+                    className="h-11 rounded-lg border border-stone-300 px-3 text-xs font-semibold disabled:opacity-40"
+                  >
+                    Entfernen
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="grid gap-1 text-sm font-semibold text-stone-700">
+              Registergericht
+              <input
+                value={form.registerCourt}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    registerCourt: event.target.value,
+                  }))
+                }
+                placeholder="Amtsgericht Essen"
+                className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold text-stone-700">
+              Registerart
+              <select
+                value={form.registerType}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    registerType: event.target.value,
+                  }))
+                }
+                className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+              >
+                {["HRB", "HRA", "GnR", "PR", "VR"].map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm font-semibold text-stone-700">
+              Registernummer
+              <input
+                value={form.registerNumber}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    registerNumber: event.target.value,
+                  }))
+                }
+                className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+              />
+            </label>
+          </div>
+          <label className="grid gap-1 text-sm font-semibold text-stone-700">
+            Amtlicher Register-Link
+            <input
+              type="url"
+              value={form.sourceUrl}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, sourceUrl: event.target.value }))
+              }
+              className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+            />
+          </label>
+          <label className="flex items-start gap-3 rounded-xl border border-stone-200 bg-white p-4 text-sm leading-6 text-stone-700">
+            <input
+              type="checkbox"
+              checked={form.communicationReviewed}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  communicationReviewed: event.target.checked,
+                }))
+              }
+              className="mt-1 h-4 w-4"
+            />
+            <span>
+              Ich habe den vollständigen E-Mail-Verlauf und mögliche Einwände
+              geprüft. Es gibt keinen ungeklärten Widerspruch zur Forderung.
+            </span>
+          </label>
+          {error ? (
+            <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+              {error}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="h-11 rounded-xl border border-stone-300 bg-white px-4 text-sm font-semibold"
+            >
+              Abbrechen
+            </button>
+            <button
+              onClick={() => void save()}
+              disabled={busy || !form.communicationReviewed}
+              className="h-11 rounded-xl bg-violet-800 px-4 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              {busy ? "Prüfung wird gespeichert" : "Daten geprüft speichern"}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function DetailDrawer({
   detail,
   preview,
+  courtPreview,
   loading,
   actionBusy,
   sendConfigured,
   confirmation,
+  courtConfirmation,
   note,
   error,
   notice,
   onClose,
   onPreview,
   onSend,
+  onCourtProfileOpen,
+  onCourtPreview,
+  onCourtPrepare,
   onInsolvencyOpen,
   setConfirmation,
+  setCourtConfirmation,
   setNote,
 }: {
   detail: DunningCaseDetail;
   preview: DunningActionPreview | null;
+  courtPreview: DunningCourtApplicationPreview | null;
   loading: boolean;
   actionBusy: boolean;
   sendConfigured: boolean;
   confirmation: string;
+  courtConfirmation: string;
   note: string;
   error: string | null;
   notice: string | null;
   onClose: () => void;
   onPreview: () => void;
   onSend: () => void;
+  onCourtProfileOpen: () => void;
+  onCourtPreview: () => void;
+  onCourtPrepare: () => void;
   onInsolvencyOpen: (entry: DunningCaseSummary) => void;
   setConfirmation: (value: string) => void;
+  setCourtConfirmation: (value: string) => void;
   setNote: (value: string) => void;
 }) {
   const entry = detail.case;
@@ -1162,6 +1603,45 @@ function DetailDrawer({
               archivieren, bevor der Carrier-Link abläuft.
             </p>
           </section>
+          {entry.courtEvent ? (
+            <section className="rounded-[22px] border border-violet-200 bg-white p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
+                    Offizielles gerichtliches Mahnverfahren
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold text-stone-950">
+                    Aktueller Verfahrensstand
+                  </h3>
+                </div>
+                <CourtStatusBadge entry={entry} />
+              </div>
+              {entry.courtEvent.eventType === "application_draft_created" ? (
+                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+                  Der amtliche Barcode-PDF-Antrag wurde erstellt. Er wurde noch
+                  nicht beim Mahngericht eingereicht, noch nicht gerichtlich
+                  geprüft und noch nicht als gelber Brief zugestellt.
+                </p>
+              ) : (
+                <p className="mt-4 text-sm leading-6 text-stone-600">
+                  Der Verfahrensstand wird getrennt von Mahnstufe,
+                  Insolvenzprüfung und Kunden-E-Mails geführt. Dadurch wird ein
+                  Entwurf niemals mit Einreichung oder Zustellung verwechselt.
+                </p>
+              )}
+              <p className="mt-3 text-xs text-stone-500">
+                Erfasst am {dateLabel(entry.courtEvent.occurredOn)}
+                {entry.courtEvent.sourceReference
+                  ? ` · Nachweis ${entry.courtEvent.sourceReference}`
+                  : ""}
+              </p>
+              {entry.courtEvent.note ? (
+                <p className="mt-1 text-xs leading-5 text-stone-500">
+                  {entry.courtEvent.note}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
           {entry.courtReview || entry.insolvencyCheck ? (
             <section className="rounded-[22px] border border-violet-200 bg-violet-50 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1181,6 +1661,168 @@ function DetailDrawer({
                   onOpen={onInsolvencyOpen}
                 />
               </div>
+            </section>
+          ) : null}
+          {entry.courtReview ? (
+            <section className="rounded-[22px] border border-violet-200 bg-white p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+                    Amtlicher Barcode-Antrag
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold text-stone-950">
+                    Gerichtlichen Mahnantrag vorbereiten
+                  </h3>
+                  <p className="mt-1 max-w-xl text-sm leading-6 text-stone-600">
+                    Der Ein-Klick-Ablauf füllt online-mahnantrag.de aus, prüft
+                    die amtliche PDF und sendet sie ausschließlich intern zur
+                    Unterschrift. Er reicht nichts beim Gericht ein und
+                    versendet keine Kundenmail.
+                  </p>
+                </div>
+                {!entry.courtEvent ? (
+                  <button
+                    onClick={onCourtProfileOpen}
+                    disabled={actionBusy}
+                    className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-900 disabled:opacity-50"
+                  >
+                    Gerichtsdaten prüfen
+                  </button>
+                ) : null}
+              </div>
+              {detail.courtProfile ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+                  <p className="font-semibold">
+                    Daten geprüft: {detail.courtProfile.legalName}{" "}
+                    {detail.courtProfile.legalForm}
+                  </p>
+                  <p className="mt-1">
+                    {detail.courtProfile.street}, {detail.courtProfile.postalCode}{" "}
+                    {detail.courtProfile.city} · {detail.courtProfile.registerCourt}{" "}
+                    {detail.courtProfile.registerType}{" "}
+                    {detail.courtProfile.registerNumber}
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-800">
+                    Geprüft am {dateLabel(detail.courtProfile.verifiedAt, true)} ·{" "}
+                    {detail.courtProfile.representatives
+                      .map((person) => `${person.function} ${person.name}`)
+                      .join("; ")}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                  Aktuelle Registeranschrift, Rechtsform und Vertretung sind
+                  noch nicht als geprüft gespeichert.
+                </p>
+              )}
+              {detail.courtDraftJob ? (
+                <p className="mt-3 rounded-xl border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
+                  Letzter PDF-Auftrag: {detail.courtDraftJob.status} ·{" "}
+                  {dateLabel(detail.courtDraftJob.updatedAt, true)}
+                  {detail.courtDraftJob.pdfFilename
+                    ? ` · ${detail.courtDraftJob.pdfFilename}`
+                    : ""}
+                </p>
+              ) : null}
+              {detail.courtProfile && !entry.courtEvent ? (
+                <button
+                  onClick={onCourtPreview}
+                  disabled={actionBusy}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-violet-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  <Gavel className="h-4 w-4" />
+                  {actionBusy
+                    ? "Vorprüfung läuft"
+                    : "Amtlichen Antrag vorbereiten"}
+                </button>
+              ) : null}
+              {courtPreview ? (
+                <div className="mt-4 grid gap-4 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs text-violet-700">Antragsgegner</p>
+                      <p className="mt-1 font-semibold">{courtPreview.debtorLabel}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-violet-700">Hauptforderung</p>
+                      <p className="mt-1 font-semibold">
+                        {money(courtPreview.amountCents, courtPreview.currency)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-violet-700">Rechnung</p>
+                      <p className="mt-1 font-semibold">
+                        {courtPreview.invoiceNumber} vom{" "}
+                        {dateLabel(courtPreview.invoiceDate)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-violet-700">Interner Empfänger</p>
+                      <p className="mt-1 break-all font-semibold">
+                        {courtPreview.internalRecipient || "Nicht konfiguriert"}
+                      </p>
+                    </div>
+                  </div>
+                  {courtPreview.warnings.length ? (
+                    <ul className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                      {courtPreview.warnings.map((warning) => (
+                        <li key={warning}>- {warning}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {courtPreview.blockers.length ? (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+                      <p className="font-semibold">Vorbereitung ist blockiert</p>
+                      <ul className="mt-2 grid gap-1">
+                        {courtPreview.blockers.map((blocker) => (
+                          <li key={blocker}>- {blocker}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                      Vorprüfung bestanden. Nach Bestätigung wird ausschließlich
+                      die amtliche PDF erzeugt und intern versendet.
+                    </div>
+                  )}
+                  {courtPreview.allowed ? (
+                    <div className="grid gap-3">
+                      <label className="grid gap-1.5 text-sm font-semibold text-stone-700">
+                        Zur Bestätigung exakt eingeben
+                        <code className="w-fit rounded-lg bg-stone-950 px-2 py-1 text-xs text-white">
+                          {courtPreview.confirmationPhrase}
+                        </code>
+                        <input
+                          value={courtConfirmation}
+                          onChange={(event) =>
+                            setCourtConfirmation(event.target.value)
+                          }
+                          autoComplete="off"
+                          className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+                        />
+                      </label>
+                      <button
+                        onClick={onCourtPrepare}
+                        disabled={
+                          actionBusy ||
+                          courtConfirmation !== courtPreview.confirmationPhrase
+                        }
+                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-900 px-4 text-sm font-semibold text-white disabled:opacity-40"
+                      >
+                        <MailCheck className="h-4 w-4" />
+                        {actionBusy
+                          ? "Amtliche PDF wird erstellt"
+                          : "PDF erstellen und intern senden"}
+                      </button>
+                      <p className="text-xs leading-5 text-violet-800">
+                        Danach: PDF prüfen, einseitig ausdrucken, unterschreiben
+                        und per Post an das im Antrag genannte Amtsgericht Hagen
+                        senden. Erst das Gericht kann den gelben Brief zustellen.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
           ) : null}
           <section className="rounded-[22px] border border-stone-200 bg-white p-5">
@@ -1456,10 +2098,14 @@ export function DunningOpsClient({
     useState<DunningCaseSummary | null>(null);
   const [detailLoadingKey, setDetailLoadingKey] = useState<string | null>(null);
   const [preview, setPreview] = useState<DunningActionPreview | null>(null);
+  const [courtPreview, setCourtPreview] =
+    useState<DunningCourtApplicationPreview | null>(null);
+  const [courtProfileOpen, setCourtProfileOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState("");
+  const [courtConfirmation, setCourtConfirmation] = useState("");
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -1511,7 +2157,10 @@ export function DunningOpsClient({
     setActionError(null);
     setNotice(null);
     setPreview(null);
+    setCourtPreview(null);
+    setCourtProfileOpen(false);
     setConfirmation("");
+    setCourtConfirmation("");
     setNote("");
     try {
       const response = await fetch(
@@ -1608,6 +2257,81 @@ export function DunningOpsClient({
         sendError instanceof Error
           ? sendError.message
           : "Versand fehlgeschlagen.",
+      );
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function previewCourtApplication() {
+    if (!selected) return;
+    setActionBusy(true);
+    setActionError(null);
+    setNotice(null);
+    setCourtConfirmation("");
+    try {
+      const response = await fetch(
+        `/api/ops/dunning/${encodeURIComponent(selected.case.key)}/actions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "preview_court_application" }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload.ok)
+        throw new Error(
+          payload.error || "Gerichtlicher Antrag konnte nicht geprüft werden.",
+        );
+      setCourtPreview(payload.preview);
+    } catch (previewError) {
+      setActionError(
+        previewError instanceof Error
+          ? previewError.message
+          : "Gerichtliche Vorprüfung fehlgeschlagen.",
+      );
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function prepareCourtApplication() {
+    if (!selected || !courtPreview) return;
+    setActionBusy(true);
+    setActionError(null);
+    setNotice(null);
+    const selectedCase = selected.case;
+    try {
+      const idempotencyKey = `ops-court:${selectedCase.shopifyOrderId || selectedCase.orderNumber}:${crypto.randomUUID()}`;
+      const response = await fetch(
+        `/api/ops/dunning/${encodeURIComponent(selectedCase.key)}/actions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "prepare_court_application",
+            confirmation: courtConfirmation,
+            expectedSnapshotHash: courtPreview.snapshotHash,
+            idempotencyKey,
+          }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload.ok)
+        throw new Error(
+          payload.error || "Amtliche PDF konnte nicht vorbereitet werden.",
+        );
+      setCourtPreview(null);
+      setCourtConfirmation("");
+      await Promise.all([loadDashboard(), openCase(selectedCase)]);
+      setNotice(
+        "Die amtliche Barcode-PDF wurde intern zur Unterschrift versendet. Sie ist noch nicht beim Gericht eingereicht.",
+      );
+    } catch (prepareError) {
+      setActionError(
+        prepareError instanceof Error
+          ? prepareError.message
+          : "Amtliche PDF konnte nicht vorbereitet werden.",
       );
     } finally {
       setActionBusy(false);
@@ -1758,22 +2482,47 @@ export function DunningOpsClient({
           <DetailDrawer
             detail={selected}
             preview={preview}
+            courtPreview={courtPreview}
             loading={actionBusy}
             actionBusy={actionBusy}
             sendConfigured={Boolean(dashboard?.sendConfigured)}
             confirmation={confirmation}
+            courtConfirmation={courtConfirmation}
             note={note}
             error={actionError}
             notice={notice}
             onClose={() => {
               setSelected(null);
               setPreview(null);
+              setCourtPreview(null);
+              setCourtProfileOpen(false);
             }}
             onInsolvencyOpen={setInsolvencyCase}
             onPreview={() => void previewNextStage()}
             onSend={() => void sendNextStage()}
+            onCourtProfileOpen={() => setCourtProfileOpen(true)}
+            onCourtPreview={() => void previewCourtApplication()}
+            onCourtPrepare={() => void prepareCourtApplication()}
             setConfirmation={setConfirmation}
+            setCourtConfirmation={setCourtConfirmation}
             setNote={setNote}
+          />
+        ) : null}
+        {selected && courtProfileOpen ? (
+          <CourtProfileModal
+            detail={selected}
+            onClose={() => setCourtProfileOpen(false)}
+            onSaved={(profile) => {
+              setSelected((current) =>
+                current ? { ...current, courtProfile: profile } : current,
+              );
+              setCourtProfileOpen(false);
+              setCourtPreview(null);
+              setCourtConfirmation("");
+              setNotice(
+                "Gerichtsdaten und E-Mail-Prüfung wurden für diesen Fall gespeichert.",
+              );
+            }}
           />
         ) : null}
         {insolvencyCase ? (
