@@ -528,3 +528,35 @@ test("stopped and conflicting cases fail closed", () => {
     ),
   );
 });
+
+test("a created court application is auditable without pretending it was submitted", () => {
+  const courtEvents: NonNullable<BuildInput["courtEvents"]> = new Map([
+    [
+      "#NEONT5000",
+      [
+        {
+          id: "court-event-1",
+          orderNumber: "#NEONT5000",
+          eventKey:
+            "ticket-test-neont5000-application-draft-created-2026-08-25",
+          eventType: "application_draft_created",
+          eventLabel: "Mahnantrag erstellt",
+          occurredOn: "2026-08-25",
+          sourceReference: "TICKET-157",
+          actor: null,
+          note: "Barcode-PDF-Entwurf; nicht eingereicht.",
+          createdAt: "2026-08-25T14:30:00.000Z",
+        },
+      ],
+    ],
+  ]);
+  const [entry] = buildDunningCases(input({ courtEvents }));
+  assert.equal(entry?.courtEvent?.eventType, "application_draft_created");
+  assert.equal(entry?.courtEvent?.occurredOn, "2026-08-25");
+  assert.equal(
+    entry?.nextActionLabel,
+    "Mahnantrag prüfen und beim Gericht einreichen",
+  );
+  assert.equal(entry?.nextActionKind, "manual_review");
+  assert.equal(entry?.nextActionAt, null);
+});

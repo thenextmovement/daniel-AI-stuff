@@ -95,6 +95,11 @@ function caseMatchesQuery(entry: DunningCaseSummary, query: string) {
         shipment.carrier,
         shipment.trackingNumber,
       ]),
+      ...entry.courtEvents.flatMap((event) => [
+        event.eventLabel,
+        event.occurredOn,
+        event.sourceReference,
+      ]),
     ]
       .filter((value) => value !== null && value !== undefined)
       .join(" "),
@@ -302,6 +307,33 @@ function StageBadge({ entry }: { entry: DunningCaseSummary }) {
       <p className="mt-1 max-w-[15rem] text-xs leading-4 text-stone-500">
         {entry.currentStageLabel}
       </p>
+    </div>
+  );
+}
+
+function CourtStatusBadge({ entry }: { entry: DunningCaseSummary }) {
+  const event = entry.courtEvent;
+  if (!event) return null;
+  const isDraft = event.eventType === "application_draft_created";
+  const tone = isDraft
+    ? "border-amber-200 bg-amber-50 text-amber-900"
+    : "border-violet-200 bg-violet-50 text-violet-900";
+  return (
+    <div className="max-w-[16rem]">
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}
+      >
+        <Gavel className="h-3.5 w-3.5 shrink-0" />
+        {event.eventLabel}
+      </span>
+      <p className="mt-1 text-xs font-semibold text-stone-700">
+        {dateLabel(event.occurredOn)}
+      </p>
+      {isDraft ? (
+        <p className="mt-1 text-xs leading-4 text-amber-800">
+          Noch nicht beim Gericht eingereicht
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -658,6 +690,11 @@ function CaseTable({
                     />
                   </div>
                   <StatusBadge entry={entry} />
+                  {entry.courtEvent ? (
+                    <div className="mt-2">
+                      <CourtStatusBadge entry={entry} />
+                    </div>
+                  ) : null}
                   {entry.customerReplied ? (
                     <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-amber-800">
                       <MessageSquareReply className="h-3.5 w-3.5" /> Antwort
@@ -714,6 +751,7 @@ function CaseTable({
               </div>
               <div className="grid justify-items-end gap-2">
                 <StatusBadge entry={entry} />
+                <CourtStatusBadge entry={entry} />
                 <InsolvencyCheckButton
                   entry={entry}
                   onOpen={onInsolvencyOpen}
@@ -1162,6 +1200,45 @@ function DetailDrawer({
               archivieren, bevor der Carrier-Link abläuft.
             </p>
           </section>
+          {entry.courtEvent ? (
+            <section className="rounded-[22px] border border-violet-200 bg-white p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
+                    Offizielles gerichtliches Mahnverfahren
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold text-stone-950">
+                    Aktueller Verfahrensstand
+                  </h3>
+                </div>
+                <CourtStatusBadge entry={entry} />
+              </div>
+              {entry.courtEvent.eventType === "application_draft_created" ? (
+                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+                  Der amtliche Barcode-PDF-Antrag wurde erstellt. Er wurde noch
+                  nicht beim Mahngericht eingereicht, noch nicht gerichtlich
+                  geprüft und noch nicht als gelber Brief zugestellt.
+                </p>
+              ) : (
+                <p className="mt-4 text-sm leading-6 text-stone-600">
+                  Der Verfahrensstand wird getrennt von Mahnstufe,
+                  Insolvenzprüfung und Kunden-E-Mails geführt. Dadurch wird ein
+                  Entwurf niemals mit Einreichung oder Zustellung verwechselt.
+                </p>
+              )}
+              <p className="mt-3 text-xs text-stone-500">
+                Erfasst am {dateLabel(entry.courtEvent.occurredOn)}
+                {entry.courtEvent.sourceReference
+                  ? ` · Nachweis ${entry.courtEvent.sourceReference}`
+                  : ""}
+              </p>
+              {entry.courtEvent.note ? (
+                <p className="mt-1 text-xs leading-5 text-stone-500">
+                  {entry.courtEvent.note}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
           {entry.courtReview || entry.insolvencyCheck ? (
             <section className="rounded-[22px] border border-violet-200 bg-violet-50 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">

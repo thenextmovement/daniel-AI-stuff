@@ -129,3 +129,36 @@ test("manual stage actions require auth, same-origin, a fresh snapshot, confirma
   assert.match(domain, /Neue Kundenantwort muss zuerst geprüft werden/);
   assert.match(domain, /Alt- und Neuverlauf haben unterschiedliche Mahnstufen/);
 });
+
+test("court application steps remain visibly distinct and seed only the real pilot draft", () => {
+  const client = read("src/app/ops/mahnwesen/page-client.tsx");
+  const domain = read("src/lib/ops/dunning-court.ts");
+  const migration = read(
+    "supabase/migrations/20260826143000_create_dunning_court_events.sql",
+  );
+  const seededPilot = migration.split(
+    "insert into public.dunning_court_events",
+  )[1] || "";
+  assert.match(client, /Offizielles gerichtliches Mahnverfahren/);
+  assert.match(domain, /Mahnantrag erstellt/);
+  assert.match(client, /Noch nicht beim Gericht eingereicht/);
+  assert.match(client, /entry\.courtEvents\.flatMap/);
+  assert.match(client, /event\.sourceReference/);
+  assert.match(
+    client,
+    /noch nicht als gelber Brief\s+zugestellt/,
+  );
+  assert.match(domain, /application_draft_created/);
+  assert.match(domain, /application_submitted/);
+  assert.match(domain, /court_order_served/);
+  assert.match(domain, /Widerspruchsfrist überwachen/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /to service_role/);
+  assert.match(migration, /Append-only audit trail/);
+  assert.match(seededPilot, /#NEONT2993/);
+  assert.match(seededPilot, /date '2026-08-25'/);
+  assert.match(seededPilot, /application_draft_created/);
+  assert.match(seededPilot, /nicht beim Mahngericht eingereicht/);
+  assert.doesNotMatch(seededPilot, /application_submitted/);
+  assert.doesNotMatch(seededPilot, /court_order_served/);
+});
