@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { addressComparisonFields, comparisonFieldChanged } from "../../src/lib/ops/billing/change-comparison";
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 const migration = read("supabase/migrations/20260822170000_billing_change_review_detail.sql");
@@ -62,17 +63,38 @@ test("Ops acceptance preserves separated names and customer delivery instruction
 
 test("Ops review compares every address field and clearly marks only changed values", () => {
   const client = read("src/app/ops/rechnungen/page-client.tsx");
-  assert.match(client, /function addressComparisonFields/);
+  const comparison = read("src/lib/ops/billing/change-comparison.ts");
+  assert.match(comparison, /function addressComparisonFields/);
   assert.match(client, /title="Rechnungsanschrift"/);
   assert.match(client, /title="Lieferadresse"/);
   assert.match(client, /title="Weitere Rechnungsdaten"/);
-  assert.match(client, /Firma am Lieferort/);
-  assert.match(client, /Straße und Hausnummer/);
-  assert.match(client, /Zusätzliche Lieferhinweise/);
-  assert.match(client, /field\.previous !== field\.next/);
+  assert.match(client, /Änderungen auf einen Blick/);
+  assert.match(comparison, /Firma am Lieferort/);
+  assert.match(comparison, /Straße und Hausnummer/);
+  assert.match(comparison, /Zusätzliche Lieferhinweise/);
+  assert.match(client, /comparisonFieldChanged/);
   assert.match(client, />Geändert<\/span>/);
   assert.match(client, /border-rose-300 bg-rose-50\/70/);
   assert.doesNotMatch(client, /function AddressSummary/);
+});
+
+test("Ops review treats country aliases and legacy delivery keys as the same values", () => {
+  const fields = addressComparisonFields(
+    { contactCompany: "Carl Bernh. Hoffmann GmbH & Co. KG", contactName: "Daniela Jäger", street: "Hüngert 5", zip: "41564", city: "Kaarst", country: "Deutschland" },
+    { company: "Carl Bernh. Hoffmann GmbH & Co. KG", firstName: "Daniela", lastName: "Jäger", street: "Hüngert 5", zip: "41564", city: "Kaarst", country: "DE" },
+    true,
+  );
+  assert.equal(fields.filter(comparisonFieldChanged).length, 0);
+  assert.equal(fields.find((field) => field.label === "Lieferland")?.previous, "Deutschland");
+  assert.equal(fields.find((field) => field.label === "Lieferland")?.next, "Deutschland");
+});
+
+test("Ops review exposes only the real address change in the compact summary", () => {
+  const fields = addressComparisonFields(
+    { company: "Carl Bernh. Hoffmann GmbH & Co. KG", street: "Hanns-Martin-Schleyer-Str. .", zip: "41564", city: "Kaarst", country: "Deutschland" },
+    { company: "Carl Bernh. Hoffmann GmbH & Co. KG", street: "Hüngert 5", zip: "41564", city: "Kaarst", country: "DE" },
+  );
+  assert.deepEqual(fields.filter(comparisonFieldChanged).map((field) => field.label), ["Straße und Hausnummer"]);
 });
 
 test("a VIES-verified VAT change is confirmed net in the same decision transaction", () => {
