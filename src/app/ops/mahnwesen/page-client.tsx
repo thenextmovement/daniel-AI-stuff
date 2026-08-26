@@ -57,6 +57,13 @@ type Filters = {
   contact: "all" | "replied" | "no_reply" | "phone_present" | "phone_missing";
   email: "all" | "present" | "missing";
   source: "all" | "legacy" | "t099" | "mixed" | "open_order";
+  insolvency:
+    | "all"
+    | "pending"
+    | "checked"
+    | "notice"
+    | "review"
+    | "failed";
   minAmount: string;
   maxAmount: string;
   sort: "priority" | "overdue" | "amount" | "activity" | "stage";
@@ -73,6 +80,7 @@ const INITIAL_FILTERS: Filters = {
   contact: "all",
   email: "all",
   source: "all",
+  insolvency: "all",
   minAmount: "",
   maxAmount: "",
   sort: "priority",
@@ -188,6 +196,38 @@ function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
     if (filters.contact === "phone_missing" && entry.hasPhone) return false;
     if (filters.source !== "all" && entry.source !== filters.source)
       return false;
+    if (filters.insolvency !== "all") {
+      const check = entry.insolvencyCheck;
+      const pending =
+        entry.courtReview &&
+        (!check || check.status === "checking" || check.status === "retryable");
+      if (filters.insolvency === "pending" && !pending) return false;
+      if (
+        filters.insolvency === "checked" &&
+        !(
+          check?.status === "completed" &&
+          check.resultCode === "no_public_notice_found"
+        )
+      )
+        return false;
+      if (
+        filters.insolvency === "notice" &&
+        check?.resultCode !== "public_notice_found"
+      )
+        return false;
+      if (
+        filters.insolvency === "review" &&
+        !["ambiguous_match", "identity_incomplete"].includes(
+          check?.resultCode || "",
+        )
+      )
+        return false;
+      if (
+        filters.insolvency === "failed" &&
+        !check?.status.match(/^(retryable|failed_final)$/)
+      )
+        return false;
+    }
     if (minAmountCents > 0 && entry.amountCents < minAmountCents) return false;
     if (maxAmountCents > 0 && entry.amountCents > maxAmountCents) return false;
     if (
@@ -273,6 +313,57 @@ function StatusBadge({ entry }: { entry: DunningCaseSummary }) {
     >
       {entry.stateLabel}
     </span>
+  );
+}
+
+function InsolvencyCheckButton({
+  entry,
+  onOpen,
+}: {
+  entry: DunningCaseSummary;
+  onOpen?: (entry: DunningCaseSummary) => void;
+}) {
+  const check = entry.insolvencyCheck;
+  if (!entry.courtReview && !check) return null;
+  let label = "Prüfung ausstehend";
+  let tone = "border-stone-300 bg-stone-50 text-stone-700";
+  if (check?.status === "checking") label = "Prüfung läuft";
+  else if (check?.status === "retryable") {
+    label = "Wiederholung geplant";
+    tone = "border-amber-200 bg-amber-50 text-amber-900";
+  } else if (check?.status === "failed_final") {
+    label = "Prüfung fehlgeschlagen";
+    tone = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (check?.resultCode === "public_notice_found") {
+    label = "Insolvenzhinweis";
+    tone = "border-rose-300 bg-rose-50 text-rose-900";
+  } else if (check?.resultCode === "ambiguous_match") {
+    label = "Treffer prüfen";
+    tone = "border-amber-300 bg-amber-50 text-amber-900";
+  } else if (check?.resultCode === "identity_incomplete") {
+    label = "Schuldnerdaten fehlen";
+    tone = "border-orange-300 bg-orange-50 text-orange-900";
+  } else if (check?.resultCode === "no_public_notice_found") {
+    label = "Daten geprüft";
+    tone = "border-emerald-300 bg-emerald-50 text-emerald-800";
+  }
+  return (
+    <button
+      type="button"
+      disabled={!check || !onOpen}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (check && onOpen) onOpen(entry);
+      }}
+      className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${tone} disabled:cursor-default`}
+    >
+      {check?.resultCode === "public_notice_found" ? (
+        <AlertTriangle className="h-3.5 w-3.5" />
+      ) : (
+        <CheckCircle2 className="h-3.5 w-3.5" />
+      )}
+      {label}
+    </button>
   );
 }
 
@@ -436,6 +527,20 @@ function FilterPanel({
           <option value="mixed">Gemischt</option>
           <option value="open_order">Nur Shopify offen</option>
         </SelectField>
+        <SelectField
+          label="Insolvenzprüfung"
+          value={filters.insolvency}
+          onChange={(value) =>
+            update("insolvency", value as Filters["insolvency"])
+          }
+        >
+          <option value="all">Alle Prüfstatus</option>
+          <option value="pending">Prüfung ausstehend</option>
+          <option value="checked">Daten geprüft – kein Hinweis</option>
+          <option value="notice">Amtlicher Hinweis gefunden</option>
+          <option value="review">Treffer oder Daten prüfen</option>
+          <option value="failed">Technischer Fehler</option>
+        </SelectField>
         <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-stone-600">
           <span>Mindestbetrag</span>
           <input
@@ -508,10 +613,12 @@ function FilterPanel({
 function CaseTable({
   cases,
   onOpen,
+  onInsolvencyOpen,
   loadingKey,
 }: {
   cases: DunningCaseSummary[];
   onOpen: (entry: DunningCaseSummary) => void;
+  onInsolvencyOpen: (entry: DunningCaseSummary) => void;
   loadingKey: string | null;
 }) {
   return (
@@ -599,6 +706,12 @@ function CaseTable({
                   </p>
                 </td>
                 <td className="px-4 py-4">
+                  <div className="mb-2">
+                    <InsolvencyCheckButton
+                      entry={entry}
+                      onOpen={onInsolvencyOpen}
+                    />
+                  </div>
                   <StatusBadge entry={entry} />
                   {entry.customerReplied ? (
                     <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-amber-800">
@@ -652,7 +765,13 @@ function CaseTable({
                   {entry.phone || "Keine Telefonnummer"}
                 </p>
               </div>
-              <StatusBadge entry={entry} />
+              <div className="grid justify-items-end gap-2">
+                <StatusBadge entry={entry} />
+                <InsolvencyCheckButton
+                  entry={entry}
+                  onOpen={onInsolvencyOpen}
+                />
+              </div>
             </div>
             <div className="mt-3 rounded-xl border border-stone-200 p-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
@@ -708,6 +827,142 @@ function CaseTable({
   );
 }
 
+function InsolvencyCheckModal({
+  entry,
+  onClose,
+}: {
+  entry: DunningCaseSummary;
+  onClose: () => void;
+}) {
+  const check = entry.insolvencyCheck;
+  if (!check) return null;
+  const identityLabel =
+    check.identity.kind === "company"
+      ? check.identity.companyName
+      : [check.identity.firstName, check.identity.lastName]
+          .filter(Boolean)
+          .join(" ");
+  const warningTone =
+    check.resultCode === "public_notice_found"
+      ? "border-rose-200 bg-rose-50 text-rose-900"
+      : check.resultCode === "no_public_notice_found"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+        : "border-amber-200 bg-amber-50 text-amber-900";
+  return (
+    <div
+      className="fixed inset-0 z-[70] grid place-items-center bg-stone-950/55 p-4 backdrop-blur-sm"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="insolvency-check-title"
+        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[24px] bg-white shadow-2xl"
+      >
+        <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-stone-200 bg-white/95 px-5 py-4 backdrop-blur">
+          <div>
+            <p className="text-xs font-semibold text-[#b91c73]">
+              Amtliche Insolvenzprüfung
+            </p>
+            <h2
+              id="insolvency-check-title"
+              className="mt-1 text-xl font-semibold text-stone-950"
+            >
+              {entry.orderNumber} · {check.resultLabel}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Prüfdetails schließen"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-stone-300 text-stone-700"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+        <div className="space-y-4 p-5">
+          <div className={`rounded-2xl border p-4 ${warningTone}`}>
+            <p className="font-semibold">{check.resultLabel}</p>
+            <p className="mt-1 text-sm leading-6">
+              {check.resultCode === "no_public_notice_found"
+                ? "Zum Prüfzeitpunkt wurde unter den verwendeten Schuldnerdaten kein öffentlicher Insolvenzhinweis gefunden. Das beweist keine Zahlungsfähigkeit."
+                : check.resultCode === "public_notice_found"
+                  ? "Es wurde mindestens eine exakt zu Firma/Person und Ort passende amtliche Veröffentlichung gefunden. Vor jedem weiteren Schritt manuell prüfen."
+                  : "Das Ergebnis ist nicht eindeutig oder konnte technisch nicht abschließend ermittelt werden. Keine gerichtliche Aktion automatisch auslösen."}
+            </p>
+          </div>
+          <dl className="grid gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                Geprüfte Schuldnerdaten
+              </dt>
+              <dd className="mt-1 font-semibold text-stone-900">
+                {identityLabel || "Unvollständig"}
+                {check.identity.locality ? ` · ${check.identity.locality}` : ""}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                Geprüft am
+              </dt>
+              <dd className="mt-1 font-semibold text-stone-900">
+                {dateLabel(check.checkedAt || check.updatedAt, true)}
+              </dd>
+            </div>
+          </dl>
+          {check.matches.length ? (
+            <div className="overflow-hidden rounded-2xl border border-stone-200">
+              <div className="border-b border-stone-200 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-900">
+                Amtliche Veröffentlichungen ({check.matchCount})
+              </div>
+              <div className="divide-y divide-stone-200">
+                {check.matches.map((match) => (
+                  <article
+                    key={`${match.court}:${match.fileNumber}:${match.publicationDate}`}
+                    className="grid gap-2 p-4 text-sm sm:grid-cols-2"
+                  >
+                    <p>
+                      <strong>{match.subjectName}</strong>
+                      <br />
+                      {match.locality}
+                    </p>
+                    <p>
+                      {match.court}
+                      <br />
+                      Az. {match.fileNumber}
+                    </p>
+                    <p>Veröffentlicht: {match.publicationDate}</p>
+                    <p>{match.register || "Kein Registereintrag angegeben"}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-200 p-4">
+            <p className="max-w-xl text-xs leading-5 text-stone-500">
+              Quelle: deutsche Insolvenzgerichte. Veröffentlichungen werden
+              nach gesetzlichen Fristen gelöscht; der Abruf ist deshalb keine
+              vollständige Bonitätsauskunft. Es wurde weder ein Mahnantrag
+              gestellt noch eine Kundenmail versendet.
+            </p>
+            <a
+              href={check.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold text-stone-800"
+            >
+              Amtliche Quelle <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function DetailDrawer({
   detail,
   preview,
@@ -721,6 +976,7 @@ function DetailDrawer({
   onClose,
   onPreview,
   onSend,
+  onInsolvencyOpen,
   setConfirmation,
   setNote,
 }: {
@@ -736,6 +992,7 @@ function DetailDrawer({
   onClose: () => void;
   onPreview: () => void;
   onSend: () => void;
+  onInsolvencyOpen: (entry: DunningCaseSummary) => void;
   setConfirmation: (value: string) => void;
   setNote: (value: string) => void;
 }) {
@@ -842,6 +1099,27 @@ function DetailDrawer({
               </p>
             </div>
           </section>
+          {entry.courtReview || entry.insolvencyCheck ? (
+            <section className="rounded-[22px] border border-violet-200 bg-violet-50 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-violet-950">
+                    Amtliche Insolvenzprüfung
+                  </h3>
+                  <p className="mt-1 max-w-xl text-sm leading-6 text-violet-800">
+                    Beim Status „Gericht prüfen“ wird die kostenlose amtliche
+                    Insolvenzbekanntmachung automatisch als Einzelabruf
+                    geprüft. Das Ergebnis entscheidet nicht automatisch über
+                    einen gerichtlichen Mahnantrag.
+                  </p>
+                </div>
+                <InsolvencyCheckButton
+                  entry={entry}
+                  onOpen={onInsolvencyOpen}
+                />
+              </div>
+            </section>
+          ) : null}
           <section className="rounded-[22px] border border-stone-200 bg-white p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -872,9 +1150,10 @@ function DetailDrawer({
               <p className="font-semibold">{entry.nextActionLabel}</p>
               {entry.legalReviewReady ? (
                 <p className="mt-1">
-                  Die dritte Mahnung liegt mindestens sieben Tage zurück.
-                  Zahlung, Kundenantwort, Solvenz und Gerichtsweg müssen jetzt
-                  manuell geprüft werden.
+                  Die letzte Mahnstufe liegt mindestens sieben Tage zurück. Die
+                  amtliche Insolvenzbekanntmachung wird automatisch geprüft.
+                  Zahlung, Forderungsbelege und der gerichtliche Mahnantrag
+                  bleiben eine bewusste manuelle Entscheidung.
                 </p>
               ) : entry.finalReminderWaiting ? (
                 <p className="mt-1">
@@ -1109,6 +1388,8 @@ export function DunningOpsClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DunningCaseDetail | null>(null);
+  const [insolvencyCase, setInsolvencyCase] =
+    useState<DunningCaseSummary | null>(null);
   const [detailLoadingKey, setDetailLoadingKey] = useState<string | null>(null);
   const [preview, setPreview] = useState<DunningActionPreview | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
@@ -1393,6 +1674,7 @@ export function DunningOpsClient({
             <CaseTable
               cases={visibleCases}
               onOpen={(entry) => void openCase(entry)}
+              onInsolvencyOpen={setInsolvencyCase}
               loadingKey={detailLoadingKey}
             />
           </>
@@ -1423,10 +1705,17 @@ export function DunningOpsClient({
               setSelected(null);
               setPreview(null);
             }}
+            onInsolvencyOpen={setInsolvencyCase}
             onPreview={() => void previewNextStage()}
             onSend={() => void sendNextStage()}
             setConfirmation={setConfirmation}
             setNote={setNote}
+          />
+        ) : null}
+        {insolvencyCase ? (
+          <InsolvencyCheckModal
+            entry={insolvencyCase}
+            onClose={() => setInsolvencyCase(null)}
           />
         ) : null}
       </div>

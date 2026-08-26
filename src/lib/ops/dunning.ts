@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import {
+  buildDunningInsolvencyIdentity,
+  dunningInsolvencyIdentityHash,
+  loadLatestDunningInsolvencyChecks,
+  type DunningInsolvencyCheck,
+  type DunningInsolvencyIdentity,
+} from "@/lib/ops/dunning-insolvency";
 
 export type DunningSource = "legacy" | "t099" | "mixed" | "open_order";
 export type DunningCaseState =
@@ -187,6 +194,8 @@ export type DunningCaseSummary = {
   legalReviewReady: boolean;
   finalReminderWaiting: boolean;
   courtReview: boolean;
+  insolvencyIdentity: DunningInsolvencyIdentity;
+  insolvencyCheck: DunningInsolvencyCheck | null;
   easybillDocumentId: string | null;
   easybillInvoiceNumber: string | null;
   shopifyUrl: string | null;
@@ -371,6 +380,37 @@ function addressName(order: ShopifyOrderRow | null) {
     addressText(billing, ["last_name", "lastName"]) ||
     addressText(shipping, ["last_name", "lastName"]);
   return cleanText([first, last].filter(Boolean).join(" "), 180);
+}
+
+function addressFirstName(order: ShopifyOrderRow | null) {
+  return (
+    addressText(order?.bill_address || null, ["first_name", "firstName"]) ||
+    addressText(order?.ship_address || null, ["first_name", "firstName"])
+  );
+}
+
+function addressLastName(order: ShopifyOrderRow | null) {
+  return (
+    addressText(order?.bill_address || null, ["last_name", "lastName"]) ||
+    addressText(order?.ship_address || null, ["last_name", "lastName"])
+  );
+}
+
+function addressLocality(order: ShopifyOrderRow | null) {
+  return (
+    addressText(order?.bill_address || null, [
+      "city",
+      "locality",
+      "town",
+      "municipality",
+    ]) ||
+    addressText(order?.ship_address || null, [
+      "city",
+      "locality",
+      "town",
+      "municipality",
+    ])
+  );
 }
 
 function parseOrderReferences(subject: string | null) {
@@ -666,6 +706,7 @@ export function buildDunningCases(input: {
   messages: CustomerEmailRow[];
   candidates: T099Candidate[];
   intakeFresh: boolean;
+  insolvencyChecks?: ReadonlyMap<string, DunningInsolvencyCheck>;
   now?: Date;
 }) {
   const now = input.now || new Date();
@@ -832,6 +873,19 @@ export function buildDunningCases(input: {
       addressName(order) ||
       cleanText(latestSendlog?.kunde, 180) ||
       company;
+    const insolvencyIdentity = buildDunningInsolvencyIdentity({
+      companyName: company,
+      firstName: addressFirstName(order),
+      lastName: addressLastName(order),
+      locality: addressLocality(order),
+    });
+    const storedInsolvencyCheck =
+      input.insolvencyChecks?.get(orderNumber) || null;
+    const insolvencyCheck =
+      storedInsolvencyCheck?.identityHash ===
+      dunningInsolvencyIdentityHash(insolvencyIdentity)
+        ? storedInsolvencyCheck
+        : null;
     const candidateAmount = Number(candidate?.amount_due_cents);
     const amountCents =
       Number.isSafeInteger(candidateAmount) && candidateAmount > 0
@@ -1024,6 +1078,8 @@ export function buildDunningCases(input: {
       legalReviewReady,
       finalReminderWaiting,
       courtReview,
+      insolvencyIdentity,
+      insolvencyCheck,
       easybillDocumentId,
       easybillInvoiceNumber: cleanText(candidate?.easybill_invoice_number, 120),
       shopifyUrl: orderId
@@ -1158,6 +1214,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     senderAudits,
     inboundMessages,
     senderMessages,
+    insolvencyChecks,
   ] = await Promise.all([
     supabaseRequest<DunningStatusRow[]>("dunning_status", undefined, {
       select:
@@ -1215,6 +1272,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       },
       6000,
     ),
+    loadLatestDunningInsolvencyChecks(),
   ]);
 
   const latestAudit = latestIntakeAudits[0] || null;
@@ -1271,6 +1329,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     messages,
     candidates,
     intakeFresh,
+    insolvencyChecks,
   });
   const openCases = cases.filter((entry) => entry.state !== "closed");
   return {
@@ -1348,6 +1407,23 @@ function timelineFromCase(summary: DunningCaseSummary) {
       direction: "internal",
       stage: 7,
       status: summary.legalReviewReady ? "due" : "scheduled",
+    });
+  if (summary.insolvencyCheck?.checkedAt)
+    entries.push({
+      id: `insolvency-check:${summary.insolvencyCheck.id}`,
+      occurredAt: summary.insolvencyCheck.checkedAt,
+      kind: "evidence",
+      title: summary.insolvencyCheck.resultLabel,
+      detail:
+        summary.insolvencyCheck.resultCode === "no_public_notice_found"
+          ? "Kein Treffer ist kein Nachweis der Zahlungsfähigkeit."
+          : summary.insolvencyCheck.matchCount
+            ? `${summary.insolvencyCheck.matchCount} amtliche Veröffentlichung(en)`
+            : null,
+      source: summary.insolvencyCheck.sourceLabel,
+      direction: "internal",
+      stage: 7,
+      status: summary.insolvencyCheck.resultCode,
     });
   return entries;
 }

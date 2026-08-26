@@ -33,11 +33,13 @@ function order(
       company: "Muster GmbH",
       first_name: "Max",
       last_name: "Muster",
+      city: "Viersen",
     },
     bill_address: {
       company: "Muster GmbH",
       first_name: "Max",
       last_name: "Muster",
+      city: "Viersen",
     },
     phone: "+49 211 123456",
     ...overrides,
@@ -128,6 +130,15 @@ test("a fresh, due live candidate becomes an actionable first-stage case", () =>
   assert.equal(entry?.company, "Muster GmbH");
   assert.equal(entry?.amountCents, 11900);
   assert.equal(entry?.currentStage, 0);
+  assert.deepEqual(entry?.insolvencyIdentity, {
+    kind: "company",
+    companyName: "Muster GmbH",
+    firstName: "Max",
+    lastName: "Muster",
+    locality: "Viersen",
+    complete: true,
+  });
+  assert.equal(entry?.insolvencyCheck, null);
   assert.equal(entry?.nextStage, 1);
   assert.equal(entry?.state, "action_required");
   assert.equal(entry?.sendEligible, true);
