@@ -19,6 +19,11 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   assert.match(client, /shipment\.trackingNumber/);
   assert.match(client, /Arbeitsstatus/);
   assert.match(client, /Mahnstufe/);
+  assert.match(client, /label="Bestellalter"/);
+  assert.match(client, /Älter als 1 Monat/);
+  assert.match(client, /Älter als 2 Monate/);
+  assert.match(client, /Älter als 3 Monate/);
+  assert.match(client, /matchesDunningOrderAge\(entry\.orderCreatedAt, filters\.orderAge\)/);
   assert.match(client, /Versandnachweis/);
   assert.match(client, /Sendungsnummer vorhanden/);
   assert.match(client, /Carrier-Zustellung bestätigt/);

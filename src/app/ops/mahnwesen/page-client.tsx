@@ -51,6 +51,10 @@ import type {
   DunningCourtRepresentative,
 } from "@/lib/ops/dunning-court";
 import {
+  matchesDunningOrderAge,
+  type DunningOrderAgeFilter,
+} from "@/lib/ops/dunning-filter";
+import {
   sortDunningCases,
   type DunningCaseSort,
 } from "@/lib/ops/dunning-sort";
@@ -59,6 +63,7 @@ type Filters = {
   query: string;
   state: "all" | DunningCaseState;
   stage: string;
+  orderAge: DunningOrderAgeFilter;
   delivery: "all" | "fulfilled" | "tracking" | "delivered" | "evidence_missing";
   insolvency: "all" | "pending" | "checked" | "notice" | "review" | "failed";
   sort: DunningCaseSort;
@@ -68,6 +73,7 @@ const INITIAL_FILTERS: Filters = {
   query: "",
   state: "all",
   stage: "all",
+  orderAge: "all",
   delivery: "all",
   insolvency: "all",
   sort: "priority",
@@ -165,6 +171,8 @@ function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
     if (!caseMatchesQuery(entry, filters.query)) return false;
     if (filters.state !== "all" && entry.state !== filters.state) return false;
     if (filters.stage !== "all" && entry.currentStage !== Number(filters.stage))
+      return false;
+    if (!matchesDunningOrderAge(entry.orderCreatedAt, filters.orderAge))
       return false;
     if (
       filters.delivery === "fulfilled" &&
@@ -359,6 +367,7 @@ function FilterPanel({
   const advancedCount = [
     filters.state !== "all",
     filters.stage !== "all",
+    filters.orderAge !== "all",
     filters.delivery !== "all",
     filters.insolvency !== "all",
   ].filter(Boolean).length;
@@ -464,7 +473,7 @@ function FilterPanel({
             </span>
           ) : null}
         </summary>
-        <div className="grid gap-3 border-t border-[#eee8df] bg-[#faf7f2] p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 border-t border-[#eee8df] bg-[#faf7f2] p-4 sm:grid-cols-2 xl:grid-cols-5">
           <SelectField
             label="Arbeitsstatus"
             value={filters.state}
@@ -490,6 +499,18 @@ function FilterPanel({
                 Stufe {stage}
               </option>
             ))}
+          </SelectField>
+          <SelectField
+            label="Bestellalter"
+            value={filters.orderAge}
+            onChange={(value) =>
+              update("orderAge", value as DunningOrderAgeFilter)
+            }
+          >
+            <option value="all">Alle Bestellalter</option>
+            <option value="1">Älter als 1 Monat</option>
+            <option value="2">Älter als 2 Monate</option>
+            <option value="3">Älter als 3 Monate</option>
           </SelectField>
           <SelectField
             label="Versandnachweis"
