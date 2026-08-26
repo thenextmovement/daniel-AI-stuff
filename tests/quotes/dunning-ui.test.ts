@@ -197,6 +197,15 @@ test("one-click court preparation uses the official portal and sends only an int
   assert.match(application, /Amtsgericht Hagen/);
   assert.match(
     application,
+    /const AMTSGERICHT_MAX_AMOUNT_CENTS = 1_000_000/,
+  );
+  assert.match(
+    application,
+    /amountCents > AMTSGERICHT_MAX_AMOUNT_CENTS/,
+  );
+  assert.doesNotMatch(application, /amountCents > 500_000/);
+  assert.match(
+    application,
     /Der erste\/einzige Antragsteller ist Kontoinhaber/,
   );
   assert.match(application, /PDFDocument[.]load/);
