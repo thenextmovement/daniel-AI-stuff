@@ -527,9 +527,15 @@ async function generateOfficialBarcodePdf(input: {
 }
 
 async function graphToken() {
+  const clientId =
+    String(process.env.MICROSOFT_GRAPH_CLIENT_ID_NEXT || "").trim() ||
+    requiredEnv("MICROSOFT_GRAPH_CLIENT_ID");
+  const clientSecret =
+    String(process.env.MICROSOFT_GRAPH_CLIENT_SECRET_NEXT || "").trim() ||
+    requiredEnv("MICROSOFT_GRAPH_CLIENT_SECRET");
   const body = new URLSearchParams({
-    client_id: requiredEnv("MICROSOFT_GRAPH_CLIENT_ID"),
-    client_secret: requiredEnv("MICROSOFT_GRAPH_CLIENT_SECRET"),
+    client_id: clientId,
+    client_secret: clientSecret,
     scope: "https://graph.microsoft.com/.default",
     grant_type: "client_credentials",
   });
