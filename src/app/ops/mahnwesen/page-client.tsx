@@ -51,6 +51,15 @@ import type {
   DunningCourtRepresentative,
 } from "@/lib/ops/dunning-court";
 import {
+  hasCreatedDunningCourtApplication,
+  matchesDunningOrderAge,
+  matchesDunningOrderYear,
+  matchesDunningStage,
+  type DunningOrderAgeFilter,
+  type DunningOrderYearFilter,
+  type DunningStageFilter,
+} from "@/lib/ops/dunning-filter";
+import {
   sortDunningCases,
   type DunningCaseSort,
 } from "@/lib/ops/dunning-sort";
@@ -58,7 +67,10 @@ import {
 type Filters = {
   query: string;
   state: "all" | DunningCaseState;
-  stage: string;
+  stage: DunningStageFilter;
+  orderAge: DunningOrderAgeFilter;
+  orderYear: DunningOrderYearFilter;
+  hideCreatedCourtApplications: boolean;
   delivery: "all" | "fulfilled" | "tracking" | "delivered" | "evidence_missing";
   insolvency: "all" | "pending" | "checked" | "notice" | "review" | "failed";
   sort: DunningCaseSort;
@@ -68,6 +80,9 @@ const INITIAL_FILTERS: Filters = {
   query: "",
   state: "all",
   stage: "all",
+  orderAge: "all",
+  orderYear: "all",
+  hideCreatedCourtApplications: false,
   delivery: "all",
   insolvency: "all",
   sort: "priority",
@@ -164,7 +179,15 @@ function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
   const visible = cases.filter((entry) => {
     if (!caseMatchesQuery(entry, filters.query)) return false;
     if (filters.state !== "all" && entry.state !== filters.state) return false;
-    if (filters.stage !== "all" && entry.currentStage !== Number(filters.stage))
+    if (!matchesDunningStage(entry.currentStage, filters.stage)) return false;
+    if (!matchesDunningOrderAge(entry.orderCreatedAt, filters.orderAge))
+      return false;
+    if (!matchesDunningOrderYear(entry.orderCreatedAt, filters.orderYear))
+      return false;
+    if (
+      filters.hideCreatedCourtApplications &&
+      hasCreatedDunningCourtApplication(entry.courtEvents)
+    )
       return false;
     if (
       filters.delivery === "fulfilled" &&
@@ -359,6 +382,9 @@ function FilterPanel({
   const advancedCount = [
     filters.state !== "all",
     filters.stage !== "all",
+    filters.orderAge !== "all",
+    filters.orderYear !== "all",
+    filters.hideCreatedCourtApplications,
     filters.delivery !== "all",
     filters.insolvency !== "all",
   ].filter(Boolean).length;
@@ -464,7 +490,7 @@ function FilterPanel({
             </span>
           ) : null}
         </summary>
-        <div className="grid gap-3 border-t border-[#eee8df] bg-[#faf7f2] p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 border-t border-[#eee8df] bg-[#faf7f2] p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <SelectField
             label="Arbeitsstatus"
             value={filters.state}
@@ -482,14 +508,53 @@ function FilterPanel({
           <SelectField
             label="Mahnstufe"
             value={filters.stage}
-            onChange={(value) => update("stage", value)}
+            onChange={(value) => update("stage", value as DunningStageFilter)}
           >
             <option value="all">Alle Stufen</option>
-            {Array.from({ length: 7 }, (_, stage) => (
-              <option key={stage} value={stage}>
-                Stufe {stage}
-              </option>
-            ))}
+            <optgroup label="Exakt">
+              {Array.from({ length: 7 }, (_, stage) => (
+                <option key={`exact-${stage}`} value={`exact:${stage}`}>
+                  Exakt Stufe {stage}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Mindestens">
+              {Array.from({ length: 6 }, (_, index) => index + 1).map(
+                (stage) => (
+                  <option key={`minimum-${stage}`} value={`minimum:${stage}`}>
+                    Mindestens Stufe {stage}
+                  </option>
+                ),
+              )}
+            </optgroup>
+          </SelectField>
+          <SelectField
+            label="Bestellalter"
+            value={filters.orderAge}
+            onChange={(value) =>
+              update("orderAge", value as DunningOrderAgeFilter)
+            }
+          >
+            <option value="all">Alle Bestellalter</option>
+            <option value="1">Älter als 1 Monat</option>
+            <option value="2">Älter als 2 Monate</option>
+            <option value="3">Älter als 3 Monate</option>
+          </SelectField>
+          <SelectField
+            label="Bestelljahr"
+            value={filters.orderYear}
+            onChange={(value) =>
+              update("orderYear", value as DunningOrderYearFilter)
+            }
+          >
+            <option value="all">Alle Jahre</option>
+            {Array.from({ length: 11 }, (_, index) => 2024 + index).map(
+              (year) => (
+                <option key={year} value={String(year)}>
+                  {year}
+                </option>
+              ),
+            )}
           </SelectField>
           <SelectField
             label="Versandnachweis"
@@ -520,6 +585,25 @@ function FilterPanel({
             <option value="review">Treffer oder Daten prüfen</option>
             <option value="failed">Technischer Fehler</option>
           </SelectField>
+          <label className="flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2 sm:col-span-2 lg:col-span-3 xl:col-span-2">
+            <input
+              type="checkbox"
+              checked={filters.hideCreatedCourtApplications}
+              onChange={(event) =>
+                update("hideCreatedCourtApplications", event.target.checked)
+              }
+              className="h-4 w-4 rounded border-stone-300 accent-stone-950"
+            />
+            <span className="grid gap-0.5">
+              <span className="text-xs font-semibold text-stone-700">
+                Erstellte Mahnanträge ausblenden
+              </span>
+              <span className="text-xs font-normal text-stone-500">
+                Verhindert, dass bereits gerichtliche Fälle erneut ausgewählt
+                werden.
+              </span>
+            </span>
+          </label>
         </div>
       </details>
     </section>
