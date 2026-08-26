@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import {
+  dunningCourtNextAction,
+  loadDunningCourtEvents,
+  type DunningCourtEvent,
+} from "@/lib/ops/dunning-court";
+import {
   buildDunningInsolvencyIdentity,
   dunningInsolvencyIdentityHash,
   loadLatestDunningInsolvencyChecks,
@@ -175,7 +180,15 @@ export type DunningNextActionKind =
 export type DunningTimelineEntry = {
   id: string;
   occurredAt: string;
-  kind: "order" | "due" | "stage" | "email" | "reply" | "evidence" | "status";
+  kind:
+    | "order"
+    | "due"
+    | "stage"
+    | "email"
+    | "reply"
+    | "evidence"
+    | "status"
+    | "court";
   title: string;
   detail: string | null;
   source: string;
@@ -240,6 +253,8 @@ export type DunningCaseSummary = {
   carrierDeliveryConfirmed: boolean;
   insolvencyIdentity: DunningInsolvencyIdentity;
   insolvencyCheck: DunningInsolvencyCheck | null;
+  courtEvents: DunningCourtEvent[];
+  courtEvent: DunningCourtEvent | null;
   easybillDocumentId: string | null;
   easybillInvoiceNumber: string | null;
   shopifyUrl: string | null;
@@ -749,6 +764,11 @@ export function dunningCaseMatchesQuery(
         shipment.trackingNumber,
         shipment.carrier,
       ]),
+      ...summary.courtEvents.flatMap((event) => [
+        event.eventLabel,
+        event.occurredOn,
+        event.sourceReference,
+      ]),
     ]
       .filter((value) => value !== null && value !== undefined)
       .join(" "),
@@ -774,6 +794,7 @@ export function buildDunningCases(input: {
   candidates: T099Candidate[];
   intakeFresh: boolean;
   insolvencyChecks?: ReadonlyMap<string, DunningInsolvencyCheck>;
+  courtEvents?: ReadonlyMap<string, DunningCourtEvent[]>;
   shipments?: DunningShipmentRow[];
   now?: Date;
 }) {
@@ -970,6 +991,8 @@ export function buildDunningCases(input: {
       dunningInsolvencyIdentityHash(insolvencyIdentity)
         ? storedInsolvencyCheck
         : null;
+    const courtEvents = input.courtEvents?.get(orderNumber) || [];
+    const courtEvent = courtEvents[0] || null;
     const candidateAmount = Number(candidate?.amount_due_cents);
     const amountCents =
       Number.isSafeInteger(candidateAmount) && candidateAmount > 0
@@ -1150,6 +1173,7 @@ export function buildDunningCases(input: {
       lastSentAt,
       ...messageTimes,
       ...locks.map((lock) => lock.updated_at),
+      ...courtEvents.map((event) => event.createdAt),
     );
     const phone =
       cleanText(order?.phone, 60) ||
@@ -1182,6 +1206,18 @@ export function buildDunningCases(input: {
       nextActionAt = scheduledAt;
       nextActionLabel = `Stufe ${nextStage} E-Mail: ${dunningStageLabel(nextStage, "t099")}`;
     } else if (uniqueBlockers.length) nextActionLabel = uniqueBlockers[0]!;
+    const courtNextAction = dunningCourtNextAction(courtEvent);
+    if (
+      !paymentException &&
+      !closed &&
+      !paused &&
+      !stopTag &&
+      courtNextAction
+    ) {
+      nextActionKind = "manual_review";
+      nextActionAt = null;
+      nextActionLabel = courtNextAction;
+    }
     if (closed && !paymentException) continue;
     cases.push({
       key: orderNumber.slice(1),
@@ -1243,6 +1279,8 @@ export function buildDunningCases(input: {
       ),
       insolvencyIdentity,
       insolvencyCheck,
+      courtEvents,
+      courtEvent,
       easybillDocumentId,
       easybillInvoiceNumber: cleanText(candidate?.easybill_invoice_number, 120),
       shopifyUrl: orderId
@@ -1428,6 +1466,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     inboundMessages,
     senderMessages,
     insolvencyChecks,
+    courtEvents,
   ] = await Promise.all([
     supabaseRequest<DunningStatusRow[]>("dunning_status", undefined, {
       select:
@@ -1486,6 +1525,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       6000,
     ),
     loadLatestDunningInsolvencyChecks(),
+    loadDunningCourtEvents(),
   ]);
 
   const latestAudit = latestIntakeAudits[0] || null;
@@ -1561,6 +1601,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     candidates,
     intakeFresh,
     insolvencyChecks,
+    courtEvents,
     shipments,
   });
   const openCases = cases.filter((entry) => !entry.paymentException);
@@ -1689,6 +1730,24 @@ function timelineFromCase(summary: DunningCaseSummary) {
       stage: 7,
       status: summary.insolvencyCheck.resultCode,
     });
+  for (const event of summary.courtEvents) {
+    const occurredAt = atNineBerlinDate(event.occurredOn);
+    if (!occurredAt) continue;
+    entries.push({
+      id: "court:" + event.id,
+      occurredAt,
+      kind: "court",
+      title: event.eventLabel,
+      detail:
+        [event.note, event.sourceReference]
+          .filter(Boolean)
+          .join(" · ") || null,
+      source: "Gerichtliches Mahnverfahren",
+      direction: "internal",
+      stage: 7,
+      status: event.eventType,
+    });
+  }
   return entries;
 }
 
