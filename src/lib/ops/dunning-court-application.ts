@@ -12,6 +12,7 @@ import {
 
 const OFFICIAL_MAHNANTRAG_URL = "https://www.online-mahnantrag.de/";
 const MAX_PDF_BYTES = 2_800_000;
+const AMTSGERICHT_MAX_AMOUNT_CENTS = 1_000_000;
 
 type ApplicantConfig = {
   legalName: string;
@@ -428,7 +429,7 @@ async function generateOfficialBarcodePdf(input: {
     if (!processCourtText.includes("Prozessgerichtsdaten"))
       throw new Error("DUNNING_COURT_PROCESS_COURT_MISSING");
     if (
-      input.preview.amountCents > 500_000 &&
+      input.preview.amountCents > AMTSGERICHT_MAX_AMOUNT_CENTS &&
       !processCourtText.includes("Landgericht")
     )
       throw new Error("DUNNING_COURT_PROCESS_COURT_INVALID");
