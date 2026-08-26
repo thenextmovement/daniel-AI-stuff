@@ -432,27 +432,86 @@ test("manual Trello lists are hard stops and can only block automation", () => {
   assert.deepEqual(decision.reasons, ["trello_manual_list"]);
 });
 
-test("express, urgent and conflicting instructions are detected deterministically", () => {
-  assert.equal(classifyShipping({ ...standardOrder, note: "Expressversand" }).shippingClass, "express");
-  assert.equal(classifyShipping({ ...standardOrder, note: "Expresszustellung bis 9:00 Uhr" }).shippingClass, "express_09");
-  assert.equal(classifyShipping({ ...standardOrder, note: "Express 12:00 Uhr" }).shippingClass, "express_12");
-  assert.equal(classifyShipping({ ...standardOrder, note: "Eilauftrag" }).shippingClass, "urgent");
-  assert.deepEqual(
-    classifyShipping(
-      { ...standardOrder, note: "Liefertermin Standardlieferung" },
-      { ...card(), description: "Anlieferung naechstmoeglich, aber erstmal kein Express" },
-    ),
-    { shippingClass: "standard", conflict: null },
+test("only Shopify express shipping selections choose DPD Express 12", () => {
+  for (const title of ["Express-Versand", "Express Versand Aufpreis 1.7.26", "3D Expressversand ca. 14 Werktage"]) {
+    const result = classifyShipping({ ...standardOrder, lineItems: [{ title, quantity: 1 }], shippingLines: [] });
+    assert.deepEqual(result, { shippingClass: "express_12", conflict: null }, title);
+  }
+
+  const expressShippingLine = classifyShipping({
+    ...standardOrder,
+    lineItems: [{ title: "Neonschild", quantity: 1 }],
+    shippingLines: [{ title: "Express", code: "express" }],
+  });
+  assert.deepEqual(expressShippingLine, { shippingClass: "express_12", conflict: null });
+
+  const standardAndExpress = classifyShipping({
+    ...standardOrder,
+    lineItems: [
+      { title: "Standard-Versand", quantity: 2 },
+      { title: "Express-Versand", quantity: 1 },
+    ],
+    shippingLines: [],
+  });
+  assert.deepEqual(standardAndExpress, { shippingClass: "express_12", conflict: null });
+
+  for (const title of ["Express-Produktion 7 Tage", "Priorisierte Produktion 12 Tage"]) {
+    const result = classifyShipping({ ...standardOrder, lineItems: [{ title, quantity: 1 }], shippingLines: [] });
+    assert.deepEqual(result, { shippingClass: "standard", conflict: null }, title);
+  }
+
+  const ignoredNonShopifyEvidence = classifyShipping(
+    { ...standardOrder, note: "Expressversand", lineItems: [{ title: "Neonschild", quantity: 1 }], shippingLines: [] },
+    { ...card(), description: "Eilauftrag, bitte Express" },
   );
-  const conflict = classifyShipping({ ...standardOrder, note: "Express Versand, aber kein Express" });
-  assert.equal(conflict.shippingClass, "unknown");
-  assert.match(conflict.conflict || "", /widersprechen/);
-  const deadlineConflict = classifyShipping({ ...standardOrder, note: "Express 9:00 Uhr oder Express 12:00 Uhr" });
-  assert.equal(deadlineConflict.shippingClass, "unknown");
-  assert.match(deadlineConflict.conflict || "", /Zustellzeiten/);
+  assert.deepEqual(ignoredNonShopifyEvidence, { shippingClass: "standard", conflict: null });
+
+  const unsupportedShipping = classifyShipping({
+    ...standardOrder,
+    lineItems: [{ title: "Direktfahrt Lieferung Koeln", quantity: 1 }],
+    shippingLines: [],
+  });
+  assert.deepEqual(unsupportedShipping, { shippingClass: "unknown", conflict: null });
+
+  const wrongDeadline = classifyShipping({
+    ...standardOrder,
+    lineItems: [{ title: "Neonschild", quantity: 1 }],
+    shippingLines: [{ title: "DPD Express 18:00", code: "express" }],
+  });
+  assert.equal(wrongDeadline.shippingClass, "unknown");
+  assert.match(wrongDeadline.conflict || "", /nicht 12:00 Uhr/);
+
+  const unsupportedServiceCode = classifyShipping({
+    ...standardOrder,
+    lineItems: [{ title: "Neonschild", quantity: 1 }],
+    shippingLines: [{ title: "Express", code: "DPD_DE_EXPRESS_0830" }],
+  });
+  assert.equal(unsupportedServiceCode.shippingClass, "unknown");
+  assert.match(unsupportedServiceCode.conflict || "", /nicht 12:00 Uhr/);
+
   assert.equal(selectDpdProduct("express_09", config), "DPD_EXPRESS_09_TEST");
   assert.equal(selectDpdProduct("express_12", config), "DPD_EXPRESS_12_TEST");
   assert.equal(selectDpdProduct("express_18", config), null);
+});
+
+test("an Express-Versand order plans the approved DPD Express 12 product", () => {
+  const expressOrder: ShopifyOrderEvidence = {
+    ...standardOrder,
+    lineItems: [
+      { title: "Neonschild", quantity: 1 },
+      { title: "Express-Versand", quantity: 1 },
+    ],
+    shippingLines: [],
+  };
+  const decision = decideArrivalCase({
+    arrival: arrival(),
+    trelloCards: [card()],
+    shopifyOrders: [expressOrder],
+    productConfig: config,
+  });
+  assert.equal(decision.status, "label_planned");
+  assert.equal(decision.shippingClass, "express_12");
+  assert.equal(decision.selectedDpdProduct, "DPD_EXPRESS_12_TEST");
 });
 
 test("reference order with existing DPD fulfillment can never plan a second label", () => {

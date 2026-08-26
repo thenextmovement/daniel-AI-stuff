@@ -356,10 +356,12 @@ export function assessDestinationGate(order: ShopifyOrderEvidence, config: Produ
   };
 }
 
-const EXPRESS_PATTERN = /\b(express(?:\s*-?\s*(?:versand|zustellung|lieferung))?|expressversand|expresszustellung|expresslieferung)\b/i;
-const URGENT_PATTERN = /\b(eilauftrag|eilproduktion|eilig|rush|urgent|priority|priorisierte\s+produktion)\b/i;
-const STANDARD_PATTERN = /\b(standard(?:\s*-?\s*versand|lieferung)|normaler\s+versand)\b/i;
-const EXPRESS_NEGATION_PATTERN = /\b(kein|nicht|ohne)\s+(?:dpd\s+)?express\b|\bstandard\s+statt\s+express\b/i;
+const EXPRESS_SHIPPING_ITEM_PATTERN = /\b(?:expressversand|expresszustellung|expresslieferung|express\s+(?:versand|zustellung|lieferung|shipping|delivery))\b/i;
+const EXPRESS_SHIPPING_LINE_PATTERN = /\bexpress\b/i;
+const STANDARD_SHIPPING_ITEM_PATTERN = /\b(?:standardversand|standardlieferung|standard\s+(?:versand|lieferung|shipping|delivery)|normaler\s+versand)\b/i;
+const STANDARD_SHIPPING_LINE_PATTERN = /\b(?:standard|normal|classic|b2c)\b/i;
+const SHIPPING_ITEM_PATTERN = /\b(?:versand|versandkosten|lieferung|zustellung|liefertermin|direktfahrt|abholung|shipping|delivery|courier|kurier)\b/i;
+const EXPRESS_NEGATION_PATTERN = /\b(?:kein|nicht|ohne)\s+(?:dpd\s+)?express(?:versand|zustellung|lieferung|\s+(?:versand|zustellung|lieferung))?\b|\bstandard\s+statt\s+express\b/i;
 
 function hasExpressDeadline(evidence: string, hour: "09" | "12" | "18") {
   const shortHour = hour === "09" ? "0?9" : hour;
@@ -367,6 +369,12 @@ function hasExpressDeadline(evidence: string, hour: "09" | "12" | "18") {
   const expressFirst = `(?:express(?:\\s*-?\\s*(?:versand|zustellung|lieferung))?|expressversand|expresszustellung|expresslieferung)[^\\n.]{0,40}(?:bis\\s*)?${time}`;
   const deadlineFirst = `(?:bis|vor|spaetestens)\\s*${time}[^\\n.]{0,40}(?:zustellung|lieferung|versand|express)`;
   return new RegExp(`(?:${expressFirst}|${deadlineFirst})`, "i").test(evidence);
+}
+
+function hasUnsupportedExpressService(evidence: string) {
+  if (hasExpressDeadline(evidence, "09") || hasExpressDeadline(evidence, "18")) return true;
+  if (/\bexpress[^\n.]{0,40}\b0?8(?:(?::|\.)30|\s*uhr)\b/i.test(evidence)) return true;
+  return /\b(?:dpd\s+de\s+)?express\s+(?:0830|09|0900|18|1800)\b/i.test(normalizeHumanText(evidence));
 }
 
 export function normalizeHumanText(value: unknown) {
@@ -760,36 +768,41 @@ function trelloCardIdsFromOrderAttributes(attributes: ShopifyOrderEvidence["cust
     .filter((value) => /^[a-f0-9]{24}$/.test(value)))];
 }
 
-export function classifyShipping(order: ShopifyOrderEvidence, card?: TrelloCardEvidence | null) {
-  const evidence = [
-    order.note || "",
-    ...order.tags,
-    ...order.customAttributes.flatMap((attribute) => [attribute.key, attribute.value]),
-    ...order.lineItems.map((item) => `${item.quantity} ${item.title}`),
-    ...order.shippingLines.flatMap((line) => [line.title, line.code || ""]),
-    card?.name || "",
-    card?.description || "",
-  ].join("\n");
-  const explicitNegation = EXPRESS_NEGATION_PATTERN.test(evidence);
-  const expressEvidence = evidence.replace(new RegExp(EXPRESS_NEGATION_PATTERN.source, "gi"), " ");
-  const express = EXPRESS_PATTERN.test(expressEvidence);
-  const urgent = URGENT_PATTERN.test(evidence);
-  const standard = STANDARD_PATTERN.test(evidence);
+export function classifyShipping(order: ShopifyOrderEvidence, _card?: TrelloCardEvidence | null) {
+  const lineItemEvidence = order.lineItems.map((item) => item.title).filter(Boolean);
+  const shippingLineEvidence = order.shippingLines
+    .flatMap((line) => [line.title, line.code || ""])
+    .filter(Boolean);
+  const expressEvidence = [
+    ...lineItemEvidence.filter((value) => EXPRESS_SHIPPING_ITEM_PATTERN.test(normalizeHumanText(value))),
+    ...shippingLineEvidence.filter((value) => EXPRESS_SHIPPING_LINE_PATTERN.test(normalizeHumanText(value))),
+  ];
+  const normalizedShippingEvidence = [...lineItemEvidence, ...shippingLineEvidence]
+    .map(normalizeHumanText)
+    .join("\n");
+  const explicitNegation = EXPRESS_NEGATION_PATTERN.test(normalizedShippingEvidence);
   const deadlines = (["09", "12", "18"] as const)
-    .filter((hour) => hasExpressDeadline(evidence, hour))
+    .filter((hour) => expressEvidence.some((value) => hasExpressDeadline(value, hour)))
     .map((hour) => `express_${hour}` as "express_09" | "express_12" | "express_18");
 
   if (deadlines.length > 1) {
     return { shippingClass: "unknown" as const, conflict: "Mehrere Express-Zustellzeiten widersprechen sich." };
   }
-  if ((express || urgent || deadlines.length) && explicitNegation) {
+  if (expressEvidence.length && explicitNegation) {
     return { shippingClass: "unknown" as const, conflict: "Express-Hinweis und ausdruecklicher Ausschluss widersprechen sich." };
   }
-  if (deadlines[0]) return { shippingClass: deadlines[0], conflict: null };
-  if (urgent) return { shippingClass: "urgent" as const, conflict: null };
-  if (express) return { shippingClass: "express" as const, conflict: null };
+  if (expressEvidence.some(hasUnsupportedExpressService) || (deadlines[0] && deadlines[0] !== "express_12")) {
+    return { shippingClass: "unknown" as const, conflict: "Shopify enthaelt eine Express-Zustellzeit, die nicht 12:00 Uhr ist." };
+  }
+  if (expressEvidence.length) return { shippingClass: "express_12" as const, conflict: null };
+
+  const standard = lineItemEvidence.some((value) => STANDARD_SHIPPING_ITEM_PATTERN.test(normalizeHumanText(value)))
+    || shippingLineEvidence.some((value) => STANDARD_SHIPPING_LINE_PATTERN.test(normalizeHumanText(value)));
   if (standard || explicitNegation) return { shippingClass: "standard" as const, conflict: null };
-  return { shippingClass: "unknown" as const, conflict: null };
+
+  const unclassifiedShippingItem = lineItemEvidence.some((value) => SHIPPING_ITEM_PATTERN.test(normalizeHumanText(value)));
+  if (unclassifiedShippingItem || shippingLineEvidence.length) return { shippingClass: "unknown" as const, conflict: null };
+  return { shippingClass: "standard" as const, conflict: null };
 }
 
 export function resolveShopifyOrder(input: {
