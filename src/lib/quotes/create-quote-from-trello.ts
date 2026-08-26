@@ -3,7 +3,7 @@ import { buildAddonItems, buildProductItems, buildShippingItems } from "./build-
 import { getFactor } from "./pricing";
 import { getTaxRate } from "./tax";
 import { generateSecureShareToken } from "./tokens";
-import { downloadTrelloAttachment, getTrelloCard } from "./trello";
+import { downloadTrelloAttachment, getTrelloCard, hasNoSizeLadderLabel } from "./trello";
 import { attachmentName, selectMockupAttachments } from "./mockups";
 import {
   listOfferSizeLadderDrafts,
@@ -234,7 +234,9 @@ export async function createQuoteFromTrello(cardId: string, options: { forceNew?
   const factor = getFactor(card.customFields);
   const taxRate = getTaxRate(request.country);
   const baseProducts = buildProductItems(card.customFields, { factor, taxRate });
-  const sizeLadderMode = quoteSizeLadderMode(options.sizeLadderMode);
+  const sizeLadderMode = hasNoSizeLadderLabel(card.labels)
+    ? "off"
+    : quoteSizeLadderMode(options.sizeLadderMode);
   const sizeLadderPlan = await resolveQuoteSizeLadderPlan({
     trelloCardId: card.id,
     taxRate,

@@ -30,6 +30,26 @@ type TrelloCustomFieldItem = {
   };
 };
 
+export const NO_SIZE_LADDER_TRELLO_LABEL = "Keine Größenleiter";
+
+function normalizeControlLabel(value: unknown) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/ß/g, "ss")
+    .toLocaleLowerCase("de-DE")
+    .replace(/[‐‑‒–—_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function hasNoSizeLadderLabel(labels: TrelloCardData["labels"]) {
+  return (labels || []).some((label) => {
+    const normalized = normalizeControlLabel(label?.name);
+    return normalized === "keine grossenleiter" || normalized === "keine groessenleiter";
+  });
+}
+
 function trelloConfig() {
   const key = process.env.TRELLO_API_KEY;
   const token = process.env.TRELLO_TOKEN;
@@ -229,11 +249,12 @@ export async function getTrelloCard(cardId: string): Promise<TrelloCardData> {
     desc?: string;
     idBoard: string;
     idList?: string;
+    labels?: TrelloCardData["labels"];
     customFieldItems?: TrelloCustomFieldItem[];
     attachments?: TrelloAttachment[];
     actions?: TrelloAction[];
   }>(
-    `/cards/${encodeURIComponent(cardId)}?fields=id,name,desc,idBoard,idList&customFieldItems=true&attachments=true&actions=commentCard&actions_limit=50&action_fields=date,data`,
+    `/cards/${encodeURIComponent(cardId)}?fields=id,name,desc,idBoard,idList,labels&labels=all&customFieldItems=true&attachments=true&actions=commentCard&actions_limit=50&action_fields=date,data`,
   );
   const fields = await trelloFetch<TrelloCustomField[]>(
     `/boards/${encodeURIComponent(card.idBoard)}/customFields`,
@@ -254,6 +275,7 @@ export async function getTrelloCard(cardId: string): Promise<TrelloCardData> {
     name: card.name,
     desc: card.desc,
     createdAt: trelloCardCreatedAt(card.id),
+    labels: card.labels || [],
     customFields,
     attachments: card.attachments || [],
     actions: card.actions || [],

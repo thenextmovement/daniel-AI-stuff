@@ -23,6 +23,41 @@ import {
   validateOfferItemsJsonProjection,
 } from "../../src/lib/ops/offer-size-ladder";
 import { OpsOfferApiError } from "../../src/lib/ops/offers";
+import { hasNoSizeLadderLabel, NO_SIZE_LADDER_TRELLO_LABEL } from "../../src/lib/quotes/trello";
+
+test("recognizes the no-size-ladder Trello control label", () => {
+  assert.equal(hasNoSizeLadderLabel([{ id: "label-1", name: NO_SIZE_LADDER_TRELLO_LABEL }]), true);
+  assert.equal(hasNoSizeLadderLabel([{ id: "label-2", name: "KEINE GROESSENLEITER" }]), true);
+  assert.equal(hasNoSizeLadderLabel([{ id: "label-3", name: "Kein KI-Video" }]), false);
+});
+
+test("no-size-ladder label skips preparation, persistence and Trello projection", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardNoSizeLadder",
+    idBoard: "board-1",
+    name: "LED Flex ohne Größenleiter",
+    labels: [{ id: "label-1", name: NO_SIZE_LADDER_TRELLO_LABEL }],
+    customFields: {
+      Size_1: "50x50cm",
+      Price_1: "145",
+      Product_1: "LED Flex",
+    },
+    attachments: [{ id: "att-1", name: "Mockup01.jpg" }],
+  }, {
+    trelloCard: "https://trello.com/c/cardNoSizeLadder",
+    persist: true,
+    projectToTrello: true,
+    commentToTrello: true,
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.skipReason, "trello_label_no_size_ladder");
+  assert.equal(result.designs.length, 0);
+  assert.equal(result.offerItemsJson, null);
+  assert.deepEqual(result.trelloProjection, null);
+  assert.deepEqual(result.commentProjection, { written: false, skipped: true });
+  assert.equal(classifyManualReleaseSizeLadderPreflight(result).decision, "skipped");
+});
 
 test("offer_items_json projection validator accepts an omitted or open max quantity", () => {
   const baseItem = {

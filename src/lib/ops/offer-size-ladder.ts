@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { addTrelloCardComment, createTrelloBoardCustomField, getTrelloCard, updateTrelloCustomField } from "@/lib/quotes/trello";
+import {
+  addTrelloCardComment,
+  createTrelloBoardCustomField,
+  getTrelloCard,
+  hasNoSizeLadderLabel,
+  NO_SIZE_LADDER_TRELLO_LABEL,
+  updateTrelloCustomField,
+} from "@/lib/quotes/trello";
 import type { CustomFieldMap, TrelloCardData, TrelloEditableCustomField } from "@/lib/quotes/types";
 import { getFactorOverride, roundDownToFive } from "@/lib/quotes/pricing";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
@@ -254,6 +261,7 @@ export type QuoteReadySizeLadderPreflightDesign = {
 
 export type QuoteReadySizeLadderPreflightResult = {
   status: QuoteReadySizeLadderPreflightStatus;
+  skipReason?: "trello_label_no_size_ladder" | null;
   trelloCardId: string;
   trelloCardUrl: string | null;
   trelloCardName: string | null;
@@ -1566,8 +1574,39 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
 
   const warnings: string[] = [];
   const issues: string[] = [];
-  const sourceMockups = listQuoteReadySourceMockups(card);
   const structure = resolveQuoteReadyOfferStructure(card);
+  const trelloCardUrl = input.trelloCard && String(input.trelloCard).includes("trello.com/c/")
+    ? String(input.trelloCard)
+    : null;
+
+  if (hasNoSizeLadderLabel(card.labels)) {
+    return {
+      status: "ready",
+      skipReason: "trello_label_no_size_ladder",
+      trelloCardId: canonicalTrelloCardId,
+      trelloCardUrl,
+      trelloCardName: trimNullable(card.name),
+      structureProductType: structure.productType,
+      sourceMockupsPerDesign: structure.sourceMockupsPerDesign,
+      sourceMockupCount: 0,
+      expectedDesignCount: 0,
+      anchorCount: 0,
+      anchorsPerDesign: null,
+      issues: [],
+      warnings: [],
+      designs: [],
+      offerItemsJson: null,
+      trelloComment: [
+        QUOTE_READY_SIZE_LADDER_COMMENT_MARKER,
+        "Quote ready Groessenleiter: SKIPPED",
+        `Grund: Trello-Label \"${NO_SIZE_LADDER_TRELLO_LABEL}\".`,
+      ].join("\n"),
+      trelloProjection: null,
+      commentProjection: input.commentToTrello === true ? { written: false, skipped: true } : null,
+    };
+  }
+
+  const sourceMockups = listQuoteReadySourceMockups(card);
   const sourceMockupGroups = groupQuoteReadySourceMockups(sourceMockups, structure.sourceMockupsPerDesign);
   const expectedDesignCount = sourceMockupGroups.length;
   const indexedAnchors = extractIndexedTrelloAnchors(card.customFields || {}, warnings);
@@ -1647,8 +1686,9 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   const status = quoteReadyPreflightStatus({ issues, warnings, designs });
   const result: QuoteReadySizeLadderPreflightResult = {
     status,
+    skipReason: null,
     trelloCardId: canonicalTrelloCardId,
-    trelloCardUrl: input.trelloCard && String(input.trelloCard).includes("trello.com/c/") ? String(input.trelloCard) : null,
+    trelloCardUrl,
     trelloCardName: trimNullable(card.name),
     structureProductType: structure.productType,
     sourceMockupsPerDesign: structure.sourceMockupsPerDesign,
@@ -1721,6 +1761,15 @@ export function classifyManualReleaseSizeLadderPreflight(
   preflight: QuoteReadySizeLadderPreflightResult,
 ): Pick<ManualReleaseSizeLadderResult, "decision" | "reason" | "productModels" | "technicalIssues" | "ignoredReviewWarnings"> {
   const productModels = [...new Set(preflight.designs.map((design) => design.productModel))];
+  if (preflight.skipReason === "trello_label_no_size_ladder") {
+    return {
+      decision: "skipped",
+      reason: preflight.skipReason,
+      productModels,
+      technicalIssues: [],
+      ignoredReviewWarnings: [],
+    };
+  }
   if (preflight.structureProductType !== "neon") {
     return {
       decision: "skipped",

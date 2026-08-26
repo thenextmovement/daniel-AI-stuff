@@ -155,6 +155,11 @@ export type TrelloCardData = {
   name?: string;
   desc?: string;
   createdAt?: string | null;
+  labels?: Array<{
+    id: string;
+    name?: string | null;
+    color?: string | null;
+  }>;
   customFields: CustomFieldMap;
   attachments: TrelloAttachment[];
   actions?: TrelloAction[];
