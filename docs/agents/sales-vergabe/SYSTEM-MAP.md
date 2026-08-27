@@ -84,6 +84,7 @@
 - `[verifiziert]` Tag-Vergleiche trimmen und kleinschreiben, normalisieren aber keine internen Leerzeichen oder Satzzeichen. Exakte Schreibweise bleibt relevant.
 - `[verifiziert]` Bereits extern getaggte, über Shopify `cancelledAt` stornierte oder als `fulfilled`, `shipped`, `delivered`, `complete` oder `completed` erkannte Rows werden nach Reconcile nicht im aktiven Board gezeigt.
 - `[verifiziert]` Wenn eine Shopify-Order bekannt wird, kann der Titel aller zum `request_id` gehörenden Quell-Trello-Karten idempotent mit `#ORDER | ` vorangestellt beziehungsweise aktualisiert werden.
+- `[verifiziert]` Der geschützte interne Key-Kunden-Sync markiert nur aktuelle Anfragen mit exakter, nicht geteilter Firmendomain, mindestens zwei unterschiedlichen früheren Shopify-Orders im Status `paid` und einem Shopify-Gesamtwert inklusive Versand von strikt mehr als 1.200 EUR. Der Titel wird ausschließlich als `KEY KUNDE | <vollständiger bisheriger Titel>` projiziert; ein Shopify-Order-Präfix bleibt direkt dahinter erhalten.
 - `[verifiziert]` Die Erstellung einer Supplier-Trello-Karte ist standardmäßig deaktiviert und benötigt zusätzlich `SUPPLIER_TRELLO_PROJECTION_ENABLED=true` sowie Zugang und Listen-ID.
 
 ## PDF und E-Mail

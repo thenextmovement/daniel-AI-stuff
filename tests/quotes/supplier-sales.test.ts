@@ -568,6 +568,14 @@ test("shopify order title helper prefixes once and replaces stale order prefixes
   assert.equal(buildShopifyOrderTrelloTitle("#NEONT4426 | Check Info Ada", "#NEONT4426"), "#NEONT4426 | Check Info Ada");
   assert.equal(buildShopifyOrderTrelloTitle("#NEONT4426 Check Info Ada", "#NEONT4426"), "#NEONT4426 | Check Info Ada");
   assert.equal(buildShopifyOrderTrelloTitle("#NEONT4000 Check Info Ada", "#NEONT4426"), "#NEONT4426 | Check Info Ada");
+  assert.equal(
+    buildShopifyOrderTrelloTitle("KEY KUNDE | Check Info Ada", "#NEONT4426"),
+    "KEY KUNDE | #NEONT4426 | Check Info Ada",
+  );
+  assert.equal(
+    buildShopifyOrderTrelloTitle("KEY KUNDE | #NEONT4000 | Check Info Ada", "#NEONT4426"),
+    "KEY KUNDE | #NEONT4426 | Check Info Ada",
+  );
 });
 
 test("shopify sale upsert prefixes all source Trello cards sharing the Nerdyforms request id", async () => {

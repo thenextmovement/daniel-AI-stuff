@@ -25,6 +25,10 @@ import {
 } from "@/lib/quotes/trello";
 import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
+import {
+  restoreKeyCustomerTrelloPrefix,
+  splitKeyCustomerTrelloTitle,
+} from "@/lib/ops/trello-card-title";
 
 export const SUPPLIER_SALE_SUPPLIERS = ["quentin", "said", "special"] as const;
 export const SUPPLIER_RECOMMENDATIONS = ["quentin", "said", "special", "manual_review", "unknown"] as const;
@@ -3341,9 +3345,14 @@ function removeLeadingShopifyOrderTitlePrefix(title: string, prefix: string) {
 export function buildShopifyOrderTrelloTitle(currentTitle: unknown, shopifyOrderName: unknown) {
   const prefix = normalizeShopifyOrderTitlePrefix(shopifyOrderName);
   if (!prefix) return null;
-  const title = cleanText(currentTitle, 1000);
+  const keyCustomerParts = splitKeyCustomerTrelloTitle(currentTitle);
+  const title = keyCustomerParts.hasKeyCustomerPrefix
+    ? keyCustomerParts.titleWithoutKeyCustomerPrefix
+    : cleanText(currentTitle, 1000);
   const baseTitle = removeLeadingShopifyOrderTitlePrefix(title, prefix);
-  return baseTitle ? `${prefix} | ${baseTitle}`.slice(0, 500) : prefix;
+  const orderTitle = baseTitle ? `${prefix} | ${baseTitle}` : prefix;
+  const composed = restoreKeyCustomerTrelloPrefix(orderTitle, keyCustomerParts.hasKeyCustomerPrefix);
+  return keyCustomerParts.hasKeyCustomerPrefix ? composed : composed.slice(0, 500);
 }
 
 async function listRequestTrelloCardIds(requestId: string | null, fallbackCardId: string | null) {
