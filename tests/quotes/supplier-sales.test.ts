@@ -1352,7 +1352,7 @@ test("approved design upload stops before Trello access when the product image i
   assert.equal(trelloRequestCount, 0);
 });
 
-test("Quentin assignment and retry preserve the description while updating neighboring card details", async () => {
+test("Quentin assignment and retry preserve the existing title and description", async () => {
   const cardId = "70f000000000000000000099";
   let currentRow = saleRow({
     id: "sale-complete-quentin-projection",
@@ -1380,6 +1380,8 @@ test("Quentin assignment and retry preserve the description while updating neigh
   });
   let cardName = "Update size 90cm | Antonia Lindner | Color as logo";
   let cardDescription = "Existing production note";
+  let cardPatchCount = 0;
+  let titleWriteCount = 0;
   let descriptionWriteCount = 0;
   const attachments: Array<Record<string, unknown>> = [];
 
@@ -1400,6 +1402,8 @@ test("Quentin assignment and retry preserve the description while updating neigh
         return Response.json(attachment);
       }
       if (url.pathname.endsWith(`/${cardId}`) && method === "PUT") {
+        cardPatchCount += 1;
+        if (url.searchParams.has("name")) titleWriteCount += 1;
         cardName = url.searchParams.get("name") || cardName;
         if (url.searchParams.has("desc")) {
           descriptionWriteCount += 1;
@@ -1443,8 +1447,10 @@ test("Quentin assignment and retry preserve the description while updating neigh
     assert.equal(retried.trelloProjectionStatus, "synced");
   });
 
-  assert.equal(cardName, "140x31cm | Antonia Lindner | Color as logo");
+  assert.equal(cardName, "Update size 90cm | Antonia Lindner | Color as logo");
   assert.equal(cardDescription, "Existing production note");
+  assert.equal(cardPatchCount, 0);
+  assert.equal(titleWriteCount, 0);
   assert.equal(descriptionWriteCount, 0);
   assert.equal(attachments.length, 1);
   assert.equal(attachments[0]?.name, "Approved Design");

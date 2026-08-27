@@ -19,6 +19,7 @@
 | Kundenkommunikation geschieht nie ungeprüft aus einem Poller. | `[verifiziert]` | Erinnerung und AB werden explizit ausgelöst, validiert und idempotent reserviert. |
 | Automatische private Zahlungserinnerung nach fünf Minuten ist nicht beschlossen/implementiert. | `[verifiziert]` | Eine solche Funktion braucht eigene fachliche Freigabe, Opt-out, Timing- und Datenschutzregeln. |
 | Supplier-Trello-Projektion ist opt-in. | `[verifiziert]` | Sie bleibt ohne `SUPPLIER_TRELLO_PROJECTION_ENABLED=true` aus. |
+| Quentin-Vergabe und Trello-Retry verändern weder Kartentitel noch Description. | `[verifiziert]` | Kartenzuordnung und Approved-Design-Upload bleiben erhalten; Shopify-Order-Präfixe auf Quellkarten sind ein separater Upsert-Pfad. |
 | Side Effects sind idempotent und partiell nachvollziehbar. | `[verifiziert]` | Vergabeversuch und Reminder-Reservierung verhindern Doppelversand/-projektion. |
 
 ## Relevante Git-Historie

@@ -5396,31 +5396,6 @@ export function supplierProductionDescription(items: SupplierSaleItem[], note?: 
   return lines.filter((line, index) => line !== "" || lines[index - 1] !== "").join("\n").trim();
 }
 
-function supplierPurchasedSizes(items: SupplierSaleItem[]) {
-  return items
-    .filter((item) => supplierProductionItemKind(item) === "product")
-    .flatMap((item) => item.selectionDetails
-      .filter((detail) => /^Size\s*:/i.test(detail))
-      .map((detail) => detail.replace(/^Size\s*:\s*/i, "").replace(/\s*❗\s*$/, "").trim()))
-    .filter((size, index, values) => Boolean(size) && values.indexOf(size) === index);
-}
-
-function supplierTrelloTitleWithPurchasedSizes(currentName: unknown, items: SupplierSaleItem[]) {
-  const sizes = supplierPurchasedSizes(items);
-  const current = String(currentName || "").trim();
-  if (!sizes.length || !current) return current;
-  const cleanedSegments = current
-    .split("|")
-    .map((segment) => segment
-      .replace(/\b\d+(?:[.,]\d+)?(?:\s*[x+\-]\s*\d+(?:[.,]\d+)?)*\s*cm\b/gi, "")
-      .replace(/\bupdate\s+size\b/gi, "")
-      .replace(/\bsize\b\s*:?/gi, "")
-      .replace(/\s+/g, " ")
-      .trim())
-    .filter(Boolean);
-  return [`${sizes.join(" + ")}`, ...cleanedSegments].join(" | ");
-}
-
 function assignmentDescription(row: SupplierSaleRow, supplier: SupplierSaleSupplier, deliveryDate: string, note?: string | null) {
   return [
     `Supplier: ${supplierLabel(supplier, row.special_supplier_name)}`,
@@ -5460,14 +5435,8 @@ async function projectSupplierTrelloCard(
         existingDescription: String(card.desc || ""),
       };
     }
-    const nextName = supplierTrelloTitleWithPurchasedSizes(card.name, items);
-    const nameChanged = Boolean(nextName && nextName !== String(card.name || ""));
-    if (nameChanged) await updateTrelloCard(cardId, { name: nextName });
     const verified = await getTrelloCard(cardId);
-    if (
-      verified.idBoard !== QUENTIN_NEON_BOARD_ID ||
-      (nameChanged && String(verified.name || "") !== nextName)
-    ) {
+    if (verified.idBoard !== QUENTIN_NEON_BOARD_ID) {
       throw new QuoteValidationError("Trello-Aktualisierung konnte nicht verifiziert werden.", [
         "Die Vergabe bleibt sichtbar. Bitte die Quentin-Karte pruefen und den Vorgang erneut ausfuehren.",
       ], 409);
