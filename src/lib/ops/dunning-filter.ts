@@ -1,3 +1,8 @@
+import type {
+  DunningCaseState,
+  DunningCourtEventType,
+} from "@/lib/ops/dunning-status";
+
 export type DunningOrderAgeFilter = "all" | "1" | "2" | "3";
 export type DunningOrderYearFilter =
   | "all"
@@ -16,6 +21,11 @@ export type DunningStageFilter =
   | "all"
   | `exact:${number}`
   | `minimum:${number}`;
+
+export type DunningStatusFilter =
+  | "all"
+  | `work:${DunningCaseState}`
+  | `court:${DunningCourtEventType}`;
 
 function subtractCalendarMonths(value: Date, months: number) {
   const cutoff = new Date(value.getTime());
@@ -65,6 +75,22 @@ export function matchesDunningStage(
   if (mode === "exact") return currentStage === selectedStage;
   if (mode === "minimum") return currentStage >= selectedStage;
   return false;
+}
+
+export function matchesDunningStatus(
+  entry: {
+    state: DunningCaseState;
+    courtEvent: { eventType: DunningCourtEventType } | null;
+  },
+  filter: DunningStatusFilter,
+) {
+  if (filter === "all") return true;
+  const separator = filter.indexOf(":");
+  const scope = filter.slice(0, separator);
+  const value = filter.slice(separator + 1);
+  if (scope === "court") return entry.courtEvent?.eventType === value;
+  if (scope !== "work" || entry.state !== value) return false;
+  return value !== "court_review" || !entry.courtEvent;
 }
 
 export function hasCreatedDunningCourtApplication(

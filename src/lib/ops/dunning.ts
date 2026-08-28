@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import {
+  DUNNING_CASE_STATE_LABELS,
+  type DunningCaseState,
+} from "@/lib/ops/dunning-status";
+import {
   dunningCourtNextAction,
   loadDunningCourtEvents,
   loadDunningCourtProfile,
@@ -18,15 +22,8 @@ import {
 } from "@/lib/ops/dunning-insolvency";
 
 export type DunningSource = "legacy" | "t099" | "mixed" | "open_order";
-export type DunningCaseState =
-  | "action_required"
-  | "scheduled"
-  | "final_wait"
-  | "reply_received"
-  | "paused"
-  | "court_review"
-  | "data_issue"
-  | "closed";
+export { DUNNING_CASE_STATE_LABELS } from "@/lib/ops/dunning-status";
+export type { DunningCaseState } from "@/lib/ops/dunning-status";
 
 type ShopifyOrderRow = {
   shopify_order_id: string;
@@ -328,17 +325,6 @@ const CURRENT_STAGE_LABELS: Record<number, string> = {
   5: "2. Mahnung",
   6: "3. und letzte Mahnung",
   7: "Gerichtliche Prüfung",
-};
-
-const STATE_LABELS: Record<DunningCaseState, string> = {
-  action_required: "Aktion fällig",
-  scheduled: "Termin geplant",
-  final_wait: "Letzte Frist läuft",
-  reply_received: "Antwort prüfen",
-  paused: "Pausiert",
-  court_review: "Gericht prüfen",
-  data_issue: "Daten prüfen",
-  closed: "Erledigt",
 };
 
 function cleanText(value: unknown, max = 300) {
@@ -1268,7 +1254,7 @@ export function buildDunningCases(input: {
       source,
       sourceLabel: sourceLabel(source),
       state,
-      stateLabel: STATE_LABELS[state],
+      stateLabel: DUNNING_CASE_STATE_LABELS[state],
       sendEligible,
       blockers: uniqueBlockers,
       primaryBlocker: uniqueBlockers[0] || null,
