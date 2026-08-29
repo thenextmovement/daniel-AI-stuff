@@ -798,6 +798,7 @@ begin
       re.created_at,
       re.id
     from request_emails re
+    cross join cfg
     where re.consent_recorded_at is not null
       and (
         re.consent_ad_user_data = 'denied'
