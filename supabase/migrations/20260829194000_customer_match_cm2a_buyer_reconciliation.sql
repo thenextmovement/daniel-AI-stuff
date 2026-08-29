@@ -1197,6 +1197,101 @@ grant execute on function public.cm_v2_refresh_memberships() to service_role;
 create temporary table cm2a_refresh_result on commit drop as
 select * from public.cm_v2_refresh_memberships();
 
+-- CM-2A owns only buyers and the derived without-purchase audience. Preserve the
+-- three inquiry audiences byte-for-byte even if their normal scheduled refresh
+-- has source drift while this migration runs.
+update customer_match_v2.memberships m
+set
+  source_classes = b.source_classes,
+  first_seen_at = b.first_seen_at,
+  last_seen_at = b.last_seen_at,
+  desired_present = b.desired_present,
+  consent_eligible = b.consent_eligible,
+  consent_evidence_at = b.consent_evidence_at,
+  consent_source = b.consent_source,
+  consent_policy_version = b.consent_policy_version,
+  eligibility_reason = b.eligibility_reason,
+  google_state = b.google_state,
+  pending_action = b.pending_action,
+  sync_state = b.sync_state,
+  active_batch_id = b.active_batch_id,
+  last_google_request_id = b.last_google_request_id,
+  last_terminal_at = b.last_terminal_at,
+  last_error = b.last_error,
+  created_at = b.created_at,
+  updated_at = b.updated_at
+from codex_backup_cm_20260829_cm2a.memberships_snapshot b
+where b.audience_key in ('all_inquiries', 'current_lp', 'legacy_nerdy')
+  and m.audience_key = b.audience_key
+  and m.email_sha256 = b.email_sha256;
+
+insert into customer_match_v2.memberships (
+  audience_key,
+  email_sha256,
+  source_classes,
+  first_seen_at,
+  last_seen_at,
+  desired_present,
+  consent_eligible,
+  consent_evidence_at,
+  consent_source,
+  consent_policy_version,
+  eligibility_reason,
+  google_state,
+  pending_action,
+  sync_state,
+  active_batch_id,
+  last_google_request_id,
+  last_terminal_at,
+  last_error,
+  created_at,
+  updated_at
+)
+select
+  b.audience_key,
+  b.email_sha256,
+  b.source_classes,
+  b.first_seen_at,
+  b.last_seen_at,
+  b.desired_present,
+  b.consent_eligible,
+  b.consent_evidence_at,
+  b.consent_source,
+  b.consent_policy_version,
+  b.eligibility_reason,
+  b.google_state,
+  b.pending_action,
+  b.sync_state,
+  b.active_batch_id,
+  b.last_google_request_id,
+  b.last_terminal_at,
+  b.last_error,
+  b.created_at,
+  b.updated_at
+from codex_backup_cm_20260829_cm2a.memberships_snapshot b
+where b.audience_key in ('all_inquiries', 'current_lp', 'legacy_nerdy')
+  and not exists (
+    select 1
+    from customer_match_v2.memberships m
+    where m.audience_key = b.audience_key
+      and m.email_sha256 = b.email_sha256
+  );
+
+delete from customer_match_v2.memberships m
+where m.audience_key in ('all_inquiries', 'current_lp', 'legacy_nerdy')
+  and not exists (
+    select 1
+    from codex_backup_cm_20260829_cm2a.memberships_snapshot b
+    where b.audience_key = m.audience_key
+      and b.email_sha256 = m.email_sha256
+  )
+  and not exists (
+    select 1
+    from customer_match_v2.batch_members bm
+    where bm.audience_key = m.audience_key
+      and bm.email_sha256 = m.email_sha256
+  );
+
 do $postconditions$
 declare
   v_expected_total bigint;
