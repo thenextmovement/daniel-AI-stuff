@@ -348,7 +348,9 @@ export async function processOutlookBounce(
     workflowName: "NEONTRIP Outlook Customer Email Sync v1.0",
     workflowId: cleanText(input.workflow_id, 180) || null,
     action: "email_bounce_detected",
-    status: actionRun ? "awaiting_approval" : "prepared",
+    // workflow_audit_log accepts the operational lifecycle value "waiting";
+    // the more specific action-run state remains "awaiting_approval".
+    status: actionRun ? "waiting" : "prepared",
     requestId,
     documentId: requestId || `outlook-message:${messageHash}`,
     trelloCardId: request?.trello_card_id || null,

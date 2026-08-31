@@ -159,6 +159,7 @@ test("bounce intake creates an internal task and a four-eyes correction proposal
   assert.equal(frozenInput.recipientEmail, "kunde@gmail.cim");
   assert.equal(frozenInput.newCustomerEmail, "kunde@gmail.com");
   assert.equal((actionInput.actor as { email: string }).email, "outlook-bounce-automation@neontrip.de");
+  assert.equal(calls.auditInputs[0].status, "waiting");
   assert.equal((calls.auditInputs[0] as Record<string, unknown>).customer_communication_sent, false);
 });
 
