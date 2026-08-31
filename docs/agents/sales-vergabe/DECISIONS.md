@@ -22,6 +22,7 @@
 | Quentin-Vergabe und Trello-Retry verändern weder Kartentitel noch Description. | `[verifiziert]` | Kartenzuordnung und Approved-Design-Upload bleiben erhalten; Shopify-Order-Präfixe auf Quellkarten sind ein separater Upsert-Pfad. |
 | Key-Kunden-Markierung ist eine deterministische Trello-Projektion aus Shopify-/Postgres-Daten. | `[verifiziert]` | Exakte Firmendomain, mindestens zwei frühere unterschiedliche `paid`-Orders, nicht storniert/erstattet, zusammen strikt mehr als 1.200 EUR Shopify-Gesamtwert inklusive Versand; keine KI-Entscheidung und keine weiteren Kartenfelder. |
 | Side Effects sind idempotent und partiell nachvollziehbar. | `[verifiziert]` | Vergabeversuch und Reminder-Reservierung verhindern Doppelversand/-projektion. |
+| Der seltene unmögliche Shopify-Link wird gemeldet, nicht automatisch repariert. | `[im Repository verifiziert; Produktion offen]` | Nur die Kombination aus historischer Order, abweichender Kunden-E-Mail und abweichendem Bruttobetrag erzeugt beim ersten Link eine interne Mail an `info@neontrip.de`; Sale, Shopify und Trello bleiben unverändert. |
 
 ## Relevante Git-Historie
 

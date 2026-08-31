@@ -562,6 +562,7 @@ export type SupplierCompletedOffersSyncResult = {
   failed: number;
   errors: Array<{ offerId: string | null; error: string }>;
   warnings: string[];
+  watchdogAlerts: SupplierShopifyMismatchWatchdogAlert[];
   sources?: {
     completedOffers: { checked: number; upserted: number; failed: number };
     shopifyOrders: {
@@ -577,8 +578,26 @@ export type SupplierCompletedOffersSyncResult = {
       truncated?: boolean;
     };
     activeShopifyRows?: { checked: number; upserted: number; failed: number; skipped: boolean };
-    unlinkedActiveShopifyRows?: { checked: number; upserted: number; failed: number; skipped: boolean };
+    unlinkedActiveShopifyRows?: { checked: number; upserted: number; failed: number; skipped: boolean; watchdogAlertCount: number };
   };
+};
+
+export type SupplierShopifyMismatchWatchdogAlert = {
+  code: "supplier_shopify_impossible_link";
+  severity: "critical";
+  saleId: string;
+  offerId: string | null;
+  offerNumber: string | null;
+  documentReference: string | null;
+  shopifyOrderId: string | null;
+  shopifyOrderName: string | null;
+  offerAcceptedAt: string;
+  shopifyCreatedAt: string;
+  offerTotal: number;
+  shopifyTotal: number;
+  orderPredatesAcceptance: true;
+  customerMismatch: true;
+  totalMismatch: true;
 };
 
 export type SupplierSalesLiveCheckResult = {
@@ -3598,6 +3617,61 @@ async function mergeShopifyOrderIntoExistingSale(row: SupplierSaleRow, order: Js
   return { sale: await getSupplierSale(saleRow.id), warnings: parsed.warnings };
 }
 
+function buildSupplierShopifyMismatchWatchdogAlert(
+  row: SupplierSaleRow,
+  order: JsonRecord,
+): SupplierShopifyMismatchWatchdogAlert | null {
+  const offerSnapshot = jsonRecord(row.offer_snapshot);
+  const offer = jsonRecord(offerSnapshot.offer);
+  const snapshotCustomer = jsonRecord(offerSnapshot.customer);
+  const shopifyCustomer = jsonRecord(order.customer);
+  const offerAcceptedAt = nullableText(offer.acceptedAt, 80);
+  const shopifyCreatedAt = recordString(order, ["createdAt", "created_at"], 80);
+  if (!offerAcceptedAt || !shopifyCreatedAt) return null;
+
+  const offerAcceptedMs = Date.parse(offerAcceptedAt);
+  const shopifyCreatedMs = Date.parse(shopifyCreatedAt);
+  if (!Number.isFinite(offerAcceptedMs) || !Number.isFinite(shopifyCreatedMs)) return null;
+  const orderPredatesAcceptance = shopifyCreatedMs < offerAcceptedMs - 60 * 60 * 1000;
+  if (!orderPredatesAcceptance) return null;
+
+  const offerEmail = lowerNullable(
+    row.customer_email || recordString(snapshotCustomer, ["email", "signerEmail"], 260),
+    260,
+  );
+  const shopifyEmails = [
+    lowerNullable(recordString(order, ["email"], 260), 260),
+    lowerNullable(recordString(shopifyCustomer, ["email"], 260), 260),
+  ].filter((value): value is string => Boolean(value));
+  const customerMismatch = Boolean(offerEmail && shopifyEmails.length && !shopifyEmails.includes(offerEmail));
+  if (!customerMismatch) return null;
+
+  const offerTotal = numericValue(row.total_price);
+  const shopifyTotal = numericValue(
+    shopifyMoneyAmount(order.totalPriceSet) || recordString(order, ["totalPrice", "total_price"], 80),
+  );
+  const totalMismatch = offerTotal !== null && shopifyTotal !== null && Math.abs(offerTotal - shopifyTotal) >= 0.05;
+  if (!totalMismatch || offerTotal === null || shopifyTotal === null) return null;
+
+  return {
+    code: "supplier_shopify_impossible_link",
+    severity: "critical",
+    saleId: row.id,
+    offerId: row.offer_id,
+    offerNumber: row.offer_number,
+    documentReference: row.document_reference,
+    shopifyOrderId: shopifyOrderNumericId(order.id),
+    shopifyOrderName: recordString(order, ["name"], 120),
+    offerAcceptedAt,
+    shopifyCreatedAt,
+    offerTotal,
+    shopifyTotal,
+    orderPredatesAcceptance: true,
+    customerMismatch: true,
+    totalMismatch: true,
+  };
+}
+
 function shopifyOrderNumericId(gid: unknown) {
   const text = nullableText(gid, 260);
   return text?.match(/\/Order\/(\d+)$/)?.[1] || null;
@@ -4111,6 +4185,7 @@ async function syncUnlinkedActiveSupplierSalesFromShopifyAdmin(
       failed: 0,
       errors: [] as Array<{ offerId: string | null; error: string }>,
       warnings: ["Shopify Admin API ist nicht konfiguriert; unverknuepfte aktive Vergabezeilen wurden nicht abgeglichen."],
+      watchdogAlerts: [] as SupplierShopifyMismatchWatchdogAlert[],
     };
   }
 
@@ -4125,6 +4200,7 @@ async function syncUnlinkedActiveSupplierSalesFromShopifyAdmin(
 
   const errors: Array<{ offerId: string | null; error: string }> = [];
   const warnings: string[] = [];
+  const watchdogAlerts: SupplierShopifyMismatchWatchdogAlert[] = [];
   let upserted = 0;
   for (const row of activeRows) {
     try {
@@ -4139,7 +4215,9 @@ async function syncUnlinkedActiveSupplierSalesFromShopifyAdmin(
         if (fetched.error) errors.push({ offerId: row.offer_id || row.offer_number || row.sale_key, error: fetched.error });
         continue;
       }
+      const watchdogAlert = buildSupplierShopifyMismatchWatchdogAlert(row, fetched.order);
       await mergeShopifyOrderIntoExistingSale(row, fetched.order, config.domain, actor);
+      if (watchdogAlert) watchdogAlerts.push(watchdogAlert);
       upserted += 1;
     } catch (error) {
       errors.push({
@@ -4156,6 +4234,7 @@ async function syncUnlinkedActiveSupplierSalesFromShopifyAdmin(
     failed: errors.length,
     errors,
     warnings,
+    watchdogAlerts,
   };
 }
 
@@ -4237,6 +4316,7 @@ export async function syncCompletedOffersFromOffersApp(
     failed: 1,
     errors: [{ offerId: null, error: error instanceof Error ? error.message : "Unverknuepfte aktive Vergabezeilen konnten nicht abgeglichen werden." }],
     warnings: [] as string[],
+    watchdogAlerts: [] as SupplierShopifyMismatchWatchdogAlert[],
   }));
   errors.push(...unlinkedShopify.errors);
   warnings.push(...unlinkedShopify.warnings);
@@ -4257,6 +4337,7 @@ export async function syncCompletedOffersFromOffersApp(
     failed,
     errors,
     warnings,
+    watchdogAlerts: unlinkedShopify.watchdogAlerts,
     sources: {
       completedOffers: { checked: completedChecked, upserted: completedUpserted, failed: completedFailed },
       shopifyOrders: {
@@ -4272,7 +4353,13 @@ export async function syncCompletedOffersFromOffersApp(
         truncated: shopify.truncated,
       },
       activeShopifyRows: { checked: activeShopify.checked, upserted: activeShopify.upserted, failed: activeShopify.failed, skipped: activeShopifySkipped },
-      unlinkedActiveShopifyRows: { checked: unlinkedShopify.checked, upserted: unlinkedShopify.upserted, failed: unlinkedShopify.failed, skipped: unlinkedShopifySkipped },
+      unlinkedActiveShopifyRows: {
+        checked: unlinkedShopify.checked,
+        upserted: unlinkedShopify.upserted,
+        failed: unlinkedShopify.failed,
+        skipped: unlinkedShopifySkipped,
+        watchdogAlertCount: unlinkedShopify.watchdogAlerts.length,
+      },
     },
   };
 }

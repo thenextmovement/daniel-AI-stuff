@@ -11,7 +11,7 @@
         -220
       ],
       "parameters": {
-        "content": "Inactive draft. Regularly asks the Ops app to import completed offers and enrich Sales-Vergabe rows with recent Shopify Admin order data, including statusPageUrl/payment links. Supabase/Ops remains source of truth; Shopify is a reconciliation source; Trello is not read. The Ops endpoint is bounded, idempotent, and authenticated via an internal bearer token from n8n environment variables. No customer communication is sent.",
+        "content": "Inactive draft. Regularly asks the Ops app to import completed offers and enrich Sales-Vergabe rows with recent Shopify Admin order data, including statusPageUrl/payment links. Supabase/Ops remains source of truth; Shopify is a reconciliation source; Trello is not read. The Ops endpoint is bounded, idempotent, and authenticated via an internal bearer token from n8n environment variables. If the first Shopify link has the strict impossible signature (historical order plus customer and total mismatch), one privacy-safe internal email is sent to info@neontrip.de. No customer communication or automatic repair is performed.",
         "height": 320,
         "width": 580
       }
@@ -127,6 +127,46 @@
           "timeout": 60000
         }
       }
+    },
+    {
+      "id": "prepare-shopify-mismatch-watchdog-email",
+      "name": "Prepare Shopify Mismatch Watchdog Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        160
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const payload = $input.first()?.json || {};\nconst alerts = Array.isArray(payload.completedOffersSync?.watchdogAlerts) ? payload.completedOffersSync.watchdogAlerts : [];\nif (!alerts.length) return [];\n\nfunction text(value, max = 240) {\n  return String(value ?? '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, max);\n}\nfunction html(value) {\n  return text(value, 1000).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\\"/g, '&quot;').replace(/'/g, '&#39;');\n}\nfunction formatDate(value) {\n  const date = new Date(value);\n  return Number.isFinite(date.getTime()) ? date.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) : text(value, 80);\n}\nfunction money(value) {\n  const amount = Number(value);\n  return Number.isFinite(amount) ? amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : 'unbekannt';\n}\n\nconst rows = alerts.map((alert) => {\n  const offerNumber = text(alert.offerNumber || alert.documentReference || alert.offerId || 'Unbekannt', 160);\n  const salesUrl = 'https://ops.neontrip.de/ops/sales-vergabe?q=' + encodeURIComponent(offerNumber);\n  return '<tr>'\n    + '<td style=\\\"padding:8px;border:1px solid #ddd;\\\"><a href=\\\"' + html(salesUrl) + '\\\">' + html(offerNumber) + '</a></td>'\n    + '<td style=\\\"padding:8px;border:1px solid #ddd;\\\">' + html(alert.shopifyOrderName || alert.shopifyOrderId || 'Unbekannt') + '</td>'\n    + '<td style=\\\"padding:8px;border:1px solid #ddd;\\\">' + html(formatDate(alert.offerAcceptedAt)) + '</td>'\n    + '<td style=\\\"padding:8px;border:1px solid #ddd;\\\">' + html(formatDate(alert.shopifyCreatedAt)) + '</td>'\n    + '<td style=\\\"padding:8px;border:1px solid #ddd;\\\">' + html(money(alert.offerTotal)) + ' / ' + html(money(alert.shopifyTotal)) + '</td>'\n    + '</tr>';\n}).join('');\n\nconst subject = alerts.length === 1\n  ? 'DRINGEND: Sales-Vergabe Shopify-Zuordnung prüfen (' + text(alerts[0].offerNumber || alerts[0].documentReference || '1 Fall', 120) + ')'\n  : 'DRINGEND: ' + alerts.length + ' Sales-Vergabe Shopify-Zuordnungen prüfen';\nconst body = '<div style=\\\"font-family:Arial,sans-serif;color:#222;line-height:1.5;\\\">'\n  + '<h2 style=\\\"color:#c0392b;\\\">Sales-Vergabe Watchdog</h2>'\n  + '<p>Der automatische Abgleich hat eine Shopify-Order verknüpft, die bereits deutlich vor der Angebotsannahme existierte und zusätzlich bei Kunde und Gesamtbetrag abweicht.</p>'\n  + '<p><strong>Es wurde nichts automatisch repariert.</strong> Bitte den Fall in der Sales-Vergabe manuell klären.</p>'\n  + '<table style=\\\"border-collapse:collapse;width:100%;\\\"><tr style=\\\"background:#f4f4f4;\\\"><th style=\\\"padding:8px;border:1px solid #ddd;\\\">Angebot</th><th style=\\\"padding:8px;border:1px solid #ddd;\\\">Shopify</th><th style=\\\"padding:8px;border:1px solid #ddd;\\\">Annahme</th><th style=\\\"padding:8px;border:1px solid #ddd;\\\">Order erstellt</th><th style=\\\"padding:8px;border:1px solid #ddd;\\\">Beträge</th></tr>' + rows + '</table>'\n  + '<p style=\\\"color:#666;font-size:12px;\\\">Interner Alarm ohne Kundendaten. Der einmalige Alarm entsteht nur beim erstmaligen Verknüpfen des unplausiblen Falls.</p>'\n  + '</div>';\n\nreturn [{ json: { recipient: 'info@neontrip.de', subject, body, alertCount: alerts.length } }];"
+      }
+    },
+    {
+      "id": "send-shopify-mismatch-watchdog-email",
+      "name": "Send Shopify Mismatch Watchdog Email",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        800,
+        160
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "={{ $json.recipient }}",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.body }}",
+        "additionalFields": {
+          "bodyContentType": "HTML"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
     }
   ],
   "connections": {
@@ -157,6 +197,28 @@
         [
           {
             "node": "Ops: Sync Completed Offers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ops: Sync Completed Offers": {
+      "main": [
+        [
+          {
+            "node": "Prepare Shopify Mismatch Watchdog Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Shopify Mismatch Watchdog Email": {
+      "main": [
+        [
+          {
+            "node": "Send Shopify Mismatch Watchdog Email",
             "type": "main",
             "index": 0
           }

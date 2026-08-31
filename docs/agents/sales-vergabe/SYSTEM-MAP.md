@@ -16,7 +16,7 @@
 1. `[verifiziert]` Eine Angebotsannahme läuft durch `src/lib/quotes/accept-quote.ts`. `src/lib/quotes/ops-sales-sync.ts` sendet danach authentifiziert `offer.completed` an `POST /api/ops/supplier-sales` mit `action=upsert_sale`.
 2. `[verifiziert]` Die Route `src/app/api/ops/supplier-sales/route.ts` delegiert an `src/lib/ops/supplier-sales.ts`, normalisiert den Snapshot und upsertet Sale und Positionen idempotent.
 3. `[verifiziert]` Als Recovery kann `action=sync_completed_offers` den internen Completed-Sales-Feed der Offers-App abrufen. Der Feed liefert angenommene Dokumente in den Status `ACCEPTED`, `COMPLETED` oder `DOWNLOADED` mit vorhandener Annahme, nicht nur den String `COMPLETED`.
-4. `[verifiziert]` Derselbe Sync importiert aktuelle Shopify-Bestellungen als Fallback, verknüpft sie anhand belastbarer Offer-/Order-Referenzen und gleicht aktive Rows mit Zahlung, Fulfillment und Supplier-Tags ab.
+4. `[verifiziert]` Derselbe Sync importiert aktuelle Shopify-Bestellungen als Fallback, verknüpft sie anhand von Offer-/Order-Referenzen und gleicht aktive Rows mit Zahlung, Fulfillment und Supplier-Tags ab. Bei einer neu verknüpften Row gibt er zusätzlich einen datenschutzarmen Watchdog-Alarm aus, wenn die Shopify-Order mehr als eine Stunde älter als die Annahme ist und zugleich Kunden-E-Mail sowie Bruttobetrag abweichen. Der Alarm verändert den Sale nicht.
 5. `[verifiziert]` `GET /api/ops/supplier-sales` liest das Board aus Ops Supabase. Das initiale Laden der UI stößt keinen Shopify-Sync an; `Sync + Laden` führt erst `sync_completed_offers` und danach den Board-Read aus.
 6. `[verifiziert]` Eine Vergabe schreibt zuerst die fachliche Entscheidung und einen idempotenten Versuch in Ops. Danach folgen Shopify-Tag, optional Trello-Projektion und optional interne Aufgabe als kontrollierte Side Effects.
 7. `[verifiziert]` Teilfehler der Side Effects werden auf Sale/Attempt protokolliert und können über begrenzte Retry-Aktionen erneut versucht werden.
@@ -97,7 +97,7 @@
 
 | Datei | Workflow | Trigger | Repo-Status | Laufzeitstatus |
 | --- | --- | --- | --- | --- |
-| `workflows/supplier-completed-offers-sync-v0.1.inactive-draft.json` | NEONTRIP Supplier Completed Offers Sync v0.1 | alle 10 Minuten | `[verifiziert]` `active:false` | `[offen]` |
+| `workflows/supplier-completed-offers-sync-v0.1.inactive-draft.json` | NEONTRIP Supplier Completed Offers Sync v0.1 | alle 10 Minuten | `[verifiziert]` `active:false`; enthält internen Shopify-Link-Watchdog | `[verifiziert, Read-only 2026-08-31]` aktive ID `xFQTm4E7qw38C9cF`, Version `19808b70-3a3f-456a-8264-a9876c4bf56b` vor Watchdog-Update |
 | `workflows/supplier-shopify-tag-sync-v0.1.inactive-draft.json` | NEONTRIP Supplier Shopify Tag Sync v0.1 | alle 5 Minuten | `[verifiziert]` `active:false` | `[nur aus Thread erinnert]` ID `WlSmT7zlLcR4TlUG`, zuletzt ausdrücklich inaktiv nach 401 gemeldet |
 | `workflows/supplier-payment-reminder-email-v0.1.inactive-draft.json` | NEONTRIP Supplier Payment Reminder Email v0.1 | POST `supplier-payment-reminder` | `[verifiziert]` `active:false` | `[nur aus Thread erinnert]` ID `h2Eye2kArl2CBx3k`, als aktiv/published gemeldet |
 | `workflows/supplier-order-confirmation-email-v0.1.inactive-draft.json` | NEONTRIP Supplier Order Confirmation Email v0.1 | POST `supplier-order-confirmation` | `[verifiziert]` `active:false` | `[offen]` |

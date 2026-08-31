@@ -1,6 +1,6 @@
 # Supplier Sales Integrations
 
-Purpose: production setup for the Sales-Vergabe diagnostics `Supplier-Trello` and `Zahlungserinnerungen`.
+Purpose: production setup for the Sales-Vergabe diagnostics `Supplier-Trello`, `Zahlungserinnerungen` and the internal Shopify-link watchdog.
 
 Supabase remains the source of truth. Trello is only a projection after a supplier assignment. Payment reminder emails are only sent after the Ops app has reserved the reminder in `supplier_payment_reminders`.
 
@@ -50,6 +50,26 @@ NEONTRIP_OFFERS_INTERNAL_API_KEY
 ```
 
 The Ops app keeps the batch bounded to max. 100 active rows. Replays are safe: existing Shopify tags update the Supabase row to assigned, Shopify `cancelledAt` updates it to `canceled`, and rows already outside the active states are skipped by the active-row query.
+
+## Completed Offers Shopify-Link Watchdog
+
+The existing workflow `NEONTRIP Supplier Completed Offers Sync v0.1` checks the response of `action=sync_completed_offers` after every ten-minute run. The Ops response contains `watchdogAlerts` only when a newly linked, previously unlinked Offer row has all three strict contradiction signals:
+
+1. the Shopify order was created more than one hour before the Offer acceptance;
+2. the Offer and Shopify customer emails are both present and different;
+3. the Offer and Shopify gross totals are both present and differ by at least 0.05 EUR.
+
+The alert contains no customer names, email addresses, phone numbers or addresses. It includes only Offer/Shopify identifiers, both timestamps, both totals and a link to the filtered Sales-Vergabe. The workflow sends the internal mail from the existing Outlook credential `Microsoft Outlook support@neontrip.de` to `info@neontrip.de`.
+
+This is alert-only behavior. It does not block, unlink, repair, assign, tag or project the Sale. The current bad row is not replayed because only a successful first merge of an unlinked row emits the alert; later scheduled runs skip already linked rows.
+
+Repository artifact:
+
+```text
+workflows/supplier-completed-offers-sync-v0.1.inactive-draft.json
+```
+
+The imported production workflow must be updated in place. Do not create a parallel scheduled copy.
 
 ## Supplier Trello
 
@@ -142,6 +162,8 @@ The workflow rejects invalid payloads and missing payment links.
 5. Trigger one payment reminder on a safe test sale with a real payment link. Expected: one Outlook email is sent and `supplier_payment_reminders.status` becomes `sent`.
 6. Trigger the same reminder again with the same idempotency key. Expected: no duplicate email.
 7. Manually execute the Shopify Supplier Tag Sync workflow once. Expected: HTTP 200 with `shopifySupplierTagSync.status` as `synced` or `skipped`. If an active Shopify order already has `Quentin (noch bezahlen)` or has been cancelled, it should disappear from the active Sales-Vergabe view after reload.
+8. Validate the Completed Offers workflow with a non-sending pinned response containing no `watchdogAlerts`. Expected: the email branch receives zero items.
+9. Validate the strict positive fixture locally. Expected: exactly one privacy-safe alert object; replay after the row is linked produces no alert. Do not use a real customer Sale as a mail canary.
 
 ## Rollback
 
