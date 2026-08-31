@@ -10,7 +10,9 @@ import { createOpsInternalTask, updateOpsInternalTask } from "@/lib/ops/internal
 import { recordQuoteEmailSentEvidence } from "@/lib/ops/offer-send-evidence";
 import {
   getOfferById,
+  patchOfferById,
   sendOfferUpdateMail,
+  type OpsOfferPatchInput,
   type OpsOfferSendInput,
   type OpsOfferSendResult,
   type OpsOfferSnapshot,
@@ -104,6 +106,7 @@ export type EmailBounceRecoveryDeps = {
   findOfferSendCandidates(requestId: string, failedEmail: string): Promise<OfferSendCandidateRow[]>;
   findSuccessfulOfferSend(requestId: string, offerId: string, recipientEmail: string): Promise<SuccessfulSendEvidence | null>;
   getOffer(offerId: string): Promise<OpsOfferSnapshot>;
+  updateOfferEmail(offerId: string, input: OpsOfferPatchInput): Promise<Awaited<ReturnType<typeof patchOfferById>>>;
   sendOffer(offerId: string, input: OpsOfferSendInput): Promise<OpsOfferSendResult>;
   recordQuoteEvidence(input: Parameters<typeof recordQuoteEmailSentEvidence>[0]): Promise<QuoteEmailEvidenceResult>;
   recordOfferSent(input: Parameters<typeof recordOfferSentForSalesCalls>[0]): Promise<OfferSentSyncResult>;
@@ -345,6 +348,7 @@ export const defaultEmailBounceRecoveryDeps: EmailBounceRecoveryDeps = {
   findOfferSendCandidates,
   findSuccessfulOfferSend,
   getOffer: getOfferById,
+  updateOfferEmail: patchOfferById,
   sendOffer: sendOfferUpdateMail,
   recordQuoteEvidence: recordQuoteEmailSentEvidence,
   recordOfferSent: recordOfferSentForSalesCalls,
@@ -615,18 +619,55 @@ export async function processOutlookBounce(
           quoteEvidence = { ok: false, error: cleanText(error instanceof Error ? error.message : error, 1000) || "quote_evidence_failed" };
         }
 
-        let customerUpdate: { changedTables: unknown };
+        let offerEmailUpdate: { ok: boolean; changed: boolean; updatedAt?: string | null; error?: string } = {
+          ok: true,
+          changed: false,
+        };
+        try {
+          if (offerCustomerEmail !== recipientEmail) {
+            const patchResult = await deps.updateOfferEmail(offer.offerId, {
+              expectedUpdatedAt: offer.updatedAt,
+              actor: AUTOMATION_ACTOR.email,
+              reason: "Deterministische Provider-Domainkorrektur nach bestaetigtem Angebotsversand.",
+              revisionReason: "Empfaengeradresse nach bestaetigtem Bounce-Recovery-Versand korrigiert.",
+              offer: { customerEmail: recipientEmail },
+            });
+            if (normalizeEmail(patchResult.offer.offer.customerEmail) !== recipientEmail) {
+              throw new Error("offer_email_update_unconfirmed");
+            }
+            offerEmailUpdate = {
+              ok: true,
+              changed: true,
+              updatedAt: patchResult.offer.updatedAt,
+            };
+          }
+        } catch (error) {
+          offerEmailUpdate = {
+            ok: false,
+            changed: false,
+            error: cleanText(error instanceof Error ? error.message : error, 1000) || "offer_email_update_failed_after_send",
+          };
+        }
+
+        let customerUpdate: { changedTables: unknown } | null = null;
+        let customerUpdateError: string | null = null;
         try {
           customerUpdate = currentCustomerEmail === recipientEmail
             ? { changedTables: [] }
             : await deps.updateCustomerEmail(requestId, recipientEmail);
         } catch (error) {
-          const failureDetail = cleanText(error instanceof Error ? error.message : error, 1000) || "customer_update_failed_after_send";
+          customerUpdateError = cleanText(error instanceof Error ? error.message : error, 1000) || "customer_update_failed_after_send";
+        }
+
+        const masterCustomerChanged = Boolean(customerUpdate) && currentCustomerEmail !== recipientEmail;
+        const customerDataChanged = offerEmailUpdate.changed || masterCustomerChanged;
+        if (!offerEmailUpdate.ok || customerUpdateError) {
+          const failureDetail = [offerEmailUpdate.error, customerUpdateError].filter(Boolean).join("; ");
           await deps.updateTask(task.id, {
             status: "waiting",
             description: [
               `Angebot ${offer.offerNumber} wurde an ${recipientEmail} gesendet.`,
-              "Die anschließende Stammdatenkorrektur wurde nicht bestätigt und muss erneut abgeschlossen werden.",
+              "Die anschließende Korrektur in Angebot und Stammdaten ist noch nicht vollständig bestätigt.",
               `Fehler: ${failureDetail}`,
             ].join("\n"),
             customerEmail: recipientEmail,
@@ -640,9 +681,10 @@ export async function processOutlookBounce(
               send_duplicate: Boolean(sendResult?.duplicate || !sendResult),
               quote_email_evidence: quoteEvidence,
               ops_sync: opsSync,
+              offer_email_update: offerEmailUpdate,
               customer_communication_sent: true,
-              customer_data_changed: false,
-              customer_update_outcome: "unconfirmed",
+              customer_data_changed: customerDataChanged,
+              customer_update_outcome: customerUpdateError ? "unconfirmed" : "confirmed",
             },
           }, { operatorName: AUTOMATION_ACTOR.email });
           const audit = await deps.recordAudit({
@@ -659,7 +701,7 @@ export async function processOutlookBounce(
             sourceEventId: sendResult?.eventId || priorSend.eventId || messageHash,
             idempotencyKey: `${sourceRef}:offer-recovery:update-pending`,
             errorMessage: failureDetail,
-            summary: "Angebot gesendet; Stammdatenkorrektur wartet auf Abschluss.",
+            summary: "Angebot gesendet; E-Mail-Korrektur in Angebot oder Stammdaten wartet auf Abschluss.",
             retrySafety: "safe",
             safeActionKey: "complete_customer_email_update",
             terminal: true,
@@ -675,9 +717,10 @@ export async function processOutlookBounce(
               send_event_id: sendResult?.eventId || priorSend.eventId,
               quote_email_evidence: quoteEvidence,
               ops_sync: opsSync,
+              offer_email_update: offerEmailUpdate,
               customer_communication_sent: true,
-              customer_data_changed: false,
-              customer_update_outcome: "unconfirmed",
+              customer_data_changed: customerDataChanged,
+              customer_update_outcome: customerUpdateError ? "unconfirmed" : "confirmed",
             },
           });
           return {
@@ -697,7 +740,7 @@ export async function processOutlookBounce(
             opsSync,
             audit,
             customerCommunicationSent: true,
-            customerDataChanged: false,
+            customerDataChanged,
           };
         }
 
@@ -720,9 +763,10 @@ export async function processOutlookBounce(
             send_duplicate: Boolean(sendResult?.duplicate || !sendResult),
             quote_email_evidence: quoteEvidence,
             ops_sync: opsSync,
+            offer_email_update: offerEmailUpdate,
             cancelled_action_runs: cancelledActionRuns,
             customer_communication_sent: true,
-            customer_data_changed: currentCustomerEmail !== recipientEmail,
+            customer_data_changed: customerDataChanged,
           },
         }, { operatorName: AUTOMATION_ACTOR.email });
         const audit = await deps.recordAudit({
@@ -755,10 +799,11 @@ export async function processOutlookBounce(
             send_duplicate: Boolean(sendResult?.duplicate || !sendResult),
             quote_email_evidence: quoteEvidence,
             ops_sync: opsSync,
-            changed_tables: customerUpdate.changedTables,
+            offer_email_update: offerEmailUpdate,
+            changed_tables: customerUpdate?.changedTables || [],
             cancelled_action_runs: cancelledActionRuns,
             customer_communication_sent: true,
-            customer_data_changed: currentCustomerEmail !== recipientEmail,
+            customer_data_changed: customerDataChanged,
           },
         });
         return {
@@ -778,7 +823,7 @@ export async function processOutlookBounce(
           opsSync,
           audit,
           customerCommunicationSent: true,
-          customerDataChanged: currentCustomerEmail !== recipientEmail,
+          customerDataChanged,
         };
       }
     }

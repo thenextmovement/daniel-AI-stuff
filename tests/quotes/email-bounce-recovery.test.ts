@@ -29,6 +29,7 @@ function fixtureDeps(options: {
   multipleOffers?: boolean;
   priorSend?: boolean;
   sendFailure?: boolean;
+  offerUpdateFailure?: boolean;
   customerUpdateFailure?: boolean;
   currentEmail?: string;
   offerRequestId?: string | null;
@@ -39,6 +40,7 @@ function fixtureDeps(options: {
     actionInputs: [] as Array<Record<string, unknown>>,
     auditInputs: [] as Array<Record<string, unknown>>,
     sendInputs: [] as Array<Record<string, unknown>>,
+    offerUpdateInputs: [] as Array<Record<string, unknown>>,
     customerUpdates: [] as Array<Record<string, unknown>>,
     quoteEvidenceInputs: [] as Array<Record<string, unknown>>,
     offerSentInputs: [] as Array<Record<string, unknown>>,
@@ -148,6 +150,20 @@ function fixtureDeps(options: {
         items: [],
         images: [],
         totals: {},
+      };
+    },
+    async updateOfferEmail(offerId: string, input: Record<string, unknown>) {
+      calls.offerUpdateInputs.push({ offerId, ...input });
+      if (options.offerUpdateFailure) throw new Error("offer_email_update_failed");
+      return {
+        offer: {
+          ...(await this.getOffer(offerId)),
+          updatedAt: "2026-08-31T08:06:00.000Z",
+          offer: {
+            ...(await this.getOffer(offerId)).offer,
+            customerEmail: "kunde@gmail.com",
+          },
+        },
       };
     },
     async sendOffer(_offerId: string, input: Record<string, unknown>) {
@@ -274,6 +290,7 @@ test("eligible provider-domain bounce resends one exact offer before updating cu
   assert.equal(result.customerCommunicationSent, true);
   assert.equal(result.customerDataChanged, true);
   assert.equal(calls.sendInputs.length, 1);
+  assert.equal(calls.offerUpdateInputs.length, 1);
   assert.equal(calls.customerUpdates.length, 1);
   assert.equal(calls.actionInputs.length, 0);
   assert.equal(calls.quoteEvidenceInputs.length, 1);
@@ -344,10 +361,38 @@ test("confirmed send with pending data update is never reported as unsent", asyn
 
   assert.equal(result.status, "offer_sent_customer_update_pending");
   assert.equal(result.customerCommunicationSent, true);
-  assert.equal(result.customerDataChanged, false);
+  assert.equal(result.customerDataChanged, true);
   assert.equal(calls.sendInputs.length, 1);
   assert.equal(calls.taskUpdateInputs.at(-1)?.status, "waiting");
   assert.equal(calls.auditInputs.at(-1)?.status, "blocked");
+});
+
+test("confirmed send keeps the case open when the offer snapshot email update fails", async () => {
+  const { deps, calls } = fixtureDeps({ autoOffer: true, offerUpdateFailure: true });
+  const result = await processOutlookBounce(syntheticBounce, deps);
+
+  assert.equal(result.status, "offer_sent_customer_update_pending");
+  assert.equal(result.customerCommunicationSent, true);
+  assert.equal(result.customerDataChanged, true);
+  assert.equal(calls.sendInputs.length, 1);
+  assert.equal(calls.offerUpdateInputs.length, 1);
+  assert.equal(calls.customerUpdates.length, 1);
+  assert.equal(calls.taskUpdateInputs.at(-1)?.status, "waiting");
+});
+
+test("existing corrected send finishes a stale offer snapshot without another email", async () => {
+  const { deps, calls } = fixtureDeps({
+    autoOffer: true,
+    priorSend: true,
+    currentEmail: "kunde@gmail.com",
+  });
+  const result = await processOutlookBounce(syntheticBounce, deps);
+
+  assert.equal(result.status, "offer_recovered");
+  assert.equal(calls.sendInputs.length, 0);
+  assert.equal(calls.offerUpdateInputs.length, 1);
+  assert.equal(calls.customerUpdates.length, 0);
+  assert.equal(result.customerDataChanged, true);
 });
 
 test("unknown mailbox at a valid provider creates review work but no invented correction", async () => {

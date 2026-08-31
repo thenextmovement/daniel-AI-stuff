@@ -100,6 +100,7 @@ export type OpsOfferPatchInput = {
   reason?: string;
   revisionReason?: string;
   offer?: {
+    customerEmail?: string;
     validUntil?: string | null;
     productionTime?: string | null;
     notes?: string | null;
