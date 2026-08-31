@@ -432,8 +432,15 @@ test("manual Trello lists are hard stops and can only block automation", () => {
   assert.deepEqual(decision.reasons, ["trello_manual_list"]);
 });
 
-test("only Shopify express shipping selections choose DPD Express 12", () => {
-  for (const title of ["Express-Versand", "Express Versand Aufpreis 1.7.26", "3D Expressversand ca. 14 Werktage"]) {
+test("Shopify express shipping and rush selections choose DPD Express 12", () => {
+  for (const title of [
+    "Express-Versand",
+    "Express Versand Aufpreis 1.7.26",
+    "3D Expressversand ca. 14 Werktage",
+    "Eilauftrag / Prio",
+    "Eilauftrag 4 Tage",
+    "Express-Produktion 7 Tage",
+  ]) {
     const result = classifyShipping({ ...standardOrder, lineItems: [{ title, quantity: 1 }], shippingLines: [] });
     assert.deepEqual(result, { shippingClass: "express_12", conflict: null }, title);
   }
@@ -455,7 +462,7 @@ test("only Shopify express shipping selections choose DPD Express 12", () => {
   });
   assert.deepEqual(standardAndExpress, { shippingClass: "express_12", conflict: null });
 
-  for (const title of ["Express-Produktion 7 Tage", "Priorisierte Produktion 12 Tage"]) {
+  for (const title of ["Priorisierte Produktion 12 Tage", "Express Design Neon Logo"]) {
     const result = classifyShipping({ ...standardOrder, lineItems: [{ title, quantity: 1 }], shippingLines: [] });
     assert.deepEqual(result, { shippingClass: "standard", conflict: null }, title);
   }
@@ -507,6 +514,26 @@ test("an Express-Versand order plans the approved DPD Express 12 product", () =>
     arrival: arrival(),
     trelloCards: [card()],
     shopifyOrders: [expressOrder],
+    productConfig: config,
+  });
+  assert.equal(decision.status, "label_planned");
+  assert.equal(decision.shippingClass, "express_12");
+  assert.equal(decision.selectedDpdProduct, "DPD_EXPRESS_12_TEST");
+});
+
+test("an Eilauftrag order plans the approved DPD Express 12 product", () => {
+  const rushOrder: ShopifyOrderEvidence = {
+    ...standardOrder,
+    lineItems: [
+      { title: "Neonschild", quantity: 1 },
+      { title: "Eilauftrag 4 Tage", quantity: 1 },
+    ],
+    shippingLines: [],
+  };
+  const decision = decideArrivalCase({
+    arrival: arrival(),
+    trelloCards: [card()],
+    shopifyOrders: [rushOrder],
     productConfig: config,
   });
   assert.equal(decision.status, "label_planned");

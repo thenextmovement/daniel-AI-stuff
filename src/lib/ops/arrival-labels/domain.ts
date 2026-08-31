@@ -356,7 +356,7 @@ export function assessDestinationGate(order: ShopifyOrderEvidence, config: Produ
   };
 }
 
-const EXPRESS_SHIPPING_ITEM_PATTERN = /\b(?:expressversand|expresszustellung|expresslieferung|express\s+(?:versand|zustellung|lieferung|shipping|delivery))\b/i;
+const EXPRESS_DPD_ITEM_PATTERN = /\b(?:expressversand|expresszustellung|expresslieferung|express\s+(?:versand|zustellung|lieferung|shipping|delivery|produktion)|eilauftrag)\b/i;
 const EXPRESS_SHIPPING_LINE_PATTERN = /\bexpress\b/i;
 const STANDARD_SHIPPING_ITEM_PATTERN = /\b(?:standardversand|standardlieferung|standard\s+(?:versand|lieferung|shipping|delivery)|normaler\s+versand)\b/i;
 const STANDARD_SHIPPING_LINE_PATTERN = /\b(?:standard|normal|classic|b2c)\b/i;
@@ -774,7 +774,7 @@ export function classifyShipping(order: ShopifyOrderEvidence, _card?: TrelloCard
     .flatMap((line) => [line.title, line.code || ""])
     .filter(Boolean);
   const expressEvidence = [
-    ...lineItemEvidence.filter((value) => EXPRESS_SHIPPING_ITEM_PATTERN.test(normalizeHumanText(value))),
+    ...lineItemEvidence.filter((value) => EXPRESS_DPD_ITEM_PATTERN.test(normalizeHumanText(value))),
     ...shippingLineEvidence.filter((value) => EXPRESS_SHIPPING_LINE_PATTERN.test(normalizeHumanText(value))),
   ];
   const normalizedShippingEvidence = [...lineItemEvidence, ...shippingLineEvidence]
