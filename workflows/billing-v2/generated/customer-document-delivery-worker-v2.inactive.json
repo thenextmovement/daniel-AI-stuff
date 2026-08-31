@@ -69,6 +69,9 @@
           "name": "NEONTRIP Billing Worker"
         }
       },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 15000,
       "onError": "continueErrorOutput"
     },
     {
@@ -358,7 +361,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "throw new Error('Fehler Rechnung Shopify/Easybill: Kundenversand-Job konnte nicht abgeholt werden.');return [];"
+        "jsCode": "const detail=String($json.error?.message||$json.message||$json.description||'').slice(0,1200);throw new Error('Fehler Rechnung Shopify/Easybill: Kundenversand-Job konnte nicht abgeholt werden.'+(detail?' '+detail:''));"
       }
     }
   ],

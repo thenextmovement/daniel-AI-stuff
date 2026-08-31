@@ -29,9 +29,11 @@ if (!documentType) throw new Error('unsupported_billing_job_type:' + job.job_typ
 const documentNumber = String(job.payload?.documentNumber || '');
 if (!/^((PF|GS|ST)-)?NEONT\d+(-\d+)?$/.test(documentNumber.replace(/^#/,''))) throw new Error('invalid_document_number');
 const customerNumber = 'NT-' + String(billingCase.shopify_order_name || '').replace(/[^A-Za-z0-9]/g,'');
-const name = String(customer.name || address.name || 'Kunde').trim();
-const company = String(customer.company || address.company || name).trim();
+const name = String(address.name || [address.firstName,address.lastName].filter(Boolean).join(' ') || customer.name || 'Kunde').trim();
+const company = String(address.company || customer.company || name).trim();
 const names = name.split(/\s+/);
+const firstName = String(address.firstName || names.slice(0,-1).join(' ') || '').trim();
+const lastName = String(address.lastName || names.slice(-1)[0] || company).trim();
 const invoiceEmail = String(billingCase.customer_email || address.invoiceEmail || customer.email || '').trim().toLowerCase();
 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invoiceEmail) || invoiceEmail.length > 254) throw new Error('billing_invoice_email_invalid');
 const projectNumber = String(billingCase.project_number || address.projectNumber || '').trim();
@@ -87,7 +89,7 @@ return [{json:{
   projectNumber,
   documentLabel,
   customerNumber,
-  customerPayload:{number:customerNumber,company_name:company,last_name:names.slice(-1)[0]||company,first_name:names.slice(0,-1).join(' ')||'',street:String(address.street||''),zip_code:String(address.zip||address.zipCode||''),city:String(address.city||''),country:country(address.country||delivery.country),emails:[invoiceEmail],vat_identifier:billingCase.vat_id||null,tax_options:taxOption,delivery_company_name:String(delivery.company||delivery.contactCompany||company),delivery_first_name:String(delivery.firstName||delivery.contactName||''),delivery_last_name:String(delivery.lastName||''),delivery_street:String(delivery.street||''),delivery_zip_code:String(delivery.zip||delivery.zipCode||''),delivery_city:String(delivery.city||''),delivery_country:country(delivery.country)},
+  customerPayload:{number:customerNumber,company_name:company,last_name:lastName,first_name:firstName,street:String(address.street||''),zip_code:String(address.zip||address.zipCode||''),city:String(address.city||''),country:country(address.country||delivery.country),emails:[invoiceEmail],vat_identifier:billingCase.vat_id||null,tax_options:taxOption,delivery_company_name:String(delivery.company||delivery.contactCompany||company),delivery_first_name:String(delivery.firstName||delivery.contactName||''),delivery_last_name:String(delivery.lastName||''),delivery_street:String(delivery.street||''),delivery_zip_code:String(delivery.zip||delivery.zipCode||''),delivery_city:String(delivery.city||''),delivery_country:country(delivery.country)},
   documentNumber,
   documentPayload:{type:documentType,number:documentNumber,order_number:String(billingCase.shopify_order_name||''),buyer_reference:projectNumber,external_id:job.idempotency_key,currency:billingCase.currency||'EUR',due_in_days:dueInDays,customer_id:null,ref_id:originalInvoice?.easybill_document_id?Number(originalInvoice.easybill_document_id):undefined,items,vat_option:taxOption,vat_country:country(address.country||delivery.country),shipping_country:country(delivery.country),title:documentLabel+' '+String(billingCase.shopify_order_name||''),text:documentText,calc_vat_from:0}
 }}];`;
@@ -501,11 +503,17 @@ const address = (value, fallbackEmail='') => {
     email:text(source.email || fallbackEmail)
   };
 };
-const distribute = (total, quantity) => {
-  const count = Math.max(1, Number(quantity || 1));
-  const base = Math.trunc(total / count);
-  const remainder = total - base * count;
-  return Array.from({length:count}, (_,index) => base + (index < remainder ? 1 : 0));
+const properties = line => Array.isArray(line?.properties) ? line.properties : [];
+const neonSize = line => {
+  const rows = properties(line);
+  const area = rows.find(row => /^(bereich|produktbereich|category)$/i.test(text(row?.name)))?.value;
+  let size = '';
+  if (/(?:led[\s-]*leuchtschild|neonschild|neon\s*sign)/i.test(text(area))) {
+    const description = rows.find(row => /^(beschreibung|description)$/i.test(text(row?.name)))?.value;
+    const match = text(description).match(/(?:größe|groesse|grösse)\s*:\s*(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*cm\b/i);
+    if (match) size = match[1] + ' x ' + match[2] + ' cm';
+  }
+  return size;
 };
 const output = [];
 for (const order of orders) {
@@ -525,23 +533,67 @@ for (const order of orders) {
   billingAddress.projectNumber = attr(order,/projekt.?nummer|project.?number/i);
   billingAddress.vatId = attr(order,/ust.?id|umsatzsteuer|vat.?id/i);
   const lineItems = [];
+  const lineIndex = new Map();
+  const addLine = ({title,section,quantity,unitNetCents}) => {
+    const normalizedQuantity = Math.max(1, Number(quantity || 1));
+    const key = JSON.stringify([title,section,unitNetCents]);
+    const existing = lineIndex.get(key);
+    if (existing) {
+      existing.quantity += normalizedQuantity;
+      existing.normalizedQuantity += normalizedQuantity;
+      return;
+    }
+    const item = {title,section,quantity:normalizedQuantity,normalizedQuantity,unitPriceNet:unitNetCents/100};
+    lineIndex.set(key,item);
+    lineItems.push(item);
+  };
   for (const line of (Array.isArray(order.line_items) ? order.line_items : [])) {
     const quantity = Math.max(1, Number(line.quantity || 1));
     const gross = cents(line.price) * quantity - (Array.isArray(line.discount_allocations) ? line.discount_allocations.reduce((sum,row)=>sum+cents(row.amount),0) : 0);
     const tax = Array.isArray(line.tax_lines) ? line.tax_lines.reduce((sum,row)=>sum+cents(row.price),0) : 0;
-    for (const unitNet of distribute(gross - tax, quantity)) lineItems.push({title:text(line.title || line.name || 'Position'),section:'produkt',quantity:1,normalizedQuantity:1,unitPriceNet:unitNet/100});
+    const baseTitle = text(line.title || line.name || 'Position');
+    const size = neonSize(line);
+    const title = size && !/\d+(?:[.,]\d+)?\s*[x×]\s*\d+(?:[.,]\d+)?\s*cm\b/i.test(baseTitle) ? baseTitle + ' – ' + size : baseTitle;
+    addLine({title,section:'produkt',quantity,unitNetCents:Math.round((gross-tax)/quantity)});
   }
   for (const shipping of (Array.isArray(order.shipping_lines) ? order.shipping_lines : [])) {
     const gross = cents(shipping.discounted_price ?? shipping.price);
     const tax = Array.isArray(shipping.tax_lines) ? shipping.tax_lines.reduce((sum,row)=>sum+cents(row.price),0) : 0;
-    lineItems.push({title:text(shipping.title || shipping.code || 'Versand'),section:'versand',quantity:1,normalizedQuantity:1,unitPriceNet:(gross-tax)/100});
+    addLine({title:text(shipping.title || shipping.code || 'Versand'),section:'versand',quantity:1,unitNetCents:gross-tax});
   }
   if (!lineItems.length) throw new Error('shopify_order_line_items_missing:' + orderName);
   const totalGrossCents = cents(order.total_price);
   const vatCents = cents(order.total_tax);
   const subtotalNetCents = totalGrossCents - vatCents;
-  const itemNetCents = lineItems.reduce((sum,row)=>sum+cents(row.unitPriceNet),0);
-  lineItems[lineItems.length - 1].unitPriceNet = (cents(lineItems[lineItems.length - 1].unitPriceNet) + subtotalNetCents - itemNetCents) / 100;
+  const itemNetCents = lineItems.reduce((sum,row)=>sum+cents(row.unitPriceNet)*Number(row.normalizedQuantity||1),0);
+  const difference = subtotalNetCents - itemNetCents;
+  if (difference) {
+    let reconciliationIndex = -1;
+    for (let index=lineItems.length-1; index>=0; index-=1) {
+      if (lineItems[index].section === 'produkt' && Number(lineItems[index].normalizedQuantity) === 1) {
+        reconciliationIndex = index;
+        break;
+      }
+    }
+    if (reconciliationIndex < 0) reconciliationIndex = lineItems.findIndex(row => Number(row.normalizedQuantity) === 1);
+    if (reconciliationIndex >= 0) {
+      const row = lineItems[reconciliationIndex];
+      row.unitPriceNet = (cents(row.unitPriceNet) + difference) / 100;
+    } else {
+      const row = lineItems[lineItems.length - 1];
+      const quantity = Number(row.normalizedQuantity);
+      const originalUnit = cents(row.unitPriceNet);
+      const wholeUnitAdjustment = Math.trunc(difference / quantity);
+      const remainder = difference - wholeUnitAdjustment * quantity;
+      const adjustedUnit = originalUnit + wholeUnitAdjustment;
+      row.unitPriceNet = adjustedUnit / 100;
+      if (remainder) {
+        row.quantity = quantity - 1;
+        row.normalizedQuantity = quantity - 1;
+        lineItems.push({...row,quantity:1,normalizedQuantity:1,unitPriceNet:(adjustedUnit+remainder)/100});
+      }
+    }
+  }
   const vatId = text(billingAddress.vatId).toUpperCase().replace(/[^A-Z0-9]/g,'');
   const vatValidation = vatId ? {checked:false,valid:false,normalizedVatId:vatId,countryCode:vatId.slice(0,2)} : null;
   const customerName = text(order.customer?.first_name || deliveryAddress.firstName) + ' ' + text(order.customer?.last_name || deliveryAddress.lastName);
@@ -700,7 +752,7 @@ const customerDeliveryWorkflow = {
   nodes: [
     node("delivery-schedule", "Every Minute", "n8n-nodes-base.scheduleTrigger", [-1120, 0], { rule: { interval: [{ field: "minutes", minutesInterval: 1 }] } }, { typeVersion: 1.3 }),
     node("delivery-config", "Customer Delivery Config", "n8n-nodes-base.code", [-900, 0], { mode: "runOnceForAllItems", jsCode: "const config={opsBaseUrl:'https://ops.neontrip.de',worker:'n8n-customer-document-delivery-v2'};return [{json:config}];" }),
-    node("delivery-claim", "Claim Customer Delivery Job", "n8n-nodes-base.httpRequest", [-680, 0], { method: "POST", url: "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {worker:$json.worker,jobTypes:['SEND_CUSTOMER_DOCUMENT'],leaseSeconds:180} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, onError: "continueErrorOutput" }),
+    node("delivery-claim", "Claim Customer Delivery Job", "n8n-nodes-base.httpRequest", [-680, 0], { method: "POST", url: "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {worker:$json.worker,jobTypes:['SEND_CUSTOMER_DOCUMENT'],leaseSeconds:180} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, retryOnFail: true, maxTries: 3, waitBetweenTries: 15000, onError: "continueErrorOutput" }),
     node("delivery-prepare", "Prepare Customer Delivery", "n8n-nodes-base.code", [-440, -80], { mode: "runOnceForAllItems", jsCode: customerDeliveryPrepareCode }, { onError: "continueErrorOutput" }),
     node("delivery-has-job", "Has Customer Delivery Job", "n8n-nodes-base.if", [-220, -80], { conditions: { options: { caseSensitive: true, typeValidation: "strict" }, conditions: [{ leftValue: "={{ $json.hasJob }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" } }),
     node("delivery-load", "Easybill Load Customer Document", "n8n-nodes-base.httpRequest", [20, -80], { method: "GET", url: "={{ 'https://api.easybill.de/rest/v1/documents/' + encodeURIComponent($json.easybillDocumentId) }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: easybillCredentials, onError: "continueErrorOutput" }),
@@ -713,7 +765,7 @@ const customerDeliveryWorkflow = {
     node("delivery-failure", "Prepare Customer Delivery Failure", "n8n-nodes-base.code", [740, 280], { jsCode: "const prepared=$('Prepare Customer Delivery').all();const claimedItems=$('Claim Customer Delivery Job').all();const claimBody=claimedItems[0]?.json?.body??claimedItems[0]?.json??{};const job=prepared[0]?.json?.job??claimBody.claimed?.job;if(!job?.id||!job?.lease_token)throw new Error('billing_customer_delivery_failure_context_missing');const message=String($json.error?.message||$json.message||$json.description||'customer_document_delivery_failed').slice(0,1800);const result={worker:'n8n-customer-document-delivery-v2'};const output={jobId:job.id,leaseToken:job.lease_token,success:false,result,error:message};return [{json:output}];" }),
     node("delivery-complete", "Complete Customer Delivery Job", "n8n-nodes-base.httpRequest", [1700, -80], { method: "POST", url: "={{ $('Customer Delivery Config').first().json.opsBaseUrl + '/api/internal/billing/jobs/' + encodeURIComponent($json.jobId) + '/complete' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {leaseToken:$json.leaseToken,success:$json.success,result:$json.result,error:$json.error} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, onError: "stopWorkflow" }),
     node("delivery-blocked", "Raise Customer Delivery Block", "n8n-nodes-base.code", [1940, -80], { jsCode: "const body=$json.body??$json;const prepared=$('Prepare Customer Delivery').all()[0]?.json??{};const claim=$('Claim Customer Delivery Job').all()[0]?.json??{};const claimed=(claim.body??claim).claimed??{};const payload=prepared.job?.payload??claimed.job?.payload??{};const documentNumber=prepared.documentNumber??payload.documentNumber??'UNBEKANNT';const orderName=prepared.shopifyOrderName??payload.shopifyOrderName??claimed.billingCase?.shopify_order_name??'UNBEKANNT';const recipient=prepared.recipient??payload.recipient??'KEINE GUELTIGE EMPFAENGERADRESSE';if(body.completed?.status==='BLOCKED')throw new Error('FATAL Fehler Rechnung Shopify/Easybill: Kundenbeleg '+documentNumber+' zu '+orderName+' konnte nach vier Versuchen nicht an '+recipient+' versendet werden. Bitte sofort in Ops/Rechnungen und Easybill pruefen.');const output={ok:true,status:body.completed?.status||'DONE'};return [{json:output}];" }),
-    node("delivery-claim-failure", "Raise Customer Delivery Claim Error", "n8n-nodes-base.code", [-440, 200], { jsCode: "throw new Error('Fehler Rechnung Shopify/Easybill: Kundenversand-Job konnte nicht abgeholt werden.');return [];" })
+    node("delivery-claim-failure", "Raise Customer Delivery Claim Error", "n8n-nodes-base.code", [-440, 200], { jsCode: "const detail=String($json.error?.message||$json.message||$json.description||'').slice(0,1200);throw new Error('Fehler Rechnung Shopify/Easybill: Kundenversand-Job konnte nicht abgeholt werden.'+(detail?' '+detail:''));" })
   ],
   connections: {
     "Every Minute": { main: [[{ node: "Customer Delivery Config", type: "main", index: 0 }]] },
@@ -819,7 +871,7 @@ const changeRequestNotificationWorkflow = {
   nodes: [
     node("change-alert-schedule", "Every Minute", "n8n-nodes-base.scheduleTrigger", [-1120, 0], { rule: { interval: [{ field: "minutes", minutesInterval: 1 }] } }, { typeVersion: 1.3 }),
     node("change-alert-config", "Change Notification Config", "n8n-nodes-base.code", [-900, 0], { mode: "runOnceForAllItems", jsCode: "return [{json:{opsBaseUrl:'https://ops.neontrip.de',worker:'n8n-billing-change-notification-v1'}}];" }),
-    node("change-alert-claim", "Claim Change Notification Job", "n8n-nodes-base.httpRequest", [-680, 0], { method: "POST", url: "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {worker:$json.worker,jobTypes:['NOTIFY_CHANGE_REQUEST'],leaseSeconds:180} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, onError: "continueErrorOutput" }),
+    node("change-alert-claim", "Claim Change Notification Job", "n8n-nodes-base.httpRequest", [-680, 0], { method: "POST", url: "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/claim' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {worker:$json.worker,jobTypes:['NOTIFY_CHANGE_REQUEST'],leaseSeconds:180} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, retryOnFail: true, maxTries: 3, waitBetweenTries: 15000, onError: "continueErrorOutput" }),
     node("change-alert-prepare", "Prepare Change Notification", "n8n-nodes-base.code", [-440, -80], { mode: "runOnceForAllItems", jsCode: changeRequestNotificationPrepareCode }, { onError: "continueErrorOutput" }),
     node("change-alert-has-job", "Has Change Notification Job", "n8n-nodes-base.if", [-220, -80], { conditions: { options: { typeValidation: "strict" }, conditions: [{ leftValue: "={{ $json.hasJob }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" } }),
     node("change-alert-send", "Send Internal Change Notification", "n8n-nodes-base.microsoftOutlook", [20, -80], { resource: "message", operation: "send", toRecipients: "={{ $json.recipient }}", subject: "={{ $json.subject }}", bodyContent: "={{ $json.bodyHtml }}", additionalFields: { bodyContentType: "html" } }, { credentials: { microsoftOutlookOAuth2Api: { id: "CTEmJD5CjYu9hawu", name: "Microsoft Outlook support@neontrip.de" } }, onError: "continueErrorOutput" }),
@@ -827,7 +879,7 @@ const changeRequestNotificationWorkflow = {
     node("change-alert-failure", "Prepare Change Notification Failure", "n8n-nodes-base.code", [260, 120], { jsCode: "const prepared=$('Prepare Change Notification').all();const claimedItems=$('Claim Change Notification Job').all();const claimBody=claimedItems[0]?.json?.body??claimedItems[0]?.json??{};const job=prepared[0]?.json?.job??claimBody.claimed?.job;if(!job?.id||!job?.lease_token)throw new Error('billing_change_notification_failure_context_missing');const message=String($json.error?.message||$json.message||$json.description||'billing_change_notification_failed').slice(0,1800);return [{json:{jobId:job.id,leaseToken:job.lease_token,success:false,result:{worker:'n8n-billing-change-notification-v1'},error:message}}];" }),
     node("change-alert-complete", "Complete Change Notification Job", "n8n-nodes-base.httpRequest", [500, -80], { method: "POST", url: "={{ $('Change Notification Config').first().json.opsBaseUrl + '/api/internal/billing/jobs/' + encodeURIComponent($json.jobId) + '/complete' }}", authentication: "genericCredentialType", genericAuthType: "httpHeaderAuth", sendBody: true, specifyBody: "json", jsonBody: "={{ {leaseToken:$json.leaseToken,success:$json.success,result:$json.result,error:$json.error} }}", options: { timeout: 30000, response: { response: { fullResponse: true, responseFormat: "json" } } } }, { credentials: opsCredentials, onError: "stopWorkflow" }),
     node("change-alert-blocked", "Raise Change Notification Block", "n8n-nodes-base.code", [740, -80], { jsCode: "const body=$json.body??$json;if(body.completed?.status==='BLOCKED')throw new Error('FATAL: Eine Rechnungsänderung wurde gespeichert, aber die interne Prüf-E-Mail konnte nach vier Versuchen nicht gesendet werden. Bitte Ops/Rechnungen sofort prüfen.');return [{json:{ok:true,status:body.completed?.status||'DONE'}}];" }),
-    node("change-alert-claim-failure", "Raise Change Notification Claim Error", "n8n-nodes-base.code", [-440, 200], { jsCode: "throw new Error('Billing-Änderungsbenachrichtigung konnte keinen Job abrufen.');" })
+    node("change-alert-claim-failure", "Raise Change Notification Claim Error", "n8n-nodes-base.code", [-440, 200], { jsCode: "const detail=String($json.error?.message||$json.message||$json.description||'').slice(0,1200);throw new Error('Billing-Änderungsbenachrichtigung konnte keinen Job abrufen.'+(detail?' '+detail:''));" })
   ],
   connections: {
     "Every Minute": { main: [[{ node: "Change Notification Config", type: "main", index: 0 }]] },
