@@ -23,7 +23,7 @@ function isTrigger(entry) {
     entry.type === "n8n-nodes-base.webhook";
 }
 
-assert.equal(workflow.nodes.length, 21);
+assert.equal(workflow.nodes.length, 22);
 assert.equal(workflow.nodes.filter(isTrigger).length, 1);
 assert.equal(
   workflow.nodes.some((entry) => /langchain|agent/i.test(entry.type)),
@@ -81,17 +81,38 @@ assert.match(offerLookup.parameters.url, /api\/internal\/offers\/\{\{/);
 assert.doesNotMatch(offerLookup.parameters.url, /\/search/);
 assert.equal(offerLookup.parameters.sendQuery, undefined);
 
-const send = node("SendFollowupOutlook");
+const createDraft = node("CreateFollowupDraft");
+assert.equal(createDraft.parameters.resource, "draft");
+assert.equal(createDraft.parameters.operation, "create");
+assert.equal(createDraft.retryOnFail, false);
+assert.equal(createDraft.onError, "stopWorkflow");
+assert.match(createDraft.parameters.additionalFields.toRecipients, /customer_email/);
+assert.equal(
+  createDraft.parameters.additionalFields.internetMessageHeaders.headers[0].name,
+  "X-NEONTRIP-Followup-Queue-Id",
+);
+assert.equal(
+  workflow.connections.CreateFollowupDraft.main[0][0].node,
+  "SendFollowupDraft",
+);
+
+const send = node("SendFollowupDraft");
+assert.equal(send.parameters.resource, "draft");
+assert.equal(send.parameters.operation, "send");
 assert.equal(send.retryOnFail, false);
 assert.equal(send.onError, "continueErrorOutput");
-assert.equal(workflow.connections.SendFollowupOutlook.main.length, 2);
+assert.equal(workflow.connections.SendFollowupDraft.main.length, 2);
 assert.equal(
-  workflow.connections.SendFollowupOutlook.main[0][0].node,
+  workflow.connections.SendFollowupDraft.main[0][0].node,
   "CompleteFollowupDelivery",
 );
 assert.equal(
-  workflow.connections.SendFollowupOutlook.main[1][0].node,
+  workflow.connections.SendFollowupDraft.main[1][0].node,
   "MarkFollowupDeliveryUnknown",
+);
+assert.match(
+  node("CompleteFollowupDelivery").parameters.jsonBody,
+  /CreateFollowupDraft/,
 );
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -108,12 +129,12 @@ const validPrepared = await prepare({
     request_id: "REQ-1",
     document_id: "offer-1",
     customer_name: "Ada Lovelace",
-    customer_email: "ADA@CUSTOMER.INVALID",
+    customer_email: "ADA@CUSTOMER-DOMAIN.DE",
     offer_public_url: "https://angebote.neontrip.de/offer/public-token",
   },
 });
 assert.equal(validPrepared[0].json.preflight_route, "modern");
-assert.equal(validPrepared[0].json.customer_email, "ada@customer.invalid");
+assert.equal(validPrepared[0].json.customer_email, "ada@customer-domain.de");
 assert.equal(validPrepared[0].json.ai_copy_allowed, false);
 
 const blockedPrepared = await prepare({
@@ -129,6 +150,27 @@ const blockedPrepared = await prepare({
   },
 });
 assert.equal(blockedPrepared[0].json.preflight_route, "blocked");
+
+for (const customerEmail of [
+  "customer@placeholder.invalid",
+  "customer@placeholder.test",
+  "customer@service.localhost",
+  "customer@example.com",
+]) {
+  const reservedPrepared = await prepare({
+    followup_queue_id: "00000000-0000-4000-8000-000000000005",
+    claim_token: "00000000-0000-4000-8000-000000000006",
+    candidate: {
+      id: "00000000-0000-4000-8000-000000000005",
+      request_id: "REQ-3",
+      document_id: "DOC-3",
+      customer_name: "Reserved",
+      customer_email: customerEmail,
+      offer_public_url: "https://angebote.neontrip.de/offer/public-token",
+    },
+  });
+  assert.equal(reservedPrepared[0].json.preflight_route, "blocked", customerEmail);
+}
 
 const modernContext = {
   ...validPrepared[0].json,
@@ -225,7 +267,7 @@ const hasReply = await analyze(
     {
       json: {
         id: "reply-1",
-        from: { emailAddress: { address: "ada@customer.invalid" } },
+        from: { emailAddress: { address: "ada@customer-domain.de" } },
         subject: "Re: NEONTRIP Angebot A/N 14100",
         bodyPreview: "Der Kunde braucht noch Zeit.",
         receivedDateTime: "2026-08-24T10:00:00.000Z",
@@ -245,7 +287,7 @@ const alreadyHandledSnoozeReply = await analyze(
       {
         json: {
           id: "reply-1",
-          from: { emailAddress: { address: "ada@customer.invalid" } },
+          from: { emailAddress: { address: "ada@customer-domain.de" } },
           subject: "Re: NEONTRIP Angebot A/N 14100",
           bodyPreview: "Der Kunde braucht noch Zeit.",
           receivedDateTime: "2026-08-24T10:00:00.000Z",
@@ -267,7 +309,7 @@ const uncorrelatedReply = await analyze(
     {
       json: {
         id: "reply-2",
-        from: { emailAddress: { address: "ada@customer.invalid" } },
+        from: { emailAddress: { address: "ada@customer-domain.de" } },
         subject: "Anderes Thema",
         bodyPreview: "Bitte später melden",
         receivedDateTime: "2026-08-24T09:00:00.000Z",
@@ -385,7 +427,7 @@ const build = new AsyncFunction(
 const email = await build({
   ...validPrepared[0].json,
   customer_name: "<script>alert(1)</script>",
-  customer_email: "ada@customer.invalid",
+  customer_email: "ada@customer-domain.de",
   followup_number: 6,
   offer_number: "A/N 14100",
   offer_link: "https://angebote.neontrip.de/offer/public-token",

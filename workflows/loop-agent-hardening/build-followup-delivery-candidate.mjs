@@ -138,6 +138,7 @@ const nodes = [
     "const requestId = String(item.request_id || '').trim();",
     "const documentId = String(item.document_id || '').trim();",
     "const rawLink = String(item.offer_public_url || '').trim();",
+    "const emailDomain = String(email.split('@').pop() || '');",
     "const context = item.enriched_context && typeof item.enriched_context === 'object' && !Array.isArray(item.enriched_context) ? item.enriched_context : {};",
     "const rawReplyAnchor = String(context.last_followup_sent_at || context.first_sent_at || '').trim();",
     "const parsedReplyAnchor = rawReplyAnchor ? new Date(rawReplyAnchor) : null;",
@@ -145,7 +146,8 @@ const nodes = [
     "const oldestAllowed = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);",
     "const replyAnchor = parsedReplyAnchor && Number.isFinite(parsedReplyAnchor.getTime()) && parsedReplyAnchor <= now ? parsedReplyAnchor : oldestAllowed;",
     "const replySearchFrom = (replyAnchor < oldestAllowed ? oldestAllowed : replyAnchor).toISOString();",
-    "const validEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) && !/@(neontrip\\.de|riesenobjekte\\.de|example\\.|neontrip\\.test$)/i.test(email);",
+    "const reservedDomain = /(^|\\.)example(?:\\.|$)|\\.(?:invalid|localhost|test)$|^(?:invalid|localhost|test)$/i.test(emailDomain);",
+    "const validEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) && !/@(?:neontrip\\.de|riesenobjekte\\.de)$/i.test(email) && !reservedDomain;",
     "const modernLink = /^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(rawLink);",
     "let route = 'blocked';",
     "let blockReason = 'candidate_identity_invalid';",
@@ -479,17 +481,52 @@ const nodes = [
   ]),
   {
     id: "send-followup",
-    name: "SendFollowupOutlook",
+    name: "CreateFollowupDraft",
     type: "n8n-nodes-base.microsoftOutlook",
     typeVersion: 2,
     position: [2640, 120],
     parameters: {
-      resource: "message",
-      operation: "send",
-      toRecipients: "={{ $json.customer_email }}",
+      resource: "draft",
+      operation: "create",
       subject: "={{ $json.email_subject }}",
       bodyContent: "={{ $json.email_body }}",
-      additionalFields: { bodyContentType: "html" },
+      additionalFields: {
+        toRecipients: "={{ $json.customer_email }}",
+        bodyContentType: "html",
+        internetMessageHeaders: {
+          headers: [
+            {
+              name: "X-NEONTRIP-Followup-Queue-Id",
+              value: "={{ $json.followup_queue_id }}",
+            },
+          ],
+        },
+      },
+    },
+    credentials: {
+      microsoftOutlookOAuth2Api: {
+        id: "CTEmJD5CjYu9hawu",
+        name: "Microsoft Outlook support@neontrip.de",
+      },
+    },
+    retryOnFail: false,
+    onError: "stopWorkflow",
+  },
+  {
+    id: "send-followup-draft",
+    name: "SendFollowupDraft",
+    type: "n8n-nodes-base.microsoftOutlook",
+    typeVersion: 2,
+    position: [2860, 120],
+    parameters: {
+      resource: "draft",
+      operation: "send",
+      draftId: {
+        __rl: true,
+        mode: "id",
+        value: "={{ $json.id }}",
+      },
+      to: "",
     },
     credentials: {
       microsoftOutlookOAuth2Api: {
@@ -504,15 +541,15 @@ const nodes = [
     "complete-delivery",
     "CompleteFollowupDelivery",
     "complete_followup_delivery",
-    "={{ JSON.stringify({ p_followup_queue_id: $('PrepareCandidate').item.json.followup_queue_id, p_claim_token: $('PrepareCandidate').item.json.claim_token, p_provider_message_id: String($json.id || $json.messageId || $json.message_id || ''), p_workflow_execution_id: String($execution.id), p_email_subject: $('BuildDeterministicFollowup').item.json.email_subject, p_email_body: $('BuildDeterministicFollowup').item.json.email_body }) }}",
-    [2860, 60],
+    "={{ JSON.stringify({ p_followup_queue_id: $('PrepareCandidate').item.json.followup_queue_id, p_claim_token: $('PrepareCandidate').item.json.claim_token, p_provider_message_id: String($('CreateFollowupDraft').item.json.id || ''), p_workflow_execution_id: String($execution.id), p_email_subject: $('BuildDeterministicFollowup').item.json.email_subject, p_email_body: $('BuildDeterministicFollowup').item.json.email_body }) }}",
+    [3080, 60],
   ),
   rpcNode(
     "unknown-delivery",
     "MarkFollowupDeliveryUnknown",
     "mark_followup_delivery_unknown",
-    "={{ JSON.stringify({ p_followup_queue_id: $('PrepareCandidate').item.json.followup_queue_id, p_claim_token: $('PrepareCandidate').item.json.claim_token, p_workflow_execution_id: String($execution.id), p_error_code: 'outlook_send_unknown' }) }}",
-    [2860, 200],
+    "={{ JSON.stringify({ p_followup_queue_id: $('PrepareCandidate').item.json.followup_queue_id, p_claim_token: $('PrepareCandidate').item.json.claim_token, p_workflow_execution_id: String($execution.id), p_error_code: 'outlook_draft_send_unknown' }) }}",
+    [3080, 200],
   ),
 ];
 
@@ -578,9 +615,12 @@ const connections = {
     main: [[{ node: "ApplyReplyDecision", type: "main", index: 0 }]],
   },
   BuildDeterministicFollowup: {
-    main: [[{ node: "SendFollowupOutlook", type: "main", index: 0 }]],
+    main: [[{ node: "CreateFollowupDraft", type: "main", index: 0 }]],
   },
-  SendFollowupOutlook: {
+  CreateFollowupDraft: {
+    main: [[{ node: "SendFollowupDraft", type: "main", index: 0 }]],
+  },
+  SendFollowupDraft: {
     main: [
       [{ node: "CompleteFollowupDelivery", type: "main", index: 0 }],
       [{ node: "MarkFollowupDeliveryUnknown", type: "main", index: 0 }],

@@ -110,7 +110,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "const claim = $json || {};\nconst item = claim.candidate || {};\nconst email = String(item.customer_email || '').trim().toLowerCase();\nconst queueId = String(claim.followup_queue_id || item.id || '').trim();\nconst requestId = String(item.request_id || '').trim();\nconst documentId = String(item.document_id || '').trim();\nconst rawLink = String(item.offer_public_url || '').trim();\nconst context = item.enriched_context && typeof item.enriched_context === 'object' && !Array.isArray(item.enriched_context) ? item.enriched_context : {};\nconst rawReplyAnchor = String(context.last_followup_sent_at || context.first_sent_at || '').trim();\nconst parsedReplyAnchor = rawReplyAnchor ? new Date(rawReplyAnchor) : null;\nconst now = new Date();\nconst oldestAllowed = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);\nconst replyAnchor = parsedReplyAnchor && Number.isFinite(parsedReplyAnchor.getTime()) && parsedReplyAnchor <= now ? parsedReplyAnchor : oldestAllowed;\nconst replySearchFrom = (replyAnchor < oldestAllowed ? oldestAllowed : replyAnchor).toISOString();\nconst validEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) && !/@(neontrip\\.de|riesenobjekte\\.de|example\\.|neontrip\\.test$)/i.test(email);\nconst modernLink = /^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(rawLink);\nlet route = 'blocked';\nlet blockReason = 'candidate_identity_invalid';\nif (queueId && requestId && documentId && validEmail) {\n  route = 'modern'; blockReason = null;\n}\nreturn [{ json: {\n  ...item,\n  followup_queue_id: queueId,\n  claim_token: claim.claim_token,\n  customer_email: email,\n  request_id: requestId,\n  document_id: documentId,\n  candidate_offer_link: modernLink ? rawLink : null,\n  reply_search_from: replySearchFrom,\n  cadence: claim.cadence || null,\n  preflight_route: route,\n  block_reason: blockReason,\n  copy_mode: 'deterministic',\n  ai_copy_allowed: false,\n  automatic_retry_allowed: false,\n} }];"
+        "jsCode": "const claim = $json || {};\nconst item = claim.candidate || {};\nconst email = String(item.customer_email || '').trim().toLowerCase();\nconst queueId = String(claim.followup_queue_id || item.id || '').trim();\nconst requestId = String(item.request_id || '').trim();\nconst documentId = String(item.document_id || '').trim();\nconst rawLink = String(item.offer_public_url || '').trim();\nconst emailDomain = String(email.split('@').pop() || '');\nconst context = item.enriched_context && typeof item.enriched_context === 'object' && !Array.isArray(item.enriched_context) ? item.enriched_context : {};\nconst rawReplyAnchor = String(context.last_followup_sent_at || context.first_sent_at || '').trim();\nconst parsedReplyAnchor = rawReplyAnchor ? new Date(rawReplyAnchor) : null;\nconst now = new Date();\nconst oldestAllowed = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);\nconst replyAnchor = parsedReplyAnchor && Number.isFinite(parsedReplyAnchor.getTime()) && parsedReplyAnchor <= now ? parsedReplyAnchor : oldestAllowed;\nconst replySearchFrom = (replyAnchor < oldestAllowed ? oldestAllowed : replyAnchor).toISOString();\nconst reservedDomain = /(^|\\.)example(?:\\.|$)|\\.(?:invalid|localhost|test)$|^(?:invalid|localhost|test)$/i.test(emailDomain);\nconst validEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) && !/@(?:neontrip\\.de|riesenobjekte\\.de)$/i.test(email) && !reservedDomain;\nconst modernLink = /^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(rawLink);\nlet route = 'blocked';\nlet blockReason = 'candidate_identity_invalid';\nif (queueId && requestId && documentId && validEmail) {\n  route = 'modern'; blockReason = null;\n}\nreturn [{ json: {\n  ...item,\n  followup_queue_id: queueId,\n  claim_token: claim.claim_token,\n  customer_email: email,\n  request_id: requestId,\n  document_id: documentId,\n  candidate_offer_link: modernLink ? rawLink : null,\n  reply_search_from: replySearchFrom,\n  cadence: claim.cadence || null,\n  preflight_route: route,\n  block_reason: blockReason,\n  copy_mode: 'deterministic',\n  ai_copy_allowed: false,\n  automatic_retry_allowed: false,\n} }];"
       }
     },
     {
@@ -514,7 +514,7 @@
     },
     {
       "id": "send-followup",
-      "name": "SendFollowupOutlook",
+      "name": "CreateFollowupDraft",
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
       "position": [
@@ -522,14 +522,50 @@
         120
       ],
       "parameters": {
-        "resource": "message",
-        "operation": "send",
-        "toRecipients": "={{ $json.customer_email }}",
+        "resource": "draft",
+        "operation": "create",
         "subject": "={{ $json.email_subject }}",
         "bodyContent": "={{ $json.email_body }}",
         "additionalFields": {
-          "bodyContentType": "html"
+          "toRecipients": "={{ $json.customer_email }}",
+          "bodyContentType": "html",
+          "internetMessageHeaders": {
+            "headers": [
+              {
+                "name": "X-NEONTRIP-Followup-Queue-Id",
+                "value": "={{ $json.followup_queue_id }}"
+              }
+            ]
+          }
         }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "send-followup-draft",
+      "name": "SendFollowupDraft",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        120
+      ],
+      "parameters": {
+        "resource": "draft",
+        "operation": "send",
+        "draftId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "to": ""
       },
       "credentials": {
         "microsoftOutlookOAuth2Api": {
@@ -546,7 +582,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2860,
+        3080,
         60
       ],
       "parameters": {
@@ -565,7 +601,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_followup_queue_id: $('PrepareCandidate').item.json.followup_queue_id, p_claim_token: $('PrepareCandidate').item.json.claim_token, p_provider_message_id: String($json.id || $json.messageId || $json.message_id || ''), p_workflow_execution_id: String($execution.id), p_email_subject: $('BuildDeterministicFollowup').item.json.email_subject, p_email_body: $('BuildDeterministicFollowup').item.json.email_body }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_followup_queue_id: $('PrepareCandidate').item.json.followup_queue_id, p_claim_token: $('PrepareCandidate').item.json.claim_token, p_provider_message_id: String($('CreateFollowupDraft').item.json.id || ''), p_workflow_execution_id: String($execution.id), p_email_subject: $('BuildDeterministicFollowup').item.json.email_subject, p_email_body: $('BuildDeterministicFollowup').item.json.email_body }) }}",
         "options": {
           "response": {
             "response": {
@@ -592,7 +628,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2860,
+        3080,
         200
       ],
       "parameters": {
@@ -611,7 +647,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_followup_queue_id: $('PrepareCandidate').item.json.followup_queue_id, p_claim_token: $('PrepareCandidate').item.json.claim_token, p_workflow_execution_id: String($execution.id), p_error_code: 'outlook_send_unknown' }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_followup_queue_id: $('PrepareCandidate').item.json.followup_queue_id, p_claim_token: $('PrepareCandidate').item.json.claim_token, p_workflow_execution_id: String($execution.id), p_error_code: 'outlook_draft_send_unknown' }) }}",
         "options": {
           "response": {
             "response": {
@@ -839,14 +875,25 @@
       "main": [
         [
           {
-            "node": "SendFollowupOutlook",
+            "node": "CreateFollowupDraft",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "SendFollowupOutlook": {
+    "CreateFollowupDraft": {
+      "main": [
+        [
+          {
+            "node": "SendFollowupDraft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SendFollowupDraft": {
       "main": [
         [
           {
