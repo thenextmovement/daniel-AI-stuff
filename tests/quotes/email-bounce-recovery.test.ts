@@ -49,6 +49,37 @@ function fixtureDeps(options: {
   const customerMatches = options.customerMatches ?? 1;
   const currentEmail = options.currentEmail || "kunde@gmail.cim";
   let taskState: Record<string, unknown> | null = null;
+  const getOfferSnapshot = (offerId: string) => ({
+    offerId,
+    requestId: options.offerRequestId === undefined ? "REQ-BOUNCE-1" : options.offerRequestId,
+    offerNumber: "A/N 15268",
+    documentReference: "A/N 15268",
+    trelloCardId: "trello-test",
+    publicUrl: "https://example.test/offer",
+    status: "sent",
+    updatedAt: "2026-08-31T07:34:00.000Z",
+    viewedAt: null,
+    acceptedAt: null,
+    acceptance: null,
+    lock: { editable: true, lockLevel: "none", lockReason: null, requiresRevisionReason: false },
+    offer: {
+      customerCompany: null,
+      customerFirstName: "Test",
+      customerLastName: "Kunde",
+      customerEmail: "kunde@gmail.cim",
+      customerPhone: null,
+      validUntil: null,
+      productionTime: null,
+      notes: null,
+      discountText: null,
+      projectTitle: null,
+      currency: "EUR",
+      vatRate: 19,
+    },
+    items: [],
+    images: [],
+    totals: {},
+  });
   const deps = {
     async findCustomerMatches(email: string) {
       if (email !== currentEmail) return [];
@@ -120,47 +151,18 @@ function fixtureDeps(options: {
       } : null;
     },
     async getOffer(offerId: string) {
-      return {
-        offerId,
-        requestId: options.offerRequestId === undefined ? "REQ-BOUNCE-1" : options.offerRequestId,
-        offerNumber: "A/N 15268",
-        documentReference: "A/N 15268",
-        trelloCardId: "trello-test",
-        publicUrl: "https://example.test/offer",
-        status: "sent",
-        updatedAt: "2026-08-31T07:34:00.000Z",
-        viewedAt: null,
-        acceptedAt: null,
-        acceptance: null,
-        lock: { editable: true, lockLevel: "none", lockReason: null, requiresRevisionReason: false },
-        offer: {
-          customerCompany: null,
-          customerFirstName: "Test",
-          customerLastName: "Kunde",
-          customerEmail: "kunde@gmail.cim",
-          customerPhone: null,
-          validUntil: null,
-          productionTime: null,
-          notes: null,
-          discountText: null,
-          projectTitle: null,
-          currency: "EUR",
-          vatRate: 19,
-        },
-        items: [],
-        images: [],
-        totals: {},
-      };
+      return getOfferSnapshot(offerId);
     },
     async updateOfferEmail(offerId: string, input: Record<string, unknown>) {
       calls.offerUpdateInputs.push({ offerId, ...input });
       if (options.offerUpdateFailure) throw new Error("offer_email_update_failed");
+      const offer = getOfferSnapshot(offerId);
       return {
         offer: {
-          ...(await this.getOffer(offerId)),
+          ...offer,
           updatedAt: "2026-08-31T08:06:00.000Z",
           offer: {
-            ...(await this.getOffer(offerId)).offer,
+            ...offer.offer,
             customerEmail: "kunde@gmail.com",
           },
         },
