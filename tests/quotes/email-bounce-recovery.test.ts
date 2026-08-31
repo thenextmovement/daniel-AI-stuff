@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { handleEmailBouncePost } from "@/lib/ops/email-bounce-recovery-route";
 import {
   analyzeOutlookBounce,
+  defaultEmailBounceRecoveryDeps,
   processOutlookBounce,
   suggestKnownProviderEmailCorrection,
   type EmailBounceRecoveryDeps,
@@ -33,6 +34,8 @@ function fixtureDeps(options: {
   customerUpdateFailure?: boolean;
   currentEmail?: string;
   offerRequestId?: string | null;
+  existingTaskRequestId?: string | null;
+  existingTaskUsesFallbackMetadata?: boolean;
 } = {}) {
   const calls = {
     taskInputs: [] as Array<Record<string, unknown>>,
@@ -105,7 +108,9 @@ function fixtureDeps(options: {
         category: "problem",
         assigneeLabel: null,
         dueAt: null,
-        requestId: typeof input.requestId === "string" ? input.requestId : null,
+        requestId: options.existingTaskRequestId !== undefined
+          ? options.existingTaskRequestId
+          : typeof input.requestId === "string" ? input.requestId : null,
         customerName: typeof input.customerName === "string" ? input.customerName : null,
         customerEmail: typeof input.customerEmail === "string" ? input.customerEmail : null,
         trelloCardId: typeof input.trelloCardId === "string" ? input.trelloCardId : null,
@@ -115,7 +120,9 @@ function fixtureDeps(options: {
         updatedBy: "outlook-bounce-automation@neontrip.de",
         completedBy: null,
         completedAt: null,
-        metadata: input.metadata as Record<string, unknown>,
+        metadata: options.existingTaskUsesFallbackMetadata
+          ? { metadata: input.metadata as Record<string, unknown> }
+          : input.metadata as Record<string, unknown>,
         createdAt: "2026-08-31T08:00:00.000Z",
         updatedAt: "2026-08-31T08:00:00.000Z",
       };
@@ -260,6 +267,35 @@ test("synthetic DNS NDR is classified before any action", () => {
   });
 });
 
+test("default customer lookup correlates email addresses case-insensitively", async () => {
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const previousFetch = global.fetch;
+  process.env.SUPABASE_URL = "https://supabase.example.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+  const filters: string[] = [];
+  global.fetch = async (input) => {
+    const url = new URL(String(input));
+    filters.push(url.searchParams.get("email") || url.searchParams.get("original_email") || "");
+    const rows = url.searchParams.has("email")
+      ? [{ request_id: "REQ-CASE-1", email: "Onur.cansu@gmx.net", original_email: null, name: "Mugla", company: null }]
+      : [];
+    return Response.json(rows);
+  };
+  try {
+    const rows = await defaultEmailBounceRecoveryDeps.findCustomerMatches("onur.cansu@gmx.net");
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].request_id, "REQ-CASE-1");
+    assert.deepEqual(filters.sort(), ["ilike.onur.cansu@gmx.net", "ilike.onur.cansu@gmx.net"]);
+  } finally {
+    global.fetch = previousFetch;
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+  }
+});
+
 test("bounce intake creates an internal task and a four-eyes correction proposal only", async () => {
   const { deps, calls } = fixtureDeps();
   const result = await processOutlookBounce(syntheticBounce, deps);
@@ -398,7 +434,10 @@ test("existing corrected send finishes a stale offer snapshot without another em
 });
 
 test("unknown mailbox at a valid provider creates review work but no invented correction", async () => {
-  const { deps, calls } = fixtureDeps();
+  const { deps, calls } = fixtureDeps({
+    currentEmail: "kunde@gmx.de",
+    existingTaskRequestId: null,
+  });
   const result = await processOutlookBounce({
     ...syntheticBounce,
     message_id: "synthetic-ndr-2",
@@ -410,7 +449,28 @@ test("unknown mailbox at a valid provider creates review work but no invented co
   assert.equal(result.status, "review_task_created");
   assert.equal(result.analysis.suggestedEmail, null);
   assert.equal(calls.taskInputs.length, 1);
+  assert.equal(calls.taskUpdateInputs.length, 1);
+  assert.equal(calls.taskUpdateInputs[0].requestId, "REQ-BOUNCE-1");
   assert.equal(calls.actionInputs.length, 0);
+  assert.equal(calls.auditInputs[0].status, "waiting");
+});
+
+test("replayed review task with fallback metadata does not create recurring task writes", async () => {
+  const { deps, calls } = fixtureDeps({
+    currentEmail: "kunde@gmx.de",
+    existingTaskRequestId: "REQ-BOUNCE-1",
+    existingTaskUsesFallbackMetadata: true,
+  });
+  const result = await processOutlookBounce({
+    ...syntheticBounce,
+    message_id: "synthetic-ndr-2",
+    matched_email: "kunde@gmx.de",
+    to_emails: ["kunde@gmx.de"],
+    body_preview: "550 5.1.351 Remote server returned unknown recipient or mailbox unavailable.",
+  }, deps);
+
+  assert.equal(result.status, "review_task_created");
+  assert.equal(calls.taskUpdateInputs.length, 0);
 });
 
 test("non-bounce mail is ignored without writes", async () => {

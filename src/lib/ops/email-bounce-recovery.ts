@@ -128,6 +128,10 @@ function normalizeEmail(value: unknown) {
   return /^[^\s@<>]+@[^\s@<>]+$/.test(email) ? email : null;
 }
 
+function escapeIlikeLiteral(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
 function oneEditOrAdjacentTransposition(left: string, right: string) {
   if (left === right || Math.abs(left.length - right.length) > 1) return false;
 
@@ -223,21 +227,25 @@ export function analyzeOutlookBounce(input: OutlookBounceIntakeInput): EmailBoun
 }
 
 async function findCustomerMatches(email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return [];
   const select = "request_id,email,original_email,name,company";
+  const emailPattern = escapeIlikeLiteral(normalizedEmail);
   const [currentRows, originalRows] = await Promise.all([
     supabaseRequest<CustomerMatchRow[]>("master_customers", undefined, {
       select,
-      email: `eq.${email}`,
+      email: `ilike.${emailPattern}`,
       limit: 20,
     }),
     supabaseRequest<CustomerMatchRow[]>("master_customers", undefined, {
       select,
-      original_email: `eq.${email}`,
+      original_email: `ilike.${emailPattern}`,
       limit: 20,
     }),
   ]);
   const unique = new Map<string, CustomerMatchRow>();
   for (const row of [...currentRows, ...originalRows]) {
+    if (normalizeEmail(row.email) !== normalizedEmail && normalizeEmail(row.original_email) !== normalizedEmail) continue;
     const requestId = cleanText(row.request_id, 180);
     if (requestId) unique.set(requestId, row);
   }
@@ -415,7 +423,7 @@ export async function processOutlookBounce(
       ? `Mehrdeutige Zuordnung: ${distinctRequestIds.length} Anfragen verwenden diese Adresse.`
       : "Keine kanonische Anfrage wurde über die fehlerhafte Adresse gefunden.";
 
-  const task = await deps.createTask({
+  const taskInput: Parameters<typeof createOpsInternalTask>[0] = {
     title: `E-Mail-Zustellung prüfen: ${analysis.failedEmail}`,
     description: [
       "Outlook hat einen Zustellfehler gemeldet.",
@@ -447,7 +455,24 @@ export async function processOutlookBounce(
       customer_communication_sent: false,
       customer_data_changed: false,
     },
-  }, { operatorName: AUTOMATION_ACTOR.email });
+  };
+  let task = await deps.createTask(taskInput, { operatorName: AUTOMATION_ACTOR.email });
+  const nestedTaskMetadata = task.metadata?.metadata;
+  const storedMatchedRequestCount = Number(
+    task.metadata?.matched_request_count
+      ?? (nestedTaskMetadata && typeof nestedTaskMetadata === "object" && !Array.isArray(nestedTaskMetadata)
+        ? (nestedTaskMetadata as Record<string, unknown>).matched_request_count
+        : 0),
+  );
+  const taskNeedsCorrelationRefresh = task.requestId !== requestId
+    || task.trelloCardId !== taskInput.trelloCardId
+    || storedMatchedRequestCount !== distinctRequestIds.length;
+  if (taskNeedsCorrelationRefresh) {
+    task = await deps.updateTask(task.id, {
+      ...taskInput,
+      status: task.status,
+    }, { operatorName: AUTOMATION_ACTOR.email });
+  }
 
   const currentCustomerEmail = normalizeEmail(customer?.email);
   if (
@@ -879,9 +904,9 @@ export async function processOutlookBounce(
     workflowName: "NEONTRIP Outlook Customer Email Sync v1.0",
     workflowId: cleanText(input.workflow_id, 180) || null,
     action: "email_bounce_detected",
-    // workflow_audit_log accepts the operational lifecycle value "waiting";
-    // the more specific action-run state remains "awaiting_approval".
-    status: actionRun ? "waiting" : "prepared",
+    // workflow_audit_log accepts "waiting" for both approval and manual-review work.
+    // More specific states remain on the task and optional action run.
+    status: "waiting",
     requestId,
     documentId: requestId || `outlook-message:${messageHash}`,
     trelloCardId: request?.trello_card_id || null,
