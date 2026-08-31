@@ -322,6 +322,11 @@ begin
        where followup_queue_id = '82000000-0000-4000-8000-000000000003'
          and status = 'blocked'
          and block_reason = 'customer_reply_snooze_7_days'
+     )
+     or not exists (
+       select 1 from public.master_requests
+       where id = '81000000-0000-4000-8000-000000000001'
+         and deal_status = 'open'
      ) then
     raise exception 'Reply snooze failed: %', result;
   end if;
@@ -340,11 +345,25 @@ begin
     'followup_reply_classifier_v1_20260824'
   );
   if result->>'queue_status' <> 'cancelled'
+     or result->>'deal_marked_lost' <> 'true'
+     or result->>'deal_status_after' <> 'lost'
      or not exists (
        select 1 from public.followup_queue
        where id = '82000000-0000-4000-8000-000000000004'
          and status = 'cancelled'
          and cancel_reason = 'customer_declined'
+     )
+     or not exists (
+       select 1 from public.master_requests
+       where id = '81000000-0000-4000-8000-000000000001'
+         and deal_status = 'lost'
+     )
+     or not exists (
+       select 1 from public.followup_delivery_events
+       where attempt_id = '83000000-0000-4000-8000-000000000004'
+         and event_type = 'blocked'
+         and metadata->>'deal_marked_lost' = 'true'
+         and metadata->>'deal_status_after' = 'lost'
      ) then
     raise exception 'Reply decline failed: %', result;
   end if;
