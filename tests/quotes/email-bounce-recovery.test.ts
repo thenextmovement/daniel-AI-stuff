@@ -23,18 +23,35 @@ const syntheticBounce: OutlookBounceIntakeInput = {
   execution_id: "execution-test",
 };
 
-function fixtureDeps(options: { customerMatches?: number; suggestionProposal?: boolean } = {}) {
+function fixtureDeps(options: {
+  customerMatches?: number;
+  autoOffer?: boolean;
+  multipleOffers?: boolean;
+  priorSend?: boolean;
+  sendFailure?: boolean;
+  customerUpdateFailure?: boolean;
+  currentEmail?: string;
+} = {}) {
   const calls = {
     taskInputs: [] as Array<Record<string, unknown>>,
+    taskUpdateInputs: [] as Array<Record<string, unknown>>,
     actionInputs: [] as Array<Record<string, unknown>>,
     auditInputs: [] as Array<Record<string, unknown>>,
+    sendInputs: [] as Array<Record<string, unknown>>,
+    customerUpdates: [] as Array<Record<string, unknown>>,
+    quoteEvidenceInputs: [] as Array<Record<string, unknown>>,
+    offerSentInputs: [] as Array<Record<string, unknown>>,
+    cancelledRuns: [] as Array<Record<string, unknown>>,
   };
   const customerMatches = options.customerMatches ?? 1;
+  const currentEmail = options.currentEmail || "kunde@gmail.cim";
+  let taskState: Record<string, unknown> | null = null;
   const deps = {
-    async findCustomerMatches() {
+    async findCustomerMatches(email: string) {
+      if (email !== currentEmail) return [];
       return Array.from({ length: customerMatches }, (_, index) => ({
         request_id: customerMatches === 1 ? "REQ-BOUNCE-1" : `REQ-BOUNCE-${index + 1}`,
-        email: "kunde@gmail.cim",
+        email: currentEmail,
         original_email: null,
         name: "Test Kunde",
         company: null,
@@ -45,7 +62,7 @@ function fixtureDeps(options: { customerMatches?: number; suggestionProposal?: b
     },
     async createTask(input: Record<string, unknown>) {
       calls.taskInputs.push(input);
-      return {
+      taskState = {
         id: "task-bounce-1",
         title: String(input.title || ""),
         description: String(input.description || ""),
@@ -68,6 +85,91 @@ function fixtureDeps(options: { customerMatches?: number; suggestionProposal?: b
         createdAt: "2026-08-31T08:00:00.000Z",
         updatedAt: "2026-08-31T08:00:00.000Z",
       };
+      return taskState;
+    },
+    async updateTask(_taskId: string, input: Record<string, unknown>) {
+      calls.taskUpdateInputs.push(input);
+      taskState = { ...(taskState || {}), ...input };
+      return taskState;
+    },
+    async findOfferSendCandidates() {
+      if (!options.autoOffer) return [];
+      const offerIds = options.multipleOffers ? ["offer-bounce-1", "offer-bounce-2"] : ["offer-bounce-1"];
+      return offerIds.map((offerId) => ({
+        id: `event-${offerId}`,
+        request_id: "REQ-BOUNCE-1",
+        trello_card_id: "trello-test",
+        offer_id: offerId,
+        offer_number: offerId === "offer-bounce-1" ? "A/N 15268" : "A/N 15269",
+        document_reference: "A/N 15268",
+        public_url: "https://example.test/offer",
+        recipient_email: "kunde@gmail.cim",
+        event_at: "2026-08-31T07:34:12.723Z",
+        source_event_id: `source-${offerId}`,
+        idempotency_key: `sent-${offerId}`,
+      }));
+    },
+    async findSuccessfulOfferSend() {
+      return options.priorSend ? {
+        eventId: "existing-corrected-send",
+        sentAt: "2026-08-31T08:05:00.000Z",
+        source: "quote_email_log",
+      } : null;
+    },
+    async getOffer(offerId: string) {
+      return {
+        offerId,
+        requestId: "REQ-BOUNCE-1",
+        offerNumber: "A/N 15268",
+        documentReference: "A/N 15268",
+        trelloCardId: "trello-test",
+        publicUrl: "https://example.test/offer",
+        status: "sent",
+        updatedAt: "2026-08-31T07:34:00.000Z",
+        viewedAt: null,
+        acceptedAt: null,
+        acceptance: null,
+        lock: { editable: true, lockLevel: "none", lockReason: null, requiresRevisionReason: false },
+        offer: {
+          customerCompany: null,
+          customerFirstName: "Test",
+          customerLastName: "Kunde",
+          customerEmail: "kunde@gmail.cim",
+          customerPhone: null,
+          validUntil: null,
+          productionTime: null,
+          notes: null,
+          discountText: null,
+          projectTitle: null,
+          currency: "EUR",
+          vatRate: 19,
+        },
+        items: [],
+        images: [],
+        totals: {},
+      };
+    },
+    async sendOffer(_offerId: string, input: Record<string, unknown>) {
+      calls.sendInputs.push(input);
+      if (options.sendFailure) throw new Error("provider_send_unconfirmed");
+      return { sent: true, duplicate: false, eventId: "recovery-send-event", opsSync: null };
+    },
+    async recordQuoteEvidence(input: Record<string, unknown>) {
+      calls.quoteEvidenceInputs.push(input);
+      return [{ id: "quote-evidence-1" }];
+    },
+    async recordOfferSent(input: Record<string, unknown>) {
+      calls.offerSentInputs.push(input);
+      return { ok: true, event_id: "ops-event-1" };
+    },
+    async updateCustomerEmail(requestId: string, email: string) {
+      calls.customerUpdates.push({ requestId, email });
+      if (options.customerUpdateFailure) throw new Error("customer_update_failed");
+      return { record: {}, changedTables: ["master_customers"] };
+    },
+    async cancelPendingCorrectionRuns(requestId: string, failedEmail: string, correctedEmail: string) {
+      calls.cancelledRuns.push({ requestId, failedEmail, correctedEmail });
+      return 1;
     },
     async getActionPolicy() {
       return {
@@ -161,6 +263,72 @@ test("bounce intake creates an internal task and a four-eyes correction proposal
   assert.equal((actionInput.actor as { email: string }).email, "outlook-bounce-automation@neontrip.de");
   assert.equal(calls.auditInputs[0].status, "waiting");
   assert.equal((calls.auditInputs[0] as Record<string, unknown>).customer_communication_sent, false);
+});
+
+test("eligible provider-domain bounce resends one exact offer before updating customer data", async () => {
+  const { deps, calls } = fixtureDeps({ autoOffer: true });
+  const result = await processOutlookBounce(syntheticBounce, deps);
+
+  assert.equal(result.status, "offer_recovered");
+  assert.equal(result.customerCommunicationSent, true);
+  assert.equal(result.customerDataChanged, true);
+  assert.equal(calls.sendInputs.length, 1);
+  assert.equal(calls.customerUpdates.length, 1);
+  assert.equal(calls.actionInputs.length, 0);
+  assert.equal(calls.quoteEvidenceInputs.length, 1);
+  assert.equal(calls.offerSentInputs.length, 1);
+  assert.equal(calls.cancelledRuns.length, 1);
+  assert.equal(calls.sendInputs[0].recipientEmail, "kunde@gmail.com");
+  assert.match(String(calls.sendInputs[0].idempotencyKey), /^email-bounce-offer-recovery:/);
+  assert.deepEqual(calls.customerUpdates[0], { requestId: "REQ-BOUNCE-1", email: "kunde@gmail.com" });
+  assert.equal(calls.taskUpdateInputs.at(-1)?.status, "done");
+  assert.equal(calls.auditInputs.at(-1)?.status, "sent");
+});
+
+test("unconfirmed automatic resend never changes the customer email", async () => {
+  const { deps, calls } = fixtureDeps({ autoOffer: true, sendFailure: true });
+  const result = await processOutlookBounce(syntheticBounce, deps);
+
+  assert.equal(result.status, "offer_recovery_failed");
+  assert.equal(result.customerCommunicationSent, false);
+  assert.equal(result.customerDataChanged, false);
+  assert.equal(calls.sendInputs.length, 1);
+  assert.equal(calls.customerUpdates.length, 0);
+  assert.equal(calls.taskUpdateInputs.at(-1)?.status, "open");
+  assert.equal(calls.auditInputs.at(-1)?.status, "failed");
+});
+
+test("multiple sent offers are ambiguous and remain governed manual work", async () => {
+  const { deps, calls } = fixtureDeps({ autoOffer: true, multipleOffers: true });
+  const result = await processOutlookBounce(syntheticBounce, deps);
+
+  assert.equal(result.status, "correction_proposed");
+  assert.equal(calls.sendInputs.length, 0);
+  assert.equal(calls.customerUpdates.length, 0);
+  assert.equal(calls.actionInputs.length, 1);
+});
+
+test("existing corrected send evidence finalizes data without a second send", async () => {
+  const { deps, calls } = fixtureDeps({ autoOffer: true, priorSend: true });
+  const result = await processOutlookBounce(syntheticBounce, deps);
+
+  assert.equal(result.status, "offer_recovered");
+  assert.equal(result.customerCommunicationSent, true);
+  assert.equal(calls.sendInputs.length, 0);
+  assert.equal(calls.customerUpdates.length, 1);
+  assert.equal(result.send?.duplicate, true);
+});
+
+test("confirmed send with pending data update is never reported as unsent", async () => {
+  const { deps, calls } = fixtureDeps({ autoOffer: true, customerUpdateFailure: true });
+  const result = await processOutlookBounce(syntheticBounce, deps);
+
+  assert.equal(result.status, "offer_sent_customer_update_pending");
+  assert.equal(result.customerCommunicationSent, true);
+  assert.equal(result.customerDataChanged, false);
+  assert.equal(calls.sendInputs.length, 1);
+  assert.equal(calls.taskUpdateInputs.at(-1)?.status, "waiting");
+  assert.equal(calls.auditInputs.at(-1)?.status, "blocked");
 });
 
 test("unknown mailbox at a valid provider creates review work but no invented correction", async () => {

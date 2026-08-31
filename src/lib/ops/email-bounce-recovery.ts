@@ -4,7 +4,17 @@ import {
   proposeCompanyBrainActionRun,
 } from "@/lib/ops/company-brain-action-governance";
 import type { CompanyBrainActor } from "@/lib/ops/company-brain-access";
-import { createOpsInternalTask } from "@/lib/ops/internal-tasks";
+import { updateCustomerRecord } from "@/lib/ops/customer-records";
+import { recordOfferSentForSalesCalls } from "@/lib/ops/customer-call-module";
+import { createOpsInternalTask, updateOpsInternalTask } from "@/lib/ops/internal-tasks";
+import { recordQuoteEmailSentEvidence } from "@/lib/ops/offer-send-evidence";
+import {
+  getOfferById,
+  sendOfferUpdateMail,
+  type OpsOfferSendInput,
+  type OpsOfferSendResult,
+  type OpsOfferSnapshot,
+} from "@/lib/ops/offers";
 import { recordWorkflowAuditEvent } from "@/lib/ops/workflow-audit";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -43,6 +53,29 @@ type RequestMatchRow = {
   title?: string | null;
 };
 
+type OfferSendCandidateRow = {
+  id?: string | null;
+  request_id: string;
+  trello_card_id?: string | null;
+  offer_id: string;
+  offer_number?: string | null;
+  document_reference?: string | null;
+  public_url?: string | null;
+  recipient_email?: string | null;
+  event_at?: string | null;
+  source_event_id?: string | null;
+  idempotency_key?: string | null;
+};
+
+type SuccessfulSendEvidence = {
+  eventId: string | null;
+  sentAt: string | null;
+  source: "ops_offer_events" | "quote_email_log";
+};
+
+type QuoteEmailEvidenceResult = Awaited<ReturnType<typeof recordQuoteEmailSentEvidence>>;
+type OfferSentSyncResult = Awaited<ReturnType<typeof recordOfferSentForSalesCalls>>;
+
 export type OutlookBounceIntakeInput = {
   message_id?: string | null;
   internet_message_id?: string | null;
@@ -68,6 +101,15 @@ export type EmailBounceAnalysis = {
 export type EmailBounceRecoveryDeps = {
   findCustomerMatches(email: string): Promise<CustomerMatchRow[]>;
   findRequest(requestId: string): Promise<RequestMatchRow | null>;
+  findOfferSendCandidates(requestId: string, failedEmail: string): Promise<OfferSendCandidateRow[]>;
+  findSuccessfulOfferSend(requestId: string, offerId: string, recipientEmail: string): Promise<SuccessfulSendEvidence | null>;
+  getOffer(offerId: string): Promise<OpsOfferSnapshot>;
+  sendOffer(offerId: string, input: OpsOfferSendInput): Promise<OpsOfferSendResult>;
+  recordQuoteEvidence(input: Parameters<typeof recordQuoteEmailSentEvidence>[0]): Promise<QuoteEmailEvidenceResult>;
+  recordOfferSent(input: Parameters<typeof recordOfferSentForSalesCalls>[0]): Promise<OfferSentSyncResult>;
+  updateCustomerEmail(requestId: string, email: string): Promise<Awaited<ReturnType<typeof updateCustomerRecord>>>;
+  updateTask: typeof updateOpsInternalTask;
+  cancelPendingCorrectionRuns(requestId: string, failedEmail: string, correctedEmail: string): Promise<number>;
   createTask: typeof createOpsInternalTask;
   getActionPolicy: typeof getCompanyBrainActionPolicy;
   proposeActionRun: typeof proposeCompanyBrainActionRun;
@@ -208,9 +250,110 @@ async function findRequest(requestId: string) {
   return rows[0] || null;
 }
 
+async function findOfferSendCandidates(requestId: string, failedEmail: string) {
+  return supabaseRequest<OfferSendCandidateRow[]>("ops_offer_events", undefined, {
+    select: "id,request_id,trello_card_id,offer_id,offer_number,document_reference,public_url,recipient_email,event_at,source_event_id,idempotency_key",
+    request_id: `eq.${requestId}`,
+    event_type: "eq.offer_sent",
+    recipient_email: `eq.${failedEmail}`,
+    order: "event_at.desc",
+    limit: 20,
+  });
+}
+
+async function findSuccessfulOfferSend(requestId: string, offerId: string, recipientEmail: string) {
+  const [offerEvents, quoteEmails] = await Promise.all([
+    supabaseRequest<Array<{ source_event_id?: string | null; event_at?: string | null }>>("ops_offer_events", undefined, {
+      select: "source_event_id,event_at",
+      request_id: `eq.${requestId}`,
+      offer_id: `eq.${offerId}`,
+      event_type: "eq.offer_sent",
+      recipient_email: `eq.${recipientEmail}`,
+      order: "event_at.desc",
+      limit: 1,
+    }),
+    supabaseRequest<Array<{ source_event_id?: string | null; sent_at?: string | null; status?: string | null }>>("quote_email_log", undefined, {
+      select: "source_event_id,sent_at,status",
+      request_id: `eq.${requestId}`,
+      offer_id: `eq.${offerId}`,
+      recipient_email: `eq.${recipientEmail}`,
+      order: "sent_at.desc.nullslast,created_at.desc",
+      limit: 5,
+    }),
+  ]);
+  if (offerEvents[0]) {
+    return {
+      eventId: cleanText(offerEvents[0].source_event_id, 300) || null,
+      sentAt: cleanText(offerEvents[0].event_at, 80) || null,
+      source: "ops_offer_events" as const,
+    };
+  }
+  const quoteEmail = quoteEmails.find((row) => Boolean(row.sent_at || /sent|delivered|success|ok/i.test(cleanText(row.status, 80))));
+  return quoteEmail ? {
+    eventId: cleanText(quoteEmail.source_event_id, 300) || null,
+    sentAt: cleanText(quoteEmail.sent_at, 80) || null,
+    source: "quote_email_log" as const,
+  } : null;
+}
+
+async function cancelPendingCorrectionRuns(requestId: string, failedEmail: string, correctedEmail: string) {
+  const rows = await supabaseRequest<Array<{ id: string; frozen_input?: Record<string, unknown> | null }>>(
+    "company_brain_action_runs",
+    undefined,
+    {
+      select: "id,frozen_input",
+      request_id: `eq.${requestId}`,
+      action_key: "eq.correct_customer_email",
+      status: "eq.awaiting_approval",
+      limit: 20,
+    },
+  );
+  const matchingIds = rows
+    .filter((row) => (
+      normalizeEmail(row.frozen_input?.recipientEmail) === failedEmail
+      && normalizeEmail(row.frozen_input?.newCustomerEmail) === correctedEmail
+    ))
+    .map((row) => row.id);
+  await Promise.all(matchingIds.map((id) => supabaseRequest("company_brain_action_runs", {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      status: "cancelled",
+      completed_at: new Date().toISOString(),
+      failure_code: "superseded_by_deterministic_offer_recovery",
+      failure_detail: "Die eindeutige Provider-Domainkorrektur wurde nach bestaetigtem Angebotsversand automatisch abgeschlossen.",
+      execution_result: {
+        corrected_email: correctedEmail,
+        customer_communication_sent: true,
+        customer_data_changed: true,
+      },
+      verification_result: {
+        basis: "known_provider_domain_single_edit",
+        offer_delivery_confirmed: true,
+      },
+    }),
+  }, {
+    id: `eq.${id}`,
+    status: "eq.awaiting_approval",
+  })));
+  return matchingIds.length;
+}
+
 export const defaultEmailBounceRecoveryDeps: EmailBounceRecoveryDeps = {
   findCustomerMatches,
   findRequest,
+  findOfferSendCandidates,
+  findSuccessfulOfferSend,
+  getOffer: getOfferById,
+  sendOffer: sendOfferUpdateMail,
+  recordQuoteEvidence: recordQuoteEmailSentEvidence,
+  recordOfferSent: recordOfferSentForSalesCalls,
+  updateCustomerEmail: (requestId, email) => updateCustomerRecord(requestId, { email }, {
+    mode: "automation",
+    operatorName: AUTOMATION_ACTOR.email,
+  }),
+  updateTask: updateOpsInternalTask,
+  cancelPendingCorrectionRuns,
   createTask: createOpsInternalTask,
   getActionPolicy: getCompanyBrainActionPolicy,
   proposeActionRun: proposeCompanyBrainActionRun,
@@ -250,7 +393,11 @@ export async function processOutlookBounce(
 
   const messageHash = createHash("sha256").update(messageIdentity).digest("hex").slice(0, 32);
   const sourceRef = `outlook-email-bounce:${messageHash}:v1`;
-  const customerMatches = await deps.findCustomerMatches(analysis.failedEmail);
+  const [failedEmailMatches, correctedEmailMatches] = await Promise.all([
+    deps.findCustomerMatches(analysis.failedEmail),
+    analysis.suggestedEmail ? deps.findCustomerMatches(analysis.suggestedEmail) : Promise.resolve([]),
+  ]);
+  const customerMatches = [...failedEmailMatches, ...correctedEmailMatches];
   const distinctRequestIds = [...new Set(customerMatches.map((row) => cleanText(row.request_id, 180)).filter(Boolean))];
   const requestId = distinctRequestIds.length === 1 ? distinctRequestIds[0] : null;
   const customer = requestId ? customerMatches.find((row) => cleanText(row.request_id, 180) === requestId) || null : null;
@@ -297,6 +444,342 @@ export async function processOutlookBounce(
       customer_data_changed: false,
     },
   }, { operatorName: AUTOMATION_ACTOR.email });
+
+  const currentCustomerEmail = normalizeEmail(customer?.email);
+  if (
+    requestId
+    && request
+    && analysis.reasonCode === "domain_not_found"
+    && analysis.suggestedEmail
+    && analysis.suggestionBasis === "known_provider_domain_single_edit"
+    && analysis.confidence === "high"
+    && (currentCustomerEmail === analysis.failedEmail || currentCustomerEmail === analysis.suggestedEmail)
+  ) {
+    const offerSendEvents = await deps.findOfferSendCandidates(requestId, analysis.failedEmail);
+    const distinctOfferIds = [...new Set(offerSendEvents.map((row) => cleanText(row.offer_id, 180)).filter(Boolean))];
+    if (distinctOfferIds.length === 1) {
+      const offerEvent = offerSendEvents.find((row) => cleanText(row.offer_id, 180) === distinctOfferIds[0])!;
+      const offer = await deps.getOffer(distinctOfferIds[0]);
+      const offerRequestId = cleanText(offer.requestId || offer.request_id, 180);
+      const offerCustomerEmail = normalizeEmail(offer.offer.customerEmail);
+      const accepted = Boolean(offer.acceptedAt || offer.acceptance || cleanText(offer.status, 80).toLowerCase() === "accepted");
+      if (offerRequestId === requestId && offerCustomerEmail === analysis.failedEmail && !accepted) {
+        const recipientEmail = analysis.suggestedEmail;
+        const failedEmailHash = createHash("sha256").update(analysis.failedEmail).digest("hex").slice(0, 16);
+        const correctedEmailHash = createHash("sha256").update(recipientEmail).digest("hex").slice(0, 16);
+        const recoveryKey = `email-bounce-offer-recovery:${offer.offerId}:${failedEmailHash}:${correctedEmailHash}:v1`;
+        let priorSend = await deps.findSuccessfulOfferSend(requestId, offer.offerId, recipientEmail);
+        let sendResult: OpsOfferSendResult | null = null;
+        const subject = `Ihr NEONTRIP Angebot ${offer.offerNumber}`;
+        const message = [
+          "Hallo,",
+          "",
+          "bei der ursprünglichen E-Mail-Adresse lag offenbar ein Tippfehler vor. Daher senden wir Ihnen Ihr NEONTRIP-Angebot erneut.",
+          "",
+          "Viele Grüße",
+          "NEONTRIP",
+        ].join("\n");
+        if (!priorSend) {
+          try {
+            sendResult = await deps.sendOffer(offer.offerId, {
+              recipientEmail,
+              cc: [],
+              subject,
+              message,
+              actor: AUTOMATION_ACTOR.email,
+              reason: "Deterministische Korrektur einer nicht existierenden bekannten Provider-Domain nach Outlook-NDR.",
+              idempotencyKey: recoveryKey,
+            });
+            if (!sendResult.sent) {
+              throw new QuoteValidationError("Angebotsversand wurde nicht bestätigt.", ["offer_send_unconfirmed"], 502);
+            }
+          } catch (error) {
+            const failureDetail = cleanText(error instanceof Error ? error.message : error, 1000) || "offer_send_unconfirmed";
+            await deps.updateTask(task.id, {
+              status: "open",
+              description: [
+                `Automatische Korrektur erkannt: ${analysis.failedEmail} -> ${recipientEmail}.`,
+                `Angebot: ${offer.offerNumber}.`,
+                "Der erneute Versand wurde nicht bestätigt. Die Kundendatei blieb unverändert.",
+                `Fehler: ${failureDetail}`,
+              ].join("\n"),
+              metadata: {
+                ...task.metadata,
+                automatic_recovery_eligible: true,
+                offer_id: offer.offerId,
+                offer_number: offer.offerNumber,
+                corrected_email: recipientEmail,
+                send_outcome: "unconfirmed",
+                customer_communication_sent: false,
+                customer_data_changed: false,
+              },
+            }, { operatorName: AUTOMATION_ACTOR.email });
+            const audit = await deps.recordAudit({
+              workflowName: "NEONTRIP Outlook Customer Email Sync v1.0",
+              workflowId: cleanText(input.workflow_id, 180) || null,
+              action: "email_bounce_offer_recovery",
+              status: "failed",
+              requestId,
+              documentId: requestId,
+              trelloCardId: offer.trelloCardId || request.trello_card_id || null,
+              offerId: offer.offerId,
+              offerNumber: offer.offerNumber,
+              executionId: cleanText(input.execution_id, 180) || null,
+              sourceEventId: messageHash,
+              idempotencyKey: `${sourceRef}:offer-recovery:send-failed`,
+              errorMessage: failureDetail,
+              summary: "Automatischer Neuversand wurde nicht bestätigt; Kundendaten blieben unverändert.",
+              retrySafety: "blocked",
+              safeActionKey: "manual_email_delivery_review",
+              terminal: true,
+              eventType: "email_bounce_offer_recovery_failed",
+              customer_communication_sent: false,
+              metadata: {
+                audit_event_key: `workflow-audit:${sourceRef}:offer-recovery:send-failed`,
+                failed_email: analysis.failedEmail,
+                corrected_email: recipientEmail,
+                offer_id: offer.offerId,
+                offer_number: offer.offerNumber,
+                task_id: task.id,
+                send_outcome: "unconfirmed",
+                customer_data_changed: false,
+              },
+            });
+            return {
+              ok: false,
+              status: "offer_recovery_failed" as const,
+              analysis,
+              requestId,
+              offer: { id: offer.offerId, number: offer.offerNumber },
+              task: { id: task.id, status: "open", sourceRef: task.sourceRef },
+              actionRun: null,
+              audit,
+              customerCommunicationSent: false,
+              customerDataChanged: false,
+            };
+          }
+          priorSend = {
+            eventId: sendResult.eventId,
+            sentAt: new Date().toISOString(),
+            source: "ops_offer_events",
+          };
+        }
+
+        const sentAt = priorSend.sentAt || new Date().toISOString();
+        let opsSync: OfferSentSyncResult | OpsOfferSendResult["opsSync"] | null = sendResult?.opsSync || null;
+        if (!opsSync) {
+          try {
+            opsSync = await deps.recordOfferSent({
+              requestId,
+              trelloCardId: offer.trelloCardId || offerEvent.trello_card_id || request.trello_card_id,
+              offerId: offer.offerId,
+              offerNumber: offer.offerNumber,
+              documentReference: offer.documentReference,
+              publicUrl: offer.publicUrl,
+              recipientEmail,
+              sentAt,
+              source: "outlook_email_bounce_recovery",
+              sourceEventId: sendResult?.eventId || priorSend.eventId,
+              idempotencyKey: recoveryKey,
+              actor: AUTOMATION_ACTOR.email,
+              payload: {
+                duplicate: Boolean(sendResult?.duplicate || !sendResult),
+                direction: "outbound",
+                subtype: "quote_bounce_recovery",
+                failed_recipient_email: analysis.failedEmail,
+              },
+            });
+          } catch (error) {
+            opsSync = { ok: false, error: cleanText(error instanceof Error ? error.message : error, 1000) || "ops_sync_failed" };
+          }
+        }
+        let quoteEvidence: { ok: boolean; rowId?: string | number | null; error?: string };
+        try {
+          const rows = await deps.recordQuoteEvidence({
+            offerId: offer.offerId,
+            offerNumber: offer.offerNumber,
+            requestId,
+            trelloCardId: offer.trelloCardId || offerEvent.trello_card_id || request.trello_card_id,
+            recipientEmail,
+            subject,
+            status: sendResult?.duplicate || !sendResult ? "sent_duplicate" : "sent",
+            sentAt,
+            sourceEventId: sendResult?.eventId || priorSend.eventId,
+            idempotencyKey: recoveryKey,
+          });
+          quoteEvidence = { ok: true, rowId: rows?.[0]?.id || null };
+        } catch (error) {
+          quoteEvidence = { ok: false, error: cleanText(error instanceof Error ? error.message : error, 1000) || "quote_evidence_failed" };
+        }
+
+        let customerUpdate: { changedTables: unknown };
+        try {
+          customerUpdate = currentCustomerEmail === recipientEmail
+            ? { changedTables: [] }
+            : await deps.updateCustomerEmail(requestId, recipientEmail);
+        } catch (error) {
+          const failureDetail = cleanText(error instanceof Error ? error.message : error, 1000) || "customer_update_failed_after_send";
+          await deps.updateTask(task.id, {
+            status: "waiting",
+            description: [
+              `Angebot ${offer.offerNumber} wurde an ${recipientEmail} gesendet.`,
+              "Die anschließende Stammdatenkorrektur wurde nicht bestätigt und muss erneut abgeschlossen werden.",
+              `Fehler: ${failureDetail}`,
+            ].join("\n"),
+            customerEmail: recipientEmail,
+            metadata: {
+              ...task.metadata,
+              automatic_recovery_eligible: true,
+              offer_id: offer.offerId,
+              offer_number: offer.offerNumber,
+              corrected_email: recipientEmail,
+              send_event_id: sendResult?.eventId || priorSend.eventId,
+              send_duplicate: Boolean(sendResult?.duplicate || !sendResult),
+              quote_email_evidence: quoteEvidence,
+              ops_sync: opsSync,
+              customer_communication_sent: true,
+              customer_data_changed: false,
+              customer_update_outcome: "unconfirmed",
+            },
+          }, { operatorName: AUTOMATION_ACTOR.email });
+          const audit = await deps.recordAudit({
+            workflowName: "NEONTRIP Outlook Customer Email Sync v1.0",
+            workflowId: cleanText(input.workflow_id, 180) || null,
+            action: "email_bounce_offer_recovery",
+            status: "blocked",
+            requestId,
+            documentId: requestId,
+            trelloCardId: offer.trelloCardId || request.trello_card_id || null,
+            offerId: offer.offerId,
+            offerNumber: offer.offerNumber,
+            executionId: cleanText(input.execution_id, 180) || null,
+            sourceEventId: sendResult?.eventId || priorSend.eventId || messageHash,
+            idempotencyKey: `${sourceRef}:offer-recovery:update-pending`,
+            errorMessage: failureDetail,
+            summary: "Angebot gesendet; Stammdatenkorrektur wartet auf Abschluss.",
+            retrySafety: "safe",
+            safeActionKey: "complete_customer_email_update",
+            terminal: true,
+            eventType: "email_bounce_offer_sent_customer_update_pending",
+            customer_communication_sent: true,
+            metadata: {
+              audit_event_key: `workflow-audit:${sourceRef}:offer-recovery:update-pending`,
+              failed_email: analysis.failedEmail,
+              corrected_email: recipientEmail,
+              offer_id: offer.offerId,
+              offer_number: offer.offerNumber,
+              task_id: task.id,
+              send_event_id: sendResult?.eventId || priorSend.eventId,
+              quote_email_evidence: quoteEvidence,
+              ops_sync: opsSync,
+              customer_communication_sent: true,
+              customer_data_changed: false,
+              customer_update_outcome: "unconfirmed",
+            },
+          });
+          return {
+            ok: false,
+            status: "offer_sent_customer_update_pending" as const,
+            analysis,
+            requestId,
+            offer: { id: offer.offerId, number: offer.offerNumber },
+            task: { id: task.id, status: "waiting", sourceRef: task.sourceRef },
+            actionRun: null,
+            send: {
+              sent: true,
+              duplicate: Boolean(sendResult?.duplicate || !sendResult),
+              eventId: sendResult?.eventId || priorSend.eventId,
+            },
+            quoteEvidence,
+            opsSync,
+            audit,
+            customerCommunicationSent: true,
+            customerDataChanged: false,
+          };
+        }
+
+        const cancelledActionRuns = await deps.cancelPendingCorrectionRuns(requestId, analysis.failedEmail, recipientEmail);
+        const completedTask = await deps.updateTask(task.id, {
+          status: "done",
+          description: [
+            `Angebot ${offer.offerNumber} wurde an ${recipientEmail} erneut gesendet.`,
+            `Korrigierte Provider-Domain: ${analysis.failedEmail} -> ${recipientEmail}.`,
+            "Die Kundenadresse wurde erst nach bestätigtem Versand aktualisiert.",
+          ].join("\n"),
+          customerEmail: recipientEmail,
+          metadata: {
+            ...task.metadata,
+            automatic_recovery_eligible: true,
+            offer_id: offer.offerId,
+            offer_number: offer.offerNumber,
+            corrected_email: recipientEmail,
+            send_event_id: sendResult?.eventId || priorSend.eventId,
+            send_duplicate: Boolean(sendResult?.duplicate || !sendResult),
+            quote_email_evidence: quoteEvidence,
+            ops_sync: opsSync,
+            cancelled_action_runs: cancelledActionRuns,
+            customer_communication_sent: true,
+            customer_data_changed: currentCustomerEmail !== recipientEmail,
+          },
+        }, { operatorName: AUTOMATION_ACTOR.email });
+        const audit = await deps.recordAudit({
+          workflowName: "NEONTRIP Outlook Customer Email Sync v1.0",
+          workflowId: cleanText(input.workflow_id, 180) || null,
+          action: "email_bounce_offer_recovered",
+          status: "sent",
+          requestId,
+          documentId: requestId,
+          trelloCardId: offer.trelloCardId || request.trello_card_id || null,
+          offerId: offer.offerId,
+          offerNumber: offer.offerNumber,
+          executionId: cleanText(input.execution_id, 180) || null,
+          sourceEventId: sendResult?.eventId || priorSend.eventId || messageHash,
+          idempotencyKey: `${sourceRef}:offer-recovery:sent`,
+          summary: `Angebot ${offer.offerNumber} an die deterministisch korrigierte Adresse gesendet; Stammdaten danach aktualisiert.`,
+          retrySafety: "safe",
+          safeActionKey: "email_bounce_offer_recovery",
+          terminal: true,
+          eventType: "email_bounce_offer_recovered",
+          customer_communication_sent: true,
+          metadata: {
+            audit_event_key: `workflow-audit:${sourceRef}:offer-recovery:sent`,
+            failed_email: analysis.failedEmail,
+            corrected_email: recipientEmail,
+            offer_id: offer.offerId,
+            offer_number: offer.offerNumber,
+            task_id: task.id,
+            send_event_id: sendResult?.eventId || priorSend.eventId,
+            send_duplicate: Boolean(sendResult?.duplicate || !sendResult),
+            quote_email_evidence: quoteEvidence,
+            ops_sync: opsSync,
+            changed_tables: customerUpdate.changedTables,
+            cancelled_action_runs: cancelledActionRuns,
+            customer_communication_sent: true,
+            customer_data_changed: currentCustomerEmail !== recipientEmail,
+          },
+        });
+        return {
+          ok: true,
+          status: "offer_recovered" as const,
+          analysis,
+          requestId,
+          offer: { id: offer.offerId, number: offer.offerNumber },
+          task: { id: completedTask.id, status: completedTask.status, sourceRef: completedTask.sourceRef },
+          actionRun: null,
+          send: {
+            sent: true,
+            duplicate: Boolean(sendResult?.duplicate || !sendResult),
+            eventId: sendResult?.eventId || priorSend.eventId,
+          },
+          quoteEvidence,
+          opsSync,
+          audit,
+          customerCommunicationSent: true,
+          customerDataChanged: currentCustomerEmail !== recipientEmail,
+        };
+      }
+    }
+  }
 
   let actionRun: Awaited<ReturnType<typeof proposeCompanyBrainActionRun>> | null = null;
   if (requestId && analysis.suggestedEmail) {
