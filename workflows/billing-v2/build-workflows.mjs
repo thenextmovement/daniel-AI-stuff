@@ -512,7 +512,10 @@ for (const order of orders) {
   const orderName = text(order.name).toUpperCase();
   if (!/^#NEONT\d+$/.test(orderName)) continue;
   const shopifyOrderId = 'gid://shopify/Order/' + text(order.id);
-  const fingerprint = text(order.id) + ':created';
+  const rawFinancialStatus = text(order.financial_status).toLowerCase();
+  const shopifyPaymentObserved = rawFinancialStatus === 'paid';
+  const transitionKey = shopifyPaymentObserved ? 'paid' : 'created';
+  const fingerprint = text(order.id) + ':' + transitionKey;
   if (state.completed[fingerprint]) continue;
   const email = text(attr(order,/rechnungs.?e.?mail|invoice.?email/i) || order.email || order.contact_email || order.customer?.email).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('FATAL_shopify_order_invoice_email_missing:' + orderName);
@@ -545,7 +548,7 @@ for (const order of orders) {
   const normalized = {
     fingerprint,
     source:'shopify-universal',
-    sourceEventId:'shopify-universal:' + text(order.id) + ':created',
+    sourceEventId:'shopify-universal:' + text(order.id) + ':' + transitionKey,
     shopifyOrderId,
     shopifyOrderName:orderName,
     invoiceEmail:email,
@@ -557,7 +560,8 @@ for (const order of orders) {
     totals:{subtotalNet:subtotalNetCents/100,vatAmount:vatCents/100,totalGross:totalGrossCents/100,currency:text(order.currency || 'EUR').toUpperCase()},
     vatValidation,
     acceptedAt:order.created_at || order.processed_at || new Date().toISOString(),
-    initialFinancialStatus:(order.cancelled_at || (Array.isArray(order.refunds)&&order.refunds.length)) ? 'paid' : text(order.financial_status)
+    initialFinancialStatus:(order.cancelled_at || (Array.isArray(order.refunds)&&order.refunds.length)) ? 'paid' : rawFinancialStatus,
+    shopifyPaymentObserved
   };
   output.push({ json: normalized });
 }

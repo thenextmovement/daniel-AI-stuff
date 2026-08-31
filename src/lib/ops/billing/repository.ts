@@ -66,7 +66,21 @@ export async function ingestBillingCase(input: BillingIntake) {
     p_portal_token_hash: portalTokenHash(token),
     p_portal_url: portalUrl,
   });
-  return { ...result, portalUrl };
+  let paymentObservation: Record<string, unknown> | null = null;
+  if (input.shopifyPaymentObserved === true) {
+    paymentObservation = await supabaseRpc<Record<string, unknown>>(
+      "billing_case_observe_shopify_paid",
+      {
+        p_shopify_order_id: built.caseRecord.shopify_order_id,
+        p_source_event_id: input.sourceEventId,
+        p_paid_at: new Date().toISOString(),
+        p_currency: built.caseRecord.currency,
+        p_total_gross_cents: built.caseRecord.total_gross_cents,
+        p_portal_url: portalUrl,
+      },
+    );
+  }
+  return { ...result, portalUrl, ...(paymentObservation ? { paymentObservation } : {}) };
 }
 
 export async function listBillingCases(input: { status?: string | null; query?: string | null; limit?: number } = {}) {
