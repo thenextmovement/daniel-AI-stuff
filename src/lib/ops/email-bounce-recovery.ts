@@ -461,9 +461,12 @@ export async function processOutlookBounce(
       const offerEvent = offerSendEvents.find((row) => cleanText(row.offer_id, 180) === distinctOfferIds[0])!;
       const offer = await deps.getOffer(distinctOfferIds[0]);
       const offerRequestId = cleanText(offer.requestId || offer.request_id, 180);
+      const offerBindingConfirmed = cleanText(offer.offerId, 180) === distinctOfferIds[0]
+        && cleanText(offerEvent.request_id, 180) === requestId
+        && (!offerRequestId || offerRequestId === requestId);
       const offerCustomerEmail = normalizeEmail(offer.offer.customerEmail);
       const accepted = Boolean(offer.acceptedAt || offer.acceptance || cleanText(offer.status, 80).toLowerCase() === "accepted");
-      if (offerRequestId === requestId && offerCustomerEmail === analysis.failedEmail && !accepted) {
+      if (offerBindingConfirmed && offerCustomerEmail === analysis.failedEmail && !accepted) {
         const recipientEmail = analysis.suggestedEmail;
         const failedEmailHash = createHash("sha256").update(analysis.failedEmail).digest("hex").slice(0, 16);
         const correctedEmailHash = createHash("sha256").update(recipientEmail).digest("hex").slice(0, 16);

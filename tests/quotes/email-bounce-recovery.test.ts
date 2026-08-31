@@ -31,6 +31,7 @@ function fixtureDeps(options: {
   sendFailure?: boolean;
   customerUpdateFailure?: boolean;
   currentEmail?: string;
+  offerRequestId?: string | null;
 } = {}) {
   const calls = {
     taskInputs: [] as Array<Record<string, unknown>>,
@@ -119,7 +120,7 @@ function fixtureDeps(options: {
     async getOffer(offerId: string) {
       return {
         offerId,
-        requestId: "REQ-BOUNCE-1",
+        requestId: options.offerRequestId === undefined ? "REQ-BOUNCE-1" : options.offerRequestId,
         offerNumber: "A/N 15268",
         documentReference: "A/N 15268",
         trelloCardId: "trello-test",
@@ -283,6 +284,24 @@ test("eligible provider-domain bounce resends one exact offer before updating cu
   assert.deepEqual(calls.customerUpdates[0], { requestId: "REQ-BOUNCE-1", email: "kunde@gmail.com" });
   assert.equal(calls.taskUpdateInputs.at(-1)?.status, "done");
   assert.equal(calls.auditInputs.at(-1)?.status, "sent");
+});
+
+test("authoritative sent-event binding tolerates an omitted redundant offer request id", async () => {
+  const { deps, calls } = fixtureDeps({ autoOffer: true, offerRequestId: null });
+  const result = await processOutlookBounce(syntheticBounce, deps);
+
+  assert.equal(result.status, "offer_recovered");
+  assert.equal(calls.sendInputs.length, 1);
+  assert.equal(calls.customerUpdates.length, 1);
+});
+
+test("conflicting offer request id still blocks automatic resend", async () => {
+  const { deps, calls } = fixtureDeps({ autoOffer: true, offerRequestId: "REQ-OTHER" });
+  const result = await processOutlookBounce(syntheticBounce, deps);
+
+  assert.equal(result.status, "correction_proposed");
+  assert.equal(calls.sendInputs.length, 0);
+  assert.equal(calls.customerUpdates.length, 0);
 });
 
 test("unconfirmed automatic resend never changes the customer email", async () => {
