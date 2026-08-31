@@ -23,6 +23,7 @@ export type BillingIntake = {
   vatValidation?: Record<string, unknown> | null;
   acceptedAt?: string | null;
   initialFinancialStatus?: string | null;
+  shopifyPaymentObserved?: boolean;
 };
 
 export type BillingTaxDecision = {

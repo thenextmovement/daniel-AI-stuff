@@ -16,6 +16,10 @@ const migration = fs.readFileSync(path.join(
   process.cwd(),
   "supabase/migrations/20260824133000_universal_shopify_billing_intake.sql",
 ), "utf8");
+const paidTransitionMigration = fs.readFileSync(path.join(
+  process.cwd(),
+  "supabase/migrations/20260831113000_observe_shopify_paid_transition.sql",
+), "utf8");
 
 test("universal Shopify billing ingress covers every production order source", () => {
   assert.equal(workflow.active, false);
@@ -27,6 +31,8 @@ test("universal Shopify billing ingress covers every production order source", (
   const normalize = workflow.nodes.find((node) => node.name === "Normalize Unseen Shopify Orders")?.parameters?.jsCode || "";
   assert.match(normalize, /shopify-universal/);
   assert.match(normalize, /financial_status/);
+  assert.match(normalize, /transitionKey/);
+  assert.match(normalize, /shopifyPaymentObserved/);
   assert.match(normalize, /order\.email \|\| order\.contact_email \|\| order\.customer\?\.email/);
   assert.match(normalize, /gid:\/\/shopify\/Order\//);
   assert.match(normalize, /state\.completed\[fingerprint\]/);
@@ -46,4 +52,13 @@ test("initial document decision and replay are atomic and idempotent", () => {
   assert.match(migration, /v_universal_replay := p_case->>'source_system' = 'shopify-universal'/);
   assert.match(migration, /on conflict \(idempotency_key\) do nothing/);
   assert.match(migration, /job_type in \('CREATE_PROFORMA','CREATE_INVOICE'\)/);
+});
+
+test("paid Shopify transitions enqueue the existing idempotent Easybill finalization path", () => {
+  assert.match(paidTransitionMigration, /billing_case_observe_shopify_paid/);
+  assert.match(paidTransitionMigration, /SHOPIFY_PAYMENT_OBSERVED/);
+  assert.match(paidTransitionMigration, /CREATE_INVOICE/);
+  assert.match(paidTransitionMigration, /PROJECT_PAYMENT_EASYBILL/);
+  assert.match(paidTransitionMigration, /on conflict \(idempotency_key\)/i);
+  assert.doesNotMatch(paidTransitionMigration, /insert into public\.billing_payments/i);
 });
