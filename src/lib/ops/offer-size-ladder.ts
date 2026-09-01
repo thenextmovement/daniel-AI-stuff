@@ -1048,6 +1048,10 @@ export function validateOfferItemsJsonProjection(value: string) {
       );
     }
   };
+  const optionalText = (item: Record<string, unknown>, index: number, field: "section") => {
+    if (item[field] === undefined) return;
+    requireText(item, index, field);
+  };
   const optionalPositiveInt = (item: Record<string, unknown>, index: number, field: "minQuantity" | "maxQuantity") => {
     const fieldValue = item[field];
     if (fieldValue === undefined || fieldValue === null) return undefined;
@@ -1070,9 +1074,10 @@ export function validateOfferItemsJsonProjection(value: string) {
       );
     }
     const item = rawItem as Record<string, unknown>;
-    requireText(item, index, "section");
+    optionalText(item, index, "section");
     requireText(item, index, "title");
-    if (!Number.isInteger(item.quantity) || Number(item.quantity) < 1 || Number(item.quantity) > 999) {
+    const quantity = item.quantity === undefined ? 1 : item.quantity;
+    if (!Number.isInteger(quantity) || Number(quantity) < 1 || Number(quantity) > 999) {
       throw new QuoteValidationError(
         `Angebotsposition ${index + 1}: quantity muss eine ganze Zahl zwischen 1 und 999 sein.`,
         [`items.${index}.quantity`],
@@ -1110,6 +1115,17 @@ export function validateOfferItemsJsonProjection(value: string) {
   return parsed as Array<Record<string, unknown>>;
 }
 
+function stringifyCompactOfferItemsForTrello(items: Array<Record<string, unknown>>) {
+  return JSON.stringify(items.map((item) => {
+    const compact = { ...item };
+    if (compact.section === "LED-Leuchtschild") delete compact.section;
+    if (compact.quantity === 1) delete compact.quantity;
+    if (compact.selectable === true) delete compact.selectable;
+    if (compact.minQuantity === 1) delete compact.minQuantity;
+    return compact;
+  }));
+}
+
 function offerItemsJsonForTrelloProjection(card: TrelloCardData, result: OfferSizeLadderResult) {
   const options = result.options
     .filter((option) => option.reviewStatus !== "blocked")
@@ -1127,7 +1143,7 @@ function offerItemsJsonForTrelloProjection(card: TrelloCardData, result: OfferSi
   const usage = readCustomFieldValue(customFields, ["Usage_1", "Usage", "Einsatzort_1", "Einsatzort", "Einsatzbereich"]);
   const defaultOption = options.find((option) => option.isDefault) || options[0]!;
 
-  return JSON.stringify(options.map((option) => ({
+  return stringifyCompactOfferItemsForTrello(options.map((option) => ({
     section: "LED-Leuchtschild",
     title: "Leuchtschild Design",
     description: [
@@ -1145,7 +1161,7 @@ function offerItemsJsonForTrelloProjection(card: TrelloCardData, result: OfferSi
   })));
 }
 
-function assertTrelloCustomFieldTextFits(value: string) {
+export function assertTrelloCustomFieldTextFits(value: string) {
   if (value.length <= TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS) return;
   throw new QuoteValidationError(
     `Trello offer_items_json ist mit ${value.length} Zeichen zu groß; maximal ${TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS} Zeichen sind erlaubt.`,
@@ -1470,7 +1486,7 @@ function publicOfferItemsForQuoteReadyPreflight(card: TrelloCardData, result: Qu
       409,
     );
   }
-  return JSON.stringify(items);
+  return stringifyCompactOfferItemsForTrello(items);
 }
 
 async function projectQuoteReadySizeLadderToTrello(card: TrelloCardData, result: QuoteReadySizeLadderPreflightResult) {

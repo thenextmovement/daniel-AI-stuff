@@ -7,6 +7,7 @@ import { POST as pricePredictionsPOST } from "../../src/app/api/ops/customer-rec
 import {
   applyOfferSizeLadderToOffer,
   applyOfferSizeLadderOptionOverrides,
+  assertTrelloCustomFieldTextFits,
   buildOfferSizeLadderOfferPatch,
   buildQuoteReadySizeLadderPreflightFromTrelloCard,
   classifyManualReleaseSizeLadderPreflight,
@@ -70,6 +71,20 @@ test("offer_items_json projection validator accepts an omitted or open max quant
 
   assert.equal(validateOfferItemsJsonProjection(JSON.stringify([baseItem])).length, 1);
   assert.equal(validateOfferItemsJsonProjection(JSON.stringify([{ ...baseItem, maxQuantity: null }])).length, 1);
+  assert.equal(validateOfferItemsJsonProjection(JSON.stringify([{
+    title: "Leuchtschild Design",
+    customerUnitPriceNet: 355,
+    selectedByDefault: true,
+    quantityEditable: true,
+  }])).length, 1);
+});
+
+test("Trello offer_items_json size guard still rejects genuinely oversized projections", () => {
+  assert.doesNotThrow(() => assertTrelloCustomFieldTextFits("x".repeat(TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS)));
+  assert.throws(
+    () => assertTrelloCustomFieldTextFits("x".repeat(TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS + 1)),
+    /maximal 16384 Zeichen/,
+  );
 });
 
 test("offer_items_json projection validator rejects invalid quantity limits with the item path", () => {
@@ -424,6 +439,70 @@ test("quote ready two-design ladder fits into the Trello text custom field", asy
   assert.equal(items.length, 42);
   assert.ok((result.offerItemsJson || "").length <= TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS);
   assert.equal(items.every((item) => item.sizeLadder === undefined), true);
+  assert.equal(items.every((item) => item.section === undefined), true);
+  assert.equal(items.every((item) => item.quantity === undefined), true);
+  assert.equal(items.every((item) => item.selectable === undefined), true);
+  assert.equal(items.every((item) => item.minQuantity === undefined), true);
+});
+
+test("quote ready four-design ladder stays within Trello text custom field limits", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "6a95335180cc50fd98c35e12",
+    idBoard: "board-1",
+    name: "3 Designs Check Info LED Neon Flex | Oliver Leismann | Smallest Size",
+    desc: "LED Neon Flex",
+    customFields: {
+      Size_1: "80x14cm",
+      Price_1: "117",
+      Product_1: "LED Flex",
+      Color_1: "Rot",
+      Backboard_1: "Formzuschnitt",
+      Size_2: "60x18cm",
+      Price_2: "97",
+      Product_2: "LED Flex",
+      Color_2: "Kaltweiß",
+      Backboard_2: "Formzuschnitt",
+      Size_3: "90x13cm",
+      Price_3: "126",
+      Product_3: "LED Flex",
+      Color_3: "Rot + Kaltweiß",
+      Backboard_3: "Formzuschnitt",
+      Size_4: "90x12cm",
+      Price_4: "148",
+      Product_4: "LED Flex",
+      Color_4: "Kaltweiß",
+      Backboard_4: "Formzuschnitt",
+      Usage: "Innen",
+    },
+    attachments: [
+      { id: "att-5254", name: "Mockup5254.jpg" },
+      { id: "att-5255", name: "Mockup5255.jpg" },
+      { id: "att-5256", name: "Mockup5256.jpg" },
+      { id: "att-5257", name: "Mockup5257.jpg" },
+    ],
+  }, {
+    trelloCard: "6a95335180cc50fd98c35e12",
+    stepCm: 10,
+    maxLongSideCm: 250,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.expectedDesignCount, 4);
+  assert.equal(result.designs.length, 4);
+  assert.ok(result.offerItemsJson);
+  const items = JSON.parse(result.offerItemsJson || "[]") as Array<Record<string, unknown>>;
+  assert.equal(items.length, 72);
+  assert.ok((result.offerItemsJson || "").length <= TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS);
+  assert.equal(items.filter((item) => item.selectedByDefault === true).length, 4);
+  assert.equal(items.every((item) => item.quantityEditable === true), true);
+  assert.equal(items.every((item) => typeof item.customerUnitPriceNet === "number"), true);
+  assert.equal(items.every((item) => typeof item.title === "string" && typeof item.description === "string"), true);
+  assert.equal(items.every((item) => item.section === undefined), true);
+  assert.equal(items.every((item) => item.quantity === undefined), true);
+  assert.equal(items.every((item) => item.selectable === undefined), true);
+  assert.equal(items.every((item) => item.minQuantity === undefined), true);
+  assert.equal(validateOfferItemsJsonProjection(result.offerItemsJson || "[]").length, 72);
 });
 
 test("quote ready structure uses one source mockup per Neon design and two for every paired sign type", () => {
