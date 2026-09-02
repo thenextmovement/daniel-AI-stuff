@@ -623,9 +623,14 @@ test("NEONTRIP offer metadata ignores billing-only additions but keeps shipping 
     { key: "NEONTRIP PDF Snapshot", value: `https://angebote.neontrip.de/offer/${publicToken}/pdf` },
     { key: "Trello Card ID", value: "0123456789abcdef01234567" },
     { key: "Idempotency Key", value: `offer:${offerId}:shopify-sale:v1` },
-    { key: "Invoice Mail Intended", value: "yes_private_email" },
+    { key: "Invoice Mail Intended", value: "customer_email_suppressed_for_billing_cutover" },
   ];
   assert.equal(assessShopifyAutomationGate({ ...standardOrder, note, customAttributes }).blocked, false);
+  assert.equal(assessShopifyAutomationGate({
+    ...standardOrder,
+    note,
+    customAttributes: customAttributes.filter((attribute) => attribute.key !== "Invoice Mail Intended"),
+  }).blocked, false);
   const legacyPdfUrl = `https://angebote.neontrip.de/api/public/offers/${publicToken}/pdf`;
   const legacyNote = note.replace(`https://angebote.neontrip.de/offer/${publicToken}/pdf`, legacyPdfUrl);
   const legacyAttributes = customAttributes.map((attribute) => attribute.key === "NEONTRIP PDF Snapshot"

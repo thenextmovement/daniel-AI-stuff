@@ -209,9 +209,9 @@ const REQUIRED_STANDARD_ATTRIBUTE_KEYS = new Set([
   "NEONTRIP PDF Snapshot",
   "Trello Card ID",
   "Idempotency Key",
-  "Invoice Mail Intended",
 ]);
 const OPTIONAL_STANDARD_ATTRIBUTE_KEYS = new Set([
+  "Invoice Mail Intended",
   "Nerdy-Forms_ID",
   "Reverse Charge",
   "USt-IdNr.",
@@ -730,14 +730,12 @@ function standardAttributes(
 
   const segmentValues = [values.get("Request Segment"), values.get("Request S-Kategorie"), values.get("Request Segment Status")];
   const hasSegmentMetadata = segmentValues.some((value) => value !== undefined);
-  const invoiceMailIntended = values.get("Invoice Mail Intended") || "";
   if (hasSegmentMetadata) {
-    return invoiceMailIntended === "segment_nt-2_no_shopify_receipt"
-      && segmentValues[0] === "NT-2"
+    return segmentValues[0] === "NT-2"
       && segmentValues[1] === "S3"
       && segmentValues[2] === "accepted";
   }
-  return ["yes_private_email", "business_email_no_shopify_receipt"].includes(invoiceMailIntended);
+  return true;
 }
 
 export function assessShopifyAutomationGate(order: ShopifyOrderEvidence): ShopifyAutomationGate {
