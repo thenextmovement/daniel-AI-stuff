@@ -90,9 +90,15 @@ const attachmentState = attachmentContextOk && ['present', 'missing', 'not_appli
   : 'unknown';
 const designExceptionReason = designContextException(candidate.description);
 const formSource = ['landing-page-form', '2418'].includes(sourceKind);
-const replyKind = formSource && attachmentState === 'missing' && !designExceptionReason
-  ? 'missing_design'
-  : 'normal';
+const configuratorSource = ['landing-page-form', '2418', 'outlook_email'].includes(sourceKind);
+const configuratorReply = configuratorSource
+  && attachmentState === 'missing'
+  && designExceptionReason === 'text_design_supplied';
+const replyKind = configuratorReply
+  ? 'configurator_link'
+  : formSource && attachmentState === 'missing' && !designExceptionReason
+    ? 'missing_design'
+    : 'normal';
 const context = {
   title: clean(candidate.title, 240),
   description: clean(candidate.description, 2400),
@@ -248,9 +254,18 @@ const aiValid = body.length >= 80
   && !inventedHistory
   && !forbidden.some((rule) => rule.test(body));
 
+const configuratorUrl = 'https://www.neontrip.de/products/custom-neon';
+const configuratorReply = item.reply_kind === 'configurator_link';
 const missingDesignReply = item.reply_kind === 'missing_design';
 let bodySource = 'ai';
-if (missingDesignReply) {
+if (configuratorReply) {
+  bodySource = 'fallback';
+  const opening = relationshipSentence || 'vielen Dank für Ihre Anfrage bei NEONTRIP.';
+  body = 'Hallo ' + firstName + ',\n\n' + opening
+    + '\n\nIhren gewünschten Schriftzug können Sie direkt in unserem Konfigurator gestalten. Dort wählen Sie Schriftart, Farbe, Größe und Zuschnitt:'
+    + '\n' + configuratorUrl
+    + '\n\nFalls Sie vorher Unterstützung benötigen, antworten Sie einfach auf diese E-Mail.';
+} else if (missingDesignReply) {
   bodySource = 'fallback';
   const opening = relationshipSentence || 'vielen Dank für Ihre Anfrage bei NEONTRIP.';
   body = 'Hallo ' + firstName + ',\n\n' + opening
@@ -278,11 +293,20 @@ const recipientValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)
     || (recipientMode === 'live' && !/@(?:neontrip|riesenobjekte)\.de$/i.test(recipient) && !/@example\.|@neontrip\.test$/i.test(recipient)));
 if (!recipientValid) throw new Error('recipient_failed_second_pre_send_validation');
 
-const subject = missingDesignReply
-  ? 'Ihre NEONTRIP Anfrage – Logo oder Design fehlt noch'
-  : 'Vielen Dank für Ihre Anfrage bei NEONTRIP';
+const subject = configuratorReply
+  ? 'Ihre NEONTRIP Anfrage – Schriftzug selbst konfigurieren'
+  : missingDesignReply
+    ? 'Ihre NEONTRIP Anfrage – Logo oder Design fehlt noch'
+    : 'Vielen Dank für Ihre Anfrage bei NEONTRIP';
+const escapedBody = escapeHtml(body).replace(/\n/g, '<br>');
+const renderedBody = configuratorReply
+  ? escapedBody.replace(
+      escapeHtml(configuratorUrl),
+      '<a href="' + configuratorUrl + '" style="color:#111111;text-decoration:underline">Konfigurator öffnen</a>',
+    )
+  : escapedBody;
 const bodyHtml = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#111111">'
-  + escapeHtml(body).replace(/\n/g, '<br>')
+  + renderedBody
   + '</div>';
 const signatureHtml = '<br><br><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-family:Arial,Helvetica,sans-serif;color:#111111"><tbody><tr><td style="padding:0"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%"><tbody><tr><td style="padding:16px 0"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tbody><tr><td valign="top" style="width:140px;padding-right:16px"><img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653" alt="Fabienne Trapp" width="120" height="120" style="display:block;width:120px;height:120px;border-radius:60px;border:2px solid #111111;object-fit:cover"></td><td valign="top" style="padding-top:2px"><div style="font-size:16px;font-weight:700;color:#111111;margin:0 0 4px 0">Fabienne Trapp</div><div style="font-size:12px;color:#6b7280;margin:0 0 10px 0">Beratung &amp; Realisierung</div><div style="font-size:13px;font-weight:700;color:#111111;margin:0 0 8px 0">NEONTRIP&reg;</div><div style="font-size:13px;line-height:1.6;color:#111111">Tel: <a href="tel:+4921154257240" style="color:#111111;text-decoration:none">+49 211 54257240</a><br>E-Mail: <a href="mailto:support@neontrip.de" style="color:#111111;text-decoration:none">support@neontrip.de</a><br>Web: <a href="https://www.neontrip.de" style="color:#111111;text-decoration:none">www.neontrip.de</a><br>Adresse: Bilker Allee 29, 40219 Düsseldorf</div></td></tr></tbody></table></td></tr><tr><td style="padding:0"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#121212;border-radius:10px"><tbody><tr><td align="center" style="padding:18px 16px"><img src="https://cdn.shopify.com/s/files/1/0534/7819/5350/files/weiss_logo_NEONTRIP.png?v=1764003450" alt="NEONTRIP" width="420" style="display:block;width:100%;max-width:420px;height:auto;border:0;outline:none;text-decoration:none"><div style="margin-top:8px;font-size:11px;font-weight:700;letter-spacing:.6px;color:#fff">UNIQUE LIGHTING AND BRANDING</div></td></tr></tbody></table></td></tr></tbody></table></td></tr></tbody></table>';
 
