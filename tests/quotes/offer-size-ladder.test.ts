@@ -505,6 +505,82 @@ test("quote ready four-design ladder stays within Trello text custom field limit
   assert.equal(validateOfferItemsJsonProjection(result.offerItemsJson || "[]").length, 72);
 });
 
+test("quote ready five-design ladder reads product 5 from the description and fits Trello", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardQuoteReadyFiveDesigns",
+    idBoard: "board-1",
+    name: "LED Neon Flex | Five designs | smallest size possible | cool white | cut to shape",
+    desc: "Price\\_5: 69 | Size\\_5: 40 x 23 cm | Color\\_5: Kaltweiß | Backboard\\_5: Formzuschnitt",
+    customFields: {
+      Size_1: "40x34cm",
+      Price_1: "84",
+      Color_1: "Kaltweiß",
+      Backboard_1: "Formzuschnitt",
+      Size_2: "37x40cm",
+      Price_2: "91",
+      Color_2: "Kaltweiß",
+      Backboard_2: "Formzuschnitt",
+      Size_3: "40x27cm",
+      Price_3: "78",
+      Color_3: "Kaltweiß",
+      Backboard_3: "Formzuschnitt",
+      Size_4: "31x40cm",
+      Price_4: "91",
+      Color_4: "Kaltweiß",
+      Backboard_4: "Formzuschnitt",
+      Usage: "Innen",
+    },
+    attachments: [1, 2, 3, 4, 5].map((index) => ({
+      id: `att-${index}`,
+      name: `Mockup${5280 + index}.jpg`,
+    })),
+  }, {
+    trelloCard: "cardQuoteReadyFiveDesigns",
+    stepCm: 10,
+    maxLongSideCm: 250,
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(result.expectedDesignCount, 5);
+  assert.equal(result.anchorCount, 5);
+  assert.equal(result.designs.length, 5);
+  assert.equal(result.designs[4]?.anchorFieldIndexes.join(","), "5");
+  assert.equal(result.designs[4]?.sizeLadder.options.find((option) => option.isDefault)?.sizeLabel, "40 x 23cm");
+  assert.equal(result.designs[4]?.sizeLadder.options.find((option) => option.isDefault)?.customerUnitPriceNet, 155);
+  assert.ok(result.offerItemsJson);
+  assert.ok((result.offerItemsJson || "").length <= TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS);
+  const items = validateOfferItemsJsonProjection(result.offerItemsJson || "[]");
+  assert.equal(items.length, 110);
+  assert.equal(items.filter((item) => item.selectedByDefault === true).length, 5);
+  assert.equal(items.filter((item) => item.selectedByDefault === undefined).length, 105);
+  assert.equal(items.some((item) => item.title === "Design 5" && item.description === "Größe: 40 x 23cm · Kaltweiß · Formzuschnitt"), true);
+  assert.equal(classifyManualReleaseSizeLadderPreflight(result).decision, "ready");
+});
+
+test("quote ready description continuation rejects a missing product index", async () => {
+  await assert.rejects(
+    () => buildQuoteReadySizeLadderPreflightFromTrelloCard({
+      id: "cardQuoteReadyMissingFive",
+      idBoard: "board-1",
+      name: "LED Neon Flex | Six designs",
+      desc: "Price_6: 75 | Size_6: 50 x 30 cm",
+      customFields: {
+        Size_1: "40x30cm", Price_1: "80",
+        Size_2: "40x30cm", Price_2: "80",
+        Size_3: "40x30cm", Price_3: "80",
+        Size_4: "40x30cm", Price_4: "80",
+      },
+      attachments: [1, 2, 3, 4, 5, 6].map((index) => ({ id: `att-${index}`, name: `Mockup${index}.jpg` })),
+    }, {
+      trelloCard: "cardQuoteReadyMissingFive",
+      projectToTrello: false,
+      persist: false,
+    }),
+    /Price_5 und Size_5/,
+  );
+});
+
 test("quote ready structure uses one source mockup per Neon design and two for every paired sign type", () => {
   const cases = [
     { name: "LED Neon Flex", expectedType: "neon", expectedDivisor: 1 },

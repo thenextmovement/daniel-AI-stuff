@@ -370,6 +370,84 @@ function customFieldEntries(customFields: CustomFieldMap) {
     .filter((entry) => entry.value);
 }
 
+const DESCRIPTION_INDEXED_OFFER_FIELD_NAMES = new Set(["price", "size", "color", "backboard"]);
+
+function currentOfferDescriptionContext(description: string | null | undefined) {
+  const text = String(description || "").trim();
+  if (!text) return "";
+  const quotedMessageMarkers = [
+    /^Original Nachricht\s*\(/im,
+    /^Original Message\b/im,
+    /^Urspruengliche Nachricht\b/im,
+    /^Ursprüngliche Nachricht\b/im,
+    /^Weitergeleitete Nachricht\b/im,
+    /^Forwarded message\b/im,
+    /^Von:\s/im,
+    /^From:\s/im,
+  ];
+  const cutAt = quotedMessageMarkers.reduce<number | null>((earliest, marker) => {
+    const match = marker.exec(text);
+    if (!match) return earliest;
+    return earliest === null ? match.index : Math.min(earliest, match.index);
+  }, null);
+  return cutAt === null ? text : text.slice(0, cutAt);
+}
+
+function indexedOfferFieldsFromDescription(description: string | null | undefined) {
+  const fields: CustomFieldMap = {};
+
+  for (const line of currentOfferDescriptionContext(description).split(/\r?\n/)) {
+    for (const segment of line.split("|")) {
+      const normalizedSegment = segment.trim().replace(/\\_/g, "_");
+      const match = normalizedSegment.match(/^(price|size|color|backboard)_(\d+)\s*:\s*(.*)$/i);
+      if (!match || !DESCRIPTION_INDEXED_OFFER_FIELD_NAMES.has(match[1]!.toLowerCase())) continue;
+
+      const index = Number(match[2]);
+      if (!Number.isSafeInteger(index) || index < 5 || index > 20) continue;
+
+      const value = match[3]!.trim();
+      const fieldName = `${match[1]!.toLowerCase()}_${index}`;
+      if (!value) throw new QuoteValidationError(`${match[1]}_${index} darf nicht leer sein.`, [fieldName], 422);
+
+      const existing = fields[fieldName];
+      if (existing && existing !== value) {
+        throw new QuoteValidationError(
+          `${match[1]}_${index} ist in der Trello-Beschreibung widerspruechlich doppelt angegeben.`,
+          [fieldName],
+          422,
+        );
+      }
+      fields[fieldName] = value;
+    }
+  }
+
+  return fields;
+}
+
+function quoteReadyOfferFields(card: TrelloCardData): CustomFieldMap {
+  const fields = { ...(card.customFields || {}) };
+  const descriptionFields = indexedOfferFieldsFromDescription(card.desc);
+  for (const [name, value] of Object.entries(descriptionFields)) {
+    if (!readCustomFieldValue(fields, [name])) fields[name] = value;
+  }
+  const descriptionIndexes = Object.keys(descriptionFields)
+    .map((name) => Number(name.match(/_(\d+)$/)?.[1]))
+    .filter((index) => Number.isSafeInteger(index));
+  if (descriptionIndexes.length) {
+    const maxIndex = Math.max(...descriptionIndexes);
+    for (let index = 1; index <= maxIndex; index += 1) {
+      if (!readCustomFieldValue(fields, [`Price_${index}`]) || !readCustomFieldValue(fields, [`Size_${index}`])) {
+        throw new QuoteValidationError(
+          `Price_${index} und Size_${index} muessen fuer die positionsgetreue Angebotszuordnung vollstaendig sein.`,
+          [`price_${index}`, `size_${index}`],
+          422,
+        );
+      }
+    }
+  }
+  return fields;
+}
+
 function findEditableCustomField(fields: TrelloEditableCustomField[] | undefined, names: string[]) {
   const wanted = new Set(names.map(normalizeFieldName));
   const compactWanted = new Set(names.map(compactFieldName));
@@ -1115,12 +1193,16 @@ export function validateOfferItemsJsonProjection(value: string) {
   return parsed as Array<Record<string, unknown>>;
 }
 
-function stringifyCompactOfferItemsForTrello(items: Array<Record<string, unknown>>) {
+function stringifyCompactOfferItemsForTrello(
+  items: Array<Record<string, unknown>>,
+  options: { omitFalseDefaults?: boolean } = {},
+) {
   return JSON.stringify(items.map((item) => {
     const compact = { ...item };
     if (compact.section === "LED-Leuchtschild") delete compact.section;
     if (compact.quantity === 1) delete compact.quantity;
     if (compact.selectable === true) delete compact.selectable;
+    if (options.omitFalseDefaults === true && compact.selectedByDefault === false) delete compact.selectedByDefault;
     if (compact.minQuantity === 1) delete compact.minQuantity;
     return compact;
   }));
@@ -1442,6 +1524,8 @@ function distributeAnchorGroups(anchors: OfferSizeLadderIndexedAnchorInput[], de
 
 function publicOfferItemsForQuoteReadyPreflight(card: TrelloCardData, result: QuoteReadySizeLadderPreflightResult) {
   const items: Array<Record<string, unknown>> = [];
+  const useHighDensityProjection = result.expectedDesignCount >= 5;
+  const defaultUsage = readCustomFieldValue(card.customFields || {}, ["Usage", "Einsatzort", "Einsatzbereich"]);
   for (const design of result.designs) {
     const options = design.sizeLadder.options
       .filter((option) => option.reviewStatus !== "blocked")
@@ -1454,18 +1538,28 @@ function publicOfferItemsForQuoteReadyPreflight(card: TrelloCardData, result: Qu
     const backboard = indexedDesignFieldValue(customFields, firstFieldIndex, "backboard");
     const usage = indexedDesignFieldValue(customFields, firstFieldIndex, "usage");
     const defaultOption = options.find((option) => option.isDefault) || options[0]!;
-    const title = result.expectedDesignCount > 1 ? `Leuchtschild Design ${design.designIndex}` : "Leuchtschild Design";
+    const title = result.expectedDesignCount > 1
+      ? `${useHighDensityProjection ? "" : "Leuchtschild "}Design ${design.designIndex}`
+      : "Leuchtschild Design";
 
     for (const option of options) {
+      const description = useHighDensityProjection
+        ? [
+            `Größe: ${option.sizeLabel}`,
+            color,
+            backboard,
+            !defaultUsage && usage ? `Usage: ${usage}` : null,
+          ].filter(Boolean).join(" · ")
+        : [
+            `Größe: ${option.sizeLabel}`,
+            color ? `Leuchtfarbe: ${color}` : null,
+            backboard ? `Rückplatte: ${backboard}` : null,
+            usage ? `Einsatzort: ${usage}` : null,
+          ].filter(Boolean).join("\n");
       items.push({
         section: "LED-Leuchtschild",
         title,
-        description: [
-          `Größe: ${option.sizeLabel}`,
-          color ? `Leuchtfarbe: ${color}` : null,
-          backboard ? `Rückplatte: ${backboard}` : null,
-          usage ? `Einsatzort: ${usage}` : null,
-        ].filter(Boolean).join("\n"),
+        description,
         quantity: 1,
         customerUnitPriceNet: option.customerUnitPriceNet,
         selectable: true,
@@ -1486,7 +1580,7 @@ function publicOfferItemsForQuoteReadyPreflight(card: TrelloCardData, result: Qu
       409,
     );
   }
-  return stringifyCompactOfferItemsForTrello(items);
+  return stringifyCompactOfferItemsForTrello(items, { omitFalseDefaults: useHighDensityProjection });
 }
 
 async function projectQuoteReadySizeLadderToTrello(card: TrelloCardData, result: QuoteReadySizeLadderPreflightResult) {
@@ -1588,20 +1682,25 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   const canonicalTrelloCardId = card.id || normalizeTrelloCardIdentifier(input.trelloCard) || "";
   if (!canonicalTrelloCardId) throw new QuoteValidationError("Trello Card ID fehlt.");
 
+  const resolvedCard: TrelloCardData = {
+    ...card,
+    customFields: quoteReadyOfferFields(card),
+  };
+
   const warnings: string[] = [];
   const issues: string[] = [];
-  const structure = resolveQuoteReadyOfferStructure(card);
+  const structure = resolveQuoteReadyOfferStructure(resolvedCard);
   const trelloCardUrl = input.trelloCard && String(input.trelloCard).includes("trello.com/c/")
     ? String(input.trelloCard)
     : null;
 
-  if (hasNoSizeLadderLabel(card.labels)) {
+  if (hasNoSizeLadderLabel(resolvedCard.labels)) {
     return {
       status: "ready",
       skipReason: "trello_label_no_size_ladder",
       trelloCardId: canonicalTrelloCardId,
       trelloCardUrl,
-      trelloCardName: trimNullable(card.name),
+      trelloCardName: trimNullable(resolvedCard.name),
       structureProductType: structure.productType,
       sourceMockupsPerDesign: structure.sourceMockupsPerDesign,
       sourceMockupCount: 0,
@@ -1622,11 +1721,11 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
     };
   }
 
-  const sourceMockups = listQuoteReadySourceMockups(card);
+  const sourceMockups = listQuoteReadySourceMockups(resolvedCard);
   const sourceMockupGroups = groupQuoteReadySourceMockups(sourceMockups, structure.sourceMockupsPerDesign);
   const expectedDesignCount = sourceMockupGroups.length;
-  const indexedAnchors = extractIndexedTrelloAnchors(card.customFields || {}, warnings);
-  const customerFactor = getFactorOverride(card.customFields || {}) ?? input.customerFactor;
+  const indexedAnchors = extractIndexedTrelloAnchors(resolvedCard.customFields || {}, warnings);
+  const customerFactor = getFactorOverride(resolvedCard.customFields || {}) ?? input.customerFactor;
 
   if (!sourceMockups.length) issues.push("source_mockups_missing");
   if (sourceMockups.length % structure.sourceMockupsPerDesign !== 0) {
@@ -1653,7 +1752,7 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
     const anchors = normalizeExtractedAnchorRoles(group.map(({ fieldIndex: _fieldIndex, ...anchor }) => anchor));
     const fieldIndexes = group.map((anchor) => anchor.fieldIndex);
     const sourceText = sourceTextForAnchorGroup({
-      card,
+      card: resolvedCard,
       inputSourceText: input.sourceText,
       sourceMockupName: sourceMockupGroup.map((mockup) => mockup.name).join("\n"),
       fieldIndexes,
@@ -1705,7 +1804,7 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
     skipReason: null,
     trelloCardId: canonicalTrelloCardId,
     trelloCardUrl,
-    trelloCardName: trimNullable(card.name),
+    trelloCardName: trimNullable(resolvedCard.name),
     structureProductType: structure.productType,
     sourceMockupsPerDesign: structure.sourceMockupsPerDesign,
     sourceMockupCount: sourceMockups.length,
@@ -1724,13 +1823,13 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   };
 
   if (designs.length && status !== "blocked") {
-    result.offerItemsJson = publicOfferItemsForQuoteReadyPreflight(card, result);
+    result.offerItemsJson = publicOfferItemsForQuoteReadyPreflight(resolvedCard, result);
   }
   result.trelloComment = formatQuoteReadySizeLadderPreflightComment(result);
 
   if (input.projectToTrello !== false && result.offerItemsJson && status !== "blocked") {
     try {
-      result.trelloProjection = await projectQuoteReadySizeLadderToTrello(card, result);
+      result.trelloProjection = await projectQuoteReadySizeLadderToTrello(resolvedCard, result);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Trello offer_items_json Projektion fehlgeschlagen.";
       result.trelloProjection = {
@@ -1746,7 +1845,7 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   }
 
   if (input.commentToTrello === true) {
-    const existingComment = (card.actions || []).some((action) => String(action.data?.text || "").includes(QUOTE_READY_SIZE_LADDER_COMMENT_MARKER));
+    const existingComment = (resolvedCard.actions || []).some((action) => String(action.data?.text || "").includes(QUOTE_READY_SIZE_LADDER_COMMENT_MARKER));
     if (existingComment) {
       result.commentProjection = { written: false, skipped: true };
     } else {
