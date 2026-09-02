@@ -607,7 +607,7 @@ test("refunded, voided and expired orders remain manual-review cases", () => {
   }
 });
 
-test("only the exact NEONTRIP offer note and attribute schema passes the Shopify gate", () => {
+test("NEONTRIP offer metadata ignores billing-only additions but keeps shipping overrides fail-closed", () => {
   const offerId = "cmabc123456789";
   const publicToken = "_xRsfRkigEtPxgkXGBn7uDigErOGrmodund2IhoRALI";
   const note = [
@@ -641,6 +641,16 @@ test("only the exact NEONTRIP offer note and attribute schema passes the Shopify
   });
   assert.equal(mismatchedPdfToken.blocked, true);
   assert.ok(mismatchedPdfToken.reasonCodes.includes("non_standard_shopify_attribute"));
+  const billingOnlyAdditions = assessShopifyAutomationGate({
+    ...standardOrder,
+    note: ["Lagerware", note, "Projektnummer: Interne Referenz"].join("\n"),
+    customAttributes: [
+      ...customAttributes,
+      { key: "Rechnungs-E-Mail", value: "billing@example.invalid" },
+      { key: "Projektnummer", value: "Interne Referenz" },
+    ],
+  });
+  assert.equal(billingOnlyAdditions.blocked, false);
   const extraLine = assessShopifyAutomationGate({ ...standardOrder, note: `${note}\nBitte hinten ablegen`, customAttributes });
   assert.equal(extraLine.blocked, true);
   assert.ok(extraLine.reasonCodes.includes("non_standard_shopify_note"));
@@ -651,6 +661,49 @@ test("only the exact NEONTRIP offer note and attribute schema passes the Shopify
   });
   assert.equal(unknownAttribute.blocked, true);
   assert.ok(unknownAttribute.reasonCodes.includes("non_standard_shopify_attribute"));
+});
+
+test("billing-only Shopify metadata can plan standard and Express 12 arrival labels", () => {
+  const offerId = "cmabc123456789";
+  const publicToken = "_xRsfRkigEtPxgkXGBn7uDigErOGrmodund2IhoRALI";
+  const note = [
+    "Lagerware",
+    "NEONTRIP Angebot: A/N 14258",
+    "Projektnummer: Interne Referenz",
+    "Nerdy-Forms_ID: 101dcb01-291d-4a22-a624-5fb0f2dbcccd",
+    `Angebotslink: https://angebote.neontrip.de/offer/${publicToken}`,
+    `PDF Snapshot: https://angebote.neontrip.de/offer/${publicToken}/pdf`,
+    "Netto: 903 / MwSt: 171.57 / Brutto: 1074.57",
+  ].join("\n");
+  const customAttributes = [
+    { key: "NEONTRIP Offer ID", value: offerId },
+    { key: "NEONTRIP Offer Number", value: "A/N 14258" },
+    { key: "NEONTRIP Offer URL", value: `https://angebote.neontrip.de/offer/${publicToken}` },
+    { key: "NEONTRIP PDF Snapshot", value: `https://angebote.neontrip.de/offer/${publicToken}/pdf` },
+    { key: "Trello Card ID", value: "0123456789abcdef01234567" },
+    { key: "Idempotency Key", value: `offer:${offerId}:shopify-sale:v1` },
+    { key: "Invoice Mail Intended", value: "yes_private_email" },
+    { key: "Nerdy-Forms_ID", value: "101dcb01-291d-4a22-a624-5fb0f2dbcccd" },
+    { key: "Rechnungs-E-Mail", value: "billing@example.invalid" },
+    { key: "Projektnummer", value: "Interne Referenz" },
+  ];
+
+  for (const [title, expectedClass, expectedProduct] of [
+    ["Standard-Versand", "standard", "DPD_CLASSIC_TEST"],
+    ["Eilauftrag 4 Tage", "express_12", "DPD_EXPRESS_12_TEST"],
+  ] as const) {
+    const order: ShopifyOrderEvidence = {
+      ...standardOrder,
+      note,
+      customAttributes,
+      lineItems: [{ title: "Neonschild", quantity: 1 }, { title, quantity: 1 }],
+      shippingLines: [],
+    };
+    const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [order], productConfig: config });
+    assert.equal(decision.status, "label_planned", title);
+    assert.equal(decision.shippingClass, expectedClass, title);
+    assert.equal(decision.selectedDpdProduct, expectedProduct, title);
+  }
 });
 
 test("validated NEONTRIP form, reverse-charge and accepted-segment metadata remain automation-safe", () => {

@@ -199,6 +199,8 @@ const OFFER_ID = new RegExp(`^${OFFER_TOKEN}$`);
 const OFFER_NUMBER = /^A\/N [0-9]{1,12}$/;
 const MONEY = "[0-9]+(?:[.,][0-9]{1,2})?";
 const PICKUP_PATTERN = /\b(?:(?:selbst)?abhol[a-z]*|abgeholt|holt\s+ab|holen\s+ab|wird\s+abgeholt|ladenlokal|laden\s+lokal|vor\s+ort|local\s+pickup|pickup|pick\s+up|customer\s+collect)\b/i;
+const SHIPPING_OVERRIDE_NOTE_PATTERN = /\b(?:adress(?:e|en|iert)|anschrift|address|nicht\s+(?:versenden|verschicken|senden)|kein\s+versand|do\s+not\s+ship|manuell|manual|stopp?|sperr[a-z]*|ableg[a-z]*|ablageort|hinterleg[a-z]*|hinterhof|garage|nachbar[a-z]*|briefkasten|haustu(?:r|er))\b/i;
+const OFFER_METADATA_LINE_PREFIX = /^(?:NEONTRIP Angebot|Angebotslink|PDF Snapshot|Netto|Nerdy-Forms_ID|Reverse Charge \/ steuerfrei mit USt-IdNr[.]):/i;
 const INTERNAL_UUID_NOTE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUIRED_STANDARD_ATTRIBUTE_KEYS = new Set([
   "NEONTRIP Offer ID",
@@ -216,6 +218,8 @@ const OPTIONAL_STANDARD_ATTRIBUTE_KEYS = new Set([
   "Request Segment",
   "Request S-Kategorie",
   "Request Segment Status",
+  "Rechnungs-E-Mail",
+  "Projektnummer",
 ]);
 const VAT_ID = /^[A-Z]{2}[A-Z0-9]{6,14}$/;
 
@@ -621,14 +625,18 @@ function parseStandardOfferMetadataNote(note: string | null | undefined) {
   };
   if (!normalized) return { ...empty, standard: true };
   const lines = normalized.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (lines.length < 4 || lines.length > 6) return empty;
-  const offerNumber = lines[0].match(/^NEONTRIP Angebot:\s*(A\/N [0-9]{1,12})$/i)?.[1]?.toUpperCase();
+  let offerNumber: string | null = null;
   let offerUrlId: string | null = null;
   let pdfUrlId: string | null = null;
   let pricesMatch = false;
   let nerdyFormsId: string | null = null;
   let reverseChargeVatId: string | null = null;
-  for (const line of lines.slice(1)) {
+  for (const line of lines) {
+    const parsedOfferNumber = line.match(/^NEONTRIP Angebot:\s*(A\/N [0-9]{1,12})$/i)?.[1]?.toUpperCase() || null;
+    if (parsedOfferNumber && !offerNumber) {
+      offerNumber = parsedOfferNumber;
+      continue;
+    }
     const offerUrl = line.match(/^Angebotslink:\s*(https:\/\/angebote[.]neontrip[.]de\/offer\/([A-Za-z0-9_-]{8,128}))$/i)?.[2] || null;
     if (offerUrl && !offerUrlId) {
       offerUrlId = offerUrl;
@@ -654,7 +662,8 @@ function parseStandardOfferMetadataNote(note: string | null | undefined) {
       reverseChargeVatId = vatId.toUpperCase();
       continue;
     }
-    return empty;
+    if (/^(?:Rechnungs-E-Mail|Projektnummer):/i.test(line)) continue;
+    if (OFFER_METADATA_LINE_PREFIX.test(line) || PICKUP_PATTERN.test(normalizeHumanText(line)) || SHIPPING_OVERRIDE_NOTE_PATTERN.test(normalizeHumanText(line))) return empty;
   }
   return {
     standard: Boolean(offerNumber && offerUrlId && pdfUrlId && offerUrlId === pdfUrlId && pricesMatch),
