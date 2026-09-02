@@ -63,11 +63,21 @@ function designContextException(value) {
   const text = clean(value, 3000).toLocaleLowerCase('de-DE');
   const noDesignStatement = /\b(?:kein|keine|keinen|noch kein|noch keine|ohne)\s+(?:eigenes?\s+)?(?:logo|design|grafik|vorlage|datei)\b/i.test(text);
   const designServiceRequest = /\b(?:k(?:ö|oe)nnt|k(?:ö|oe)nnen|bitte|sollt|m(?:ö|oe)chtet|brauche|ben(?:ö|oe)tige)[^.!?]{0,80}\b(?:design(?:en)?|gestalt(?:en|et)|entwerf(?:en|t)|erstell(?:en|t)|zeichn(?:en|et)|logo\s+mach(?:en|t))\b/i.test(text);
+  const designPendingStatement = /(?:\b(?:design|logo|grafik|vorlage|datei)\b[^.!?\n]{0,50}\b(?:folgt|kommt)(?:\s+(?:noch|später|spaeter))?\b|\b(?:design|logo|grafik|vorlage|datei)\b[^.!?\n]{0,50}\b(?:wird\s+)?nachgereicht\b|\b(?:design|logo|grafik|vorlage|datei)\b[^.!?\n]{0,50}\breiche\s+ich\s+(?:noch\s+)?nach\b)/i.test(text);
   const suppliedTextDesign = /(?:\b(?:schriftzug|spruch|slogan|text|wortlaut)\s*(?::|soll|lautet|mit)\s*[^.!?\n]{2,}|\b(?:drauf|darauf)\s+(?:soll\s+)?(?:stehen|lauten)\b|["'“”„][^"'“”„]{2,}["'“”„]\s*(?:als\s+)?(?:text|schriftzug|spruch|slogan)\b)/i.test(text);
   if (designServiceRequest) return 'design_service_requested';
-  if (suppliedTextDesign) return 'text_design_supplied';
+  if (designPendingStatement) return 'design_pending';
   if (noDesignStatement) return 'no_design_declared';
+  if (suppliedTextDesign) return 'text_design_supplied';
   return '';
+}
+
+function normalizeProduct(value) {
+  return clean(value, 120)
+    .toLocaleLowerCase('de-DE')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 const firstNameRaw = clean(candidate.customer_first_name, 80);
@@ -85,18 +95,36 @@ const sourceKind = String(candidate.source_kind || '').toLowerCase();
 const attachmentSourceKind = String(history.attachment_source_kind || '').toLowerCase();
 const attachmentContextOk = history.attachment_context_ok === true
   && attachmentSourceKind === sourceKind;
-const attachmentState = attachmentContextOk && ['present', 'missing', 'not_applicable'].includes(String(history.attachment_state || ''))
+const persistedAttachmentState = attachmentContextOk && ['present', 'missing', 'not_applicable'].includes(String(history.attachment_state || ''))
   ? String(history.attachment_state)
   : 'unknown';
+const outlookNoAttachmentMarker = sourceKind === 'outlook_email'
+  && /\bdatei\s+anh(?:ä|ae)ngen\s*:\s*(?:-|keine?|nein|nicht\s+vorhanden)(?:\s|$)/i.test(clean(candidate.description, 3000));
+const attachmentState = outlookNoAttachmentMarker ? 'missing' : persistedAttachmentState;
 const designExceptionReason = designContextException(candidate.description);
+const designBlocksConfigurator = ['design_service_requested', 'design_pending', 'no_design_declared'].includes(designExceptionReason);
 const formSource = ['landing-page-form', '2418'].includes(sourceKind);
 const configuratorSource = ['landing-page-form', '2418', 'outlook_email'].includes(sourceKind);
+const productContextOk = history.product_context_ok === true
+  && attachmentSourceKind === sourceKind;
+const productType = productContextOk ? normalizeProduct(history.product_type) : '';
+const knownProduct = productType.length > 0;
+const neonProduct = new Set([
+  'neonschild',
+  'neon schild',
+  'led neonschild',
+  'led neon schild',
+  'led flex',
+]).has(productType);
+const textIndicatesNeon = /\b(?:neon(?:schild|zeichen|schriftzug|sign)?|schriftzug)\b/i.test(clean(candidate.description, 3000));
+const neonRequest = neonProduct || (!knownProduct && textIndicatesNeon);
 const configuratorReply = configuratorSource
   && attachmentState === 'missing'
-  && designExceptionReason === 'text_design_supplied';
+  && neonRequest
+  && !designBlocksConfigurator;
 const replyKind = configuratorReply
   ? 'configurator_link'
-  : formSource && attachmentState === 'missing' && !designExceptionReason
+  : formSource && attachmentState === 'missing' && !designBlocksConfigurator
     ? 'missing_design'
     : 'normal';
 const context = {
@@ -148,7 +176,11 @@ return [{ json: {
   relationship_lookup_ok: history.lookup_ok === true,
   attachment_context_ok: attachmentContextOk,
   attachment_state: attachmentState,
+  outlook_no_attachment_marker: outlookNoAttachmentMarker,
   attachment_rule_version: clean(history.attachment_rule_version, 80),
+  product_context_ok: productContextOk,
+  product_type: productType,
+  neon_request: neonRequest,
   missing_design_exception_reason: designExceptionReason,
   reply_kind: replyKind,
   ai_prompt: prompt,

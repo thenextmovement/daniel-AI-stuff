@@ -41,6 +41,7 @@ insert into public.master_requests (
   size,
   application,
   form_id,
+  product_type,
   attribution_raw
 ) values (
   '20000000-0000-4000-8000-000000000001',
@@ -52,6 +53,7 @@ insert into public.master_requests (
   '120 x 60 cm',
   'Außenbereich',
   'landing-page-form',
+  'LED Neonschild',
   '{}'::jsonb
 );
 
@@ -68,11 +70,39 @@ begin
      or relationship ->> 'match_method' <> 'exact_normalized_email'
      or relationship ->> 'attachment_state' <> 'missing'
      or (relationship ->> 'attachment_context_ok')::boolean is not true
-     or relationship ->> 'attachment_source_kind' <> 'landing-page-form' then
+     or relationship ->> 'attachment_source_kind' <> 'landing-page-form'
+     or relationship ->> 'product_type' <> 'LED Neonschild'
+     or (relationship ->> 'product_context_ok')::boolean is not true then
     raise exception 'Current request was incorrectly treated as history: %', relationship;
   end if;
 end;
 $$;
+
+-- Outlook product context is returned, but attachment state stays fail-closed.
+update public.master_requests
+set form_id = 'outlook_email'
+where request_id = 'REQ-AUTOREPLY-TEST-1';
+
+do $$
+declare
+  context jsonb;
+begin
+  select public.get_request_autoreply_relationship_context(
+    'thomas@kundendomain.de',
+    'REQ-AUTOREPLY-TEST-1'
+  ) into context;
+  if context ->> 'attachment_state' <> 'not_applicable'
+     or (context ->> 'attachment_context_ok')::boolean is not true
+     or context ->> 'attachment_source_kind' <> 'outlook_email'
+     or context ->> 'product_type' <> 'LED Neonschild' then
+    raise exception 'Persisted Outlook request context was not returned: %', context;
+  end if;
+end;
+$$;
+
+update public.master_requests
+set form_id = 'landing-page-form'
+where request_id = 'REQ-AUTOREPLY-TEST-1';
 
 -- Attachment context is taken only from the persisted request row.
 update public.master_requests

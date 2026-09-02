@@ -93,6 +93,8 @@ const missingAttachmentHistory = {
   attachment_state: "missing",
   attachment_source_kind: "landing-page-form",
   attachment_rule_version: "neontrip_form_file_urls_v1",
+  product_context_ok: true,
+  product_type: "",
 };
 
 assert.equal(runBuildPrompt(missingAttachmentHistory).reply_kind, "missing_design");
@@ -134,6 +136,58 @@ const noDesignDeclared = runBuildPrompt(missingAttachmentHistory, {
 assert.equal(noDesignDeclared.reply_kind, "normal");
 assert.equal(noDesignDeclared.missing_design_exception_reason, "no_design_declared");
 
+const noDesignDespiteSuppliedText = runBuildPrompt({
+  ...missingAttachmentHistory,
+  product_type: "LED Neonschild",
+}, {
+  description: "Ich habe noch kein Design. Der Text soll OPEN 24/7 lauten.",
+});
+assert.equal(noDesignDespiteSuppliedText.reply_kind, "normal");
+assert.equal(noDesignDespiteSuppliedText.missing_design_exception_reason, "no_design_declared");
+
+const designFollows = runBuildPrompt({
+  ...missingAttachmentHistory,
+  product_type: "LED Neonschild",
+}, {
+  description: "Das Design folgt noch. Die gewünschte Breite ist 100 cm.",
+});
+assert.equal(designFollows.reply_kind, "normal");
+assert.equal(designFollows.missing_design_exception_reason, "design_pending");
+
+const neonWithoutAttachment = runBuildPrompt({
+  ...missingAttachmentHistory,
+  product_type: "LED Neonschild",
+}, {
+  description: "",
+});
+assert.equal(neonWithoutAttachment.reply_kind, "configurator_link");
+assert.equal(neonWithoutAttachment.product_type, "led neonschild");
+assert.equal(neonWithoutAttachment.neon_request, true);
+
+const lightboxWithoutAttachment = runBuildPrompt({
+  ...missingAttachmentHistory,
+  product_type: "Leuchtkasten",
+}, {
+  request_id: "f81fc279-0b26-4a58-9759-9cd1b8e5500c",
+  recipient: "reifen-info@gmx.de",
+  customer_first_name: "Reifen",
+  description: "130x130cm",
+  size: "130 cm",
+  color: "Wie im Logo",
+});
+assert.equal(lightboxWithoutAttachment.reply_kind, "missing_design");
+assert.equal(lightboxWithoutAttachment.product_type, "leuchtkasten");
+assert.equal(lightboxWithoutAttachment.neon_request, false);
+
+const knownLightboxWithText = runBuildPrompt({
+  ...missingAttachmentHistory,
+  product_type: "Leuchtkasten",
+}, {
+  description: "Der Schriftzug soll OPEN 24/7 lauten.",
+});
+assert.equal(knownLightboxWithText.reply_kind, "missing_design");
+assert.equal(knownLightboxWithText.neon_request, false);
+
 const suppliedText = runBuildPrompt(missingAttachmentHistory, {
   description: "Der Schriftzug soll OPEN 24/7 lauten; bei der Schriftart bin ich noch unsicher.",
 });
@@ -144,26 +198,28 @@ const ingaHistory = {
   lookup_ok: true,
   relationship_type: "new",
   attachment_context_ok: true,
-  attachment_state: "missing",
+  attachment_state: "not_applicable",
   attachment_source_kind: "outlook_email",
-  attachment_rule_version: "outlook_attachment_context_v1",
+  attachment_rule_version: "neontrip_request_file_urls_product_v2",
+  product_context_ok: true,
+  product_type: "",
 };
 const ingaRequest = runBuildPrompt(ingaHistory, {
   request_id: "000ff1ce-39e3-469a-8338-e368103be36c",
   source_kind: "outlook_email",
   recipient: "inga.baumert@swot.de",
   customer_first_name: "Inga",
-  description: 'Der Schriftzug lautet "#ControllerDialog". Datei Anhängen: -',
+  description: 'Der Schriftzug lautet "#ControllerDialog".\nDatei Anhängen: -',
   size: "smallest size",
   color: "as design",
 });
 assert.equal(ingaRequest.reply_kind, "configurator_link");
 assert.equal(ingaRequest.missing_design_exception_reason, "text_design_supplied");
+assert.equal(ingaRequest.outlook_no_attachment_marker, true);
 assert.equal(ingaRequest.recipient, "inga.baumert@swot.de");
 
 assert.equal(runBuildPrompt({
   ...ingaHistory,
-  attachment_state: "present",
 }, {
   source_kind: "outlook_email",
   description: 'Der Schriftzug lautet "#ControllerDialog".',
