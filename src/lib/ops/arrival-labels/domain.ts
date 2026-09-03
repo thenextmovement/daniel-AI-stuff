@@ -220,6 +220,9 @@ const OPTIONAL_STANDARD_ATTRIBUTE_KEYS = new Set([
   "Request Segment Status",
   "Rechnungs-E-Mail",
   "Projektnummer",
+  "NEONTRIP Admin URL",
+  "NEONTRIP Contact Fallback",
+  "NEONTRIP Contact Omitted",
 ]);
 const VAT_ID = /^[A-Z]{2}[A-Z0-9]{6,14}$/;
 

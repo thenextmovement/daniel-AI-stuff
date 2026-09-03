@@ -668,7 +668,7 @@ test("NEONTRIP offer metadata ignores billing-only additions but keeps shipping 
   assert.ok(unknownAttribute.reasonCodes.includes("non_standard_shopify_attribute"));
 });
 
-test("billing-only Shopify metadata can plan standard and Express 12 arrival labels", () => {
+test("billing and internal contact metadata can plan standard and Express 12 arrival labels", () => {
   const offerId = "cmabc123456789";
   const publicToken = "_xRsfRkigEtPxgkXGBn7uDigErOGrmodund2IhoRALI";
   const note = [
@@ -687,10 +687,13 @@ test("billing-only Shopify metadata can plan standard and Express 12 arrival lab
     { key: "NEONTRIP PDF Snapshot", value: `https://angebote.neontrip.de/offer/${publicToken}/pdf` },
     { key: "Trello Card ID", value: "0123456789abcdef01234567" },
     { key: "Idempotency Key", value: `offer:${offerId}:shopify-sale:v1` },
-    { key: "Invoice Mail Intended", value: "yes_private_email" },
+    { key: "Invoice Mail Intended", value: "customer_email_suppressed_for_billing_cutover" },
     { key: "Nerdy-Forms_ID", value: "101dcb01-291d-4a22-a624-5fb0f2dbcccd" },
     { key: "Rechnungs-E-Mail", value: "billing@example.invalid" },
     { key: "Projektnummer", value: "Interne Referenz" },
+    { key: "NEONTRIP Admin URL", value: "https://angebote.neontrip.de/admin/offers/internal-reference" },
+    { key: "NEONTRIP Contact Fallback", value: "yes" },
+    { key: "NEONTRIP Contact Omitted", value: "phone_invalid" },
   ];
 
   for (const [title, expectedClass, expectedProduct] of [
@@ -708,6 +711,17 @@ test("billing-only Shopify metadata can plan standard and Express 12 arrival lab
     assert.equal(decision.status, "label_planned", title);
     assert.equal(decision.shippingClass, expectedClass, title);
     assert.equal(decision.selectedDpdProduct, expectedProduct, title);
+
+    const pickup = assessShopifyAutomationGate({ ...order, note: `${note}\nSelbstabholung` });
+    assert.equal(pickup.blocked, true);
+    assert.ok(pickup.reasonCodes.includes("pickup_instruction"));
+
+    const unknownShippingAttribute = assessShopifyAutomationGate({
+      ...order,
+      customAttributes: [...customAttributes, { key: "NEONTRIP Shipping Override", value: "alternate_address" }],
+    });
+    assert.equal(unknownShippingAttribute.blocked, true);
+    assert.ok(unknownShippingAttribute.reasonCodes.includes("non_standard_shopify_attribute"));
   }
 });
 
