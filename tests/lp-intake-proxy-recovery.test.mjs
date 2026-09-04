@@ -86,12 +86,31 @@ test('LP intake proxy recovery contract', async (t) => {
     globalThis.fetch = (_url, options) => {
       assert.equal(options.body.get('email'), 'Internal@neontrip-test.de');
       assert.equal(options.body.get('firma'), null);
+      assert.equal(options.body.get('project_context'), 'Messe, Event oder Pop-up');
+      assert.equal(options.body.get('quantity_band'), 'Serienproduktion 21+ Stück');
+      assert.equal(options.body.get('desired_deadline'), '2026-09-25');
+      assert.equal(
+        options.body.get('nachricht'),
+        'Bitte um Machbarkeitsprüfung.\n\n' +
+          'Projektqualifizierung:\n' +
+          'Anwendungsfall: Messe, Event oder Pop-up\n' +
+          'Menge / Rollout: Serienproduktion 21+ Stück\n' +
+          'Wunschtermin: 2026-09-25'
+      );
+      assert.equal(
+        options.body.get('custom_6703d0b36ebc54_95825950'),
+        'Wunschtermin 2026-09-25'
+      );
       return new Promise((resolve) => { release = resolve; });
     };
     try {
       const formData = new FormData();
       formData.set('name', 'Internal Test');
       formData.set('email', 'Internal@NEONTRIP-TEST.DE');
+      formData.set('nachricht', 'Bitte um Machbarkeitsprüfung.');
+      formData.set('project_context', 'Messe, Event oder Pop-up');
+      formData.set('quantity_band', 'Serienproduktion 21+ Stück');
+      formData.set('desired_deadline', '2026-09-25');
       const request = new Request('https://anfrage.neontrip.de/api/c', {
         method: 'POST',
         headers: { 'X-Client-Submit-Id': clientSubmitId },

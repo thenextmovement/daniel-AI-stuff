@@ -103,7 +103,7 @@
         <!-- Stats Bar -->
         <div class="reveal grid grid-cols-2 md:grid-cols-4 gap-8 mb-6">
           <div class="text-center">
-            <div class="text-3xl md:text-5xl font-semibold tracking-tight text-white leading-none mb-2" data-count="8247" data-suffix="+">0</div>
+            <div class="text-3xl md:text-5xl font-semibold tracking-tight text-white leading-none mb-2" data-count="{{PROJECT_COUNTER_SOURCE_RAW}}" data-suffix="+">0</div>
             <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Projekte</p>
           </div>
           <div class="text-center">
@@ -115,8 +115,8 @@
             <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Pünktliche Lieferung</p>
           </div>
           <div class="text-center">
-            <div class="text-3xl md:text-5xl font-semibold tracking-tight text-white leading-none mb-2" data-count="3" data-suffix=" Tage">0</div>
-            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Express Lieferung</p>
+            <div class="text-3xl md:text-5xl font-semibold tracking-tight text-white leading-none mb-2">{{EXPRESS_STAT_VALUE}}</div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">{{EXPRESS_STAT_LABEL}}</p>
           </div>
         </div>
 

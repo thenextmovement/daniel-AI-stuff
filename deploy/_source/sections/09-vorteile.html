@@ -16,8 +16,8 @@
           <div class="w-9 h-9 md:w-11 md:h-11 rounded-lg md:rounded-xl bg-dark flex items-center justify-center mb-2 md:mb-3 mx-auto">
             <svg class="w-5 h-5 md:w-6 md:h-6 text-white icon-drive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
           </div>
-          <h3 class="text-sm md:text-lg font-semibold text-dark tracking-[-0.03em] mb-0.5 md:mb-1.5">Express in 3 Tagen</h3>
-          <p class="text-[11px] md:text-sm font-medium text-dark/60 leading-[1.4]">Europaweit bei Eilaufträgen.</p>
+          <h3 class="text-sm md:text-lg font-semibold text-dark tracking-[-0.03em] mb-0.5 md:mb-1.5">{{EXPRESS_HEADLINE}}</h3>
+          <p class="text-[11px] md:text-sm font-medium text-dark/60 leading-[1.4]">{{EXPRESS_COPY}}</p>
         </div>
 
         <!-- USP 2: 24h Entwurf -->
@@ -25,8 +25,8 @@
           <div class="w-9 h-9 md:w-11 md:h-11 rounded-lg md:rounded-xl bg-dark flex items-center justify-center mb-2 md:mb-3 mx-auto">
             <svg class="w-5 h-5 md:w-6 md:h-6 text-white icon-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
-          <h3 class="text-sm md:text-lg font-semibold text-dark tracking-[-0.03em] mb-0.5 md:mb-1.5">Entwurf in Minuten</h3>
-          <p class="text-[11px] md:text-sm font-medium text-dark/60 leading-[1.4]">3D-Vorschau mit Angebot.</p>
+          <h3 class="text-sm md:text-lg font-semibold text-dark tracking-[-0.03em] mb-0.5 md:mb-1.5">3D-Vorschau in 24h</h3>
+          <p class="text-[11px] md:text-sm font-medium text-dark/60 leading-[1.4]">Kostenlos; Angebot auf dieser Grundlage.</p>
         </div>
 
         <!-- USP 3: 30 Min Rückruf -->
@@ -73,8 +73,8 @@
             <svg class="w-5 h-5 text-dark/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           </div>
           <div>
-            <p class="text-sm font-semibold text-dark tracking-[-0.03em] mb-1">Warum Unternehmen ihre Neon Schilder bei NEONTRIP bestellen</p>
-            <p class="text-sm text-dark/60 leading-relaxed">Persönlicher Ansprechpartner, kostenlose 3D-Vorschau in 24h, Qualitätskontrolle vor Versand und termingerechte Lieferung — auch bei Express. Jedes Neon Schild wird individuell nach Ihrem Design gefertigt.</p>
+            <p class="text-sm font-semibold text-dark tracking-[-0.03em] mb-1">{{VORTEILE_SUMMARY_TITLE}}</p>
+            <p class="text-sm text-dark/60 leading-relaxed">{{VORTEILE_SUMMARY_COPY}}</p>
           </div>
         </div>
       </div>
@@ -94,6 +94,13 @@
     function openFormPopup(product) {
       if (typeof gtag === 'function') {
         gtag('event', 'cta_click', { event_category: 'engagement', event_label: 'anfrage_' + product, value: 50 });
+      }
+      if ({{USE_LOCAL_FORM_CTA}}) {
+        const localForm = document.getElementById('hero');
+        if (localForm) {
+          localForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
       }
       const targetUrl = '../anfrage.html?produkt=' + encodeURIComponent(product);
       window.open(window.ntAppendTrackingParams ? window.ntAppendTrackingParams(targetUrl) : targetUrl, '_blank');

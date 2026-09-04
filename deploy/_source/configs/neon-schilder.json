@@ -3,6 +3,34 @@
   "openai_ads_pixel_id": "6GqgnrdSPjJSGdthY89B9Y",
   "hero_video_desktop": "../assets/videos/hero-desktop-neon.mp4",
   "hero_video_mobile": "../assets/videos/hero-mobile-neon.mp4",
+  "hero_poster_desktop": "../assets/images/hero-poster-desktop-neon.webp",
+  "hero_poster_mobile": "../assets/images/hero-poster-neon-mobile.webp",
+  "hero_poster_alt_desktop": "Individuelles LED-Neonschild von NEONTRIP",
+  "hero_poster_alt_mobile": "Individuelles LED-Neonlogo von NEONTRIP",
+  "enable_b2b_project_context": true,
+  "use_local_form_cta": true,
+  "project_count_label": "9.238+ realisierte Projekte",
+  "reference_project_count_label": "9.238+ Projekte für Agenturen, Marken und Unternehmen jeder Größe",
+  "review_summary": "4,9/5 bei 236 Bewertungen",
+  "project_counter_base": 9238,
+  "project_counter_static": true,
+  "project_counter_source_raw": 9238,
+  "project_counter_source_label": "9.238",
+  "express_form_label": "Express-Fertigung (ab 3 Werktagen)",
+  "express_stat_value": "ab 3",
+  "express_stat_label": "Werktage Express",
+  "delivery_process_copy": "Montagefertig geliefert — Express ab 3 Werktagen",
+  "express_headline": "Express ab 3 Werktagen",
+  "express_copy": "Deutschlandweit bei bestätigten Eilaufträgen.",
+  "vorteile_summary_title": "Warum Unternehmen LED-Neonschilder bei NEONTRIP bestellen",
+  "vorteile_summary_copy": "Persönliche Beratung, kostenlose 3D-Vorschau in 24h, Qualitätskontrolle und montagefertige Lieferung — auch für Sonderanfertigungen, Serien und dringende Projekte.",
+  "contact_advisor_copy": "Persönliche Beratung von der Idee bis zur montagefertigen LED-Neonlösung.",
+  "ai_citable_description": "NEONTRIP ist B2B-Spezialist für individuelle LED-Neonschilder, Neonlogos und Leuchtschriften aus Düsseldorf.",
+  "ai_citable_offer": "LED-Neonschilder werden individuell nach Logo, Text, Farbe, Größe sowie Innen- oder Außeneinsatz gefertigt.",
+  "ai_citable_delivery": "Die Standardfertigung für LED-Neonschilder beträgt 7–10 Werktage; Express-Fertigung ist ab 3 Werktagen möglich.",
+  "ai_citable_material": "Material: LED Neon Flex auf Acrylglasplatte; montagefertig, bruchsicher und für gewerbliche Innen- oder Außeneinsätze konfigurierbar.",
+  "ai_citable_proof": "9.238+ realisierte Projekte für Marken und Unternehmen. 4,9 von 5 Sternen bei 236 Google-Bewertungen.",
+  "whatsapp_message": "Hallo, ich interessiere mich für ein individuelles LED-Neonschild für mein Unternehmen. Können Sie mich beraten?",
   "lang": "de",
   "title": "Individuelle Neon Schilder & LED Schriftzüge | NEONTRIP Düsseldorf",
   "meta_description": "Kostenlose 3D-Vorschau in 24h für Ihr Design als Neon Schild oder LED Schriftzug. Festpreisangebot erhalten und unverbindlich anfragen.",
@@ -292,7 +320,7 @@
       "@type": "LocalBusiness",
       "name": "NEONTRIP",
       "legalName": "Dara Nova GmbH",
-      "description": "Deutsches Unternehmen für individuelle Neon Schilder, LED Neon Schriftzüge und personalisierte Leuchtschriften. Über 8.247 B2B-Projekte realisiert. Kostenlose 3D-Vorschau in 24h.",
+      "description": "Deutsches Unternehmen für individuelle Neon Schilder, LED Neon Schriftzüge und personalisierte Leuchtschriften. 9.238+ B2B-Projekte realisiert. Kostenlose 3D-Vorschau in 24h.",
       "url": "https://neontrip.de",
       "telephone": "+49-211-54257240",
       "email": "support@neontrip.de",
@@ -359,7 +387,7 @@
           "name": "Was kostet ein individuelles Neon Schild?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Individuelle Neon Schilder kosten je nach Größe, Farbe und Komplexität ab 299 € für einfache LED Neon Schriftzüge. Mittlere Projekte wie personalisierte Neon Logos oder Bar-Schilder liegen bei 500–2.500 €. Großformatige Neon Schilder für Fassaden oder Messen können ab 5.000 € kosten. NEONTRIP erstellt innerhalb von 24 Stunden eine kostenlose 3D-Vorschau mit Festpreisangebot."
+            "text": "Individuelle Neon Schilder kosten je nach Größe, Farbe und Komplexität ab 299 € für einfache LED Neon Schriftzüge. Mittlere Projekte wie personalisierte Neon Logos oder Bar-Schilder liegen bei 500–2.500 €. Großformatige Neon Schilder für Fassaden oder Messen können ab 5.000 € kosten. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau. Ihr Festpreisangebot erstellen wir auf dieser Grundlage."
           }
         },
         {
@@ -463,7 +491,7 @@
           "name": "Wie läuft die Bestellung eines individuellen Neon Schilds ab?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Der Bestellprozess umfasst vier Schritte: 1. Logo, Text oder Idee als Datei oder Foto senden. 2. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau Ihres Neon Schilds mit Festpreisangebot. 3. Nach Freigabe und Bezahlung startet die Fertigung. 4. Das fertige Neon Schild wird montagefertig mit komplettem Zubehör europaweit geliefert."
+            "text": "Der Bestellprozess umfasst vier Schritte: 1. Logo, Text oder Idee als Datei oder Foto senden. 2. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau Ihres Neon Schilds. Ihr Festpreisangebot erstellen wir auf dieser Grundlage. 3. Nach Freigabe und Bezahlung startet die Fertigung. 4. Das fertige Neon Schild wird montagefertig mit komplettem Zubehör europaweit geliefert."
           }
         }
       ]
@@ -505,7 +533,7 @@
       "@type": "VideoObject",
       "name": "NEONTRIP — Individuelle Neon Schilder & LED Schriftzüge",
       "description": "Einblick in die Fertigung und Installation individueller LED Neon Schilder und Leuchtschriftzüge von NEONTRIP aus Düsseldorf.",
-      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster-desktop-neon.webp",
       "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
       "uploadDate": "2025-01-01"
     }

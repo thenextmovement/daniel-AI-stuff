@@ -11,6 +11,10 @@ const serverSource = await readFile(
   new URL('../functions/api/c.js', import.meta.url),
   'utf8'
 );
+const pageSource = await readFile(
+  new URL('../deploy/_source/layouts/base.html', import.meta.url),
+  'utf8'
+);
 
 function loadValidator(lang = 'de') {
   const context = {
@@ -205,6 +209,20 @@ test('business-email error renders one localized mail fallback and clears on val
     assert.equal(input.getAttribute('aria-invalid'), null);
     assert.equal(input.validationMessage, '');
   }
+});
+
+test('business-email mail fallback cannot emit a lead conversion', () => {
+  assert.doesNotMatch(source, /\boaiq\b|\bgtag\b|lead_created|generate_lead/);
+  assert.match(
+    pageSource,
+    /rawHref\.startsWith\('mailto:'\)/,
+    'global attribution decorator must leave mail links untouched'
+  );
+  assert.match(
+    pageSource,
+    /\.then\(function\(result\) \{ return window\.ntRequirePersistedReceipt\(result, submitId\); \}\)/,
+    'lead flow must require a persisted server receipt before resolving'
+  );
 });
 
 test('client and server use the same blocked provider-domain set', () => {

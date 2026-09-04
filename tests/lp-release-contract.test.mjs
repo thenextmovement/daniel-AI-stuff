@@ -23,12 +23,38 @@ const standalonePages = [
   ['deploy/en/anfrage.html', 'en', 'https://anfrage.neontrip.de/en/anfrage'],
 ];
 
+const b2bCampaignPages = [
+  ['deploy/neon-schilder/index.html', 'fixed'],
+  ['deploy/firmenlogo-beleuchtet/index.html', 'feasibility'],
+  ['deploy/leuchtbuchstaben/index.html', 'feasibility'],
+];
+
+const deLocationPages = generatedPages
+  .filter(([, lang]) => lang === 'de')
+  .map(([path]) => path);
+
 async function load(path) {
   return readFile(new URL('../' + path, import.meta.url), 'utf8');
 }
 
 function occurrences(value, search) {
   return value.split(search).length - 1;
+}
+
+function namedControls(html, name) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return Array.from(html.matchAll(new RegExp(
+    '<(?:input|select|textarea)\\b[^>]*\\bname=["\\\']' + escapedName + '["\\\'][^>]*>',
+    'gi'
+  )));
+}
+
+function assertOptionalNamedControls(html, path, name, expectedCount) {
+  const controls = namedControls(html, name);
+  assert.equal(controls.length, expectedCount, path + ' ' + name + ' control count');
+  for (const match of controls) {
+    assert.doesNotMatch(match[0], /\brequired\b/i, path + ' ' + name + ' remains optional');
+  }
 }
 
 function assertTrackingContract(html, path, lang) {
@@ -43,7 +69,7 @@ function assertTrackingContract(html, path, lang) {
   assert.match(html, /CookiebotOnDecline/);
   assert.match(html, /lead_created/);
   assert.match(html, /event_id/);
-  assert.match(html, /nt-business-email\.js\?v=f38001df/);
+  assert.match(html, /nt-business-email\.js\?v=78b9b0ce/);
   assert.match(html, /oppref/);
   assert.match(html, /campaign_id/);
   assert.match(html, /ad_group_id/);
@@ -91,6 +117,65 @@ test('standalone quote wizards carry the same contract and canonical URL', async
       /emailField\.addEventListener\('blur',[\s\S]*?ntBusinessEmail\.validateInput\(emailField\)/,
       path + ' blur uses the central business-email validator'
     );
+    if (lang === 'de') {
+      assert.match(html, /Kostenlose 3D-Vorschau innerhalb von 24h/);
+      assert.doesNotMatch(html, /Angebot(?: \+ 3D Vorschau)? in 24h|Vorschau-Bild \+ Angebot in 24h/);
+    } else {
+      assert.match(html, /Free 3D preview within 24h/i);
+      assert.doesNotMatch(html, /Preview Image \+ Quote within 24h|response within 24h/i);
+    }
+  }
+});
+
+test('all German generated landing pages send the n8n-compatible location field', async () => {
+  for (const path of deLocationPages) {
+    const html = await load(path);
+    const ortControls = namedControls(html, 'ort');
+    assert.ok([4, 6].includes(ortControls.length), path + ' has an inside/outside pair in every form');
+    assert.equal(namedControls(html, 'einsatzort').length, 0, path + ' has no ignored legacy location field');
+    assert.equal(occurrences(html, 'value="innen"'), ortControls.length / 2, path + ' has normalized indoor values');
+    assert.equal(occurrences(html, 'value="aussen"'), ortControls.length / 2, path + ' has normalized outdoor values');
+  }
+});
+
+test('three B2B campaign routes expose optional qualification fields and approved claims', async () => {
+  for (const [path, expressContract] of b2bCampaignPages) {
+    const html = await load(path);
+
+    assertOptionalNamedControls(html, path, 'project_context', 3);
+    assertOptionalNamedControls(html, path, 'quantity_band', 3);
+    assertOptionalNamedControls(html, path, 'desired_deadline', 3);
+
+    const fileInputs = Array.from(html.matchAll(/<input\b[^>]*\btype=["']file["'][^>]*>/gi));
+    assert.ok(fileInputs.length > 0, path + ' upload exists');
+    for (const match of fileInputs) {
+      assert.doesNotMatch(match[0], /\brequired\b/i, path + ' upload remains optional');
+    }
+    assertOptionalNamedControls(html, path, 'firma', 3);
+
+    assert.match(html, /9\.238\+ realisierte Projekte/, path + ' uses approved project count');
+    assert.doesNotMatch(html, /8\.247/, path + ' has no stale project count');
+    assert.match(html, /4,9\/5 bei 236 Bewertungen/, path + ' uses approved review summary');
+    assert.match(html, /Kostenlose 3D-Vorschau in 24h/, path + ' uses approved preview timing');
+    assert.match(html, /Anfrage in 60 Sekunden/, path + ' states form completion time precisely');
+    assert.doesNotMatch(html, /Anfrage in 1 Minute/, path + ' has no conflicting form timing');
+    assert.doesNotMatch(html, /Angebot in Minuten/, path + ' has no unsupported offer timing');
+    assert.doesNotMatch(html, /Innerhalb von 24h mit Angebot \+ 3D-Vorschau/, path + ' does not promise the offer within 24h');
+    assert.doesNotMatch(html, /3D-Vorschau in 24h<\/h3><p[^>]*>Kostenlos mit Festpreisangebot/, path + ' separates preview timing from offer timing');
+    assert.match(html, /scrollIntoView/, path + ' keeps campaign CTAs on the product-specific local form');
+    assert.doesNotMatch(html, /\/anfrage\?produkt=/, path + ' does not route campaign CTAs to the generic wizard');
+
+    if (expressContract === 'fixed') {
+      assert.match(html, /Express ab 3 Werktagen/, path + ' uses the approved Neon express claim');
+      assert.doesNotMatch(html, /Express ab 14 Tagen/, path + ' has no stale express claim');
+    } else {
+      assert.match(
+        html,
+        /Express nach Machbarkeitsprüfung/,
+        path + ' makes express delivery conditional on feasibility'
+      );
+      assert.doesNotMatch(html, /Express ab (?:3 Werktagen|14 Tagen)/, path + ' has no fixed express promise');
+    }
   }
 });
 

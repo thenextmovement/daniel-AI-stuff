@@ -1,12 +1,44 @@
 {
   "slug": "firmenlogo-beleuchtet",
   "hero_video_desktop": "../assets/videos/hero-desktop-leuchtbuchstaben.mp4",
+  "hero_video_mobile": "../assets/videos/hero-mobile.mp4",
+  "hero_poster_desktop": "../assets/images/hero-poster-desktop-leuchtbuchstaben.webp",
+  "hero_poster_mobile": "../assets/images/hero-poster-mobile.webp",
+  "hero_poster_alt_desktop": "Beleuchtetes Firmenlogo von NEONTRIP",
+  "hero_poster_alt_mobile": "Individuelles beleuchtetes Firmenlogo von NEONTRIP",
+  "enable_b2b_project_context": true,
+  "use_local_form_cta": true,
+  "project_count_label": "9.238+ realisierte Projekte",
+  "reference_project_count_label": "9.238+ Projekte für Agenturen, Marken und Unternehmen jeder Größe",
+  "review_summary": "4,9/5 bei 236 Bewertungen",
+  "project_counter_base": 9238,
+  "project_counter_static": true,
+  "project_counter_source_raw": 9238,
+  "project_counter_source_label": "9.238",
+  "express_form_label": "Express-Fertigung (nach Machbarkeitsprüfung)",
+  "express_stat_value": "Express",
+  "express_stat_label": "nach Machbarkeitsprüfung",
+  "delivery_process_copy": "Montagefertig geliefert — Express nach Machbarkeitsprüfung",
+  "express_headline": "Express nach Prüfung",
+  "express_copy": "Machbarkeit und Termin werden vorab bestätigt.",
+  "vorteile_summary_title": "Warum Unternehmen beleuchtete Firmenlogos bei NEONTRIP bestellen",
+  "vorteile_summary_copy": "Persönliche Beratung, kostenlose 3D-Vorschau in 24h, Qualitätskontrolle und montagefertige Lieferung — auch für Sonderanfertigungen, Serien und dringende Projekte.",
+  "contact_advisor_copy": "Persönliche Beratung von der Idee bis zum montagefertigen beleuchteten Firmenlogo.",
+  "ai_citable_description": "NEONTRIP ist B2B-Spezialist für beleuchtete Firmenlogos, LED-Wandlogos und individuelle 3D-Logos aus Düsseldorf.",
+  "ai_citable_offer": "Beleuchtete Firmenlogos werden individuell für Empfang, Büro, Showroom, Ladenfläche, Messe oder Außenfassade gefertigt.",
+  "ai_citable_delivery": "Die Standardfertigung für beleuchtete Firmenlogos beträgt 7–14 Werktage; Express ist nach Machbarkeitsprüfung möglich.",
+  "ai_citable_material": "Mögliche Bauarten sind LED-Wandlogos, front- oder rückbeleuchtete 3D-Buchstaben sowie LED-Neon nach Corporate-Design-Vorgaben.",
+  "ai_citable_proof": "9.238+ realisierte Projekte für Marken und Unternehmen. 4,9 von 5 Sternen bei 236 Google-Bewertungen.",
+  "whatsapp_message": "Hallo, ich interessiere mich für ein beleuchtetes Firmenlogo. Können Sie mich beraten?",
+  "section_override_aliases": {
+    "projekte": "logo"
+  },
   "lang": "de",
   "title": "Firmenlogo beleuchtet — LED Wandlogo nach Maß | NEONTRIP",
-  "meta_description": "Ihr Firmenlogo beleuchtet an der Wand — als LED, 3D-Buchstaben oder Neon. Innen & außen, IP67, ab 499 EUR. Kostenlose 3D-Visualisierung in 24h.",
+  "meta_description": "Ihr Firmenlogo beleuchtet an der Wand — als LED, 3D-Buchstaben oder Neon. Innen & außen, IP67, ab 499 EUR. Kostenlose 3D-Vorschau in 24h.",
   "canonical": "https://anfrage.neontrip.de/firmenlogo-beleuchtet/",
   "og_title": "NEONTRIP – Firmenlogo beleuchtet | LED Wandlogo nach Maß",
-  "og_description": "Ihr Firmenlogo beleuchtet an der Wand — als LED, 3D-Buchstaben oder Neon. Innen & außen, IP67, ab 499 EUR. Kostenlose 3D-Visualisierung in 24h.",
+  "og_description": "Ihr Firmenlogo beleuchtet an der Wand — als LED, 3D-Buchstaben oder Neon. Innen & außen, IP67, ab 499 EUR. Kostenlose 3D-Vorschau in 24h.",
   "h1_text": "Ihr Firmenlogo beleuchtet",
   "default_product": "LED Logo Wandschild",
   "product_options": "<option value=\"LED Logo Wandschild\">LED Logo Wandschild</option>\n                        <option value=\"3D Buchstaben (Rückbeleuchtet)\">3D Buchstaben (Rückbeleuchtet)</option>\n                        <option value=\"3D Buchstaben (Front)\">3D Buchstaben (Front)</option>\n                        <option value=\"LED Neonschild\">LED Neonschild</option>\n                        <option value=\"LED Schriftzug\">LED Schriftzug</option>\n                        <option value=\"Vollflächig beleuchtet\">Vollflächig beleuchtet</option>\n                        <option value=\"Unbeleuchtet\">Unbeleuchtet</option>\n                        <option value=\"Leuchtkasten\">Leuchtkasten</option>",
@@ -154,7 +186,7 @@
       "@type": "Organization",
       "name": "NEONTRIP",
       "legalName": "Dara Nova GmbH",
-      "description": "NEONTRIP ist Spezialist für beleuchtete Firmenlogos, LED Wandlogos und 3D-Leuchtbuchstaben aus Düsseldorf. Über 8.247 B2B-Projekte realisiert.",
+      "description": "NEONTRIP ist Spezialist für beleuchtete Firmenlogos, LED Wandlogos und 3D-Leuchtbuchstaben aus Düsseldorf. 9.238+ B2B-Projekte realisiert.",
       "url": "https://neontrip.de",
       "logo": "/assets/neontrip-favicon.svg",
       "telephone": "+49-211-54257240",
@@ -187,7 +219,7 @@
       "@type": "LocalBusiness",
       "name": "NEONTRIP",
       "legalName": "Dara Nova GmbH",
-      "description": "Spezialist für beleuchtete Firmenlogos, LED Wandlogos, 3D-Leuchtbuchstaben und Fassadenlogos aus Düsseldorf. Über 8.247 B2B-Projekte realisiert.",
+      "description": "Spezialist für beleuchtete Firmenlogos, LED Wandlogos, 3D-Leuchtbuchstaben und Fassadenlogos aus Düsseldorf. 9.238+ B2B-Projekte realisiert.",
       "url": "https://neontrip.de",
       "telephone": "+49-211-54257240",
       "email": "support@neontrip.de",
@@ -245,7 +277,7 @@
           "name": "Was kostet ein beleuchtetes Firmenlogo?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Beleuchtete Firmenlogos kosten je nach Technik, Größe und Montageort zwischen 499 € und 12.000 €. LED Wandlogos starten ab 499 €, hinterleuchtete 3D-Logos ab 799 €, großformatige Fassadenlogos typischerweise 2.500–8.000 €. NEONTRIP erstellt innerhalb von 24 Stunden ein kostenloses Angebot mit 3D-Visualisierung Ihres Logos an der Wand."
+            "text": "Beleuchtete Firmenlogos kosten je nach Technik, Größe und Montageort zwischen 499 € und 12.000 €. LED Wandlogos starten ab 499 €, hinterleuchtete 3D-Logos ab 799 €, großformatige Fassadenlogos typischerweise 2.500–8.000 €. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau. Ihr Festpreisangebot erstellen wir auf dieser Grundlage."
           }
         },
         {
@@ -301,7 +333,7 @@
           "name": "Wie schnell wird ein beleuchtetes Firmenlogo geliefert?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Standardlieferung erfolgt in 7–14 Werktagen ab Auftragsbestätigung. Für Ladeneröffnungen, Büro-Umzüge und Filial-Rollouts bieten wir Express-Fertigung ab 3 Werktagen. NEONTRIP ist auf termingenaue B2B-Lieferungen deutschlandweit spezialisiert."
+            "text": "Standardlieferung erfolgt in 7–14 Werktagen ab Auftragsbestätigung. Für Ladeneröffnungen, Büro-Umzüge und Filial-Rollouts ist Express-Fertigung nach Machbarkeitsprüfung möglich. NEONTRIP ist auf termingenaue B2B-Lieferungen deutschlandweit spezialisiert."
           }
         },
         {
@@ -317,7 +349,7 @@
           "name": "Wie läuft die Bestellung eines beleuchteten Firmenlogos ab?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Der Ablauf: 1. Logo hochladen, Wunschmaße und Montageort (innen/außen) angeben. 2. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau mit Angebot. 3. Nach Freigabe startet die Fertigung (7–14 Werktage, Express ab 3 Werktagen). 4. Lieferung montagefertig mit Zubehör — optional mit professionellem Montageservice deutschlandweit."
+            "text": "Der Ablauf: 1. Logo oder Idee senden, Wunschmaße und Montageort (innen/außen) angeben. 2. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau. Ihr Festpreisangebot erstellen wir auf dieser Grundlage. 3. Nach Freigabe startet die Fertigung (7–14 Werktage; Express nach Machbarkeitsprüfung). 4. Lieferung montagefertig mit Zubehör — optional mit professionellem Montageservice deutschlandweit."
           }
         }
       ]

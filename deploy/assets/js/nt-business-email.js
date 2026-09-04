@@ -160,6 +160,9 @@
     input.addEventListener('input', function () {
       if (!String(input.value || '').trim() || inspect(input.value).valid) clearError(input);
     });
+    input.addEventListener('blur', function () {
+      if (String(input.value || '').trim()) validateInput(input);
+    });
   }
 
   function decorateAll() {

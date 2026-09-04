@@ -42,14 +42,24 @@ function formWithFile() {
   form.set('name', 'Internal Test');
   form.set('email', 'internal@neontrip-test.de');
   form.set('request_id', clientSubmitId);
+  form.set('project_context', 'Filial- oder Serien-Rollout');
+  form.set('quantity_band', 'Rollout 6–20 Stück');
+  form.set('desired_deadline', '2026-10-15');
   form.append('datei', new File(['design'], 'design.svg', { type: 'image/svg+xml' }));
   return form;
+}
+
+function assertQualificationScalars(formData) {
+  assert.equal(formData.get('project_context'), 'Filial- oder Serien-Rollout');
+  assert.equal(formData.get('quantity_band'), 'Rollout 6–20 Stück');
+  assert.equal(formData.get('desired_deadline'), '2026-10-15');
 }
 
 test('rebuilds affected WebKit files before the only primary request', async () => {
   let calls = 0;
   const context = createContext(async (_url, options) => {
     calls += 1;
+    assertQualificationScalars(options.body);
     assert.equal(options.body.get('nt_webkit_file_rebuilt'), '1');
     assert.equal(options.body.get('datei').name, 'design.svg');
     return new Response(JSON.stringify({
@@ -76,6 +86,7 @@ test('uses one contact-only recovery after definitive invalid_body', async () =>
   let calls = 0;
   const context = createContext(async (_url, options) => {
     calls += 1;
+    assertQualificationScalars(options.body);
     if (calls === 1) {
       return new Response(JSON.stringify({
         ok: false,

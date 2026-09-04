@@ -95,6 +95,41 @@ function inspectBusinessEmail(value) {
   return { valid: true, normalized: `${local}@${domain}` };
 }
 
+function cleanQualificationValue(value, maxLength = 180) {
+  return String(value || "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function applyB2bQualificationProjection(formData) {
+  const projectContext = cleanQualificationValue(formData.get("project_context"));
+  const quantityBand = cleanQualificationValue(formData.get("quantity_band"));
+  const desiredDeadline = cleanQualificationValue(formData.get("desired_deadline"), 10);
+  const summaryLines = [];
+
+  if (projectContext) summaryLines.push(`Anwendungsfall: ${projectContext}`);
+  if (quantityBand) summaryLines.push(`Menge / Rollout: ${quantityBand}`);
+  if (desiredDeadline) summaryLines.push(`Wunschtermin: ${desiredDeadline}`);
+
+  if (summaryLines.length) {
+    const originalMessage = cleanQualificationValue(formData.get("nachricht"), 4000);
+    const qualificationSummary = `Projektqualifizierung:\n${summaryLines.join("\n")}`;
+    formData.set(
+      "nachricht",
+      originalMessage ? `${originalMessage}\n\n${qualificationSummary}` : qualificationSummary
+    );
+  }
+
+  if (
+    /^\d{4}-\d{2}-\d{2}$/.test(desiredDeadline) &&
+    !String(formData.get("custom_6703d0b36ebc54_95825950") || "").trim()
+  ) {
+    formData.set("custom_6703d0b36ebc54_95825950", `Wunschtermin ${desiredDeadline}`);
+  }
+}
+
 const CUSTOMER_MATCH_CONSENT_FIELDS = [
   "consent_ad_user_data",
   "consent_ad_personalization",
@@ -369,6 +404,7 @@ async function handlePost(request, ctx) {
     );
   }
   formData.set("email", businessEmail.normalized);
+  applyB2bQualificationProjection(formData);
 
   if (honeypot) {
     console.warn(`[c ${requestId}] honeypot prefilled with contact fields; forwarding`);

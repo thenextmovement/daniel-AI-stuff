@@ -1,12 +1,41 @@
 {
   "slug": "leuchtbuchstaben",
   "hero_video_desktop": "../assets/videos/hero-desktop-leuchtbuchstaben.mp4",
+  "hero_video_mobile": "../assets/videos/hero-mobile.mp4",
+  "hero_poster_desktop": "../assets/images/hero-poster-desktop-leuchtbuchstaben.webp",
+  "hero_poster_mobile": "../assets/images/hero-poster-mobile.webp",
+  "hero_poster_alt_desktop": "Individuelle 3D-Leuchtbuchstaben von NEONTRIP",
+  "hero_poster_alt_mobile": "Individuelle Leuchtbuchstaben von NEONTRIP",
+  "enable_b2b_project_context": true,
+  "use_local_form_cta": true,
+  "project_count_label": "9.238+ realisierte Projekte",
+  "reference_project_count_label": "9.238+ Projekte für Agenturen, Marken und Unternehmen jeder Größe",
+  "review_summary": "4,9/5 bei 236 Bewertungen",
+  "project_counter_base": 9238,
+  "project_counter_static": true,
+  "project_counter_source_raw": 9238,
+  "project_counter_source_label": "9.238",
+  "express_form_label": "Express-Fertigung (nach Machbarkeitsprüfung)",
+  "express_stat_value": "Express",
+  "express_stat_label": "nach Machbarkeitsprüfung",
+  "delivery_process_copy": "Montagefertig geliefert — Express nach Machbarkeitsprüfung",
+  "express_headline": "Express nach Prüfung",
+  "express_copy": "Machbarkeit und Termin werden vorab bestätigt.",
+  "vorteile_summary_title": "Warum Unternehmen 3D-Leuchtbuchstaben bei NEONTRIP bestellen",
+  "vorteile_summary_copy": "Persönliche Beratung, kostenlose 3D-Vorschau in 24h, Qualitätskontrolle und montagefertige Lieferung — auch für Großformate, Serien und dringende Projekte.",
+  "contact_advisor_copy": "Persönliche Beratung von der Idee bis zu montagefertigen 3D-Leuchtbuchstaben.",
+  "ai_citable_description": "NEONTRIP ist B2B-Spezialist für individuelle 3D-Leuchtbuchstaben und Profilbuchstaben aus Düsseldorf.",
+  "ai_citable_offer": "Leuchtbuchstaben werden front-, rück- oder seitenbeleuchtet aus Acryl, Aluminium oder Edelstahl nach Maß gefertigt.",
+  "ai_citable_delivery": "Die Standardfertigung für 3D-Leuchtbuchstaben beträgt 4–6 Wochen; Express ist nach Machbarkeitsprüfung möglich.",
+  "ai_citable_material": "Verfügbar sind front-, rück- oder seitenbeleuchtete Profilbuchstaben aus Acryl, Aluminium oder Edelstahl für innen und außen.",
+  "ai_citable_proof": "9.238+ realisierte Projekte für Marken und Unternehmen. 4,9 von 5 Sternen bei 236 Google-Bewertungen.",
+  "whatsapp_message": "Hallo, ich interessiere mich für individuelle 3D-Leuchtbuchstaben für mein Unternehmen. Können Sie mich beraten?",
   "lang": "de",
   "title": "3D Leuchtbuchstaben & Profilbuchstaben nach Maß | NEONTRIP Düsseldorf",
-  "meta_description": "3D Leuchtbuchstaben nach Maß — front-, rück- oder seitenbeleuchtet. Edelstahl, Acryl & Aluminium. Angebot + 3D-Vorschau in 24h. Express ab 14 Tagen.",
+  "meta_description": "3D Leuchtbuchstaben nach Maß — front-, rück- oder seitenbeleuchtet. Edelstahl, Acryl & Aluminium. Kostenlose 3D-Vorschau in 24h. Express nach Machbarkeitsprüfung.",
   "canonical": "https://anfrage.neontrip.de/leuchtbuchstaben/",
   "og_title": "NEONTRIP – 3D Leuchtbuchstaben & Profilbuchstaben nach Maß",
-  "og_description": "3D Leuchtbuchstaben nach Maß — front-, rück- oder seitenbeleuchtet. Edelstahl, Acryl & Aluminium. Angebot + 3D-Vorschau in 24h. Express ab 14 Tagen.",
+  "og_description": "3D Leuchtbuchstaben nach Maß — front-, rück- oder seitenbeleuchtet. Edelstahl, Acryl & Aluminium. Kostenlose 3D-Vorschau in 24h. Express nach Machbarkeitsprüfung.",
   "h1_text": "Ihr Logo als 3D Leuchtbuchstaben",
   "default_product": "3D Buchstaben (Front)",
   "product_options": "<option value=\"3D Buchstaben (Front)\">3D Buchstaben (Front)</option>\n                        <option value=\"3D Buchstaben (Rückbeleuchtet)\">3D Buchstaben (Rückbeleuchtet)</option>\n                        <option value=\"LED Logo Wandschild\">LED Logo Wandschild</option>\n                        <option value=\"LED Schriftzug\">LED Schriftzug</option>\n                        <option value=\"Unbeleuchtet\">Unbeleuchtet</option>\n                        <option value=\"LED Neonschild\">LED Neonschild</option>",
@@ -188,7 +217,7 @@
       "@type": "LocalBusiness",
       "name": "NEONTRIP",
       "legalName": "Dara Nova GmbH",
-      "description": "Deutscher Spezialist für individuelle 3D-Leuchtbuchstaben, Profilbuchstaben und beleuchtete Buchstaben. Über 8.247 B2B-Projekte realisiert. Kostenlose 3D-Vorschau in 24h.",
+      "description": "Deutscher Spezialist für individuelle 3D-Leuchtbuchstaben, Profilbuchstaben und beleuchtete Buchstaben. 9.238+ B2B-Projekte realisiert. Kostenlose 3D-Vorschau in 24h.",
       "url": "https://neontrip.de",
       "telephone": "+49-211-54257240",
       "email": "support@neontrip.de",
@@ -255,7 +284,7 @@
           "name": "Was kosten 3D-Leuchtbuchstaben?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "3D-Leuchtbuchstaben kosten je nach Größe, Material und Beleuchtungsart zwischen 499 € und 8.000 €. Einzelbuchstaben ab ca. 20 cm Höhe starten bei 80–150 € pro Buchstabe. Ein kompletter Firmenschriftzug mit 6–10 Buchstaben liegt typisch bei 1.500–4.000 €. Der Preis hängt von Material (Aluminium, Edelstahl, Acryl), Beleuchtungsart (front-, rück- oder seitenbeleuchtet) und Montageart ab. Wir erstellen innerhalb von 24 Stunden ein kostenloses Angebot mit 3D-Vorschau."
+            "text": "3D-Leuchtbuchstaben kosten je nach Größe, Material und Beleuchtungsart zwischen 499 € und 8.000 €. Einzelbuchstaben ab ca. 20 cm Höhe starten bei 80–150 € pro Buchstabe. Ein kompletter Firmenschriftzug mit 6–10 Buchstaben liegt typisch bei 1.500–4.000 €. Der Preis hängt von Material (Aluminium, Edelstahl, Acryl), Beleuchtungsart (front-, rück- oder seitenbeleuchtet) und Montageart ab. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau. Ihr Festpreisangebot erstellen wir auf dieser Grundlage."
           }
         },
         {
@@ -343,7 +372,7 @@
           "name": "Wie schnell können 3D-Leuchtbuchstaben geliefert werden?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Die Standardlieferung für 3D-Leuchtbuchstaben beträgt 4–6 Wochen ab Auftragsbestätigung. Die Fertigung ist aufwendiger als bei Flachschildern, da jeder Buchstabe einzeln aus Metall gefräst, gebogen, verschweißt und lackiert wird. Bei Eilaufträgen ist eine Express-Fertigung ab 14 Tagen möglich. Wir liefern europaweit und sind auf termingenaue Lieferungen für Ladeneröffnungen und Messen spezialisiert."
+            "text": "Die Standardlieferung für 3D-Leuchtbuchstaben beträgt 4–6 Wochen ab Auftragsbestätigung. Die Fertigung ist aufwendiger als bei Flachschildern, da jeder Buchstabe einzeln aus Metall gefräst, gebogen, verschweißt und lackiert wird. Bei Eilaufträgen ist Express-Fertigung nach Machbarkeitsprüfung möglich. Wir liefern europaweit und sind auf termingenaue Lieferungen für Ladeneröffnungen und Messen spezialisiert."
           }
         },
         {
@@ -359,7 +388,7 @@
           "name": "Wie läuft die Bestellung von 3D-Leuchtbuchstaben ab?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Der Bestellprozess umfasst vier Schritte: Zuerst senden Sie Ihr Logo oder Ihren Wunschschriftzug als Datei oder Foto. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Visualisierung mit Materialmuster-Vorschlag und Angebot. Nach Freigabe und Anzahlung startet die Fertigung. Anschließend werden die Buchstaben montagefertig mit Bohrschablone, Befestigungsmaterial und Montageanleitung europaweit geliefert."
+            "text": "Der Bestellprozess umfasst vier Schritte: Zuerst senden Sie Ihr Logo oder Ihren Wunschschriftzug als Datei oder Foto. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Visualisierung mit Materialmuster-Vorschlag. Ihr Angebot erstellen wir auf dieser Grundlage. Nach Freigabe und Anzahlung startet die Fertigung. Anschließend werden die Buchstaben montagefertig mit Bohrschablone, Befestigungsmaterial und Montageanleitung europaweit geliefert."
           }
         }
       ]
@@ -401,8 +430,8 @@
       "@type": "VideoObject",
       "name": "NEONTRIP — Individuelle 3D-Leuchtbuchstaben & Profilbuchstaben",
       "description": "Einblick in die Fertigung und Installation individueller 3D-Leuchtbuchstaben und Profilbuchstaben von NEONTRIP aus Düsseldorf.",
-      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
-      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster-desktop-leuchtbuchstaben.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-leuchtbuchstaben.mp4",
       "uploadDate": "2025-01-01"
     }
   ],

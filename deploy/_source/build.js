@@ -55,7 +55,7 @@ function loadConfigs() {
 }
 
 // ─── Load section ───
-function loadSection(sectionName, slug) {
+function loadSection(sectionName, slug, overrideAliases = {}) {
   const filename = SECTION_FILES[sectionName];
   if (!filename) {
     console.warn(`⚠ Unknown section: ${sectionName}`);
@@ -63,7 +63,8 @@ function loadSection(sectionName, slug) {
   }
 
   // Check for LP-specific override first
-  const overridePath = path.join(OVERRIDES_DIR, slug, filename);
+  const overrideSlug = overrideAliases[sectionName] || slug;
+  const overridePath = path.join(OVERRIDES_DIR, overrideSlug, filename);
   if (fs.existsSync(overridePath)) {
     return fs.readFileSync(overridePath, 'utf8');
   }
@@ -108,8 +109,8 @@ ${rulesStr}
       var plain = h.replace(/<[^>]*>/g, '');
       var ft = document.getElementById('hero-form-title-d');
       var ftm = document.getElementById('hero-form-title');
-      if (ft) ft.textContent = plain + ' — in 60 Sek.';
-      if (ftm) ftm.textContent = plain + ' — in 1 Min.';
+      if (ft) ft.textContent = 'Anfrage für ' + plain + ' — in 60 Sek.';
+      if (ftm) ftm.textContent = 'Anfrage für ' + plain + ' — in 60 Sek.';
     });
   })();
   </script>`;
@@ -151,6 +152,54 @@ function generateOpenAiAdsPixelSetup(config) {
   </script>`;
 }
 
+function generateProjectContextFields(config, variant) {
+  if (!config.enable_b2b_project_context) return '';
+
+  const isContact = variant === 'contact';
+  const isDesktop = variant === 'desktop';
+  const idSuffix = isContact ? 'kontakt' : isDesktop ? 'hero-d' : 'hero';
+  const labelClass = isContact
+    ? 'text-xs font-medium text-dark tracking-tight mb-1 block'
+    : isDesktop
+      ? 'text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1'
+      : 'text-[11px] font-semibold text-dark block mb-1';
+  const inputClass = isContact
+    ? 'w-full bg-[#F5F5F5] rounded-[10px] px-3.5 py-2 text-base md:text-sm font-medium tracking-tight text-dark outline-none focus:ring-1 focus:ring-gray-300'
+    : isDesktop
+      ? 'w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark outline-none focus:border-dark/20 focus:bg-white transition-all duration-200'
+      : 'w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3 py-2.5 text-[14px] font-medium text-dark';
+
+  return `<div>
+                  <label for="${idSuffix}-project-context" class="${labelClass}">Anwendungsfall <span class="font-normal text-dark/40">(optional)</span></label>
+                  <select name="project_context" id="${idSuffix}-project-context" class="${inputClass}">
+                    <option value="" selected>Bitte wählen</option>
+                    <option value="Empfang, Büro oder Showroom">Empfang, Büro oder Showroom</option>
+                    <option value="Ladenbau, Retail oder Gastronomie">Ladenbau, Retail oder Gastronomie</option>
+                    <option value="Messe, Event oder Pop-up">Messe, Event oder Pop-up</option>
+                    <option value="Außenfassade oder Werbeanlage">Außenfassade oder Werbeanlage</option>
+                    <option value="Filial- oder Serien-Rollout">Filial- oder Serien-Rollout</option>
+                    <option value="Sonstiger gewerblicher Einsatz">Sonstiger gewerblicher Einsatz</option>
+                  </select>
+                </div>
+                <div class="grid grid-cols-2 gap-2${isContact ? '.5' : ''}">
+                  <div>
+                    <label for="${idSuffix}-quantity-band" class="${labelClass}">Menge / Rollout <span class="font-normal text-dark/40">(optional)</span></label>
+                    <select name="quantity_band" id="${idSuffix}-quantity-band" class="${inputClass}">
+                      <option value="" selected>Bitte wählen</option>
+                      <option value="Einzelanfertigung">1 Stück</option>
+                      <option value="Kleinserie 2–5 Stück">2–5 Stück</option>
+                      <option value="Rollout 6–20 Stück">6–20 Stück</option>
+                      <option value="Serienproduktion 21+ Stück">21+ / Serie</option>
+                      <option value="Menge noch offen">Noch offen</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="${idSuffix}-desired-deadline" class="${labelClass}">Wunschtermin <span class="font-normal text-dark/40">(optional)</span></label>
+                    <input type="date" name="desired_deadline" id="${idSuffix}-desired-deadline" class="${inputClass}">
+                  </div>
+                </div>`;
+}
+
 // ─── Replace template variables ───
 function replaceVariables(html, config) {
   const vars = {
@@ -168,6 +217,35 @@ function replaceVariables(html, config) {
     '{{SLUG}}': config.slug,
     '{{H1_TEXT}}': config.h1_text,
     '{{HERO_SUBLINE}}': config.hero_subline || '',
+    '{{HERO_POSTER_DESKTOP}}': config.hero_poster_desktop || '../assets/images/hero-poster-desktop-neon.webp',
+    '{{HERO_POSTER_MOBILE}}': config.hero_poster_mobile || '../assets/images/hero-poster-neon-mobile.webp',
+    '{{HERO_POSTER_ALT_DESKTOP}}': config.hero_poster_alt_desktop || 'NEONTRIP LED Neonschild',
+    '{{HERO_POSTER_ALT_MOBILE}}': config.hero_poster_alt_mobile || 'NEONTRIP LED Leuchtreklame',
+    '{{PROJECT_COUNT_LABEL}}': config.project_count_label || 'Über 8.200+ realisierte Projekte',
+    '{{REFERENCE_PROJECT_COUNT_LABEL}}': config.reference_project_count_label || 'Über 8.247 Projekte für Agenturen, Marken und Unternehmen jeder Größe',
+    '{{REVIEW_SUMMARY}}': config.review_summary || '4,9 bei 186 Bewertungen',
+    '{{EXPRESS_FORM_LABEL}}': config.express_form_label || 'Express-Fertigung (ab 3 Werktage)',
+    '{{EXPRESS_STAT_VALUE}}': config.express_stat_value || '3 Tage',
+    '{{EXPRESS_STAT_LABEL}}': config.express_stat_label || 'Express-Versand',
+    '{{DELIVERY_PROCESS_COPY}}': config.delivery_process_copy || 'Fertig montiert geliefert – ab 3 Tagen',
+    '{{EXPRESS_HEADLINE}}': config.express_headline || 'Express in 3 Tagen',
+    '{{EXPRESS_COPY}}': config.express_copy || 'Europaweit bei Eilaufträgen.',
+    '{{VORTEILE_SUMMARY_TITLE}}': config.vorteile_summary_title || 'Warum Unternehmen ihre Neon Schilder bei NEONTRIP bestellen',
+    '{{VORTEILE_SUMMARY_COPY}}': config.vorteile_summary_copy || 'Persönlicher Ansprechpartner, kostenlose 3D-Vorschau in 24h, Qualitätskontrolle vor Versand und termingerechte Lieferung — auch bei Express. Jedes Neon Schild wird individuell nach Ihrem Design gefertigt.',
+    '{{CONTACT_ADVISOR_COPY}}': config.contact_advisor_copy || 'Head of Customer Experience. Persönliche Beratung von der Idee bis zum fertigen Neon Schild.',
+    '{{PROJECT_COUNTER_BASE}}': String(config.project_counter_base || 8247),
+    '{{PROJECT_COUNTER_RATE}}': String(config.project_counter_static ? 0 : (17 / 3)),
+    '{{PROJECT_COUNTER_SOURCE_RAW}}': String(config.project_counter_source_raw || 8247),
+    '{{PROJECT_COUNTER_SOURCE_LABEL}}': JSON.stringify(config.project_counter_source_label || '8.247'),
+    '{{AI_CITABLE_DESCRIPTION}}': config.ai_citable_description || 'NEONTRIP ist ein Spezialist für individuelle LED Neon Schilder und Leuchtschriften aus Düsseldorf.',
+    '{{AI_CITABLE_OFFER}}': config.ai_citable_offer || 'Individuelle Neon Schilder von NEONTRIP sind ab 199 EUR erhältlich — in jeder Schriftart, Farbe und Größe.',
+    '{{AI_CITABLE_DELIVERY}}': config.ai_citable_delivery || 'Die Fertigungszeit für LED Neon Schilder beträgt 5–7 Werktage, Express-Fertigung ab 3 Werktagen.',
+    '{{AI_CITABLE_MATERIAL}}': config.ai_citable_material || 'Material: Hochwertiges LED Neon Flex auf Acrylglasplatte. Energiesparend, bruchsicher und langlebig.',
+    '{{AI_CITABLE_PROOF}}': config.ai_citable_proof || 'Über 8.247 realisierte Projekte für Marken wie Campari, Amazon, Aperol und Mercedes-Benz. 4,9 von 5 Sternen bei 236 Google-Bewertungen.',
+    '{{WHATSAPP_MESSAGE}}': encodeURIComponent(config.whatsapp_message || 'Hallo, ich interessiere mich für ein individuelles Neonschild. Können Sie mich beraten?'),
+    '{{PROJECT_CONTEXT_FIELDS_MOBILE}}': generateProjectContextFields(config, 'mobile'),
+    '{{PROJECT_CONTEXT_FIELDS_DESKTOP}}': generateProjectContextFields(config, 'desktop'),
+    '{{PROJECT_CONTEXT_FIELDS_CONTACT}}': generateProjectContextFields(config, 'contact'),
     '{{FOOTER_TAGLINE}}': config.footer_tagline,
     '{{FOOTER_PRODUCTS}}': config.footer_products,
     '{{FAQ_CTA_TITLE}}': config.faq_cta_title || '',
@@ -188,6 +266,13 @@ function replaceVariables(html, config) {
       '<option value="Unbeleuchtet">Unbeleuchtet</option>',
     ].join('\n                        '),
     '{{STICKY_PRODUKT}}': config.sticky_produkt || 'neonschild',
+    '{{PRIMARY_CTA_HREF}}': config.use_local_form_cta
+      ? '#hero'
+      : `/anfrage?produkt=${encodeURIComponent(config.sticky_produkt || 'neonschild')}`,
+    '{{USE_LOCAL_FORM_CTA}}': config.use_local_form_cta ? 'true' : 'false',
+    '{{LIGHTBOX_CTA_ATTRS}}': config.use_local_form_cta
+      ? 'onclick="closeLightbox()"'
+      : 'target="_blank" rel="noopener noreferrer"',
     '{{VORTEILE_SUBLINE}}': config.vorteile_subline || 'Individuelle LED Neon Schilder — vom Entwurf bis zur Lieferung montagefertig.',
     '{{EVENTS_SUBLINE_MOBILE}}': config.events_subline_mobile || 'Bekannte Marken & Events vertrauen auf NEONTRIP Neon Schilder.',
     '{{PRODUKTE_SUBLINE}}': config.produkte_subline || 'Neon Schilder, LED Schriftzüge & mehr — klicken Sie für Beispiele und direkte Anfrage.',
@@ -242,7 +327,7 @@ function buildLP(config) {
 
   // Assemble sections
   const sections = config.sections.map(sectionName => {
-    return loadSection(sectionName, config.slug);
+    return loadSection(sectionName, config.slug, config.section_override_aliases || {});
   }).join('\n\n');
 
   // Insert sections into base
