@@ -43,7 +43,7 @@ function assertTrackingContract(html, path, lang) {
   assert.match(html, /CookiebotOnDecline/);
   assert.match(html, /lead_created/);
   assert.match(html, /event_id/);
-  assert.match(html, /nt-business-email\.js/);
+  assert.match(html, /nt-business-email\.js\?v=f38001df/);
   assert.match(html, /oppref/);
   assert.match(html, /campaign_id/);
   assert.match(html, /ad_group_id/);
@@ -92,6 +92,15 @@ test('standalone quote wizards carry the same contract and canonical URL', async
       path + ' blur uses the central business-email validator'
     );
   }
+});
+
+test('business-email validator uses a versioned URL and revalidates at the edge', async () => {
+  const headers = await load('deploy/_headers');
+  assert.match(
+    headers,
+    /\/assets\/js\/nt-business-email\.js\s+Cache-Control: public, max-age=0, must-revalidate/,
+    'mutable validator asset overrides the one-year assets cache'
+  );
 });
 
 test('campaign product routes preselect the matching product and old profile-letter route redirects', async () => {
