@@ -20,6 +20,10 @@
 /3dbuchstaben                   /leuchtbuchstaben/     301
 /3d-buchstaben/*                /leuchtbuchstaben/     301
 /3d-buchstaben                  /leuchtbuchstaben/     301
+/profilbuchstaben               /leuchtbuchstaben/     301
+/profilbuchstaben/*             /leuchtbuchstaben/     301
+/neon-schilder-v2               /neon-schilder/        301
+/neon-schilder-v2/*             /neon-schilder/        301
 
 # === Shopify-Pages Redirects (nach Migration) ===
 

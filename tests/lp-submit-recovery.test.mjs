@@ -40,7 +40,7 @@ function createContext(fetchImpl) {
 function formWithFile() {
   const form = new FormData();
   form.set('name', 'Internal Test');
-  form.set('email', 'internal@example.invalid');
+  form.set('email', 'internal@neontrip-test.de');
   form.set('request_id', clientSubmitId);
   form.append('datei', new File(['design'], 'design.svg', { type: 'image/svg+xml' }));
   return form;
@@ -137,6 +137,27 @@ test('rejects a successful HTTP response without the matching database receipt',
     context.ntSubmitStandaloneForm(formWithFile(), 'test_form'),
     /persistence_unconfirmed/
   );
+});
+
+test('does not retry a definitive business-email rejection', async () => {
+  let calls = 0;
+  const context = createContext(async () => {
+    calls += 1;
+    return new Response(JSON.stringify({
+      ok: false,
+      error: 'business_email_required',
+      field: 'email',
+    }), {
+      status: 422,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+
+  await assert.rejects(
+    context.ntSubmitStandaloneForm(formWithFile(), 'test_form'),
+    /attempts=1/
+  );
+  assert.equal(calls, 1);
 });
 
 test('fires a conversion only once per submit id', () => {

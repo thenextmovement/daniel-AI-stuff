@@ -44,27 +44,29 @@
     });
     try { gtag('set', 'url_passthrough', true); } catch(e) {}
     try { gtag('set', 'ads_data_redaction', false); } catch(e) {}
-    // Cookiebot → Consent Mode v2 Update
-    window.addEventListener('CookiebotOnAccept', function() {
-      if (Cookiebot.consent.marketing) {
-        gtag('consent', 'update', {
-          'ad_storage': 'granted',
-          'ad_user_data': 'granted',
-          'ad_personalization': 'granted'
-        });
-      }
-      if (Cookiebot.consent.statistics) {
-        gtag('consent', 'update', {
-          'analytics_storage': 'granted'
-        });
-      }
-    });
+    // Cookiebot → Consent Mode v2: restore, accept and withdrawal stay in sync.
+    function syncGoogleConsentFromCookiebot() {
+      var consent = window.Cookiebot && window.Cookiebot.consent;
+      var analyticsStorage = consent && consent.statistics ? 'granted' : 'denied';
+      var advertisingStorage = consent && consent.marketing ? 'granted' : 'denied';
+      gtag('consent', 'update', {
+        'ad_storage': advertisingStorage,
+        'ad_user_data': advertisingStorage,
+        'ad_personalization': advertisingStorage,
+        'analytics_storage': analyticsStorage
+      });
+    }
+    window.addEventListener('CookiebotOnConsentReady', syncGoogleConsentFromCookiebot);
+    window.addEventListener('CookiebotOnAccept', syncGoogleConsentFromCookiebot);
+    window.addEventListener('CookiebotOnDecline', syncGoogleConsentFromCookiebot);
   </script>
 
   <!-- Cookiebot Consent Management (DSGVO) — aktualisiert Consent Mode automatisch -->
   <script id="Cookiebot" src="https://consent.cookiebot.com/uc.js" data-cbid="4f26624a-11f0-49f6-9377-353b340cebd1" data-blockingmode="auto" type="text/javascript" async></script>
 
 {{OPENAI_ADS_PIXEL_SETUP}}
+
+  <script defer src="/assets/js/nt-business-email.js"></script>
 
   <!-- Google Analytics 4 + Google Ads Tag (Consent Mode steuert Datenerhebung) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-NEEVFC08VX"></script>
@@ -701,15 +703,32 @@
     // then injects them as hidden fields into all forms on the page.
     (function() {
       const params = new URLSearchParams(window.location.search);
-      const trackingKeys = ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'kw'];
-      const storagePrefix = 'nt_attr_';
+      const trackingKeys = [
+        'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign',
+        'utm_term', 'utm_content', 'kw', 'oppref', 'campaign_id', 'ad_group_id',
+        'ad_id', 'ad_account_id', 'openai_ad_group_id'
+      ];
+      const storagePrefixes = ['nt_attr_', 'nt_'];
+
+      function safeGet(storage, key) {
+        try { return storage.getItem(key) || ''; } catch(e) { return ''; }
+      }
+
+      function safeSet(storage, key, value) {
+        if (!value) return;
+        try { storage.setItem(key, value); } catch(e) {}
+      }
+
+      function safeRemove(storage, key) {
+        try { storage.removeItem(key); } catch(e) {}
+      }
 
       function setStored(key, value) {
         if (!value) return;
-        try {
-          localStorage.setItem(storagePrefix + key, value);
-          sessionStorage.setItem(storagePrefix + key, value);
-        } catch(e) {}
+        storagePrefixes.forEach(prefix => {
+          safeSet(localStorage, prefix + key, value);
+          safeSet(sessionStorage, prefix + key, value);
+        });
         if (key === 'gclid') {
           const expires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString();
           document.cookie = '_neontrip_gclid=' + encodeURIComponent(value) + ';expires=' + expires + ';path=/;SameSite=Lax';
@@ -717,28 +736,58 @@
       }
 
       function getStored(key) {
-        try {
-          return sessionStorage.getItem(storagePrefix + key) || localStorage.getItem(storagePrefix + key) || '';
-        } catch(e) {
-          return '';
+        for (const prefix of storagePrefixes) {
+          const value = safeGet(sessionStorage, prefix + key) || safeGet(localStorage, prefix + key);
+          if (value) return value;
         }
+        return '';
       }
 
       function addHidden(form, key, value) {
-        if (!value || form.querySelector('input[name="' + key + '"]')) return;
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = key;
+        if (!value) return;
+        let input = form.querySelector('input[name="' + key + '"]');
+        if (!input) {
+          input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = key;
+          form.appendChild(input);
+        }
         input.value = value;
-        form.appendChild(input);
       }
 
-      trackingKeys.forEach(key => {
-        setStored(key, params.get(key));
-      });
+      function getDirectValue(key) {
+        const direct = params.get(key);
+        if (direct) return direct;
+        if (key === 'utm_campaign') return params.get('campaign_id') || '';
+        if (key === 'utm_content') return params.get('ad_id') || '';
+        if (key === 'utm_term') return params.get('openai_ad_group_id') || params.get('ad_group_id') || '';
+        return '';
+      }
+
+      const incoming = {};
+      trackingKeys.forEach(key => { incoming[key] = getDirectValue(key); });
+      const hasIncomingAttribution = trackingKeys.some(key => Boolean(incoming[key]));
+      let internalNavigation = params.get('nt_handoff') === '1';
+      try {
+        internalNavigation = internalNavigation
+          || (Boolean(document.referrer) && new URL(document.referrer).origin === window.location.origin);
+      } catch(e) {}
+
+      if (hasIncomingAttribution) {
+        trackingKeys.forEach(key => {
+          storagePrefixes.forEach(prefix => {
+            safeRemove(localStorage, prefix + key);
+            safeRemove(sessionStorage, prefix + key);
+          });
+        });
+        if (!incoming.gclid && !incoming.gbraid && !incoming.wbraid) {
+          document.cookie = '_neontrip_gclid=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax';
+        }
+        trackingKeys.forEach(key => setStored(key, incoming[key]));
+      }
 
       function getTrackingValue(key) {
-        return params.get(key) || getStored(key);
+        return getDirectValue(key) || getStored(key);
       }
 
       function appendTrackingParams(url) {
@@ -749,6 +798,9 @@
             target.searchParams.set(key, value);
           }
         });
+        if (target.origin === window.location.origin && /^\/anfrage(?:\.html)?\/?$/.test(target.pathname)) {
+          target.searchParams.set('nt_handoff', '1');
+        }
         return target.href;
       }
 
@@ -764,28 +816,39 @@
           }
         });
       }
-      try {
-        if (!localStorage.getItem(storagePrefix + 'landing_page_url')) {
-          localStorage.setItem(storagePrefix + 'landing_page_url', window.location.href);
+      const storedLandingPage = getStored('landing_page_url');
+      const shouldStartNewAttribution = hasIncomingAttribution && !internalNavigation;
+      const landingPageUrl = shouldStartNewAttribution || !storedLandingPage ? window.location.href : storedLandingPage;
+      const attributionReferrer = shouldStartNewAttribution
+        ? (document.referrer || '')
+        : (getStored('referrer') || document.referrer || '');
+      storagePrefixes.forEach(prefix => {
+        if (shouldStartNewAttribution) {
+          safeRemove(localStorage, prefix + 'landing_page_url');
+          safeRemove(sessionStorage, prefix + 'landing_page_url');
+          safeRemove(localStorage, prefix + 'referrer');
+          safeRemove(sessionStorage, prefix + 'referrer');
         }
-        if (document.referrer && !localStorage.getItem(storagePrefix + 'referrer')) {
-          localStorage.setItem(storagePrefix + 'referrer', document.referrer);
+        safeSet(localStorage, prefix + 'landing_page_url', landingPageUrl);
+        safeSet(sessionStorage, prefix + 'landing_page_url', landingPageUrl);
+        if (attributionReferrer) {
+          safeSet(localStorage, prefix + 'referrer', attributionReferrer);
+          safeSet(sessionStorage, prefix + 'referrer', attributionReferrer);
         }
-        sessionStorage.setItem(storagePrefix + 'landing_page_url', window.location.href);
-        if (document.referrer) sessionStorage.setItem(storagePrefix + 'referrer', document.referrer);
-      } catch(e) {}
+      });
 
       // Inject hidden fields into all forms
       function injectTrackingFields() {
         document.querySelectorAll('form').forEach(form => {
           trackingKeys.forEach(key => {
-            addHidden(form, key, getStored(key));
+            addHidden(form, key, getTrackingValue(key));
           });
           if (!form.querySelector('input[name="gclid"]')) {
             const match = document.cookie.match(/(?:^|; )_neontrip_gclid=([^;]*)/);
             if (match) addHidden(form, 'gclid', decodeURIComponent(match[1]));
           }
           addHidden(form, 'landing_page_url', getStored('landing_page_url') || window.location.href);
+          addHidden(form, 'current_page_url', window.location.href);
           addHidden(form, 'referrer', getStored('referrer') || document.referrer || '');
           addHidden(form, '_landing_page_url', getStored('landing_page_url') || window.location.href);
           addHidden(form, '_referrer', getStored('referrer') || document.referrer || '');

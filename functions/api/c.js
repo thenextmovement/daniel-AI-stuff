@@ -20,6 +20,81 @@ const FAIL_REPORT_PATH = "/api/r"; // same-origin, relative
 const CUSTOMER_MATCH_CONSENT_SOURCE = "neontrip_cookiebot_marketing_edge";
 const CUSTOMER_MATCH_CONSENT_POLICY_VERSION = "nt_customer_match_cookiebot_v1_20260818";
 
+const BLOCKED_PERSONAL_EMAIL_DOMAINS = new Set([
+  "10minutemail.com", "aol.com", "aol.de", "discard.email", "dispostable.com",
+  "emailondeck.com", "example.com", "example.net", "example.org", "fakemail.net",
+  "fastmail.com", "freenet.de", "getnada.com", "gmail.com", "gmx.at", "gmx.ch",
+  "gmx.com", "gmx.de", "gmx.net", "googlemail.com", "grr.la", "guerrillamail.com",
+  "hey.com", "hotmail.co.uk", "hotmail.com", "hotmail.de", "hotmail.fr", "icloud.com",
+  "icloud.de", "laposte.net", "live.com", "live.de", "mac.com", "mail.com", "mail.de", "mail.ru",
+  "mailbox.org", "maildrop.cc", "mailinator.com", "me.com", "msn.com", "orange.fr",
+  "outlook.com", "outlook.de", "pm.me", "posteo.de", "proton.me", "protonmail.ch", "protonmail.com",
+  "rocketmail.com", "sharklasers.com", "spamgourmet.com", "t-online.de",
+  "temp-mail.org", "tempmail.com", "throwawaymail.com", "tuta.com", "tuta.io",
+  "tutanota.com", "tutanota.de", "web.de", "yahoo.co.uk", "yahoo.com", "yahoo.de",
+  "yahoo.fr", "yandex.com", "yandex.ru", "ymail.com", "yopmail.com", "zoho.com",
+]);
+
+function normalizeEmailDomain(rawDomain) {
+  let domain = String(rawDomain || "").trim().toLowerCase().replace(/\.$/, "");
+  if (!domain || /[\\/?#:\[\]@]/.test(domain)) return "";
+  try {
+    domain = new URL(`http://${domain}`).hostname.toLowerCase().replace(/\.$/, "");
+  } catch (_) {
+    return "";
+  }
+  return domain;
+}
+
+function isBlockedPersonalEmailDomain(domain) {
+  if (!domain) return true;
+  if (domain === "localhost" || /\.(?:invalid|localhost|test)$/.test(domain)) return true;
+  for (const blocked of BLOCKED_PERSONAL_EMAIL_DOMAINS) {
+    if (domain === blocked || domain.endsWith(`.${blocked}`)) return true;
+  }
+  return false;
+}
+
+function inspectBusinessEmail(value) {
+  const email = String(value || "").trim();
+  if (!email || email.length > 254 || /\s/.test(email)) return { valid: false, reason: "format" };
+  if ((email.match(/@/g) || []).length !== 1) return { valid: false, reason: "format" };
+
+  const [local, rawDomain] = email.split("@");
+  const domain = normalizeEmailDomain(rawDomain);
+  if (
+    !local ||
+    local.length > 64 ||
+    local.startsWith(".") ||
+    local.endsWith(".") ||
+    local.includes("..") ||
+    !/^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(local)
+  ) {
+    return { valid: false, reason: "format" };
+  }
+  if (!domain || domain.length > 253 || !domain.includes(".")) return { valid: false, reason: "format" };
+
+  const labels = domain.split(".");
+  for (const label of labels) {
+    if (
+      !label ||
+      label.length > 63 ||
+      !/^[a-z0-9-]+$/.test(label) ||
+      label.startsWith("-") ||
+      label.endsWith("-")
+    ) {
+      return { valid: false, reason: "format" };
+    }
+  }
+  if (!/^(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})$/.test(labels[labels.length - 1])) {
+    return { valid: false, reason: "format" };
+  }
+  if (isBlockedPersonalEmailDomain(domain)) {
+    return { valid: false, reason: "personal_domain" };
+  }
+  return { valid: true, normalized: `${local}@${domain}` };
+}
+
 const CUSTOMER_MATCH_CONSENT_FIELDS = [
   "consent_ad_user_data",
   "consent_ad_personalization",
@@ -275,6 +350,27 @@ async function handlePost(request, ctx) {
       console.log(`[c ${requestId}] honeypot hit: "${String(honeypot).slice(0, 40)}"`);
       return jsonResponse({ ok: true, filtered: "honeypot" }, 200, cors);
     }
+  }
+
+  // B2B-only intake boundary. The browser check is only UX; this edge check
+  // is authoritative and runs before any n8n request or failure beacon.
+  const businessEmail = inspectBusinessEmail(formData.get("email"));
+  if (!businessEmail.valid) {
+    return jsonResponse(
+      {
+        ok: false,
+        error: "business_email_required",
+        field: "email",
+        request_id: requestId,
+        client_submit_id: clientSubmitId || null,
+      },
+      422,
+      { ...cors, "X-Request-Id": requestId }
+    );
+  }
+  formData.set("email", businessEmail.normalized);
+
+  if (honeypot) {
     console.warn(`[c ${requestId}] honeypot prefilled with contact fields; forwarding`);
     reportFailure(ctx, origin, {
       request_id: requestId,

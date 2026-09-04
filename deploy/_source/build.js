@@ -18,6 +18,7 @@ const SECTIONS_DIR = path.join(SOURCE_DIR, 'sections');
 const OVERRIDES_DIR = path.join(SECTIONS_DIR, 'overrides');
 const LAYOUTS_DIR = path.join(SOURCE_DIR, 'layouts');
 const CONFIGS_DIR = path.join(SOURCE_DIR, 'configs');
+const DEFAULT_OPENAI_ADS_PIXEL_ID = '6GqgnrdSPjJSGdthY89B9Y';
 
 // Section filename map (section name → filename)
 const SECTION_FILES = {
@@ -126,16 +127,27 @@ function generateStructuredData(config) {
 
 // ─── Generate OpenAI Ads Measurement Pixel setup ───
 function generateOpenAiAdsPixelSetup(config) {
-  const pixelId = String(config.openai_ads_pixel_id || '').trim();
+  const pixelId = String(config.openai_ads_pixel_id || DEFAULT_OPENAI_ADS_PIXEL_ID).trim();
   if (!pixelId) return '';
   if (!/^[A-Za-z0-9_-]{10,80}$/.test(pixelId)) {
     throw new Error(`Invalid OpenAI Ads pixel ID for ${config.slug}`);
   }
 
-  return `  <!-- OpenAI Ads Measurement Pixel (Consent: Marketing) -->
-  <script type="text/plain" data-cookieconsent="marketing">
-  !function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");
-  oaiq("init",{pixelId:${JSON.stringify(pixelId)}});
+  return `  <!-- OpenAI Ads Measurement Pixel (explicit Cookiebot consent) -->
+  <script>
+  (function(){
+    !function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");
+    oaiq("consent",false);
+    oaiq("init",{pixelId:${JSON.stringify(pixelId)}});
+    function syncOpenAiAdsConsent(){
+      var granted=Boolean(window.Cookiebot&&window.Cookiebot.consent&&window.Cookiebot.consent.marketing===true);
+      oaiq("consent",granted);
+    }
+    window.addEventListener("CookiebotOnConsentReady",syncOpenAiAdsConsent);
+    window.addEventListener("CookiebotOnAccept",syncOpenAiAdsConsent);
+    window.addEventListener("CookiebotOnDecline",syncOpenAiAdsConsent);
+    if(window.Cookiebot&&window.Cookiebot.consent)syncOpenAiAdsConsent();
+  })();
   </script>`;
 }
 

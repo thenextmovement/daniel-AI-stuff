@@ -59,7 +59,7 @@ test('LP intake proxy recovery contract', async (t) => {
     try {
       const formData = new FormData();
       formData.set('name', 'Internal Test');
-      formData.set('email', 'internal@example.invalid');
+      formData.set('email', 'internal@neontrip-test.de');
       formData.set('request_id', clientSubmitId);
       formData.set('nt_client_submit_id', clientSubmitId);
       formData.set('nt_recovery_contact', '1');
@@ -80,14 +80,18 @@ test('LP intake proxy recovery contract', async (t) => {
     }
   });
 
-  await t.test('waits for the authoritative persistence receipt', async () => {
+  await t.test('waits for the authoritative receipt and keeps company optional', async () => {
     const originalFetch = globalThis.fetch;
     let release;
-    globalThis.fetch = () => new Promise((resolve) => { release = resolve; });
+    globalThis.fetch = (_url, options) => {
+      assert.equal(options.body.get('email'), 'Internal@neontrip-test.de');
+      assert.equal(options.body.get('firma'), null);
+      return new Promise((resolve) => { release = resolve; });
+    };
     try {
       const formData = new FormData();
       formData.set('name', 'Internal Test');
-      formData.set('email', 'internal@example.invalid');
+      formData.set('email', 'Internal@NEONTRIP-TEST.DE');
       const request = new Request('https://anfrage.neontrip.de/api/c', {
         method: 'POST',
         headers: { 'X-Client-Submit-Id': clientSubmitId },
@@ -137,7 +141,7 @@ test('LP intake proxy recovery contract', async (t) => {
     try {
       const formData = new FormData();
       formData.set('name', 'Internal Test');
-      formData.set('email', 'internal@example.invalid');
+      formData.set('email', 'internal@neontrip-test.de');
       formData.set('request_id', clientSubmitId);
       const request = new Request('https://anfrage.neontrip.de/api/c', {
         method: 'POST',
@@ -148,6 +152,75 @@ test('LP intake proxy recovery contract', async (t) => {
       const body = await response.json();
       assert.equal(response.status, 502);
       assert.equal(body.error, 'persistence_unconfirmed');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  await t.test('rejects missing, malformed and personal-provider email addresses before any side effect', async () => {
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    let waitUntilCalls = 0;
+    globalThis.fetch = async () => {
+      fetchCalls += 1;
+      return new Response('{}', { status: 200 });
+    };
+    try {
+      const rejected = [
+        '',
+        'not-an-email',
+        'name@gmail.com',
+        'name@sub.gmail.com',
+        'name@mail.de',
+        'name@pm.me',
+        'name@mailinator.com',
+        'name@company.com/path',
+      ];
+      for (const email of rejected) {
+        const formData = new FormData();
+        formData.set('name', 'Internal Test');
+        if (email) formData.set('email', email);
+        const request = new Request('https://anfrage.neontrip.de/api/c', {
+          method: 'POST',
+          headers: { 'X-Client-Submit-Id': clientSubmitId },
+          body: formData,
+        });
+        const response = await onRequestPost({
+          request,
+          waitUntil() { waitUntilCalls += 1; },
+        });
+        const body = await response.json();
+        assert.equal(response.status, 422, email || '(missing email)');
+        assert.equal(body.error, 'business_email_required');
+        assert.equal(body.field, 'email');
+        assert.equal(body.client_submit_id, clientSubmitId);
+      }
+      assert.equal(fetchCalls, 0);
+      assert.equal(waitUntilCalls, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  await t.test('keeps the synthetic dry-run side-effect free and independent of email', async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return new Response('{}', { status: 200 });
+    };
+    try {
+      const formData = new FormData();
+      formData.set('nt_dry_run', '1');
+      const request = new Request('https://anfrage.neontrip.de/api/c', {
+        method: 'POST',
+        body: formData,
+      });
+      const response = await onRequestPost(context(request));
+      const body = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(body.dry_run, true);
+      assert.equal(calls, 0);
     } finally {
       globalThis.fetch = originalFetch;
     }
