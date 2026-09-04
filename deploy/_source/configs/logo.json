@@ -1,0 +1,425 @@
+{
+  "slug": "logo",
+  "hero_video_desktop": "../assets/videos/hero-desktop-leuchtbuchstaben.mp4",
+  "lang": "de",
+  "title": "Ihr Logo als Leuchtschild — LED & Neon | NEONTRIP Düsseldorf",
+  "meta_description": "Kostenlose 3D-Vorschau in 24h für Ihr Logo als Leuchtschild — LED Neon, beleuchtetes Wandschild oder 3D-Buchstaben. Jetzt Logo hochladen.",
+  "canonical": "https://anfrage.neontrip.de/logo/",
+  "og_title": "NEONTRIP – Ihr Logo als Leuchtschild | LED & Neon",
+  "og_description": "Kostenlose 3D-Vorschau in 24h für Ihr Logo als Leuchtschild — LED Neon, beleuchtetes Wandschild oder 3D-Buchstaben. Jetzt Logo hochladen.",
+  "h1_text": "Ihr Logo als Leuchtschild",
+  "default_product": "LED Neonschild",
+  "product_options": "<option value=\"LED Logo Wandschild\">LED Logo Wandschild</option>\n                        <option value=\"LED Neonschild\">LED Neonschild</option>\n                        <option value=\"LED Schriftzug\">LED Schriftzug</option>\n                        <option value=\"3D Buchstaben (Front)\">3D Buchstaben (Front)</option>\n                        <option value=\"3D Buchstaben (Rückbeleuchtet)\">3D Buchstaben (Rückbeleuchtet)</option>\n                        <option value=\"Vollflächig beleuchtet\">Vollflächig beleuchtet</option>\n                        <option value=\"Unbeleuchtet\">Unbeleuchtet</option>\n                        <option value=\"Leuchtkasten\">Leuchtkasten</option>",
+  "price_anchor": "Kostenlose 3D-Vorschau in 24h · Festpreisangebot · Leuchtschilder ab 299 €",
+  "price_anchor_desktop": "Kostenlose 3D-Vorschau + Festpreisangebot",
+  "hero_subline": "Laden Sie Ihr Logo hoch und erhalten Sie einen kostenlosen 3D-Entwurf mit Festpreisangebot — als LED Neon, beleuchtetes Wandschild oder 3D-Buchstaben.",
+  "footer_tagline": "Logo Leuchtschilder aus Düsseldorf.",
+  "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
+  "faq_cta_title": "Bereit für Ihr Logo-Leuchtschild?",
+  "clarity_page_type": "landing",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/logo/\">",
+  "dki_rules": [
+    [
+      "led logo firma",
+      "Ihr Firmenlogo als LED Leuchtschild"
+    ],
+    [
+      "led logo",
+      "Ihr Logo als LED Leuchtschild"
+    ],
+    [
+      "logo als leuchtschild",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "logo beleuchtet wand",
+      "Ihr Logo als beleuchtetes Wandschild"
+    ],
+    [
+      "logo leuchtschild",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "logo neon schild",
+      "Ihr Logo als Neon Schild"
+    ],
+    [
+      "logo in neon",
+      "Ihr Logo in Neon"
+    ],
+    [
+      "logo neon",
+      "Ihr Logo als Neon Leuchtschild"
+    ],
+    [
+      "logo lampe",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "neon logo erstellen",
+      "Neon Logo erstellen lassen"
+    ],
+    [
+      "neon logo",
+      "Ihr Logo als Neon Leuchtschild"
+    ],
+    [
+      "neon licht logo",
+      "Ihr Logo als Neon Leuchtschild"
+    ],
+    [
+      "leuchtlogo",
+      "Ihr Leuchtlogo nach Maß"
+    ],
+    [
+      "firmenlogo beleuchtet",
+      "Ihr beleuchtetes Firmenlogo"
+    ],
+    [
+      "firmenlogo schild",
+      "Ihr Firmenlogo als Leuchtschild"
+    ],
+    [
+      "firmenlogo leuchten",
+      "Ihr Firmenlogo als Leuchtschild"
+    ],
+    [
+      "led firmenlogo",
+      "Ihr Firmenlogo als LED Schild"
+    ],
+    [
+      "beleuchtetes logo",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "logo beleuchtet",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "3d logo beleuchtet",
+      "3D Logo als Leuchtschild"
+    ],
+    [
+      "3d leuchtlogo",
+      "3D Leuchtlogo nach Maß"
+    ],
+    [
+      "logo schild beleuchtet",
+      "Beleuchtetes Logo-Schild nach Maß"
+    ],
+    [
+      "firmenlogo neon",
+      "Ihr Firmenlogo als Neon Leuchtschild"
+    ],
+    [
+      "logo wand beleuchtet",
+      "Beleuchtetes Wandlogo nach Maß"
+    ],
+    [
+      "markenlogo leuchtschild",
+      "Ihr Markenlogo als Leuchtschild"
+    ],
+    [
+      "logo schild",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "logo platte",
+      "Ihr Logo als Leuchtschild"
+    ],
+    [
+      "logo mit beleuchtung",
+      "Ihr Logo mit Beleuchtung"
+    ],
+    [
+      "logo als neonschild",
+      "Ihr Logo als Neonschild"
+    ],
+    [
+      "neon schild logo",
+      "Ihr Logo als Neon Schild"
+    ],
+    [
+      "beleuchtete werbeschilder",
+      "Beleuchtete Werbeschilder nach Maß"
+    ],
+    [
+      "led sign",
+      "LED Schild nach Maß"
+    ],
+    [
+      "logo hinterleuchtet",
+      "Hinterleuchtetes Logo nach Maß"
+    ]
+  ],
+  "structured_data": [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "NEONTRIP ist ein Anbieter für Logo Leuchtschilder, LED Leuchtlogos und 3D-Leuchtbuchstaben aus Düsseldorf. Spezialisiert auf B2B-Projekte für Unternehmen, Agenturen und Marken.",
+      "url": "https://neontrip.de",
+      "logo": "/assets/neontrip-favicon.svg",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "foundingDate": "2020",
+      "numberOfEmployees": {
+        "@type": "QuantitativeValue",
+        "minValue": 10,
+        "maxValue": 50
+      },
+      "slogan": "Jedes Logo. Als Leuchtschild.",
+      "knowsAbout": [
+        "Logo Leuchtschilder",
+        "Neon Logo Schilder",
+        "3D Leuchtbuchstaben",
+        "Leuchtkästen",
+        "Profilbuchstaben",
+        "Außenwerbung"
+      ],
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressRegion": "NRW",
+        "addressCountry": "DE"
+      },
+      "areaServed": {
+        "@type": "GeoCircle",
+        "geoMidpoint": {
+          "@type": "GeoCoordinates",
+          "latitude": 51.2277,
+          "longitude": 6.7735
+        },
+        "geoRadius": "500 km"
+      },
+      "sameAs": [
+        "https://www.instagram.com/neontrip.de",
+        "https://www.linkedin.com/company/neontrip",
+        "https://www.tiktok.com/@neontrip.de",
+        "https://www.youtube.com/@neontrip",
+        "https://www.facebook.com/neontrip.de"
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "Anbieter für Logo Leuchtschilder, LED Leuchtlogos, 3D-Leuchtbuchstaben und Leuchtkästen aus Düsseldorf. Über 8.247 B2B-Projekte realisiert. Kostenlose 3D-Vorschau in 24h.",
+      "url": "https://neontrip.de",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "priceRange": "€€€",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressCountry": "DE"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236",
+        "bestRating": "5"
+      },
+      "openingHoursSpecification": {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        "opens": "09:00",
+        "closes": "17:00"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Logo Leuchtschilder — LED, Neon & 3D",
+      "description": "Ihr Logo als individuelles Leuchtschild. Als Neon-Schild, LED-Buchstaben oder 3D-Logo — 100 % CI-konform nach Ihren Vorgaben.",
+      "brand": {
+        "@type": "Brand",
+        "name": "NEONTRIP"
+      },
+      "manufacturer": {
+        "@type": "Organization",
+        "name": "Dara Nova GmbH"
+      },
+      "image": "https://anfrage.neontrip.de/assets/images/og-share.jpg",
+      "category": "Logo Leuchtschilder",
+      "offers": {
+        "@type": "AggregateOffer",
+        "priceCurrency": "EUR",
+        "lowPrice": "299",
+        "highPrice": "8000",
+        "offerCount": "6",
+        "availability": "https://schema.org/InStock",
+        "price": "299"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Was kostet ein Logo als Leuchtschild?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Logo Leuchtschilder kosten je nach Technik, Größe und Komplexität zwischen 299 € und 8.000 €. Ein einfaches Neon-Logo startet ab 299 €, LED-Leuchtlogos ab 499 €, 3D-Buchstaben-Logos ab 599 €. Der typische Bereich liegt bei 500–2.500 €. NEONTRIP erstellt innerhalb von 24 Stunden ein kostenloses Angebot mit 3D-Visualisierung Ihres Logos."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Welche Techniken gibt es für Logo Leuchtschilder?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Die gängigsten Techniken sind: LED Neon Flex (Neon-Optik, biegbar, für filigrane Logos), 3D-Buchstaben frontbeleuchtet (Buchstaben leuchten von vorne), 3D-Buchstaben rückbeleuchtet mit Halo-Effekt (indirekter Lichtschein an der Wand), Leuchtkasten mit Logo (durchleuchtete Fläche) und vollflächig beleuchtete Logo-Schilder. Jede Technik erzeugt eine andere Wirkung."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kann jedes Logo als Leuchtschild umgesetzt werden?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, praktisch jedes Logo kann als Leuchtschild umgesetzt werden — egal wie komplex. Ob filigrane Schriften, mehrfarbige Designs, fotorealistische Logos oder 3D-Buchstaben. Einfach Logo-Datei senden (PNG, JPG, PDF, AI oder EPS) und innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Visualisierung. Alle Schilder werden 100 % CI-konform nach Ihren Corporate-Design-Vorgaben gefertigt."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Welche Dateiformate werden für Logo Leuchtschilder akzeptiert?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "NEONTRIP akzeptiert alle gängigen Formate: PNG, JPG, PDF, AI (Adobe Illustrator), EPS und SVG. Vektorgrafiken (AI, EPS, SVG) liefern die beste Qualität, aber auch Pixelgrafiken in hoher Auflösung können problemlos umgesetzt werden. Falls nur eine niedrig aufgelöste Datei vorliegt, wird das Logo vor der Fertigung professionell nachgezeichnet."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie groß kann ein Logo-Leuchtschild sein?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Bei NEONTRIP gibt es keine feste Größenbeschränkung. Kleine Empfangslogos ab 30 cm Breite sind ebenso möglich wie großformatige Fassadenlogos über mehrere Meter. LED-Neon-Logos werden typischerweise zwischen 40 cm und 200 cm gefertigt. 3D-Buchstaben-Logos können auch deutlich größer sein. Jedes Projekt wird individuell geplant."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Sind Logo Leuchtschilder wetterfest für außen?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, alle NEONTRIP Logo Leuchtschilder für den Außenbereich sind nach Schutzklasse IP67 wetterfest. Sie sind beständig gegen Regen, Schnee, UV-Strahlung und Temperaturschwankungen von -20 °C bis +50 °C. Die Farben verblassen nicht und die Materialien korrodieren nicht."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie wird ein Logo-Leuchtschild montiert?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Jedes Logo-Leuchtschild wird montagefertig geliefert — mit Abstandshaltern, Bohrschablone, Netzteil und bebilderter Anleitung. Kleine und mittlere Schilder können mit handwerklichem Geschick selbst montiert werden. Für großformatige Fassadenschilder empfehlen wir den professionellen Montageservice."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie lange hält ein beleuchtetes Logo-Schild?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "LED-Logo-Schilder halten mindestens 110.000 Betriebsstunden — das entspricht über 25 Jahren bei 12 Stunden täglicher Nutzung. Die Schilder sind wartungsfrei. Falls nach langer Zeit ein Netzteil ausfällt, lässt es sich unkompliziert tauschen."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie schnell wird ein Logo-Leuchtschild geliefert?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Standardlieferung erfolgt in 7–10 Werktagen ab Auftragsbestätigung. Bei Eilaufträgen ist Express-Lieferung ab 3 Werktagen möglich. NEONTRIP liefert europaweit und ist auf termingenaue Lieferungen für Ladeneröffnungen, Filial-Rollouts und Messeauftritte spezialisiert."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie läuft die Bestellung eines Logo-Leuchtschilds ab?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Der Bestellprozess ist einfach: 1. Logo hochladen und Wunschmaße angeben. 2. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau mit Angebot. 3. Nach Freigabe geht das Schild in die Fertigung (7–10 Werktage, Express ab 3 Werktagen). 4. Lieferung montagefertig mit Zubehör, europaweit versichert."
+          }
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Ihr Logo als Leuchtschild — LED & Neon | NEONTRIP",
+      "url": "https://anfrage.neontrip.de/logo/",
+      "description": "Ihr Logo als individuelles Leuchtschild — als Neon, LED oder 3D-Buchstaben. Ab 299 EUR.",
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          "h1",
+          ".faq-answer p"
+        ]
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "NEONTRIP",
+          "item": "https://neontrip.de"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Produkte",
+          "item": "https://anfrage.neontrip.de/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Logo Leuchtschilder",
+          "item": "https://anfrage.neontrip.de/logo/"
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": "NEONTRIP — Ihr Logo als Leuchtschild",
+      "description": "Einblick in die Fertigung und Installation von Logo Leuchtschildern, Neon-Logos und 3D-Leuchtbuchstaben von NEONTRIP aus Düsseldorf.",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "uploadDate": "2025-01-01"
+    }
+  ],
+  "sections": [
+    "header",
+    "hero",
+    "stats-bar",
+    "projekte",
+    "events",
+    "anfrage",
+    "vorteile",
+    "bewertungen",
+    "testimonials",
+    "faq",
+    "kunden",
+    "kontakt",
+    "footer"
+  ],
+  "sticky_produkt": "neonschild",
+  "vorteile_subline": "Ihr Logo als Leuchtschild — vom Entwurf bis zur Lieferung montagefertig.",
+  "events_subline_mobile": "Bekannte Marken vertrauen auf NEONTRIP Leuchtschilder.",
+  "produkte_subline": "Logo-Leuchtschilder, LED Neon und 3D Buchstaben — passend für Ihr Firmenlogo."
+}

@@ -1,0 +1,441 @@
+{
+  "slug": "messe-event",
+  "hero_video_desktop": "../assets/videos/hero-desktop-neon.mp4",
+  "lang": "de",
+  "title": "Leuchtreklame für Messe & Events | NEONTRIP Düsseldorf",
+  "meta_description": "Leuchtreklame für Messe & Events — Leuchtlogos, beleuchtete Messewände, LED Schilder für Ihren Messestand. Express ab 3 Tagen. Kostenlose 3D-Vorschau in 24h.",
+  "canonical": "https://anfrage.neontrip.de/messe-event/",
+  "og_title": "NEONTRIP – Leuchtreklame für Messe & Events",
+  "og_description": "Leuchtreklame für Messe & Events — Leuchtlogos, beleuchtete Messewände, LED Schilder für Ihren Messestand. Express ab 3 Tagen. Kostenlose 3D-Vorschau in 24h.",
+  "h1_text": "Ihr Messestand leuchtet",
+  "hero_subline": "Leuchtlogos, beleuchtete Messewände & LED Schilder für Ihren Messestand — wir liefern eine kostenlose 3D-Vorschau mit Festpreisangebot.",
+  "footer_tagline": "Individuelle Neon Schilder aus Düsseldorf.",
+  "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
+  "faq_cta_title": "Bereit für Ihre Messe-Leuchtreklame?",
+  "clarity_page_type": "landing",
+  "hreflang_tags": "",
+  "dki_rules": [
+    [
+      "messestand logo beleuchtet",
+      "Beleuchtetes Logo für Ihren Messestand"
+    ],
+    [
+      "leuchtschrift event",
+      "Leuchtschrift für Ihr Event"
+    ],
+    [
+      "beleuchtung eventdeko",
+      "Beleuchtung für Ihre Event-Deko"
+    ],
+    [
+      "fotowand leuchtschrift",
+      "Leuchtschrift-Fotowand für Messe & Event"
+    ],
+    [
+      "leuchtreklame messestand",
+      "Leuchtreklame für Ihren Messestand"
+    ],
+    [
+      "leuchtschild messestand",
+      "Leuchtschild für Ihren Messestand"
+    ],
+    [
+      "beleuchteter messestand",
+      "Beleuchteter Messestand"
+    ],
+    [
+      "messestand beleuchtung",
+      "Beleuchtung für Ihren Messestand"
+    ],
+    [
+      "messestand leuchtschild",
+      "Leuchtschild für den Messestand"
+    ],
+    [
+      "messestand leuchtreklame",
+      "Leuchtreklame für den Messestand"
+    ],
+    [
+      "messe leuchtreklame",
+      "Leuchtreklame für Ihre Messe"
+    ],
+    [
+      "messe leuchtschild",
+      "Leuchtschild für die Messe"
+    ],
+    [
+      "messe beleuchtung",
+      "Beleuchtung für Ihre Messe"
+    ],
+    [
+      "messe leuchtdeko",
+      "Leuchtdeko für Ihre Messe"
+    ],
+    [
+      "messebau leuchtreklame",
+      "Leuchtreklame für den Messebau"
+    ],
+    [
+      "messebau beleuchtung",
+      "Beleuchtung für den Messebau"
+    ],
+    [
+      "event leuchtreklame",
+      "Leuchtreklame für Ihr Event"
+    ],
+    [
+      "event beleuchtung",
+      "Beleuchtung für Ihr Event"
+    ],
+    [
+      "event leuchtschild",
+      "Leuchtschild für Ihr Event"
+    ],
+    [
+      "event dekoration beleuchtet",
+      "Beleuchtete Event-Dekoration"
+    ],
+    [
+      "leuchtlogo messe",
+      "Leuchtlogo für die Messe"
+    ],
+    [
+      "leuchtlogo event",
+      "Leuchtlogo für Ihr Event"
+    ],
+    [
+      "led logo messe",
+      "LED Logo für die Messe"
+    ],
+    [
+      "neon schild messe",
+      "Neon Schild für die Messe"
+    ],
+    [
+      "neon schild event",
+      "Neon Schild für Ihr Event"
+    ],
+    [
+      "leuchtbuchstaben messe",
+      "Leuchtbuchstaben für die Messe"
+    ],
+    [
+      "leuchtwand messe",
+      "Leuchtwand für den Messestand"
+    ],
+    [
+      "beleuchtete messewand",
+      "Beleuchtete Messewand"
+    ],
+    [
+      "messe schild beleuchtet",
+      "Beleuchtetes Messe-Schild"
+    ],
+    [
+      "firmenschild messe",
+      "Firmenschild für die Messe"
+    ],
+    [
+      "leuchtreklame messe",
+      "Leuchtreklame für Ihre Messe"
+    ],
+    [
+      "leuchtschild messe",
+      "Leuchtschild für die Messe"
+    ],
+    [
+      "leuchtdeko messe",
+      "Leuchtdeko für Ihre Messe"
+    ],
+    [
+      "eventdeko neon",
+      "Neon Deko für Ihr Event"
+    ],
+    [
+      "led schild messe",
+      "LED Schild für die Messe"
+    ],
+    [
+      "photobooth schild",
+      "Beleuchtetes Photobooth-Schild"
+    ]
+  ],
+  "structured_data": [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "NEONTRIP ist ein deutsches Unternehmen für Leuchtreklame im Messe- und Eventbereich aus Düsseldorf. Spezialisiert auf Leuchtlogos, beleuchtete Messewände, LED Schilder und 3D-Buchstaben für Messestände, Events und temporäre Installationen.",
+      "url": "https://neontrip.de",
+      "logo": "/assets/neontrip-favicon.svg",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "foundingDate": "2020",
+      "numberOfEmployees": {
+        "@type": "QuantitativeValue",
+        "minValue": 10,
+        "maxValue": 50
+      },
+      "slogan": "Leuchtreklame für Ihren Messestand.",
+      "knowsAbout": [
+        "Messe Leuchtreklame",
+        "Event Beleuchtung",
+        "Leuchtlogo Messestand",
+        "Beleuchtete Messewand",
+        "LED Schild Messe",
+        "Messestand Beleuchtung"
+      ],
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressRegion": "NRW",
+        "addressCountry": "DE"
+      },
+      "areaServed": {
+        "@type": "GeoCircle",
+        "geoMidpoint": {
+          "@type": "GeoCoordinates",
+          "latitude": 51.2277,
+          "longitude": 6.7735
+        },
+        "geoRadius": "500 km"
+      },
+      "sameAs": [
+        "https://www.instagram.com/neontrip.de",
+        "https://www.linkedin.com/company/neontrip",
+        "https://www.tiktok.com/@neontrip.de",
+        "https://www.youtube.com/@neontrip",
+        "https://www.facebook.com/neontrip.de"
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "Deutsches Unternehmen für Leuchtreklame im Messe- und Eventbereich. Leuchtlogos, beleuchtete Messewände und LED Schilder. Über 8.247 B2B-Projekte realisiert. Express ab 3 Tagen.",
+      "url": "https://neontrip.de",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "priceRange": "€€€",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressCountry": "DE"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236",
+        "bestRating": "5"
+      },
+      "openingHoursSpecification": {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        "opens": "09:00",
+        "closes": "17:00"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Leuchtreklame für Messe & Events",
+      "description": "Leuchtlogos, beleuchtete Messewände, LED Schilder und 3D-Buchstaben für Messestände und Events. Express ab 3 Tagen. Kostenlose 3D-Vorschau in 24h.",
+      "brand": {
+        "@type": "Brand",
+        "name": "NEONTRIP"
+      },
+      "manufacturer": {
+        "@type": "Organization",
+        "name": "Dara Nova GmbH"
+      },
+      "category": "Messe Leuchtreklame",
+      "offers": {
+        "@type": "AggregateOffer",
+        "priceCurrency": "EUR",
+        "lowPrice": "199",
+        "highPrice": "5000",
+        "offerCount": "8"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Was kostet Leuchtreklame für einen Messestand?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Leuchtreklame für Messestände kostet je nach Größe und Art ab 499 € für einfache LED Neon Schriftzüge. Beleuchtete Logos und 3D-Buchstaben für den Messestand liegen bei 1.000–3.500 €. Großformatige Leuchtwände und beleuchtete Messewände ab 5.000 €. NEONTRIP erstellt innerhalb von 24 Stunden eine kostenlose 3D-Vorschau mit Festpreisangebot — speziell auf Ihren Messestand zugeschnitten."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie schnell kann Messe-Leuchtreklame geliefert werden?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "NEONTRIP bietet Express-Fertigung ab 3 Werktagen für Messe-Leuchtreklame. Standard-Lieferung in 7–10 Werktagen. Für kurzfristige Messetermine ist ein Express-Aufschlag möglich. NEONTRIP ist auf termingenaue Lieferungen für Messen und Events spezialisiert — inklusive direktem Versand an den Messestandort."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kann Messe-Leuchtreklame wiederverwendet werden?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, alle Leuchtprodukte von NEONTRIP sind für den wiederholten Einsatz auf verschiedenen Messen konzipiert. LED Neon Schilder und 3D-Buchstaben sind leicht, bruchsicher und transportabel. Viele B2B-Kunden nutzen ihre Leuchtreklame auf 10+ Messen pro Jahr. Die Befestigung erfolgt mit wiederverwendbaren Abstandshaltern oder Hängevorrichtungen."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Welche Arten von Messe-Leuchtreklame bietet NEONTRIP an?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "NEONTRIP bietet für Messe und Events: LED Neon Schriftzüge, beleuchtete Firmenlogos (front- und rückbeleuchtet), 3D-Buchstaben aus Acryl und Aluminium, beleuchtete Messewände und Rückwand-Panels, Leuchtkästen, Neon-Deko für Lounges und VIP-Bereiche sowie Sonderanfertigungen nach Maß. Alle Produkte werden individuell nach Ihrem CI gefertigt."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie wird Leuchtreklame am Messestand montiert?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Die Montage ist einfach nach dem Plug-and-Play-Prinzip. Jedes Leuchtprodukt wird mit Abstandshaltern, Hängevorrichtung oder Klemmsystem geliefert — passend für Messestand-Wände und Traversen. Steckfertiges Netzteil mit 3,5 m Kabel. Optional bietet NEONTRIP professionellen Montageservice direkt am Messestandort."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kann man das Firmenlogo als Leuchtschild für die Messe umsetzen?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, jedes Firmenlogo kann als Leuchtschild für die Messe umgesetzt werden — egal wie komplex. Einfach die Logo-Datei (PNG, JPG, PDF, AI, EPS) senden und innerhalb von 24 Stunden erhalten Sie eine 3D-Vorschau. Besonders beliebt: Logos als front- oder rückbeleuchtete 3D-Buchstaben, als LED Neon Schriftzug oder als beleuchtete Messewand."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Ist Messe-Leuchtreklame transportabel?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, alle Messe-Leuchtprodukte von NEONTRIP sind für einfachen Transport konzipiert. LED Neon Schilder wiegen nur 2–5 kg, 3D-Buchstaben sind aus leichtem Acryl und Aluminium. Auf Wunsch liefert NEONTRIP passende Transportkisten für den sicheren Versand zwischen Messestandorten."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Welche Größen sind für Messe-Leuchtreklame möglich?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Von kleinen Tisch-Displays ab 30 cm bis zu großformatigen Messewänden über 5 Meter Breite. Standard-Leuchtschilder für Messestände liegen bei 1–3 Metern. Mehrteilige Installationen und beleuchtete Rückwände in Sondergrößen sind nach Maß realisierbar. NEONTRIP berät Sie kostenlos zur optimalen Größe für Ihren Stand."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie viel Strom verbraucht Messe-Leuchtreklame?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "LED-basierte Messe-Leuchtreklame ist sehr energieeffizient. Ein Leuchtlogo (ca. 1 Meter) verbraucht nur 10–40 Watt — weniger als eine Messespot-Leuchte. Auch großformatige Installationen bleiben unter 200 Watt. Damit passen alle Produkte in die Standard-Stromanschlüsse von Messeständen (230V Schuko)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Bietet NEONTRIP Leuchtreklame für Firmenevents und Galas?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, NEONTRIP liefert Leuchtreklame für alle Arten von Events: Firmenevents, Produktlaunches, Galas, Jubiläen, Konferenzen und Pop-up-Events. Beliebt sind LED Neon Schriftzüge als Foto-Hintergrund, beleuchtete Logos im Eingangsbereich und Neon-Deko für Lounge-Bereiche. Express-Fertigung ab 3 Werktagen möglich."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Gibt es eine Garantie auf Messe-Leuchtreklame?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, NEONTRIP gewährt 24 Monate Garantie auf alle Leuchtprodukte. Die Garantie deckt LED-Module, Netzteile und Verarbeitungsfehler ab. Bei intensiver Messe-Nutzung (10+ Events pro Jahr) bieten wir optional verlängerte Gewährleistung. Jedes Produkt durchläuft vor dem Versand eine Qualitätskontrolle."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie läuft die Bestellung von Messe-Leuchtreklame ab?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Der Bestellprozess umfasst vier Schritte: 1. Logo, Standplan oder Idee als Datei senden. 2. Innerhalb von 24 Stunden erhalten Sie eine 3D-Vorschau Ihres Leuchtschilds am Messestand mit Festpreisangebot. 3. Nach Freigabe und Bezahlung startet die Express-Fertigung. 4. Das Leuchtprodukt wird montagefertig direkt an den Messestandort oder Ihr Büro geliefert."
+          }
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Leuchtreklame für Messe & Events | NEONTRIP",
+      "url": "https://anfrage.neontrip.de/messe-event/",
+      "description": "Leuchtreklame für Messe & Events — Leuchtlogos, beleuchtete Messewände und LED Schilder für Ihren Messestand. Express ab 3 Tagen.",
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          "h1",
+          ".faq-answer p"
+        ]
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "NEONTRIP",
+          "item": "https://neontrip.de"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Messe & Event Leuchtreklame",
+          "item": "https://anfrage.neontrip.de/messe-event/"
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": "NEONTRIP — Individuelle Neon Schilder & LED Schriftzüge",
+      "description": "Einblick in die Fertigung und Installation individueller LED Neon Schilder und Leuchtschriftzüge von NEONTRIP aus Düsseldorf.",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "uploadDate": "2025-01-01"
+    }
+  ],
+  "sections": [
+    "header",
+    "hero",
+    "stats-bar",
+    "projekte",
+    "events",
+    "anfrage",
+    "vorteile",
+    "bewertungen",
+    "testimonials",
+    "faq",
+    "kunden",
+    "kontakt",
+    "footer"
+  ],
+  "default_product": "LED Neonschild",
+  "sticky_produkt": "neonschild",
+  "vorteile_subline": "LED Schilder für Messe & Event — vom Entwurf bis zur Lieferung montagefertig.",
+  "events_subline_mobile": "Bekannte Marken & Events vertrauen auf NEONTRIP.",
+  "produkte_subline": "Messe-Schilder, Neon & mehr — klicken Sie für Beispiele und direkte Anfrage."
+}

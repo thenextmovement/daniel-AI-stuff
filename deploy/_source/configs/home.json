@@ -1,0 +1,309 @@
+{
+  "slug": "home",
+  "output_dir": ".",
+  "output_file": "index.html",
+  "asset_prefix": "/assets/",
+  "hero_video_desktop": "/assets/videos/hero-desktop-neon.mp4",
+  "hero_video_mobile": "/assets/videos/hero-mobile-neon.mp4",
+  "lang": "de",
+  "title": "Individuelle Neon Schilder & LED Schriftzüge | NEONTRIP Düsseldorf",
+  "meta_description": "Individuelle Neon Schilder & LED Schilder ab 299 €. Kostenlose 3D-Vorschau in 24h. 4,9★ bei 236 Bewertungen. Jetzt anfragen!",
+  "canonical": "https://anfrage.neontrip.de/",
+  "og_title": "NEONTRIP – Individuelle Neon Schilder & LED Schriftzüge",
+  "og_description": "Individuelle Neon Schilder & LED Schilder ab 299 €. Kostenlose 3D-Vorschau in 24h. 4,9★ bei 236 Bewertungen. Jetzt anfragen!",
+  "h1_text": "Ihre Marke leuchten lassen — ab 299€",
+  "hero_subline": "Individuelle Neon Schilder & LED Schriftzüge nach Ihrem Design — wir liefern eine kostenlose 3D-Vorschau mit Festpreisangebot.",
+  "footer_tagline": "Individuelle Neon Schilder aus Düsseldorf.",
+  "footer_products": "LED Neon · 3D Buchstaben · Leuchtkästen",
+  "faq_cta_title": "Bereit für Ihr Neon Schild?",
+  "clarity_page_type": "landing",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/\">",
+  "dki_rules": [],
+  "structured_data": [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "NEONTRIP ist ein deutsches Unternehmen für individuelle Neon Schilder, LED Neon Schriftzüge und personalisierte Leuchtschriften aus Düsseldorf. Spezialisiert auf B2B-Projekte für Agenturen, Marken und Unternehmen.",
+      "url": "https://neontrip.de",
+      "logo": "/assets/neontrip-favicon.svg",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "foundingDate": "2020",
+      "numberOfEmployees": {
+        "@type": "QuantitativeValue",
+        "minValue": 10,
+        "maxValue": 50
+      },
+      "slogan": "Jedes Logo. Als Neon Schild.",
+      "knowsAbout": [
+        "Neon Schilder",
+        "LED Neon Schild",
+        "Neon Leuchtschrift",
+        "Neon Schild personalisiert",
+        "Neon Schild Logo",
+        "LED Neon Schriftzüge"
+      ],
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressRegion": "NRW",
+        "addressCountry": "DE"
+      },
+      "areaServed": {
+        "@type": "GeoCircle",
+        "geoMidpoint": {
+          "@type": "GeoCoordinates",
+          "latitude": 51.2277,
+          "longitude": 6.7735
+        },
+        "geoRadius": "500 km"
+      },
+      "sameAs": [
+        "https://www.instagram.com/neontrip.de",
+        "https://www.linkedin.com/company/neontrip",
+        "https://www.tiktok.com/@neontrip.de",
+        "https://www.youtube.com/@neontrip",
+        "https://www.facebook.com/neontrip.de"
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "Deutsches Unternehmen für individuelle Neon Schilder, LED Neon Schriftzüge und personalisierte Leuchtschriften. Über 8.247 B2B-Projekte realisiert. Kostenlose 3D-Vorschau in 24h.",
+      "url": "https://neontrip.de",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "priceRange": "€€€",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressCountry": "DE"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236",
+        "bestRating": "5"
+      },
+      "openingHoursSpecification": {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        "opens": "09:00",
+        "closes": "17:00"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Individuelle LED Neon Schilder",
+      "description": "Individuelle LED Neon Schilder und Leuchtschriftzüge nach Ihrem Design. Alle Farben und Größen. Kostenlose 3D-Vorschau in 24h.",
+      "brand": {
+        "@type": "Brand",
+        "name": "NEONTRIP"
+      },
+      "category": "Neon Schilder",
+      "offers": {
+        "@type": "AggregateOffer",
+        "priceCurrency": "EUR",
+        "lowPrice": "199",
+        "highPrice": "5000",
+        "offerCount": "8"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Was kostet ein individuelles Neon Schild?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Individuelle Neon Schilder kosten je nach Größe, Farbe und Komplexität ab 299 € für einfache LED Neon Schriftzüge. Mittlere Projekte wie personalisierte Neon Logos oder Bar-Schilder liegen bei 500–2.500 €. Großformatige Neon Schilder für Fassaden oder Messen können ab 5.000 € kosten. NEONTRIP erstellt innerhalb von 24 Stunden eine kostenlose 3D-Vorschau mit Festpreisangebot."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Was ist der Unterschied zwischen LED Neon und echtem Neon?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "LED Neon verwendet flexible Silikonröhren mit energieeffizienten LED-Modulen, während echtes Neon aus handgebogenen Glasröhren mit Edelgas besteht. LED Neon Schilder sind bruchsicher, leichter, günstiger in Anschaffung und Betrieb und verbrauchen bis zu 80 % weniger Strom. Echtes Glas-Neon hat einen klassischen Retro-Look, ist aber fragil und erfordert höhere Spannung. NEONTRIP setzt auf LED Neon Flex (Silikon) als modernen Standard für gewerbliche Anwendungen."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kann man ein Neon Schild personalisieren oder selbst gestalten?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, bei NEONTRIP kann jedes Neon Schild komplett personalisiert werden. Sie können Ihren eigenen Text, Schriftart, Farbe und Größe wählen oder ein bestehendes Logo als Neon Schild umsetzen lassen. Einfach Ihre Idee als Skizze, Foto oder Datei (PNG, JPG, PDF, AI, EPS) senden — innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau Ihres personalisierten Neon Schilds."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie groß kann ein Neon Schild sein?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "LED Neon Schilder sind von 30 cm bis über 5 Meter Breite realisierbar. Kleine Neon Schriftzüge für die Wand eignen sich ab ca. 40 cm, mittlere Neon Schilder für Bars und Empfangsbereiche ab 80 cm, und großformatige Neon Installationen für Messen und Fassaden bis über 5 Meter. Jedes Neon Schild wird individuell nach Maß gefertigt."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Sind Neon Schilder für den Außenbereich geeignet?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, LED Neon Schilder sind sowohl für Innen- als auch für Außenbereiche erhältlich. Outdoor-Neon-Schilder sind wetterfest nach Schutzklasse IP67, UV-beständig und werden mit wasserdichtem Netzteil geliefert. Sie eignen sich für Fassaden, Terrassen, Biergärten und Events. Indoor-Versionen sind leichter und steckfertig. NEONTRIP empfiehlt je nach Einsatzort das passende System."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie viel Strom verbraucht ein LED Neon Schild?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ein durchschnittliches LED Neon Schild (ca. 1 Meter Breite) verbraucht zwischen 10 und 40 Watt — vergleichbar mit einer Schreibtischlampe. Bei 12 Stunden täglicher Nutzung und einem Strompreis von 0,30 €/kWh liegen die jährlichen Stromkosten bei nur ca. 13–50 €. LED Neon ist damit bis zu 80 % effizienter als klassische Glas-Neonröhren."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie lange hält ein LED Neon Schild?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "LED Neon Schilder halten mindestens 50.000 Betriebsstunden — das entspricht über 11 Jahren bei täglich 12 Stunden Nutzung. Die Schilder sind wartungsfrei und behalten ihre Leuchtkraft über die gesamte Lebensdauer. Falls nach Jahren ein Netzteil ausfallen sollte, lässt es sich unkompliziert austauschen."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie wird ein Neon Schild montiert?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Die Montage funktioniert nach dem Plug-and-Play-Prinzip — keine Fachinstallation nötig. Jedes Neon Schild wird mit vormontierter Aufhängung oder Abstandshaltern, Bohrschablone, Netzteil mit Schuko-Stecker und bebilderter Montageanleitung geliefert. Die Kabel-Reichweite beträgt ca. 3,5 Meter und ist verlängerbar. Optional bietet NEONTRIP professionellen Montageservice."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kann man jedes Logo als Neon Schild umsetzen?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, praktisch jedes Logo kann als LED Neon Schild umgesetzt werden — egal wie komplex. Ob filigrane Schriften, mehrfarbige Designs oder fotorealistische Logos: Einfach Datei senden (PNG, JPG, PDF, AI oder EPS) und die Machbarkeit wird kostenlos innerhalb von 24 Stunden geprüft. Besonders beliebt sind Firmenlogos als Neon Schild für Empfangsbereich, Messestand und Bar."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Welche Farben sind bei Neon Schildern möglich?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "LED Neon Schilder sind in über 20 Farben verfügbar — von klassischem Warmweiß und Kaltweiß über kräftiges Pink, Rot, Blau, Grün und Gelb bis hin zu Spezialfarben wie Orange, Lila und Eisblau. Mehrfarbige Neon Schilder mit verschiedenen Farben pro Buchstabe oder Segment sind ebenfalls möglich. Auf Anfrage kann jede RAL- oder Pantone-Farbe umgesetzt werden."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Sind Neon Schilder dimmbar?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, alle LED Neon Schilder von NEONTRIP sind dimmbar. Standardmäßig wird ein dimmbares Netzteil mitgeliefert. So lässt sich die Helligkeit stufenlos regulieren — ideal für stimmungsvolle Beleuchtung in Bars, Restaurants, Lounges oder Schlafzimmern. Optional sind auch Fernbedienungen und Timer-Funktionen erhältlich."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie schnell wird ein Neon Schild geliefert?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Standardlieferung erfolgt in 7–10 Werktagen ab Auftragsbestätigung. Bei Eilaufträgen ist eine Express-Lieferung ab 3 Werktagen möglich. NEONTRIP liefert europaweit und ist auf termingenaue Lieferungen für Messen, Events und Ladeneröffnungen spezialisiert."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Gibt es eine Garantie auf LED Neon Schilder?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja, NEONTRIP gewährt 24 Monate Garantie auf alle LED Neon Schilder. Die Garantie deckt LED-Module, Netzteile und Verarbeitungsfehler ab. Auf Anfrage bieten wir verlängerte Gewährleistung für gewerbliche Dauerinstallationen. Jedes Neon Schild durchläuft vor dem Versand eine Qualitätskontrolle."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie läuft die Bestellung eines individuellen Neon Schilds ab?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Der Bestellprozess umfasst vier Schritte: 1. Logo, Text oder Idee als Datei oder Foto senden. 2. Innerhalb von 24 Stunden erhalten Sie eine kostenlose 3D-Vorschau Ihres Neon Schilds mit Festpreisangebot. 3. Nach Freigabe und Bezahlung startet die Fertigung. 4. Das fertige Neon Schild wird montagefertig mit komplettem Zubehör europaweit geliefert."
+          }
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Individuelle Neon Schilder & LED Schriftzüge | NEONTRIP",
+      "url": "https://anfrage.neontrip.de/",
+      "description": "Individuelle Neon Schilder, LED Neon Schriftzüge & personalisierte Leuchtschriften aus Düsseldorf. Kostenlose 3D-Vorschau in 24h.",
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          "h1",
+          ".faq-answer p"
+        ]
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "NEONTRIP",
+          "item": "https://neontrip.de"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Anfrage",
+          "item": "https://anfrage.neontrip.de/"
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": "NEONTRIP — Individuelle Neon Schilder & LED Schriftzüge",
+      "description": "Einblick in die Fertigung und Installation individueller LED Neon Schilder und Leuchtschriftzüge von NEONTRIP aus Düsseldorf.",
+      "thumbnailUrl": "https://anfrage.neontrip.de/assets/images/hero-poster.webp",
+      "contentUrl": "https://anfrage.neontrip.de/assets/videos/hero-desktop-neon.mp4",
+      "uploadDate": "2025-01-01"
+    }
+  ],
+  "sections": [
+    "header",
+    "hero",
+    "stats-bar",
+    "projekte",
+    "events",
+    "anfrage",
+    "vorteile",
+    "bewertungen",
+    "testimonials",
+    "faq",
+    "kunden",
+    "kontakt",
+    "footer"
+  ],
+  "default_product": "LED Neonschild",
+  "sticky_produkt": "neonschild"
+}

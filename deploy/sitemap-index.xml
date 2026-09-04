@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://neontrip.de/sitemap.xml</loc>
+    <lastmod>2026-03-26</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>https://neontrip.de/sitemap-en.xml</loc>
+    <lastmod>2026-03-26</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>https://neontrip.de/sitemap-blog.xml</loc>
+    <lastmod>2026-03-26</lastmod>
+  </sitemap>
+</sitemapindex>

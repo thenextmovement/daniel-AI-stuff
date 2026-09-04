@@ -1,0 +1,376 @@
+{
+  "slug": "neon-schild-personalisieren",
+  "hero_video_desktop": "../assets/videos/hero-desktop-neon.mp4",
+  "hero_video_mobile": "../assets/videos/hero-mobile-neon.mp4",
+  "lang": "de",
+  "title": "Neon Schild personalisieren — Dein Design als LED Neon | NEONTRIP",
+  "meta_description": "Neon Schild personalisieren in 3 Schritten: Text oder Logo hochladen, Farbe wählen, Größe festlegen. Kostenlose 3D-Vorschau in 24h. Ab 89 EUR.",
+  "canonical": "https://anfrage.neontrip.de/neon-schild-personalisieren/",
+  "og_title": "NEONTRIP – Neon Schild personalisieren | Dein Design als LED Neon",
+  "og_description": "Neon Schild personalisieren: Text, Logo, Farbe, Größe. Kostenlose 3D-Vorschau in 24h. Ab 89 EUR.",
+  "h1_text": "Neon Schild personalisieren",
+  "default_product": "LED Neonschild",
+  "price_anchor": "Personalisierte Neon Schilder ab 89 € · LED Schriftzug ab 149 € · Logo-Schild ab 299 €",
+  "price_anchor_desktop": "Neon Schild personalisiert ab 89 EUR",
+  "hero_subline": "Dein Text, dein Logo, deine Farbe — in 3 Schritten zum personalisierten Neon Schild. Kostenlose 3D-Vorschau in 24h, Express-Fertigung ab 3 Werktagen.",
+  "footer_tagline": "Personalisierte Neon Schilder aus Düsseldorf.",
+  "footer_products": "Neon personalisiert · LED Schriftzüge · 3D Buchstaben · Logo-Schilder",
+  "faq_cta_title": "Bereit für dein personalisiertes Neon Schild?",
+  "clarity_page_type": "landing",
+  "hreflang_tags": "<link rel=\"alternate\" hreflang=\"de\" href=\"https://anfrage.neontrip.de/neon-schild-personalisieren/\">",
+  "dki_rules": [
+    [
+      "neon schild personalisieren",
+      "Dein Neon Schild personalisieren"
+    ],
+    [
+      "neon schild personalisiert",
+      "Dein personalisiertes Neon Schild"
+    ],
+    [
+      "neonschild personalisiert",
+      "Dein personalisiertes Neonschild"
+    ],
+    [
+      "neonschilder personalisiert",
+      "Personalisierte Neonschilder nach Maß"
+    ],
+    [
+      "personalisiertes neon schild",
+      "Dein personalisiertes Neon Schild"
+    ],
+    [
+      "personalisiertes neonschild",
+      "Dein personalisiertes Neonschild"
+    ],
+    [
+      "personalisiertes led schild",
+      "Dein personalisiertes LED Schild"
+    ],
+    [
+      "led schild personalisiert",
+      "Dein personalisiertes LED Schild"
+    ],
+    [
+      "led schild personalisieren",
+      "Dein LED Schild personalisieren"
+    ],
+    [
+      "neon schriftzug personalisiert",
+      "Dein personalisierter Neon Schriftzug"
+    ],
+    [
+      "neon schriftzug personalisieren",
+      "Neon Schriftzug personalisieren"
+    ],
+    [
+      "led schriftzug personalisiert",
+      "Dein personalisierter LED Schriftzug"
+    ],
+    [
+      "neon schild selbst gestalten",
+      "Dein Neon Schild selbst gestalten"
+    ],
+    [
+      "neonschild selbst gestalten",
+      "Dein Neonschild selbst gestalten"
+    ],
+    [
+      "led schild selbst gestalten",
+      "Dein LED Schild selbst gestalten"
+    ],
+    [
+      "neon schild individuell",
+      "Dein individuelles Neon Schild"
+    ],
+    [
+      "neonschild individuell",
+      "Dein individuelles Neonschild"
+    ],
+    [
+      "neon schild gestalten",
+      "Dein Neon Schild gestalten"
+    ],
+    [
+      "neon schild konfigurator",
+      "Neon Schild Konfigurator"
+    ],
+    [
+      "neon schild mit text",
+      "Neon Schild mit deinem Text"
+    ],
+    [
+      "neon schild mit name",
+      "Neon Schild mit deinem Namen"
+    ],
+    [
+      "neon schild mit namen",
+      "Neon Schild mit deinem Namen"
+    ],
+    [
+      "neon schild mit logo",
+      "Neon Schild mit deinem Logo"
+    ],
+    [
+      "led schild mit logo",
+      "LED Schild mit deinem Logo"
+    ],
+    [
+      "neon schild eigenes design",
+      "Neon Schild mit deinem Design"
+    ],
+    [
+      "neon schild nach wunsch",
+      "Neon Schild nach deinem Wunsch"
+    ],
+    [
+      "neon schild auf wunsch",
+      "Neon Schild auf deinen Wunsch"
+    ],
+    [
+      "neon schild wunschtext",
+      "Neon Schild mit deinem Wunschtext"
+    ],
+    [
+      "neon schild anfertigen",
+      "Neon Schild anfertigen lassen"
+    ],
+    [
+      "neon schild anfertigen lassen",
+      "Neon Schild anfertigen lassen"
+    ],
+    [
+      "custom neon schild",
+      "Dein individuelles Neon Schild"
+    ],
+    [
+      "custom led schild",
+      "Dein individuelles LED Schild"
+    ],
+    [
+      "neon schild geschenk",
+      "Personalisiertes Neon Schild als Geschenk"
+    ]
+  ],
+  "structured_data": [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "NEONTRIP ist Spezialist für personalisierte Neon Schilder, LED Schriftzüge und individuelle Leuchtreklame aus Düsseldorf. Über 8.247 B2B-Projekte realisiert.",
+      "url": "https://neontrip.de",
+      "logo": "/assets/neontrip-favicon.svg",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "foundingDate": "2020",
+      "slogan": "Dein Design. Dein Neon Schild.",
+      "knowsAbout": [
+        "Personalisierte Neon Schilder",
+        "Neon Schild personalisieren",
+        "LED Schild personalisiert",
+        "Neon Schriftzug personalisiert",
+        "Neon Schild selbst gestalten",
+        "Custom Neon Sign"
+      ],
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressRegion": "NRW",
+        "addressCountry": "DE"
+      },
+      "sameAs": [
+        "https://www.instagram.com/neontrip.de",
+        "https://www.linkedin.com/company/neontrip"
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "name": "NEONTRIP",
+      "legalName": "Dara Nova GmbH",
+      "description": "Spezialist für personalisierte Neon Schilder, LED Schriftzüge und individuelle Leuchtreklame aus Düsseldorf. Über 8.247 Projekte realisiert.",
+      "url": "https://neontrip.de",
+      "telephone": "+49-211-54257240",
+      "email": "support@neontrip.de",
+      "priceRange": "€€",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bilker Allee 29",
+        "addressLocality": "Düsseldorf",
+        "postalCode": "40219",
+        "addressCountry": "DE"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236",
+        "bestRating": "5"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Neon Schild personalisiert — Dein Design als LED Neon",
+      "description": "Personalisierbares LED Neon Schild — mit deinem Text, Logo, Farbe und Größe. Kostenlose 3D-Vorschau in 24h.",
+      "brand": {
+        "@type": "Brand",
+        "name": "NEONTRIP"
+      },
+      "manufacturer": {
+        "@type": "Organization",
+        "name": "Dara Nova GmbH"
+      },
+      "image": "https://anfrage.neontrip.de/assets/images/og-share.jpg",
+      "category": "Personalisierte Neon Schilder",
+      "offers": {
+        "@type": "AggregateOffer",
+        "priceCurrency": "EUR",
+        "lowPrice": "89",
+        "highPrice": "5000",
+        "offerCount": "8",
+        "availability": "https://schema.org/InStock",
+        "price": "89"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "reviewCount": "236"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Wie kann ich ein Neon Schild personalisieren?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ein Neon Schild personalisieren geht in 3 Schritten: 1. Text eingeben oder Logo hochladen (PNG, JPG, PDF, AI, EPS, SVG). 2. Farbe auswählen — über 20 LED-Farben zur Verfügung. 3. Größe und Montageort festlegen. Innerhalb von 24 Stunden erhältst du eine kostenlose 3D-Vorschau mit Festpreis."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Was kostet ein personalisiertes Neon Schild?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Personalisierte Neon Schilder starten ab 89 € für kleine Schriftzüge. Mittlere Größen (60–100 cm) kosten je nach Komplexität 199–499 €. Personalisierte Logo-Schilder für Firmen liegen bei 299–1.200 €. Die Endpreise hängen von Größe, Farben, Komplexität und Montageart ab — du bekommst innerhalb von 24 Stunden ein kostenloses Festpreis-Angebot."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Kann ich mein eigenes Logo als Neon Schild umsetzen?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja. Du kannst dein Logo als Datei hochladen (PNG, JPG, PDF, AI, EPS oder SVG). Bei niedrig aufgelösten Vorlagen zeichnen unsere Designer das Logo vor der Fertigung professionell nach — ohne Zusatzkosten. Jedes Logo wird exakt in Form, Proportionen und Farbe umgesetzt."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Welche Farben sind bei personalisierten Neon Schildern möglich?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Über 20 LED-Farben stehen zur Auswahl — von klassischem Warmweiß, Kaltweiß und Pink über Rot, Blau, Grün, Gelb bis zu Spezialfarben wie Orange, Lila, Eisblau und Türkis. Mehrfarbige Schilder mit unterschiedlichen Farben pro Buchstabe oder Element sind ebenfalls möglich. Auf Anfrage setzen wir auch RAL- oder Pantone-Farben um."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie groß darf ein personalisiertes Neon Schild sein?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Personalisierte Neon Schilder sind von 30 cm bis über 5 Meter Breite realisierbar. Kleine Schilder für Zuhause oder als Geschenk beginnen bei 40–60 cm, mittlere Schilder für Bars, Empfang oder Studio bei 80–150 cm, großformatige Projekte für Fassade oder Messe bis über 5 Meter. Jedes Schild wird individuell nach deinen Maßen gefertigt."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie lange dauert die Anfertigung eines personalisierten Neon Schilds?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Standardlieferung erfolgt in 7–10 Werktagen ab Freigabe der 3D-Vorschau. Express-Fertigung ab 3 Werktagen ist für Geburtstage, Hochzeiten, Eröffnungen und Events möglich. Die 3D-Vorschau selbst erhältst du kostenlos innerhalb von 24 Stunden nach Anfrage."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Ist ein personalisiertes Neon Schild als Geschenk geeignet?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ja. Personalisierte Neon Schilder sind beliebte Geschenke zu Hochzeiten, Geburtstagen, Jubiläen, Firmen-Eröffnungen und als Baby-Namen-Schild fürs Kinderzimmer. Express-Fertigung ab 3 Werktagen und Geschenkverpackung auf Wunsch verfügbar."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie wird ein personalisiertes Neon Schild montiert?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Plug-and-Play: Jedes Neon Schild wird mit vormontierter Aufhängung, Bohrschablone, Netzteil mit Schuko-Stecker und bebilderter Anleitung geliefert. Die Kabel-Reichweite beträgt ca. 3,5 Meter und ist verlängerbar. Die Montage erfolgt ohne Fachinstallation — einfach aufhängen, einstecken, leuchten."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Wie läuft die Bestellung eines personalisierten Neon Schilds ab?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Der Ablauf: 1. Text oder Logo-Datei hochladen, Farbe und Wunschgröße angeben. 2. Innerhalb von 24 Stunden bekommst du eine kostenlose 3D-Vorschau mit Festpreis. 3. Nach Freigabe startet die Fertigung (7–10 Werktage, Express ab 3 Werktagen). 4. Lieferung montagefertig mit komplettem Zubehör — europaweiter Versand."
+          }
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Neon Schild personalisieren — Dein Design als LED Neon | NEONTRIP",
+      "url": "https://anfrage.neontrip.de/neon-schild-personalisieren/",
+      "description": "Neon Schild personalisieren: Text, Logo, Farbe, Größe. Kostenlose 3D-Vorschau in 24h. Ab 89 EUR.",
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          "h1",
+          ".faq-answer p"
+        ]
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "NEONTRIP",
+          "item": "https://neontrip.de"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Produkte",
+          "item": "https://anfrage.neontrip.de/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Neon Schild personalisieren",
+          "item": "https://anfrage.neontrip.de/neon-schild-personalisieren/"
+        }
+      ]
+    }
+  ],
+  "sections": [
+    "header",
+    "hero",
+    "stats-bar",
+    "projekte",
+    "events",
+    "anfrage",
+    "vorteile",
+    "bewertungen",
+    "testimonials",
+    "faq",
+    "kunden",
+    "kontakt",
+    "footer"
+  ],
+  "sticky_produkt": "neonschild"
+}

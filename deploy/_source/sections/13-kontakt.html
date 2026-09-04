@@ -1,0 +1,123 @@
+<!-- ===== SECTION: kontakt ===== -->
+  <!--        KONTAKT (Lassen Sie uns sprechen)
+       ════════════════════════════════════════ -->
+  <section id="kontakt" class="relative bg-dark py-12 md:py-16 px-5 md:px-8 grain">
+    <div class="absolute inset-0 bg-dark z-0"></div>
+
+    <div class="relative z-10 max-w-[1200px] mx-auto flex flex-col lg:flex-row gap-8">
+      <!-- Links: Anfrageformular -->
+      <div class="reveal lg:w-1/2 order-2 lg:order-1">
+        <form action="/api/c" method="POST" enctype="multipart/form-data" novalidate class="bg-white rounded-[18px] p-5 md:p-6" id="kontakt-form">
+          <input type="hidden" name="source" value="kontakt-form-{{SLUG}}">
+          <div class="nt-hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
+          <h3 class="text-lg md:text-xl font-semibold tracking-tighter text-dark mb-4">
+            Sie planen <span class="text-dark/60">ein Projekt?</span>
+          </h3>
+          <div class="flex flex-col gap-3 mb-4">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label for="kontakt-name" class="text-xs font-medium text-dark tracking-tight mb-1 block">Ihr Name*</label>
+                <input type="text" name="name" id="kontakt-name" placeholder="Name" required class="w-full bg-[#F5F5F5] rounded-[10px] px-3.5 py-2 text-base md:text-sm font-medium tracking-tight text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300">
+              </div>
+              <div>
+                <label for="kontakt-firma" class="text-xs font-medium text-dark tracking-tight mb-1 block">Unternehmen</label>
+                <input type="text" name="firma" id="kontakt-firma" placeholder="Ihr Unternehmen" class="w-full bg-[#F5F5F5] rounded-[10px] px-3.5 py-2 text-base md:text-sm font-medium tracking-tight text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300">
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label for="kontakt-email" class="text-xs font-medium text-dark tracking-tight mb-1 block">E-Mail*</label>
+                <input type="email" name="email" id="kontakt-email" placeholder="E-Mail" required class="w-full bg-[#F5F5F5] rounded-[10px] px-3.5 py-2 text-base md:text-sm font-medium tracking-tight text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300">
+              </div>
+              <div>
+                <label for="kontakt-telefon" class="text-xs font-medium text-dark tracking-tight mb-1 block">Telefon *</label>
+                <input type="tel" name="telefon" id="kontakt-telefon" placeholder="+49 ..." required class="w-full bg-[#F5F5F5] rounded-[10px] px-3.5 py-2 text-base md:text-sm font-medium tracking-tight text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300">
+              </div>
+            </div>
+            <div>
+              <label for="kontakt-file-input" class="text-xs font-medium text-dark tracking-tight mb-1 block">Logo / Design</label>
+              <div class="relative">
+                <input type="file" name="datei" accept=".png,.jpg,.jpeg,.pdf,.ai,.eps,.svg" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" id="kontakt-file-input">
+                <div class="w-full bg-dark/[0.02] rounded-[10px] px-3.5 py-2 border border-dashed border-dark/[0.12] hover:border-dark/25 hover:bg-dark/[0.04] transition-all duration-200 flex items-center gap-2.5 group" id="kontakt-file-label">
+                  <div class="w-7 h-7 rounded-lg bg-dark/[0.06] flex items-center justify-center shrink-0 group-hover:bg-dark/[0.1] transition-colors">
+                    <svg class="w-3.5 h-3.5 text-dark/55" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  </div>
+                  <div>
+                    <span class="text-xs font-medium text-dark/60 block leading-tight" id="kontakt-file-text">Datei hochladen (optional)</span>
+                    <span class="text-[10px] text-dark/60">PNG, JPG, PDF, AI, SVG</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label for="kontakt-nachricht" class="text-xs font-medium text-dark tracking-tight mb-1 block">Nachricht*</label>
+              <textarea name="nachricht" id="kontakt-nachricht" placeholder="Beschreiben Sie kurz Ihr Projekt" required rows="3" class="w-full bg-[#F5F5F5] rounded-[10px] px-3.5 py-2 text-base md:text-sm font-medium tracking-tight text-dark placeholder:text-gray-400 outline-none focus:ring-1 focus:ring-gray-300 resize-y"></textarea>
+            </div>
+          </div>
+          <button type="submit" class="btn-accent w-full bg-accent text-white font-semibold py-3 rounded-full hover:bg-accent/90 transition-all duration-200 text-sm shadow-[0_2px_8px_rgba(250,49,162,0.25)]">Kostenloses Angebot anfordern</button>
+          <p class="text-[11px] font-medium text-dark/55 tracking-tight mt-2">Mit dem Absenden erklären Sie sich mit unseren <a href="/datenschutz" class="underline">Datenschutzbestimmungen</a> einverstanden.</p>
+          <p class="text-[10px] font-medium text-dark/60 tracking-tight mt-1 text-center">3D-Vorschau + Festpreisangebot per E-Mail. Kostenlos & unverbindlich.</p>
+        </form>
+      </div>
+
+      <!-- Rechts: Content + Fabienne -->
+      <div class="reveal lg:w-1/2 flex flex-col justify-start gap-5 order-1 lg:order-2">
+        <div class="text-center lg:text-left">
+          <h2 class="text-[36px] md:text-[64px] font-semibold leading-[0.92] tracking-tighter text-white mb-3">
+            Kontakt.
+          </h2>
+          <p class="text-base font-medium text-white/60 tracking-tight mb-3">
+            Persönliche Beratung — kostenlos und unverbindlich.
+          </p>
+        </div>
+
+        <!-- Fabienne Card -->
+        <div class="flex items-start gap-3 md:gap-5 bg-white rounded-[18px] p-4 md:p-6">
+          <div class="w-[72px] h-[100px] md:w-[100px] md:h-[140px] rounded-xl overflow-hidden shrink-0">
+            <img src="../assets/images/fabienne-trapp.png" class="w-full h-full object-cover" alt="Fabienne Trapp" loading="lazy" decoding="async" width="470" height="394">
+          </div>
+          <div class="py-0.5 md:py-1">
+            <p class="text-[11px] md:text-xs font-semibold tracking-tight text-dark/60 mb-0.5">Ihre Ansprechpartnerin</p>
+            <p class="text-lg md:text-xl font-semibold tracking-tight text-dark leading-tight mb-1.5 md:mb-2">Fabienne Trapp</p>
+            <p class="text-[12px] md:text-[13px] font-medium text-dark/60 tracking-tight leading-relaxed mb-3 md:mb-4">
+              Head of Customer Experience. Persönliche Beratung von der Idee bis zum fertigen Neon Schild.
+            </p>
+            <div class="flex flex-row gap-2">
+              <a href="mailto:info@neontrip.de" class="inline-flex items-center gap-2 bg-dark text-white text-xs font-semibold tracking-tight px-3.5 py-2 rounded-full hover:opacity-90 transition-opacity">
+                Anfragen <span class="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+              </a>
+              <a href="tel:+4921154257240" class="inline-flex items-center gap-2 text-dark/60 text-xs font-semibold tracking-tight px-3.5 py-2 rounded-full border border-black/10 hover:border-black/20 transition-colors">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                Anrufen
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contact Details -->
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-white rounded-[14px] p-4 border border-black/5">
+            <p class="text-[11px] font-semibold text-[#0A0A0A]/40 tracking-wider uppercase mb-1.5">Telefon</p>
+            <a href="tel:+4921154257240" class="text-sm font-semibold text-[#0A0A0A] tracking-tight hover:text-accent transition-colors">+49 211 54257240</a>
+          </div>
+          <div class="bg-white rounded-[14px] p-4 border border-black/5">
+            <p class="text-[11px] font-semibold text-[#0A0A0A]/40 tracking-wider uppercase mb-1.5">E-Mail</p>
+            <a href="mailto:support@neontrip.de" class="text-sm font-semibold text-[#0A0A0A] tracking-tight hover:text-accent transition-colors">support@neontrip.de</a>
+          </div>
+        </div>
+        <div class="bg-white rounded-[14px] p-4 border border-black/5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="text-[11px] font-semibold text-[#0A0A0A]/40 tracking-wider uppercase mb-1.5">Standort</p>
+              <p class="text-sm font-semibold text-[#0A0A0A] tracking-tight">Bilker Allee 29, 40219 Düsseldorf</p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="text-[11px] font-semibold text-[#0A0A0A]/40 tracking-wider uppercase mb-1.5">Bürozeiten</p>
+              <p class="text-sm font-medium text-[#0A0A0A]/60 tracking-tight">Mo–Fr · 9–17 Uhr</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+<!-- ===== /SECTION: kontakt ===== -->

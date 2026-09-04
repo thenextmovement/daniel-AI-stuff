@@ -17,6 +17,98 @@
 const UPSTREAM_URL = "https://fuajob.online/webhook/landing-anfrage";
 const UPSTREAM_TIMEOUT_MS = 25000; // Pages Functions hard limit is 30s — 5s buffer
 const FAIL_REPORT_PATH = "/api/r"; // same-origin, relative
+const CUSTOMER_MATCH_CONSENT_SOURCE = "neontrip_cookiebot_marketing_edge";
+const CUSTOMER_MATCH_CONSENT_POLICY_VERSION = "nt_customer_match_cookiebot_v1_20260818";
+
+const CUSTOMER_MATCH_CONSENT_FIELDS = [
+  "consent_ad_user_data",
+  "consent_ad_personalization",
+  "consent_recorded_at",
+  "consent_source",
+  "consent_policy_version",
+  "consent_receipt_id",
+  "consent_method",
+  "consent_region",
+];
+
+function cookieValue(cookieHeader, name) {
+  for (const part of String(cookieHeader || "").split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0 || part.slice(0, separator).trim() !== name) continue;
+    return part.slice(separator + 1).trim();
+  }
+  return "";
+}
+
+function parseCookiebotConsent(cookieHeader) {
+  const encoded = cookieValue(cookieHeader, "CookieConsent");
+  if (!encoded) return null;
+
+  let raw;
+  try {
+    raw = decodeURIComponent(encoded);
+  } catch (_) {
+    return null;
+  }
+
+  // Cookiebot uses -1 outside consent regions. That is not affirmative consent.
+  if (!raw || raw === "-1") return null;
+
+  const marketingMatch = raw.match(/(?:^|[,{])\s*marketing\s*:\s*(true|false)(?:\s*[,}]|$)/i);
+  const methodMatch = raw.match(/(?:^|[,{])\s*method\s*:\s*['"]([^'"]+)['"](?:\s*[,}]|$)/i);
+  const stampMatch = raw.match(/(?:^|[,{])\s*stamp\s*:\s*['"]([^'"]+)['"](?:\s*[,}]|$)/i);
+  const utcMatch = raw.match(/(?:^|[,{])\s*utc\s*:\s*(\d{10,16})(?:\s*[,}]|$)/i);
+  const regionMatch = raw.match(/(?:^|[,{])\s*region\s*:\s*['"]([a-z]{2})['"](?:\s*[,}]|$)/i);
+
+  if (!marketingMatch || !methodMatch || !stampMatch || !utcMatch) return null;
+
+  const recordedAtMs = Number(utcMatch[1]);
+  if (!Number.isFinite(recordedAtMs) || recordedAtMs <= 0 || recordedAtMs > Date.now() + (5 * 60 * 1000)) {
+    return null;
+  }
+
+  const marketing = marketingMatch[1].toLowerCase() === "true";
+  const method = methodMatch[1].trim().toLowerCase();
+  const status = marketing && method === "explicit"
+    ? "granted"
+    : marketing
+      ? "unknown"
+      : "denied";
+
+  return {
+    ad_user_data: status,
+    ad_personalization: status,
+    recorded_at: new Date(recordedAtMs).toISOString(),
+    source: CUSTOMER_MATCH_CONSENT_SOURCE,
+    policy_version: CUSTOMER_MATCH_CONSENT_POLICY_VERSION,
+    receipt_id: stampMatch[1].trim().slice(0, 160),
+    method: method.slice(0, 40),
+    region: (regionMatch ? regionMatch[1] : "").toLowerCase(),
+  };
+}
+
+function applyCookiebotCustomerMatchConsent(formData, cookieHeader) {
+  // Never trust consent fields supplied by the browser body. Rebuild them
+  // from the first-party Cookiebot receipt received at the edge.
+  for (const field of CUSTOMER_MATCH_CONSENT_FIELDS) formData.delete(field);
+
+  const consent = parseCookiebotConsent(cookieHeader);
+  if (!consent) {
+    formData.set("consent_ad_user_data", "unknown");
+    formData.set("consent_ad_personalization", "unknown");
+    return null;
+  }
+
+  formData.set("consent_ad_user_data", consent.ad_user_data);
+  formData.set("consent_ad_personalization", consent.ad_personalization);
+  formData.set("consent_recorded_at", consent.recorded_at);
+  formData.set("consent_source", consent.source);
+  formData.set("consent_policy_version", consent.policy_version);
+  formData.set("consent_receipt_id", consent.receipt_id);
+  formData.set("consent_method", consent.method);
+  if (consent.region) formData.set("consent_region", consent.region);
+  return consent;
+}
 
 // Allowed request origins for CORS. Same-origin requests don't trigger CORS
 // at all, but we support OPTIONS preflights defensively in case someone
@@ -31,7 +123,7 @@ function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    "Access-Control-Allow-Headers": "Content-Type, Accept, X-Client-Submit-Id",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
@@ -96,6 +188,11 @@ async function handlePost(request, ctx) {
   const origin = request.headers.get("Origin") || "https://anfrage.neontrip.de";
   const cors = corsHeaders(origin);
   const requestId = crypto.randomUUID();
+  const uuidV4Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const clientSubmitIdRaw = String(request.headers.get("X-Client-Submit-Id") || "").trim();
+  let clientSubmitId = uuidV4Pattern.test(clientSubmitIdRaw)
+    ? clientSubmitIdRaw
+    : "";
 
   // ─── Parse body ONCE as FormData ───
   // CRITICAL: Do NOT use request.clone() + streaming body forwarding. The
@@ -115,17 +212,45 @@ async function handlePost(request, ctx) {
   } catch (err) {
     console.error(`[c ${requestId}] formdata parse failed`, err);
     return jsonResponse(
-      { ok: false, error: "invalid_body", request_id: requestId },
+      {
+        ok: false,
+        error: "invalid_body",
+        request_id: requestId,
+        client_submit_id: clientSubmitId || null,
+      },
       400,
-      cors
+      { ...cors, "X-Request-Id": requestId }
     );
   }
+
+  const isContactRecovery = String(formData.get("nt_recovery_contact") || "") === "1";
+
+  const customerMatchConsent = applyCookiebotCustomerMatchConsent(
+    formData,
+    request.headers.get("Cookie") || ""
+  );
 
   // Synthetic deploy smoke test. Verifies that the Pages Function exists,
   // accepts multipart FormData and returns JSON without creating a real lead.
   if (formData.get("nt_dry_run") === "1") {
     return jsonResponse(
-      { ok: true, dry_run: true, request_id: requestId },
+      {
+        ok: true,
+        dry_run: true,
+        request_id: requestId,
+        customer_match_consent: customerMatchConsent
+          ? {
+              ad_user_data: customerMatchConsent.ad_user_data,
+              ad_personalization: customerMatchConsent.ad_personalization,
+              recorded_at: customerMatchConsent.recorded_at,
+              source: customerMatchConsent.source,
+              policy_version: customerMatchConsent.policy_version,
+              method: customerMatchConsent.method,
+              region: customerMatchConsent.region,
+              has_receipt: Boolean(customerMatchConsent.receipt_id),
+            }
+          : null,
+      },
       200,
       { ...cors, "X-Request-Id": requestId }
     );
@@ -162,6 +287,34 @@ async function handlePost(request, ctx) {
   // sees it — keeps the data clean even for legitimate submissions.
   formData.delete("website");
 
+  if (!clientSubmitId) {
+    const bodySubmitId = String(
+      formData.get("custom_6703e7e2e253b1_87194328") ||
+      formData.get("request_id") ||
+      formData.get("nt_client_submit_id") ||
+      ""
+    ).trim();
+    if (uuidV4Pattern.test(bodySubmitId)) clientSubmitId = bodySubmitId;
+  }
+
+  if (!clientSubmitId) {
+    return jsonResponse(
+      {
+        ok: false,
+        error: "missing_client_submit_id",
+        request_id: requestId,
+        client_submit_id: null,
+      },
+      400,
+      { ...cors, "X-Request-Id": requestId }
+    );
+  }
+
+  // One stable UUID is authoritative for edge, workflow, database and Ads.
+  formData.set("custom_6703e7e2e253b1_87194328", clientSubmitId);
+  formData.set("request_id", clientSubmitId);
+  formData.set("nt_client_submit_id", clientSubmitId);
+
   // ─── Cloudflare-enriched headers for n8n ───
   // These give n8n visibility into where the lead actually came from,
   // independent of what the client reports.
@@ -175,21 +328,14 @@ async function handlePost(request, ctx) {
   upstreamHeaders.set("X-Original-Referer", request.headers.get("Referer") || "");
   upstreamHeaders.set("X-Original-User-Agent", request.headers.get("User-Agent") || "");
   upstreamHeaders.set("X-Request-Id", requestId);
-  upstreamHeaders.set("X-Proxied-By", "neontrip-lp-pages-function/1.1");
+  upstreamHeaders.set("X-Client-Submit-Id", clientSubmitId);
+  if (isContactRecovery) upstreamHeaders.set("X-Recovery-Contact", "1");
+  upstreamHeaders.set("X-Proxied-By", "neontrip-lp-pages-function/1.2");
 
-  // ─── Fire-and-forget forward to n8n ───
-  // Background task: n8n runs 11-17s (AI translate, Trello, Supabase, AC,
-  // Outlook). If we awaited it, browsers timeout the fetch after ~8-10s
-  // and trigger a false-positive fail-banner even though the lead went
-  // through. Incident 2026-04-23 06:19 UTC: Andrei Tausean got the
-  // fail-banner, but the lead (Trello #30385, Supabase) was created
-  // correctly — because the browser aborted at 9s while n8n took 16.7s.
-  //
-  // Fix: return 200 to the client immediately, process the upstream
-  // forward via ctx.waitUntil so Pages Functions keeps the worker alive
-  // until the promise settles. Upstream failures still surface via the
-  // fail-report beacon (reportFailure) — just asynchronously, not to the
-  // client.
+  // n8n now responds immediately after the complete request is committed to
+  // Supabase. Later Trello/contact projections keep running after that receipt.
+  // The edge must await and validate the receipt so a queued request can never
+  // be mistaken for a persisted lead or an Ads conversion.
   const startTime = Date.now();
 
   const upstreamPromise = (async () => {
@@ -203,22 +349,43 @@ async function handlePost(request, ctx) {
         signal: controller.signal,
       });
       const elapsed = Date.now() - startTime;
+      let upstreamBody = null;
+      try {
+        upstreamBody = await upstreamResponse.json();
+      } catch (_) {
+        upstreamBody = null;
+      }
       if (!upstreamResponse.ok) {
         console.error(
           `[c ${requestId}] upstream HTTP ${upstreamResponse.status} after ${elapsed}ms`
         );
         reportFailure(ctx, origin, {
           request_id: requestId,
+          client_submit_id: clientSubmitId || null,
+          recovery_contact: isContactRecovery,
           error: "upstream_http_error",
           status: upstreamResponse.status,
           elapsed_ms: elapsed,
           cf_country: cf.country,
           referer: request.headers.get("Referer"),
         });
+        return {
+          ok: false,
+          status: upstreamResponse.status,
+          elapsed,
+          body: upstreamBody,
+          error: "upstream_http_error",
+        };
       } else {
         console.log(
           `[c ${requestId}] ok status=${upstreamResponse.status} elapsed=${elapsed}ms country=${cf.country || "?"}`
         );
+        return {
+          ok: true,
+          status: upstreamResponse.status,
+          elapsed,
+          body: upstreamBody,
+        };
       }
     } catch (err) {
       const elapsed = Date.now() - startTime;
@@ -229,27 +396,123 @@ async function handlePost(request, ctx) {
       );
       reportFailure(ctx, origin, {
         request_id: requestId,
+        client_submit_id: clientSubmitId || null,
+        recovery_contact: isContactRecovery,
         error: isTimeout ? "upstream_timeout" : "upstream_unreachable",
         elapsed_ms: elapsed,
         error_message: err && err.message,
         cf_country: cf.country,
         referer: request.headers.get("Referer"),
       });
+      return {
+        ok: false,
+        status: isTimeout ? 504 : 502,
+        elapsed,
+        body: null,
+        error: isTimeout ? "upstream_timeout" : "upstream_unreachable",
+      };
     } finally {
       clearTimeout(timeoutId);
     }
   })();
 
-  if (ctx && typeof ctx.waitUntil === "function") {
-    ctx.waitUntil(upstreamPromise);
-  } else {
-    // Dev/test fallback — without waitUntil the runtime may cancel the
-    // fetch when we return. Still rare in practice.
-    upstreamPromise.catch(() => {});
+  const upstreamResult = await upstreamPromise;
+  const receipt = upstreamResult.body || {};
+  const persisted =
+    upstreamResult.ok &&
+    receipt.ok === true &&
+    receipt.accepted === true &&
+    receipt.persisted === true &&
+    receipt.contact_saved === true &&
+    receipt.request_id === clientSubmitId &&
+    Boolean(receipt.request_row_id) &&
+    Boolean(receipt.customer_id);
+
+  // A contact-only recovery follows a definitive multipart parse failure.
+  // It additionally waits for the Trello projection so the existing recovery
+  // promise remains unchanged.
+  if (isContactRecovery) {
+    const contactSaved = persisted && Boolean(receipt.trello_card_id);
+
+    if (!contactSaved) {
+      reportFailure(ctx, origin, {
+        request_id: requestId,
+        client_submit_id: clientSubmitId || null,
+        error: "contact_recovery_unconfirmed",
+        status: upstreamResult.status,
+        elapsed_ms: upstreamResult.elapsed,
+        cf_country: cf.country,
+        referer: request.headers.get("Referer"),
+      });
+      return jsonResponse(
+        {
+          ok: false,
+          error: "contact_recovery_unconfirmed",
+          request_id: requestId,
+          client_submit_id: clientSubmitId || null,
+        },
+        upstreamResult.status >= 400 ? upstreamResult.status : 502,
+        { ...cors, "X-Request-Id": requestId }
+      );
+    }
+
+    return jsonResponse(
+      {
+        ok: true,
+        accepted: true,
+        persisted: true,
+        recovery: true,
+        contact_saved: true,
+        created: receipt.created === true,
+        replay: receipt.replay === true,
+        request_id: requestId,
+        client_submit_id: clientSubmitId,
+        lead_request_id: receipt.request_id,
+        request_row_id: receipt.request_row_id,
+        customer_id: receipt.customer_id,
+        trello_card_id: receipt.trello_card_id,
+      },
+      200,
+      { ...cors, "X-Request-Id": requestId }
+    );
+  }
+
+  if (!persisted) {
+    reportFailure(ctx, origin, {
+      request_id: requestId,
+      client_submit_id: clientSubmitId,
+      error: "persistence_unconfirmed",
+      status: upstreamResult.status,
+      elapsed_ms: upstreamResult.elapsed,
+      cf_country: cf.country,
+      referer: request.headers.get("Referer"),
+    });
+    return jsonResponse(
+      {
+        ok: false,
+        error: "persistence_unconfirmed",
+        request_id: requestId,
+        client_submit_id: clientSubmitId,
+      },
+      upstreamResult.status >= 400 ? upstreamResult.status : 502,
+      { ...cors, "X-Request-Id": requestId }
+    );
   }
 
   return jsonResponse(
-    { ok: true, queued: true, request_id: requestId },
+    {
+      ok: true,
+      accepted: true,
+      persisted: true,
+      contact_saved: true,
+      created: receipt.created === true,
+      replay: receipt.replay === true,
+      request_id: requestId,
+      client_submit_id: clientSubmitId,
+      lead_request_id: receipt.request_id,
+      request_row_id: receipt.request_row_id,
+      customer_id: receipt.customer_id,
+    },
     200,
     { ...cors, "X-Request-Id": requestId }
   );

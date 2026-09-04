@@ -1,0 +1,123 @@
+/*
+  X-Frame-Options: SAMEORIGIN
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  X-XSS-Protection: 1; mode=block
+  Content-Security-Policy: frame-ancestors 'self'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Vary: Accept-Encoding
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/images/beispiele/front-buchstaben/01-rolex-frontlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/beispiele/front-buchstaben/02-berlin-frontlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/beispiele/front-buchstaben/04-koeln-frontlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/beispiele/halo-buchstaben/01-prada-backlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/beispiele/halo-buchstaben/02-cartier-backlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/beispiele/halo-buchstaben/03-rolex-backlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/beispiele/halo-buchstaben/04-omega-backlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/projekte/rolex-frontlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/projekte/prada-backlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/projekte/cartier-backlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/projekte/rolex-backlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/projekte/omega-backlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/projekte/koeln-frontlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/images/projekte/berlin-frontlit.webp
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Allow-Origin: *
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+  Link: </assets/fonts/inter-latin.woff2>; rel=preload; as=font; type=font/woff2; crossorigin
+
+/anfrage.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/index.html.bak.fix3
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
+
+/en/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+  Link: </assets/fonts/inter-latin.woff2>; rel=preload; as=font; type=font/woff2; crossorigin
+
+/en/anfrage.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/neon-schilder/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/leuchtbuchstaben/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/leuchtkaesten/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/firmenschilder/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/led-schriftzuege/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/messe-event/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/leuchtreklame/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/logo/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/lexikon/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/leuchtreklame-kaufen/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/blog/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/blog/*/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/sitemap*.xml
+  Cache-Control: public, max-age=3600
+  Content-Type: application/xml
+
+/robots.txt
+  Cache-Control: public, max-age=86400
+
+/7365b15fc43b4676907bff3354158af1.txt
+  Cache-Control: public, max-age=86400
+  Content-Type: text/plain

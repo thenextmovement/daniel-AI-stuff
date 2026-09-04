@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /impressum.html
+Disallow: /datenschutz.html
+Disallow: /agb.html
+
+Sitemap: https://neontrip.de/sitemap-index.xml
+Sitemap: https://neontrip.de/sitemap.xml
+Sitemap: https://neontrip.de/sitemap-en.xml
+Sitemap: https://neontrip.de/sitemap-blog.xml

@@ -1,0 +1,91 @@
+# === Bestehende Redirects (beibehalten) ===
+
+# Ads Landing Pages → Hauptseite (temporär bis eigene Seiten erstellt)
+/anfrage-schriftzug.html    /    301
+/anfrage-logo.html          /    301
+/anfrage-messe.html         /    301
+
+# Leuchtreklame Stadt-Seiten entfernt
+/leuchtreklame-berlin/*         /    301
+/leuchtreklame-duesseldorf/*    /    301
+/leuchtreklame-hamburg/*        /    301
+/leuchtreklame-koeln/*          /    301
+/leuchtreklame-muenchen/*       /    301
+
+# Legacy-Slug-Varianten → kanonische LPs
+/neon-schilder-v2                 /neon-schilder/       301
+/neon-schilder-v2/*               /neon-schilder/       301
+/leuchtkasten/*                 /leuchtkaesten/        301
+/3dbuchstaben/*                 /leuchtbuchstaben/     301
+/3dbuchstaben                   /leuchtbuchstaben/     301
+/3d-buchstaben/*                /leuchtbuchstaben/     301
+/3d-buchstaben                  /leuchtbuchstaben/     301
+
+# === Shopify-Pages Redirects (nach Migration) ===
+
+/Pages/Logo*                                /logo/  301
+/Pages/logo*                                /logo/  301
+/pages/kontakt                              /anfrage.html    301
+/pages/impressum                            /impressum.html  301
+/pages/widerrufsrecht                       /widerrufsrecht.html  301
+/pages/versand                              /    301
+/pages/datenschutzerklarung                 /datenschutz.html  301
+/pages/zahlungsmethoden                     /    301
+/pages/partnerprogramm                      /    301
+/pages/haufig-gestellte-fragen              /    301
+/pages/agbs                                 /agb.html  301
+/pages/geschaftskunden                      /    301
+/pages/foto-logo-hochladen                  /anfrage.html  301
+/pages/logo-hochladen                       /anfrage.html  301
+/pages/gallery                              /    301
+/pages/eigenes-logo-oder-design             /anfrage.html  301
+/pages/grossen                              /    301
+/pages/lieferumfang                         /    301
+/pages/montage-installation                 /    301
+/pages/insta-shop                           /    301
+/pages/batteriehinweise                     /batteriehinweise.html  301
+/pages/uber-uns-1                           /ueber-uns.html  301
+/pages/reviews                              /    301
+/pages/business                             /    301
+/pages/preiskalkulator-eigenes-design       /anfrage.html  301
+/pages/uv-druck-beispiele                   /    301
+/pages/referenzen                           /    301
+/pages/faqs                                 /    301
+/pages/anfrage                              /anfrage.html  301
+/pages/anfrage2                             /anfrage.html  301
+/pages/anfrage-test                         /anfrage.html  301
+/pages/anfrageformular                      /anfrage.html  301
+/pages/logo                                 /logo/  301
+/pages/eigenes-logo-hochladen-leuchtschild-anfrage   /anfrage.html  301
+/pages/eigenes-logo-hochladen-leuchtschild-anfrage2  /anfrage.html  301
+/pages/neontrip-logo-hochladen-fur-ein-individuelles-neonschild-neonlampe-neon-sign  /anfrage.html  301
+/pages/neontrip-informationen               /    301
+/pages/cookie-einstellungen-neu             /cookie-einstellungen.html  301
+/pages/neontrip-lookbook                    /    301
+/pages/neontrip-brochure-englisch           /en/  301
+/pages/vorteile-von-neontrip*               /    301
+/pages/*                                    /    301
+/Pages/*                                    /    301
+
+# === Shopify-Collections Redirects ===
+
+/collections/neon-signs                     /neon-schilder/  301
+/collections/hochzeiten                     /messe-event/  301
+/collections/event-signs                    /messe-event/  301
+/collections/partys                         /messe-event/  301
+/collections/geburtstage                    /messe-event/  301
+/collections/baby-shower                    /messe-event/  301
+/collections/gender-reveal                  /messe-event/  301
+/collections/weihnachten                    /messe-event/  301
+/collections/mieten-statt-kaufen            /messe-event/  301
+/collections/*                              /    301
+
+# === Shopify-Products Redirects ===
+
+/products/custom-neon                       /anfrage.html  301
+/products/*                                 /    301
+
+# === Shopify-Blog Redirects ===
+
+/blogs/news                                 /blog/  301
+/blogs/news/*                               /blog/  301
