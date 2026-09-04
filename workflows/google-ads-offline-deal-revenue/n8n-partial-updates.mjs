@@ -149,7 +149,8 @@ for (let candidateIndex = 0; candidateIndex < conversions.length; candidateIndex
   const conversion = conversions[candidateIndex];
   const sourceId = String(conversion.conversion_id || '').trim();
   const claimToken = String(conversion.claim_token || '').trim();
-  const conversionTime = new Date(conversion.conversion_time);
+  const conversionTimeRaw = String(conversion.conversion_time || '').trim();
+  const conversionTime = new Date(conversionTimeRaw);
   const actionName = conversion.conversion_name === 'Offline: Angebot versendet'
     ? 'Angebot versendet'
     : conversion.conversion_name === 'Offline: Deal gewonnen'
@@ -182,7 +183,7 @@ for (let candidateIndex = 0; candidateIndex < conversions.length; candidateIndex
       conversionAction,
       conversionName: conversion.conversion_name,
       conversionValue,
-      conversionTime: conversionTimeIso,
+      conversionTime: conversionTimeRaw,
       orderId,
       payloadIndex: candidateIndex,
       jobId: null,
@@ -228,7 +229,7 @@ for (let candidateIndex = 0; candidateIndex < conversions.length; candidateIndex
     conversionAction,
     conversionName: conversion.conversion_name,
     conversionValue,
-    conversionTime: conversionTimeIso,
+    conversionTime: conversionTimeRaw,
     orderId,
     payloadIndex,
     attemptedAt
@@ -285,8 +286,10 @@ for (const adjustment of adjustments) {
   const stateKey = String(adjustment.adjustment_state_key || '').trim();
   const adjustmentType = String(adjustment.adjustment_type || '').toUpperCase();
   const adjustedValue = Number(adjustment.adjusted_value);
-  const adjustmentDateTime = new Date(adjustment.adjustment_date_time);
-  const conversionTime = new Date(adjustment.conversion_time);
+  const adjustmentDateTimeRaw = String(adjustment.adjustment_date_time || '').trim();
+  const conversionTimeRaw = String(adjustment.conversion_time || '').trim();
+  const adjustmentDateTime = new Date(adjustmentDateTimeRaw);
+  const conversionTime = new Date(conversionTimeRaw);
   const orderId = String(adjustment.order_id || '').trim();
 
   const contractValid = sourceId
@@ -329,14 +332,14 @@ for (const adjustment of adjustments) {
     claimToken,
     conversionAction,
     conversionName: adjustment.conversion_name,
-    conversionTime: conversionTime.toISOString(),
+    conversionTime: conversionTimeRaw,
     orderId,
     payloadIndex,
     attemptedAt: new Date().toISOString(),
     adjustmentStateKey: stateKey,
     adjustmentType,
     adjustedValue,
-    adjustmentDateTime: adjustmentTimeIso
+    adjustmentDateTime: adjustmentDateTimeRaw
   });
 }
 

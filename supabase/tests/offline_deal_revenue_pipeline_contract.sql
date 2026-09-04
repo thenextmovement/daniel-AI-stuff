@@ -101,6 +101,14 @@ begin
     raise exception 'conversion claim lost atomicity, Offer branch, Deal branch or consent output';
   end if;
 
+  select pg_get_functiondef(
+    'private.gads_deal_financial_state_v1(text,text)'::regprocedure
+  ) into v_definition;
+  if position('BC.STATUS = ''CANCELLED''' in upper(v_definition)) = 0
+    or position('BC.STATUS IN (''CANCELLED'', ''REFUNDED'')' in upper(v_definition)) > 0 then
+    raise exception 'partial refunds would be misclassified as full cancellation';
+  end if;
+
   select pg_get_function_result(
     'public.claim_pending_gads_conversions_v2(integer,integer)'::regprocedure
   ) into v_result_type;

@@ -480,7 +480,11 @@ as $function$
           'cancelled', 'canceled', 'voided', 'refunded'
         )
         or bc.cancelled_at is not null
-        or bc.status in ('CANCELLED', 'REFUNDED')
+        -- billing_cases.status = 'REFUNDED' is emitted for both partial and
+        -- full refunds. A partial refund must remain a RESTATEMENT candidate;
+        -- only explicit cancellation evidence makes the whole Deal cancelled.
+        -- A full refund is retracted separately when remaining_net_cents = 0.
+        or bc.status = 'CANCELLED'
       ) as cancelled,
       coalesce(bc.paid_at, fpe.paid_at, mo.shopify_created_at) as conversion_time,
       case

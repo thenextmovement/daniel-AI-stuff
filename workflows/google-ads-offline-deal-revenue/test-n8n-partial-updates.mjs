@@ -161,7 +161,7 @@ const conversionBatch = await executeCode(conversionBuildCode, {
         claim_token: '40000000-0000-4000-8000-000000000004',
         conversion_name: 'Offline: Deal gewonnen',
         conversion_value: 1000,
-        conversion_time: '2026-09-01T10:10:00.000Z',
+        conversion_time: '2026-09-01T10:10:00.123456+00:00',
         hashed_email: 'b'.repeat(64),
         consent_ad_user_data: 'granted',
         consent_ad_personalization: 'denied',
@@ -194,6 +194,14 @@ assert.equal(
 );
 assert.equal(conversionBatch[0].json.payload.conversions[1].gclid, 'g'.repeat(30));
 assert.equal(conversionBatch[0].json.rows[0].claimToken, '40000000-0000-4000-8000-000000000004');
+assert.equal(
+  conversionBatch[0].json.rows[0].conversionTime,
+  '2026-09-01T10:10:00.123456+00:00',
+);
+assert.equal(
+  conversionBatch[0].json.payload.conversions[0].conversionDateTime,
+  '2026-09-01 10:10:00.123+00:00',
+);
 
 const localOnlyConversionBatch = await executeCode(conversionBuildCode, {
   workflowId: workflowUpdates.uploader.id,
@@ -229,9 +237,9 @@ const adjustmentBatch = await executeCode(adjustmentBuildCode, {
         adjustment_type: 'RESTATEMENT',
         adjusted_value: 850,
         currency_code: 'EUR',
-        adjustment_date_time: '2026-09-03T10:00:00.000Z',
+        adjustment_date_time: '2026-09-03T10:00:00.654321+00:00',
         conversion_name: 'Offline: Deal gewonnen',
-        conversion_time: '2026-09-01T10:10:00.000Z',
+        conversion_time: '2026-09-01T10:10:00.123456+00:00',
         order_id: '30000000-0000-4000-8000-000000000003',
       },
     },
@@ -244,7 +252,15 @@ assert.deepEqual(adjustmentBatch[0].json.payload.conversionAdjustments[0].restat
 });
 assert.equal(
   adjustmentBatch[0].json.rows[0].adjustmentDateTime,
-  '2026-09-03T10:00:00.000Z',
+  '2026-09-03T10:00:00.654321+00:00',
+);
+assert.equal(
+  adjustmentBatch[0].json.rows[0].conversionTime,
+  '2026-09-01T10:10:00.123456+00:00',
+);
+assert.equal(
+  adjustmentBatch[0].json.payload.conversionAdjustments[0].adjustmentDateTime,
+  '2026-09-03 10:00:00.654+00:00',
 );
 
 const adjustmentCheckCode = codeForAddedNode(
