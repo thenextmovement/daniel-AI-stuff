@@ -137,3 +137,9 @@ test('all inline JavaScript on active landing pages parses successfully', async 
     }
   }
 });
+
+test('unknown routes use an explicit noindex 404 instead of the tracked landing page', async () => {
+  const html = await load('deploy/404.html');
+  assert.match(html, /<meta name="robots" content="noindex, nofollow">/);
+  assert.doesNotMatch(html, /6GqgnrdSPjJSGdthY89B9Y|gtag\s*\(/);
+});
