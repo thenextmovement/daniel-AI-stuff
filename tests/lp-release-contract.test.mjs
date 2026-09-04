@@ -94,15 +94,6 @@ test('standalone quote wizards carry the same contract and canonical URL', async
   }
 });
 
-test('business-email validator uses a versioned URL and revalidates at the edge', async () => {
-  const headers = await load('deploy/_headers');
-  assert.match(
-    headers,
-    /\/assets\/js\/nt-business-email\.js\s+Cache-Control: public, max-age=0, must-revalidate/,
-    'mutable validator asset overrides the one-year assets cache'
-  );
-});
-
 test('campaign product routes preselect the matching product and old profile-letter route redirects', async () => {
   const expected = new Map([
     ['deploy/_source/configs/logo.json', ['LED Logo Wandschild', 'neonschild']],

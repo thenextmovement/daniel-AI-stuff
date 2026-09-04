@@ -11,9 +11,6 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
-/assets/js/nt-business-email.js
-  Cache-Control: public, max-age=0, must-revalidate
-
 /assets/images/beispiele/front-buchstaben/01-rolex-frontlit.webp
   Cache-Control: public, max-age=0, must-revalidate
 
