@@ -3749,7 +3749,13 @@ test("completed offers sync resolves old unlinked active offer sales by Shopify 
     total_price: 580.72,
     assignment_status: "ready_to_assign",
     offer_snapshot: { offer: { acceptedAt: "2026-06-18T11:45:53Z" } },
-    metadata: {},
+    metadata: {
+      shopify_link_guard: {
+        code: "supplier_shopify_impossible_link",
+        fingerprint: "stale-candidate",
+        blocked: true,
+      },
+    },
     raw_shopify: {},
   });
 
@@ -3837,6 +3843,7 @@ test("completed offers sync resolves old unlinked active offer sales by Shopify 
       assert.equal(payload.shopify_payment_status, "paid");
       assert.equal(payload.assignment_status, "completed");
       assert.equal(payload.metadata?.payment_link, "https://galaxybuzzdk.myshopify.com/orders/8302046970123/status");
+      assert.equal(payload.metadata?.shopify_link_guard, undefined);
       return Response.json([{ ...existingRow, ...payload }]);
     }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
@@ -3865,9 +3872,9 @@ test("completed offers sync resolves old unlinked active offer sales by Shopify 
 });
 
 test("completed offers sync emits one privacy-safe watchdog alert for an impossible historical Shopify link", async () => {
-  let linked = false;
   let shopifySearchCount = 0;
-  let salePatchCount = 0;
+  let guardPatchCount = 0;
+  let itemWriteCount = 0;
   const originalRow = saleRow({
     id: "sale-impossible-shopify-link",
     sale_key: "offer:impossible-shopify-link",
@@ -3937,7 +3944,7 @@ test("completed offers sync emits one privacy-safe watchdog alert for an impossi
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       if (url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)" && url.searchParams.get("shopify_order_id") === "not.is.null") return Response.json([]);
       if (url.searchParams.get("assignment_status") === "not.in.(assigned,in_production,completed,canceled)" && url.searchParams.get("shopify_order_id") === "is.null") {
-        return Response.json(linked ? [] : [originalRow]);
+        return Response.json([currentRow]);
       }
       if (url.searchParams.get("shopify_order_id") === "eq.7000000000001") return Response.json([]);
       if (url.searchParams.get("offer_number") === "eq.A/N 15245") return Response.json([currentRow]);
@@ -3945,14 +3952,20 @@ test("completed offers sync emits one privacy-safe watchdog alert for an impossi
       return Response.json([]);
     }
     if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
-      salePatchCount += 1;
       const payload = JSON.parse(String(init?.body || "{}"));
-      linked = true;
-      currentRow = { ...originalRow, ...payload };
+      assert.equal(payload.shopify_order_id, undefined);
+      assert.equal(payload.shopify_order_name, undefined);
+      assert.equal(payload.total_price, undefined);
+      assert.equal(payload.assignment_status, undefined);
+      assert.equal(payload.metadata?.shopify_link_guard?.blocked, true);
+      guardPatchCount += 1;
+      currentRow = { ...currentRow, ...payload };
       return Response.json([currentRow]);
     }
-    if (url.pathname.endsWith("/supplier_sale_items") && method === "DELETE") return Response.json([]);
-    if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: originalRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_items") && ["DELETE", "POST"].includes(method)) {
+      itemWriteCount += 1;
+      return Response.json([]);
+    }
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: originalRow.id })]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") return Response.json({});
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
@@ -3965,6 +3978,7 @@ test("completed offers sync emits one privacy-safe watchdog alert for an impossi
 
     const first = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 20 });
     assert.equal(first.status, "synced", JSON.stringify(first));
+    assert.equal(first.sources?.unlinkedActiveShopifyRows?.upserted, 0);
     assert.equal(first.sources?.unlinkedActiveShopifyRows?.watchdogAlertCount, 1);
     assert.equal(first.watchdogAlerts.length, 1);
     assert.deepEqual(first.watchdogAlerts[0], {
@@ -3985,14 +3999,20 @@ test("completed offers sync emits one privacy-safe watchdog alert for an impossi
       totalMismatch: true,
     });
     assert.equal(JSON.stringify(first.watchdogAlerts).includes("@example.test"), false);
+    assert.equal(currentRow.shopify_order_id, null);
+    assert.equal(currentRow.total_price, 705.67);
+    assert.equal(currentRow.assignment_status, "ready_to_assign");
+    assert.equal((currentRow.metadata?.shopify_link_guard as { blocked?: boolean } | undefined)?.blocked, true);
 
     const replay = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" }, { limit: 20 });
     assert.deepEqual(replay.watchdogAlerts, []);
     assert.equal(replay.sources?.unlinkedActiveShopifyRows?.watchdogAlertCount, 0);
+    assert.equal(replay.sources?.unlinkedActiveShopifyRows?.upserted, 0);
   });
 
-  assert.equal(shopifySearchCount, 2);
-  assert.equal(salePatchCount, 1);
+  assert.equal(shopifySearchCount, 4);
+  assert.equal(guardPatchCount, 1);
+  assert.equal(itemWriteCount, 0);
 });
 
 test("completed offers sync reconciles existing active supplier rows against Shopify tags", async () => {

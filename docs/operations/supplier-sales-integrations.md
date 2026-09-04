@@ -61,7 +61,7 @@ The existing workflow `NEONTRIP Supplier Completed Offers Sync v0.1` checks the 
 
 The alert contains no customer names, email addresses, phone numbers or addresses. It includes only Offer/Shopify identifiers, both timestamps, both totals and a link to the filtered Sales-Vergabe. The workflow sends the internal mail from the existing Outlook credential `Microsoft Outlook support@neontrip.de` to `info@neontrip.de`.
 
-This is alert-only behavior. It does not block, unlink, repair, assign, tag or project the Sale. The current bad row is not replayed because only a successful first merge of an unlinked row emits the alert; later scheduled runs skip already linked rows.
+This is fail-closed behavior. The contradictory Shopify candidate is not merged into the Sale. Ops stores a PII-free guard fingerprint in Sale metadata and emits the alert only when that candidate is first blocked; later scheduled runs keep blocking the same candidate without sending the same alert again. The guard does not assign, tag, project or otherwise mutate Shopify or Trello. A later valid Shopify link clears the stale guard marker during the normal merge.
 
 Repository artifact:
 

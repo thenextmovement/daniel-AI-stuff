@@ -3564,8 +3564,14 @@ async function mergeShopifyOrderIntoExistingSale(row: SupplierSaleRow, order: Js
   const parsed = buildSupplierSaleInputFromPayload(shopifyOrderPayloadFromGraphql(order, domain));
   const input = parsed.sale;
   const recommendation = deriveSupplierRecommendation(input.lineItems);
+  const basePayload = buildSalePayload(input, row);
+  const mergedMetadata = {
+    ...jsonRecord(basePayload.metadata),
+  };
+  delete mergedMetadata.shopify_link_guard;
   const payload = {
-    ...buildSalePayload(input, row),
+    ...basePayload,
+    metadata: mergedMetadata,
     sale_key: row.sale_key,
     source: row.source || "neontrip-offers",
     offer_id: row.offer_id,
@@ -3670,6 +3676,41 @@ function buildSupplierShopifyMismatchWatchdogAlert(
     customerMismatch: true,
     totalMismatch: true,
   };
+}
+
+function supplierShopifyLinkGuardFingerprint(alert: SupplierShopifyMismatchWatchdogAlert) {
+  return [
+    alert.code,
+    alert.saleId,
+    alert.shopifyOrderId || alert.shopifyOrderName || "unknown-order",
+    alert.offerAcceptedAt,
+  ].join(":");
+}
+
+async function persistSupplierShopifyLinkGuard(
+  row: SupplierSaleRow,
+  alert: SupplierShopifyMismatchWatchdogAlert,
+) {
+  const fingerprint = supplierShopifyLinkGuardFingerprint(alert);
+  const existingGuard = jsonRecord(jsonRecord(row.metadata).shopify_link_guard);
+  if (nullableText(existingGuard.fingerprint, 500) === fingerprint) return false;
+
+  await patchSaleRow(row.id, {
+    metadata: {
+      ...jsonRecord(row.metadata),
+      shopify_link_guard: {
+        code: alert.code,
+        fingerprint,
+        blocked: true,
+        candidate_order_id: alert.shopifyOrderId,
+        candidate_order_name: alert.shopifyOrderName,
+        offer_accepted_at: alert.offerAcceptedAt,
+        order_created_at: alert.shopifyCreatedAt,
+        detected_at: new Date().toISOString(),
+      },
+    },
+  });
+  return true;
 }
 
 function shopifyOrderNumericId(gid: unknown) {
@@ -4216,8 +4257,12 @@ async function syncUnlinkedActiveSupplierSalesFromShopifyAdmin(
         continue;
       }
       const watchdogAlert = buildSupplierShopifyMismatchWatchdogAlert(row, fetched.order);
+      if (watchdogAlert) {
+        const newlyBlocked = await persistSupplierShopifyLinkGuard(row, watchdogAlert);
+        if (newlyBlocked) watchdogAlerts.push(watchdogAlert);
+        continue;
+      }
       await mergeShopifyOrderIntoExistingSale(row, fetched.order, config.domain, actor);
-      if (watchdogAlert) watchdogAlerts.push(watchdogAlert);
       upserted += 1;
     } catch (error) {
       errors.push({
