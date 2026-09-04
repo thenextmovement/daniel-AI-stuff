@@ -67,12 +67,14 @@
     var english = String(document.documentElement.lang || '').toLowerCase().indexOf('en') === 0;
     return english
       ? {
-          hint: 'Please use your business email address.',
-          error: 'Please use a business email address, e.g. name@company.com.'
+          error: 'Please use a business email address, e.g. name@company.com.',
+          fallbackPrefix: 'No business email?',
+          fallbackLink: 'Send your request directly by email'
         }
       : {
-          hint: 'Bitte verwenden Sie Ihre geschäftliche Firmen-E-Mail-Adresse.',
-          error: 'Bitte verwenden Sie Ihre geschäftliche E-Mail-Adresse, z. B. name@unternehmen.de.'
+          error: 'Bitte verwenden Sie Ihre geschäftliche E-Mail-Adresse, z. B. name@unternehmen.de.',
+          fallbackPrefix: 'Keine Firmen-E-Mail?',
+          fallbackLink: 'Anfrage direkt per E-Mail senden'
         };
   }
 
@@ -83,7 +85,10 @@
 
   function showError(input, focus) {
     var id = errorId(input);
+    var fallbackId = id + '-fallback';
     var message = document.getElementById(id);
+    var fallback = document.getElementById(fallbackId);
+    var labels = copy();
     if (!message) {
       message = document.createElement('p');
       message.id = id;
@@ -92,10 +97,26 @@
       message.style.cssText = 'margin:6px 0 0;color:#dc2626;font-size:12px;line-height:1.35;font-weight:600';
       input.insertAdjacentElement('afterend', message);
     }
-    message.textContent = copy().error;
+    message.textContent = labels.error;
+    if (!fallback) {
+      fallback = document.createElement('p');
+      fallback.id = fallbackId;
+      fallback.setAttribute('data-nt-business-email-fallback', 'true');
+      fallback.style.cssText = 'margin:5px 0 0;color:rgba(10,10,10,.5);font-size:11px;line-height:1.4;font-weight:500';
+      message.insertAdjacentElement('afterend', fallback);
+    }
+    fallback.textContent = '';
+    var fallbackPrefix = document.createElement('span');
+    fallbackPrefix.textContent = labels.fallbackPrefix + ' ';
+    var fallbackLink = document.createElement('a');
+    fallbackLink.href = 'mailto:support@neontrip.de';
+    fallbackLink.textContent = labels.fallbackLink;
+    fallbackLink.style.cssText = 'color:#0A0A0A;font-weight:650;text-decoration:underline;text-decoration-color:rgba(10,10,10,.25);text-underline-offset:2px';
+    fallback.appendChild(fallbackPrefix);
+    fallback.appendChild(fallbackLink);
     input.setAttribute('aria-invalid', 'true');
-    input.setAttribute('aria-describedby', id);
-    input.setCustomValidity(copy().error);
+    input.setAttribute('aria-describedby', id + ' ' + fallbackId);
+    input.setCustomValidity(labels.error);
     input.style.borderColor = '#f87171';
     if (focus) {
       try { input.focus({ preventScroll: false }); } catch (_) { input.focus(); }
@@ -104,10 +125,13 @@
 
   function clearError(input) {
     var id = input.id ? input.id + '-business-error' : '';
+    var fallbackId = id ? id + '-fallback' : '';
     var message = id ? document.getElementById(id) : null;
+    var fallback = fallbackId ? document.getElementById(fallbackId) : null;
     if (message) message.remove();
+    if (fallback) fallback.remove();
     input.removeAttribute('aria-invalid');
-    if (input.getAttribute('aria-describedby') === id) input.removeAttribute('aria-describedby');
+    if (input.getAttribute('aria-describedby') === id + ' ' + fallbackId) input.removeAttribute('aria-describedby');
     input.setCustomValidity('');
     input.style.borderColor = '';
   }
@@ -133,16 +157,8 @@
         ? 'name@company.com'
         : 'name@unternehmen.de';
     }
-    var parentText = input.parentElement ? String(input.parentElement.textContent || '') : '';
-    if (!/(?:geschäftliche|firmen-?)\s*e-?mail|business\s+email/i.test(parentText)) {
-      var hint = document.createElement('p');
-      hint.setAttribute('data-nt-business-email-hint', 'true');
-      hint.textContent = copy().hint;
-      hint.style.cssText = 'margin:6px 0 0;color:#6b7280;font-size:12px;line-height:1.35';
-      input.insertAdjacentElement('afterend', hint);
-    }
     input.addEventListener('input', function () {
-      if (inspect(input.value).valid) clearError(input);
+      if (!String(input.value || '').trim() || inspect(input.value).valid) clearError(input);
     });
   }
 

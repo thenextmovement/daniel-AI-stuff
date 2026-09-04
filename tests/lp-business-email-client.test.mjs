@@ -31,6 +31,108 @@ function loadValidator(lang = 'de') {
   return context.ntBusinessEmail;
 }
 
+function loadValidatorWithInput(lang = 'de') {
+  const elementsById = new Map();
+
+  class Element {
+    constructor(tagName) {
+      this.tagName = String(tagName).toUpperCase();
+      this.attributes = new Map();
+      this.children = [];
+      this.dataset = {};
+      this.listeners = new Map();
+      this.parentElement = null;
+      this.placeholder = '';
+      this.style = { cssText: '', borderColor: '', display: '' };
+      this.validationMessage = '';
+      this.value = '';
+      this._id = '';
+      this._textContent = '';
+    }
+
+    set id(value) {
+      if (this._id) elementsById.delete(this._id);
+      this._id = String(value || '');
+      if (this._id) elementsById.set(this._id, this);
+    }
+
+    get id() { return this._id; }
+
+    set textContent(value) {
+      this._textContent = String(value || '');
+      for (const child of this.children) child.parentElement = null;
+      this.children = [];
+    }
+
+    get textContent() {
+      return this._textContent + this.children.map((child) => child.textContent).join('');
+    }
+
+    setAttribute(name, value) {
+      this.attributes.set(name, String(value));
+      if (name === 'id') this.id = value;
+    }
+
+    getAttribute(name) { return this.attributes.has(name) ? this.attributes.get(name) : null; }
+    removeAttribute(name) { this.attributes.delete(name); }
+
+    appendChild(child) {
+      child.parentElement = this;
+      this.children.push(child);
+      return child;
+    }
+
+    insertAdjacentElement(position, child) {
+      assert.equal(position, 'afterend');
+      const siblings = this.parentElement.children;
+      child.parentElement = this.parentElement;
+      siblings.splice(siblings.indexOf(this) + 1, 0, child);
+      return child;
+    }
+
+    addEventListener(type, listener) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(listener);
+    }
+
+    dispatch(type) {
+      for (const listener of this.listeners.get(type) || []) listener({ target: this });
+    }
+
+    setCustomValidity(message) { this.validationMessage = String(message || ''); }
+    focus() {}
+
+    remove() {
+      if (this.parentElement) {
+        const siblings = this.parentElement.children;
+        const index = siblings.indexOf(this);
+        if (index >= 0) siblings.splice(index, 1);
+      }
+      if (this.id) elementsById.delete(this.id);
+      this.parentElement = null;
+    }
+  }
+
+  const parent = new Element('div');
+  const input = new Element('input');
+  input.id = 'email';
+  input.placeholder = 'E-Mail';
+  parent.appendChild(input);
+
+  const document = {
+    readyState: 'complete',
+    documentElement: { lang },
+    addEventListener() {},
+    querySelectorAll() { return [input]; },
+    getElementById(id) { return elementsById.get(id) || null; },
+    createElement(tagName) { return new Element(tagName); },
+  };
+  const context = { Set, URL, console, document };
+  context.window = context;
+  vm.runInNewContext(source, context, { filename: 'nt-business-email.js' });
+  return { document, input, parent, validator: context.ntBusinessEmail };
+}
+
 test('client business-email validator accepts company-owned domains', () => {
   const validator = loadValidator();
   const accepted = [
@@ -59,6 +161,50 @@ test('client business-email validator rejects personal, disposable and malformed
     'name@company.com:443',
   ];
   for (const email of rejected) assert.equal(validator.isValid(email), false, email);
+});
+
+test('business-email error renders one localized mail fallback and clears on valid input', () => {
+  const cases = [
+    {
+      lang: 'de',
+      error: 'Bitte verwenden Sie Ihre geschäftliche E-Mail-Adresse, z. B. name@unternehmen.de.',
+      fallbackPrefix: 'Keine Firmen-E-Mail? ',
+      fallbackLink: 'Anfrage direkt per E-Mail senden',
+    },
+    {
+      lang: 'en',
+      error: 'Please use a business email address, e.g. name@company.com.',
+      fallbackPrefix: 'No business email? ',
+      fallbackLink: 'Send your request directly by email',
+    },
+  ];
+
+  for (const expected of cases) {
+    const { document, input, parent, validator } = loadValidatorWithInput(expected.lang);
+    input.value = 'person@gmail.com';
+    assert.equal(validator.validateInput(input), false);
+    assert.equal(validator.validateInput(input), false);
+
+    const errors = parent.children.filter((element) => element.getAttribute('data-nt-business-email-error') === 'true');
+    const fallbacks = parent.children.filter((element) => element.getAttribute('data-nt-business-email-fallback') === 'true');
+    assert.equal(errors.length, 1, expected.lang + ' renders one error');
+    assert.equal(errors[0].textContent, expected.error);
+    assert.equal(fallbacks.length, 1, expected.lang + ' renders one fallback');
+    assert.equal(fallbacks[0].children[0].textContent, expected.fallbackPrefix);
+    assert.equal(fallbacks[0].children[1].textContent, expected.fallbackLink);
+    assert.equal(fallbacks[0].children[1].href, 'mailto:support@neontrip.de');
+    assert.equal(input.getAttribute('aria-invalid'), 'true');
+    assert.equal(input.getAttribute('aria-describedby'), 'email-business-error email-business-error-fallback');
+    assert.equal(input.validationMessage, expected.error);
+
+    input.value = 'sales@neontrip.de';
+    input.dispatch('input');
+    assert.equal(document.getElementById('email-business-error'), null);
+    assert.equal(document.getElementById('email-business-error-fallback'), null);
+    assert.equal(parent.children.length, 1, expected.lang + ' clears error and fallback');
+    assert.equal(input.getAttribute('aria-invalid'), null);
+    assert.equal(input.validationMessage, '');
+  }
 });
 
 test('client and server use the same blocked provider-domain set', () => {

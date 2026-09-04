@@ -52,6 +52,17 @@ function assertTrackingContract(html, path, lang) {
   assert.match(html, /openai_ad_group_id/);
   if (lang === 'en') assert.match(html, /Business email/);
   else assert.match(html, /Geschäftliche E-Mail/);
+  assert.doesNotMatch(
+    html,
+    /Nur Firmen-E-Mail-Adressen|Business email addresses only/,
+    path + ' has no static business-email helper'
+  );
+
+  const fileInputs = Array.from(html.matchAll(/<input\b[^>]*\btype=["']file["'][^>]*>/gi));
+  assert.ok(fileInputs.length > 0, path + ' file input exists');
+  for (const match of fileInputs) {
+    assert.doesNotMatch(match[0], /\brequired\b/i, path + ' upload remains optional');
+  }
 
   const companyInputs = Array.from(html.matchAll(/<input\b[^>]*(?:name=["']firma["']|id=["']company["'])[^>]*>/gi));
   assert.ok(companyInputs.length > 0, path + ' company input exists');
@@ -75,6 +86,11 @@ test('standalone quote wizards carry the same contract and canonical URL', async
     assert.match(html, new RegExp('<link rel="canonical" href="' + canonical.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"'));
     assert.match(html, /ntAppendWizardTracking/);
     assert.match(html, /validateInput\(businessEmailInput/);
+    assert.match(
+      html,
+      /emailField\.addEventListener\('blur',[\s\S]*?ntBusinessEmail\.validateInput\(emailField\)/,
+      path + ' blur uses the central business-email validator'
+    );
   }
 });
 
