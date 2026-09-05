@@ -98,18 +98,20 @@ npm run build
 
 ## Release-Gate
 
-1. `[verifiziert]` Eigener sauberer Worktree, aktuell auf `origin/main`.
+1. `[verifiziert]` Im eigenen Aufgabenworktree arbeiten; der saubere Kandidat muss den frisch abgefragten Stand von `origin/main` enthalten.
 2. `[verifiziert]` Fokussierte Tests, `npm run test:quotes`, `npx tsc --noEmit` und `npm run build` grün.
 3. `[verifiziert]` UI-Smoke stabil und grün oder begründete Freigabe mit dokumentiertem Rest-Risiko.
 4. `[verifiziert]` Diff auf Secrets, unbeabsichtigte Migrationen und fremde Änderungen prüfen.
 5. `[verifiziert]` Nur beauftragte Dateien committen.
-6. `[verifiziert]` Vor einem freigegebenen Push `codex-safe-push-main` statt rohem `git push origin main` verwenden.
-7. `[verifiziert]` Unmittelbar vor jedem Deploy `codex-predeploy ops` ausführen und nur den exakt ausgegebenen Commit deployen.
-8. `[verifiziert]` Nach Deploy geschützten Health-/UI-Smoke, Sales-Flow-Diagnose und relevante Integrationszustände prüfen, ohne einen echten Kundenversand auszulösen.
+6. `[verifiziert]` Scope und volle Commit-SHA des sauberen Kandidaten für die Veröffentlichung freigeben lassen. Eine vorhandene Freigabe gilt weiter, solange Scope und SHA unverändert sind; bereits der Push auf `main` kann Produktion verändern.
+7. `[verifiziert]` Vor diesem Push im selben Aufgabenworktree `codex-predeploy ops` ausführen. Der ausgegebene `Full commit`, die freigegebene SHA und der aktuelle `HEAD` müssen übereinstimmen. Predeploy prüft den Git-Kandidaten und ersetzt weder die Tests oben noch den späteren Betriebsnachweis.
+8. `[verifiziert]` Nur nach erfolgreichem Preflight und übereinstimmenden SHAs im selben Aufgabenworktree `codex-safe-push-main` statt rohem `git push origin main` ausführen. Ändert sich der Kandidat, etwa durch Rebase, den neuen Diff prüfen, betroffene Prüfungen wiederholen und die neue exakte SHA freigeben lassen. Bei fortgeschrittenem `origin/main` zuerst abgleichen und den Preflight vor dem Push erneut ausführen. Einen fehlenden oder fehlschlagenden Helfer niemals umgehen.
+9. `[verifiziert]` Für einen zusätzlichen manuellen Deploy/Redeploy unmittelbar vorher erneut `codex-predeploy ops` im selben Aufgabenworktree ausführen und die Übereinstimmung von ausgegebener SHA, freigegebener SHA und `HEAD` prüfen. Nur genau diesen Commit deployen.
+10. `[verifiziert]` Nach Deploy geschützten Health-/UI-Smoke, Sales-Flow-Diagnose und relevante Integrationszustände prüfen, ohne einen echten Kundenversand auszulösen.
 
 ## Rollback
 
-- `[verifiziert]` Code: In neuem Worktree einen gezielten Revert des exakten Commits erstellen, Tests ausführen, freigegeben pushen, erneut `codex-predeploy ops`, dann genau diesen Revert-Commit deployen.
+- `[verifiziert]` Code: Mit `codex-new-worktree ops <topic>` den passenden Aufgabenworktree ermitteln und einen gezielten Revert des exakten Commits erstellen. Das vollständige Release-Gate oben gilt auch hier: erforderliche Tests, sauberer Revert-Commit, Freigabe seiner exakten SHA, dann im selben Worktree `codex-predeploy ops` vor `codex-safe-push-main`. Nur den freigegebenen und vom Preflight bestätigten Revert-Commit deployen; bei geänderter SHA erneut prüfen und freigeben lassen.
 - `[verifiziert]` n8n: Vor Änderung Export/Backup und Diff sichern; bei Regression den Workflow deaktivieren oder die gesicherte Version wiederherstellen. Keine parallelen Workflow-Kopien aktiv lassen.
 - `[verifiziert]` Konfiguration: Vor Änderung nur Namen/Checksummen und den bisherigen Zustand dokumentieren; Secret-Werte nicht exportieren. Rückkehr auf den vorherigen Secret-Store-Zustand muss separat möglich sein.
 - `[verifiziert]` Datenbank: Rollback-SQL existiert für die Basismigration, ist aber nach produktiver Datennutzung nicht blind anzuwenden. Backup, Impact-Analyse und ausdrückliche Datenbankfreigabe sind Pflicht.
