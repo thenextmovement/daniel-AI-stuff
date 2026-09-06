@@ -2,15 +2,13 @@ import {
   SupabaseRestError,
   supabaseRequest,
 } from "@/lib/quotes/supabase-rest";
+import {
+  DUNNING_COURT_EVENT_LABELS,
+  type DunningCourtEventType,
+} from "@/lib/ops/dunning-status";
 
-export type DunningCourtEventType =
-  | "application_draft_created"
-  | "application_submitted"
-  | "court_order_served"
-  | "objection_received"
-  | "enforcement_order_requested"
-  | "enforcement_order_issued"
-  | "closed";
+export { DUNNING_COURT_EVENT_LABELS } from "@/lib/ops/dunning-status";
+export type { DunningCourtEventType } from "@/lib/ops/dunning-status";
 
 type DunningCourtEventRow = {
   id: string;
@@ -147,18 +145,8 @@ export type DunningCourtDraftJob = {
   updatedAt: string;
 };
 
-const EVENT_LABELS: Record<DunningCourtEventType, string> = {
-  application_draft_created: "Mahnantrag erstellt",
-  application_submitted: "Mahnantrag beim Gericht eingereicht",
-  court_order_served: "Mahnbescheid zugestellt",
-  objection_received: "Widerspruch eingegangen",
-  enforcement_order_requested: "Vollstreckungsbescheid beantragt",
-  enforcement_order_issued: "Vollstreckungsbescheid erlassen",
-  closed: "Gerichtliches Mahnverfahren abgeschlossen",
-};
-
 export function dunningCourtEventLabel(eventType: DunningCourtEventType) {
-  return EVENT_LABELS[eventType];
+  return DUNNING_COURT_EVENT_LABELS[eventType];
 }
 
 export function dunningCourtNextAction(
@@ -169,7 +157,7 @@ export function dunningCourtNextAction(
     case "application_draft_created":
       return "Mahnantrag prüfen und beim Gericht einreichen";
     case "application_submitted":
-      return "Gerichtliche Bearbeitung und Zustellung abwarten";
+      return "Gerichtseingang, Bearbeitung und Zustellung abwarten";
     case "court_order_served":
       return "Widerspruchsfrist überwachen";
     case "objection_received":

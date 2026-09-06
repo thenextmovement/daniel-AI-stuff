@@ -51,13 +51,19 @@ import type {
   DunningCourtRepresentative,
 } from "@/lib/ops/dunning-court";
 import {
+  DUNNING_CASE_STATE_LABELS,
+  DUNNING_COURT_EVENT_LABELS,
+} from "@/lib/ops/dunning-status";
+import {
   hasCreatedDunningCourtApplication,
   matchesDunningOrderAge,
   matchesDunningOrderYear,
   matchesDunningStage,
+  matchesDunningStatus,
   type DunningOrderAgeFilter,
   type DunningOrderYearFilter,
   type DunningStageFilter,
+  type DunningStatusFilter,
 } from "@/lib/ops/dunning-filter";
 import {
   sortDunningCases,
@@ -66,7 +72,7 @@ import {
 
 type Filters = {
   query: string;
-  state: "all" | DunningCaseState;
+  status: DunningStatusFilter;
   stage: DunningStageFilter;
   orderAge: DunningOrderAgeFilter;
   orderYear: DunningOrderYearFilter;
@@ -78,7 +84,7 @@ type Filters = {
 
 const INITIAL_FILTERS: Filters = {
   query: "",
-  state: "all",
+  status: "all",
   stage: "all",
   orderAge: "all",
   orderYear: "all",
@@ -178,7 +184,7 @@ function relativeDue(entry: DunningCaseSummary) {
 function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
   const visible = cases.filter((entry) => {
     if (!caseMatchesQuery(entry, filters.query)) return false;
-    if (filters.state !== "all" && entry.state !== filters.state) return false;
+    if (!matchesDunningStatus(entry, filters.status)) return false;
     if (!matchesDunningStage(entry.currentStage, filters.stage)) return false;
     if (!matchesDunningOrderAge(entry.orderCreatedAt, filters.orderAge))
       return false;
@@ -266,6 +272,8 @@ function SelectField({
 }
 
 function StatusBadge({ entry }: { entry: DunningCaseSummary }) {
+  if (entry.state === "court_review" && entry.courtEvent)
+    return <CourtStatusBadge entry={entry} />;
   return (
     <span
       className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${stateTone[entry.state]}`}
@@ -380,7 +388,7 @@ function FilterPanel({
   const update = <K extends keyof Filters>(key: K, value: Filters[K]) =>
     setFilters((current) => ({ ...current, [key]: value }));
   const advancedCount = [
-    filters.state !== "all",
+    filters.status !== "all",
     filters.stage !== "all",
     filters.orderAge !== "all",
     filters.orderYear !== "all",
@@ -462,19 +470,22 @@ function FilterPanel({
             ["Antwort prüfen", "reply_received", MessageSquareReply],
             ["Solvenz/Gericht", "court_review", Gavel],
           ] as const
-        ).map(([label, state, Icon]) => (
-          <button
-            key={state}
-            type="button"
-            onClick={() =>
-              update("state", filters.state === state ? "all" : state)
-            }
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${filters.state === state ? "border-stone-950 bg-stone-950 text-white" : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"}`}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
+        ).map(([label, state, Icon]) => {
+          const status = `work:${state}` as DunningStatusFilter;
+          return (
+            <button
+              key={state}
+              type="button"
+              onClick={() =>
+                update("status", filters.status === status ? "all" : status)
+              }
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${filters.status === status ? "border-stone-950 bg-stone-950 text-white" : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          );
+        })}
         <span className="ml-auto text-xs text-stone-500">
           Bezahlte Fälle sind ausgeblendet. Ausnahme: Shopify-Tag „WARTEN AUF
           ZA(HLUNG)“.
@@ -492,18 +503,31 @@ function FilterPanel({
         </summary>
         <div className="grid gap-3 border-t border-[#eee8df] bg-[#faf7f2] p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <SelectField
-            label="Arbeitsstatus"
-            value={filters.state}
-            onChange={(value) => update("state", value as Filters["state"])}
+            label="Status"
+            value={filters.status}
+            onChange={(value) =>
+              update("status", value as DunningStatusFilter)
+            }
           >
             <option value="all">Alle Status</option>
-            <option value="action_required">Aktion fällig</option>
-            <option value="reply_received">Antwort prüfen</option>
-            <option value="final_wait">Letzte Frist läuft</option>
-            <option value="court_review">Solvenz/Gericht prüfen</option>
-            <option value="data_issue">Daten prüfen</option>
-            <option value="scheduled">Termin geplant</option>
-            <option value="paused">Pausiert</option>
+            <optgroup label="Mahnwesen">
+              {Object.entries(DUNNING_CASE_STATE_LABELS).map(
+                ([value, label]) => (
+                  <option key={`work:${value}`} value={`work:${value}`}>
+                    {label}
+                  </option>
+                ),
+              )}
+            </optgroup>
+            <optgroup label="Gerichtliches Verfahren">
+              {Object.entries(DUNNING_COURT_EVENT_LABELS).map(
+                ([value, label]) => (
+                  <option key={`court:${value}`} value={`court:${value}`}>
+                    {label}
+                  </option>
+                ),
+              )}
+            </optgroup>
           </SelectField>
           <SelectField
             label="Mahnstufe"
@@ -779,7 +803,7 @@ function CaseTable({
                     />
                   </div>
                   <StatusBadge entry={entry} />
-                  {entry.courtEvent ? (
+                  {entry.courtEvent && entry.state !== "court_review" ? (
                     <div className="mt-2">
                       <CourtStatusBadge entry={entry} />
                     </div>
@@ -840,7 +864,9 @@ function CaseTable({
               </div>
               <div className="grid justify-items-end gap-2">
                 <StatusBadge entry={entry} />
-                <CourtStatusBadge entry={entry} />
+                {entry.courtEvent && entry.state !== "court_review" ? (
+                  <CourtStatusBadge entry={entry} />
+                ) : null}
                 <InsolvencyCheckButton
                   entry={entry}
                   onOpen={onInsolvencyOpen}
@@ -1536,7 +1562,7 @@ function DetailDrawer({
               </p>
             </div>
             <div className="rounded-2xl border border-stone-200 bg-white p-4">
-              <p className="text-xs text-stone-500">Arbeitsstatus</p>
+              <p className="text-xs text-stone-500">Aktueller Status</p>
               <div className="mt-2">
                 <StatusBadge entry={entry} />
               </div>

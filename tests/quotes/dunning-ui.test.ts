@@ -17,7 +17,7 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
     /Name, Firma, E-Mail, Telefon, Bestellung, Rechnung oder Sendungsnummer/,
   );
   assert.match(client, /shipment\.trackingNumber/);
-  assert.match(client, /Arbeitsstatus/);
+  assert.match(client, /label="Status"/);
   assert.match(client, /Mahnstufe/);
   assert.match(client, /label="Bestellalter"/);
   assert.match(client, /Älter als 1 Monat/);
@@ -146,6 +146,7 @@ test("manual stage actions require auth, same-origin, a fresh snapshot, confirma
 test("court application steps remain visibly distinct and seed only the real pilot draft", () => {
   const client = read("src/app/ops/mahnwesen/page-client.tsx");
   const domain = read("src/lib/ops/dunning-court.ts");
+  const statusCatalog = read("src/lib/ops/dunning-status.ts");
   const migration = read(
     "supabase/migrations/20260826143000_create_dunning_court_events.sql",
   );
@@ -153,9 +154,23 @@ test("court application steps remain visibly distinct and seed only the real pil
     "insert into public.dunning_court_events",
   )[1] || "";
   assert.match(client, /Offizielles gerichtliches Mahnverfahren/);
-  assert.match(domain, /Mahnantrag erstellt/);
+  assert.match(statusCatalog, /Mahnantrag erstellt/);
   assert.match(client, /Noch nicht beim Gericht eingereicht/);
   assert.match(client, /entry\.courtEvents\.flatMap/);
+  assert.match(client, /DUNNING_CASE_STATE_LABELS/);
+  assert.match(client, /DUNNING_COURT_EVENT_LABELS/);
+  assert.match(client, /matchesDunningStatus\(entry, filters\.status\)/);
+  assert.match(client, /Gerichtliches Verfahren/);
+  assert.match(client, /Aktueller Status/);
+  assert.match(statusCatalog, /An Amtsgericht gesendet/);
+  assert.match(
+    client,
+    /entry\.courtEvent && entry\.state !== "court_review"/,
+  );
+  assert.match(
+    client,
+    /entry\.state === "court_review" && entry\.courtEvent/,
+  );
   assert.match(client, /event\.sourceReference/);
   assert.match(
     client,
