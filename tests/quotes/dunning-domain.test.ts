@@ -563,6 +563,104 @@ test("a created court application is auditable without pretending it was submitt
   assert.equal(entry?.nextActionAt, null);
 });
 
+test("unposted Qonto credits reduce the displayed claim without closing a partial payment", () => {
+  const [entry] = buildDunningCases(
+    input({
+      orders: [
+        order({
+          name: "#NEONT4566",
+          total_price: 670.56,
+          total_outstanding: 670.56,
+          created_at: "2026-06-01T10:00:00.000Z",
+        }),
+      ],
+      candidates: [
+        candidate({
+          shopify_order_name: "#NEONT4566",
+          shopify_order_created_at: "2026-06-01T10:00:00.000Z",
+          amount_due_cents: 67056,
+        }),
+      ],
+      courtEvents: new Map([
+        [
+          "#NEONT4566",
+          [
+            {
+              id: "court-event-4566",
+              orderNumber: "#NEONT4566",
+              eventKey: "court-event-4566-draft",
+              eventType: "application_draft_created",
+              eventLabel: "Mahnantrag erstellt",
+              occurredOn: "2026-09-04",
+              sourceReference: "TICKET-256",
+              actor: null,
+              note: "Amtlicher Barcode-PDF-Entwurf.",
+              createdAt: "2026-09-04T12:00:00.000Z",
+            },
+          ],
+        ],
+      ]),
+      bankPayments: [
+        {
+          transaction_id: "transaction-payment-4566",
+          amount: 335.28,
+          currency: "EUR",
+          reference_digits: "4566",
+          settled_at: "2026-09-07T07:33:00.018Z",
+          ingested_at: "2026-09-07T08:42:40.301Z",
+        },
+      ],
+    }),
+  );
+
+  assert.equal(entry?.amountCents, 33528);
+  assert.equal(entry?.bankPaymentsCents, 33528);
+  assert.equal(entry?.financialStatus, "partially_paid");
+  assert.equal(entry?.lastBankPaymentAt, "2026-09-07T07:33:00.018Z");
+  assert.equal(
+    entry?.nextActionLabel,
+    "Mahnantrag nach Teilzahlung neu erstellen",
+  );
+});
+
+test("a court event keeps a case visible without a normal dunning stage", () => {
+  const courtEvents: NonNullable<BuildInput["courtEvents"]> = new Map([
+    [
+      "#NEONT5000",
+      [
+        {
+          id: "court-event-only",
+          orderNumber: "#NEONT5000",
+          eventKey:
+            "ticket-test-neont5000-application-draft-created-2026-08-25",
+          eventType: "application_draft_created",
+          eventLabel: "Mahnantrag erstellt",
+          occurredOn: "2026-08-25",
+          sourceReference: "TICKET-TEST",
+          actor: null,
+          note: "Amtlicher Barcode-PDF-Entwurf.",
+          createdAt: "2026-08-25T14:30:00.000Z",
+        },
+      ],
+    ],
+  ]);
+
+  const [entry] = buildDunningCases(
+    input({
+      statuses: [],
+      sendlogs: [],
+      locks: [],
+      audits: [],
+      messages: [],
+      candidates: [],
+      courtEvents,
+    }),
+  );
+  assert.equal(entry?.orderNumber, "#NEONT5000");
+  assert.equal(entry?.currentStage, 0);
+  assert.equal(entry?.courtEvent?.eventType, "application_draft_created");
+});
+
 test("official court PDF preparation fails closed and treats tracking-only evidence as a warning", () => {
   const previous = {
     iban: process.env.DUNNING_COURT_APPLICANT_IBAN,

@@ -9,6 +9,7 @@ const read = (file: string) =>
 test("Ops exposes a dedicated searchable dunning work center", () => {
   const switcher = read("src/app/ops/ops-app-switcher.tsx");
   const client = read("src/app/ops/mahnwesen/page-client.tsx");
+  const domain = read("src/lib/ops/dunning.ts");
   assert.match(switcher, /label: "Mahnwesen"/);
   assert.match(switcher, /href: "\/ops\/mahnwesen"/);
   assert.match(client, /active="dunning"/);
@@ -62,6 +63,11 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   assert.match(client, /Kein automatischer Versand geplant/);
   assert.match(client, /Bezahlte Fälle sind ausgeblendet/);
   assert.match(client, /Bezahlter Shopify-Ausnahmefall/);
+  assert.match(client, /5 \* 60 \* 1000/);
+  assert.match(client, /Bankzahlung .* berücksichtigt/);
+  assert.match(domain, /totalOutstandingSet/);
+  assert.match(domain, /qonto_transactions/);
+  assert.match(domain, /processed_transactions/);
   assert.match(client, /Versand- und Zustellnachweis/);
   assert.match(
     client,
@@ -145,6 +151,7 @@ test("manual stage actions require auth, same-origin, a fresh snapshot, confirma
 
 test("court application steps remain visibly distinct and seed only the real pilot draft", () => {
   const client = read("src/app/ops/mahnwesen/page-client.tsx");
+  const dunning = read("src/lib/ops/dunning.ts");
   const domain = read("src/lib/ops/dunning-court.ts");
   const migration = read(
     "supabase/migrations/20260826143000_create_dunning_court_events.sql",
@@ -157,6 +164,10 @@ test("court application steps remain visibly distinct and seed only the real pil
   assert.match(client, /Noch nicht beim Gericht eingereicht/);
   assert.match(client, /entry\.courtEvents\.flatMap/);
   assert.match(client, /event\.sourceReference/);
+  assert.match(
+    dunning,
+    /const orderNames = \[[\s\S]*\.\.\.courtEvents\.keys\(\)/,
+  );
   assert.match(
     client,
     /noch nicht als gelber Brief\s+zugestellt/,
