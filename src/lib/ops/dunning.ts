@@ -1304,11 +1304,13 @@ export function buildDunningCases(input: {
       nextActionAt = null;
       nextActionLabel = courtNextAction;
     }
+    const courtEventOccurredAt = validIso(
+      courtEvent?.occurredOn || courtEvent?.createdAt,
+    );
     const paymentAfterCourtEvent = Boolean(
-      courtEvent &&
+      courtEventOccurredAt &&
         lastBankPaymentAt &&
-        Date.parse(lastBankPaymentAt) >
-          Date.parse(courtEvent.createdAt || courtEvent.occurredOn),
+        Date.parse(lastBankPaymentAt) > Date.parse(courtEventOccurredAt),
     );
     if (paymentAfterCourtEvent) {
       nextActionKind = "manual_review";
@@ -1545,7 +1547,10 @@ function shopifyAddress(value: unknown) {
   return Object.keys(address).length ? address : null;
 }
 
-async function refreshShopifyOrdersLive(orders: ShopifyOrderRow[]) {
+async function refreshShopifyOrdersLive(
+  orders: ShopifyOrderRow[],
+  requestedOrderNames: string[] = [],
+) {
   const config = shopifyLiveConfig();
   const orderById = new Map(
     orders.flatMap((order) => {
@@ -1553,18 +1558,27 @@ async function refreshShopifyOrdersLive(orders: ShopifyOrderRow[]) {
       return id ? [[id, order] as const] : [];
     }),
   );
-  if (!orderById.size)
-    return {
-      orders,
-      live: Boolean(config),
-      observedAt: config ? new Date().toISOString() : null,
-    };
   if (!config)
     return { orders, live: false, observedAt: null as string | null };
 
   const refreshed = new Map(orderById);
   const matchedIds = new Set<string>();
   const ids = [...orderById.keys()];
+  const knownNames = new Set(
+    orders
+      .map((order) => normalizeDunningOrderNumber(order.name))
+      .filter((value): value is string => Boolean(value)),
+  );
+  const missingNames = [
+    ...new Set(
+      requestedOrderNames
+        .map(normalizeDunningOrderNumber)
+        .filter(
+          (value): value is string => Boolean(value && !knownNames.has(value)),
+        ),
+    ),
+  ];
+  const additionalOrders = new Map<string, ShopifyOrderRow>();
   try {
     for (let index = 0; index < ids.length; index += 100) {
       const chunk = ids.slice(index, index + 100);
@@ -1673,6 +1687,106 @@ async function refreshShopifyOrdersLive(orders: ShopifyOrderRow[]) {
         });
       }
     }
+    for (const orderName of missingNames) {
+      const response = await fetch(
+        `https://${config.domain}/admin/api/${config.version}/graphql.json`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": config.token,
+          },
+          body: JSON.stringify({
+            query: `
+              query DunningOrderByName($query: String!) {
+                orders(first: 5, query: $query) {
+                  nodes {
+                    id
+                    name
+                    email
+                    phone
+                    tags
+                    createdAt
+                    updatedAt
+                    cancelledAt
+                    displayFinancialStatus
+                    displayFulfillmentStatus
+                    totalPriceSet { shopMoney { amount currencyCode } }
+                    totalOutstandingSet { shopMoney { amount currencyCode } }
+                    customer { firstName lastName email phone }
+                    billingAddress {
+                      name company firstName lastName phone
+                      address1 address2 city zip country countryCodeV2
+                    }
+                    shippingAddress {
+                      name company firstName lastName phone
+                      address1 address2 city zip country countryCodeV2
+                    }
+                  }
+                }
+              }
+            `,
+            variables: { query: `name:${orderName}` },
+          }),
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null;
+      const graphErrors = arrayValue(payload?.errors);
+      if (!response.ok || graphErrors.length)
+        throw new Error(
+          `Shopify Live-Abgleich fehlgeschlagen (HTTP ${response.status}).`,
+        );
+      const nodes = arrayValue(
+        recordValue(recordValue(payload?.data).orders).nodes,
+      );
+      const node = recordValue(
+        nodes.find(
+          (entry) =>
+            normalizeDunningOrderNumber(recordValue(entry).name) === orderName,
+        ),
+      );
+      const id = numericShopifyOrderId(node.id);
+      if (!id) continue;
+      const totalPrice = shopifyMoney(node.totalPriceSet);
+      const outstanding = shopifyMoney(node.totalOutstandingSet);
+      const price = recordValue(recordValue(node.totalPriceSet).shopMoney);
+      const customer = recordValue(node.customer);
+      const customerName = cleanText(
+        [customer.firstName, customer.lastName].filter(Boolean).join(" "),
+        180,
+      );
+      const customerEmail = cleanText(customer.email, 320);
+      additionalOrders.set(id, {
+        shopify_order_id: id,
+        name: cleanText(node.name, 80) || orderName,
+        financial_status:
+          cleanText(node.displayFinancialStatus, 60)?.toLowerCase() || null,
+        fulfillment_status:
+          cleanText(node.displayFulfillmentStatus, 60)?.toLowerCase() || null,
+        total_price: totalPrice,
+        total_outstanding: outstanding,
+        currency: cleanText(price.currencyCode, 3),
+        email: cleanText(node.email, 320),
+        kunde: customerName,
+        kunde_email: customerEmail || cleanText(node.email, 320),
+        tags: arrayValue(node.tags)
+          .map((tag) => cleanText(tag, 200))
+          .filter(Boolean)
+          .join(", "),
+        created_at: validIso(node.createdAt),
+        cancelled_at: validIso(node.cancelledAt),
+        ingested_at: null,
+        ship_address: shopifyAddress(node.shippingAddress),
+        bill_address: shopifyAddress(node.billingAddress),
+        phone:
+          cleanText(node.phone, 60) || cleanText(customer.phone, 60) || null,
+        shopify_updated_at: validIso(node.updatedAt),
+      });
+    }
   } catch (error) {
     console.warn("dunning Shopify live refresh unavailable", {
       message:
@@ -1684,11 +1798,16 @@ async function refreshShopifyOrdersLive(orders: ShopifyOrderRow[]) {
   }
 
   return {
-    orders: orders.map((order) => {
-      const id = numericShopifyOrderId(order.shopify_order_id);
-      return (id && refreshed.get(id)) || order;
-    }),
-    live: matchedIds.size === orderById.size,
+    orders: [
+      ...orders.map((order) => {
+        const id = numericShopifyOrderId(order.shopify_order_id);
+        return (id && refreshed.get(id)) || order;
+      }),
+      ...additionalOrders.values(),
+    ],
+    live:
+      matchedIds.size === orderById.size &&
+      additionalOrders.size === missingNames.length,
     observedAt: new Date().toISOString(),
   };
 }
@@ -1942,7 +2061,10 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     orderNames,
     orderIds,
   );
-  const shopifyRefresh = await refreshShopifyOrdersLive(mirroredOrders);
+  const shopifyRefresh = await refreshShopifyOrdersLive(
+    mirroredOrders,
+    orderNames,
+  );
   const orders = shopifyRefresh.orders;
   const shipmentOrderNames = [
     ...new Set(

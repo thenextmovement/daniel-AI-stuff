@@ -595,7 +595,7 @@ test("unposted Qonto credits reduce the displayed claim without closing a partia
               sourceReference: "TICKET-256",
               actor: null,
               note: "Amtlicher Barcode-PDF-Entwurf.",
-              createdAt: "2026-09-04T12:00:00.000Z",
+              createdAt: "2026-09-07T10:08:00.000Z",
             },
           ],
         ],
