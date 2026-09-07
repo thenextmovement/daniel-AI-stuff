@@ -220,8 +220,10 @@ export async function decideBillingChangeRequest(input: {
   note?: string;
   actor: string;
   idempotencyKey: string;
+  notifyCustomer?: boolean;
 }) {
-  return supabaseRpc<Record<string, unknown>>("billing_change_request_decide", {
+  const procedure = input.notifyCustomer === false ? "billing_change_request_decide_silent" : "billing_change_request_decide";
+  return supabaseRpc<Record<string, unknown>>(procedure, {
     p_case_id: input.caseId,
     p_change_request_id: input.changeRequestId,
     p_decision: input.decision,
