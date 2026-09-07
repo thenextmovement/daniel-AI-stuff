@@ -751,6 +751,11 @@ function CaseTable({
                   <p className="mt-1 text-xs text-stone-500">
                     {relativeDue(entry)}
                   </p>
+                  {entry.bankPaymentsCents > 0 ? (
+                    <p className="mt-1 text-xs font-semibold text-emerald-700">
+                      Bankzahlung {money(entry.bankPaymentsCents, entry.currency)} berücksichtigt
+                    </p>
+                  ) : null}
                 </td>
                 <td className="px-4 py-4">
                   <ShipmentSummary entry={entry} />
@@ -875,6 +880,11 @@ function CaseTable({
                 <p className="mt-1 font-semibold text-stone-950">
                   {money(entry.amountCents, entry.currency)}
                 </p>
+                {entry.bankPaymentsCents > 0 ? (
+                  <p className="mt-1 text-xs font-semibold text-emerald-700">
+                    Bankzahlung berücksichtigt
+                  </p>
+                ) : null}
               </div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
@@ -1522,6 +1532,12 @@ function DetailDrawer({
               <p className="mt-2 text-xl font-semibold">
                 {money(entry.amountCents, entry.currency)}
               </p>
+              {entry.bankPaymentsCents > 0 ? (
+                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                  {money(entry.bankPaymentsCents, entry.currency)} Bankzahlung am{" "}
+                  {dateLabel(entry.lastBankPaymentAt, true)} berücksichtigt
+                </p>
+              ) : null}
             </div>
             <div className="rounded-2xl border border-stone-200 bg-white p-4">
               <p className="text-xs text-stone-500">Aktuelle Stufe</p>
@@ -2203,6 +2219,10 @@ export function DunningOpsClient({
     () => applyFilters(dashboard?.cases || [], filters),
     [dashboard, filters],
   );
+  const liveSourcesFresh = Boolean(
+    dashboard?.sourceHealth.intakeFresh &&
+      dashboard?.sourceHealth.shopifyLive,
+  );
 
   async function login() {
     setError(null);
@@ -2216,8 +2236,16 @@ export function DunningOpsClient({
     setPassword("");
   }
 
-  async function loadDashboard() {
-    setLoading(true);
+  useEffect(() => {
+    if (!hasSession && !localMode) return;
+    const interval = window.setInterval(() => {
+      void loadDashboard(true);
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [hasSession, localMode]);
+
+  async function loadDashboard(silent = false) {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/ops/dunning", { cache: "no-store" });
@@ -2232,7 +2260,7 @@ export function DunningOpsClient({
         loadError instanceof Error ? loadError.message : "Unbekannter Fehler.",
       );
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -2509,26 +2537,27 @@ export function DunningOpsClient({
               />
             </section>
             <section
-              className={`flex flex-col gap-3 rounded-[18px] border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${dashboard.sourceHealth.intakeFresh ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}
+              className={`flex flex-col gap-3 rounded-[18px] border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${liveSourcesFresh ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}
             >
               <div className="flex items-start gap-2">
-                {dashboard.sourceHealth.intakeFresh ? (
+                {liveSourcesFresh ? (
                   <MailCheck className="mt-0.5 h-4 w-4 shrink-0" />
                 ) : (
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 )}
                 <div>
                   <p className="font-semibold">
-                    {dashboard.sourceHealth.intakeFresh
-                      ? "Live-Daten vollständig und frisch"
-                      : "Versand bleibt wegen nicht frischer Live-Daten blockiert"}
+                    {liveSourcesFresh
+                      ? "Shopify-, Bank- und Mahndaten frisch geladen"
+                      : !dashboard.sourceHealth.shopifyLive
+                        ? "Shopify-Live-Abgleich ist nicht vollständig"
+                        : "Versand bleibt wegen nicht frischer Mahndaten blockiert"}
                   </p>
                   <p className="mt-0.5 text-xs opacity-75">
-                    Letzter T099-Stand{" "}
-                    {dateLabel(dashboard.sourceHealth.intakeObservedAt, true)} -{" "}
-                    {dashboard.sourceHealth.candidateCount} Live-Kandidaten -
-                    Altbestand zuletzt{" "}
-                    {dateLabel(dashboard.sourceHealth.legacyUpdatedAt)}
+                    Seite aktualisiert {dateLabel(dashboard.generatedAt, true)} ·
+                    Shopify {dateLabel(dashboard.sourceHealth.shopifyObservedAt, true)} ·
+                    Bankstand {dateLabel(dashboard.sourceHealth.bankObservedAt, true)} ·
+                    {dashboard.sourceHealth.candidateCount} Live-Kandidaten
                   </p>
                 </div>
               </div>

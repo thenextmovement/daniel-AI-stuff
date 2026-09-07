@@ -9,6 +9,7 @@ const read = (file: string) =>
 test("Ops exposes a dedicated searchable dunning work center", () => {
   const switcher = read("src/app/ops/ops-app-switcher.tsx");
   const client = read("src/app/ops/mahnwesen/page-client.tsx");
+  const domain = read("src/lib/ops/dunning.ts");
   assert.match(switcher, /label: "Mahnwesen"/);
   assert.match(switcher, /href: "\/ops\/mahnwesen"/);
   assert.match(client, /active="dunning"/);
@@ -62,6 +63,11 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   assert.match(client, /Kein automatischer Versand geplant/);
   assert.match(client, /Bezahlte Fälle sind ausgeblendet/);
   assert.match(client, /Bezahlter Shopify-Ausnahmefall/);
+  assert.match(client, /5 \* 60 \* 1000/);
+  assert.match(client, /Bankzahlung .* berücksichtigt/);
+  assert.match(domain, /totalOutstandingSet/);
+  assert.match(domain, /qonto_transactions/);
+  assert.match(domain, /processed_transactions/);
   assert.match(client, /Versand- und Zustellnachweis/);
   assert.match(
     client,

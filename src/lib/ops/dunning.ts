@@ -46,6 +46,20 @@ type ShopifyOrderRow = {
   ship_address: Record<string, unknown> | null;
   bill_address: Record<string, unknown> | null;
   phone: string | null;
+  shopify_updated_at?: string | null;
+};
+
+type QontoPaymentCreditRow = {
+  transaction_id: string;
+  amount: number | string | null;
+  currency: string | null;
+  reference_digits: string | null;
+  settled_at: string | null;
+  ingested_at: string | null;
+};
+
+type ProcessedTransactionRow = {
+  transaction_id: string;
 };
 
 type DunningShipmentRow = {
@@ -214,6 +228,8 @@ export type DunningCaseSummary = {
   orderTotalCents: number;
   currency: string;
   financialStatus: string;
+  bankPaymentsCents: number;
+  lastBankPaymentAt: string | null;
   fulfillmentStatus: string;
   orderCreatedAt: string | null;
   invoiceDate: string | null;
@@ -275,6 +291,9 @@ export type DunningDashboard = {
     intakeFresh: boolean;
     candidateCount: number;
     legacyUpdatedAt: string | null;
+    shopifyLive: boolean;
+    shopifyObservedAt: string | null;
+    bankObservedAt: string | null;
   };
   sendConfigured: boolean;
   stats: {
@@ -803,6 +822,7 @@ export function buildDunningCases(input: {
   insolvencyChecks?: ReadonlyMap<string, DunningInsolvencyCheck>;
   courtEvents?: ReadonlyMap<string, DunningCourtEvent[]>;
   shipments?: DunningShipmentRow[];
+  bankPayments?: QontoPaymentCreditRow[];
   now?: Date;
 }) {
   const now = input.now || new Date();
@@ -863,6 +883,16 @@ export function buildDunningCases(input: {
         ...(shipmentsByOrderId.get(id) || []),
         shipment,
       ]);
+  }
+
+  const bankPaymentsByOrder = new Map<string, QontoPaymentCreditRow[]>();
+  for (const payment of input.bankPayments || []) {
+    const digits = cleanText(payment.reference_digits, 30);
+    if (!digits) continue;
+    bankPaymentsByOrder.set(digits, [
+      ...(bankPaymentsByOrder.get(digits) || []),
+      payment,
+    ]);
   }
 
   const orderByNumber = new Map<string, ShopifyOrderRow>();
@@ -1004,19 +1034,64 @@ export function buildDunningCases(input: {
         : null;
     const courtEvents = input.courtEvents?.get(orderNumber) || [];
     const courtEvent = courtEvents[0] || null;
-    const candidateAmount = Number(candidate?.amount_due_cents);
-    const amountCents =
-      Number.isSafeInteger(candidateAmount) && candidateAmount > 0
-        ? candidateAmount
-        : numericCents(order?.total_outstanding) ||
-          parseLegacyAmountCents(latestSendlog?.betrag);
-    const orderTotalCents = numericCents(order?.total_price) || amountCents;
+    const orderCreatedAt = validIso(
+      order?.created_at || candidate?.shopify_order_created_at,
+    );
     const currency = (
       cleanText(candidate?.currency || order?.currency, 3) || "EUR"
     ).toUpperCase();
-    const financialStatus =
+    const candidateAmount = Number(candidate?.amount_due_cents);
+    const candidateAmountCents =
+      Number.isSafeInteger(candidateAmount) && candidateAmount > 0
+        ? candidateAmount
+        : null;
+    const shopifyOutstandingCents = order?.shopify_updated_at
+      ? numericCents(order.total_outstanding)
+      : null;
+    const sourceAmountCents =
+      shopifyOutstandingCents !== null
+        ? candidateAmountCents !== null
+          ? Math.min(candidateAmountCents, shopifyOutstandingCents)
+          : shopifyOutstandingCents
+        : candidateAmountCents ??
+          (numericCents(order?.total_outstanding) ||
+            parseLegacyAmountCents(latestSendlog?.betrag));
+    const orderPayments = (
+      bankPaymentsByOrder.get(dunningOrderDigits(orderNumber) || "") || []
+    ).filter((payment) => {
+      const settledAt = validIso(payment.settled_at);
+      const paymentCurrency = (
+        cleanText(payment.currency, 3) || "EUR"
+      ).toUpperCase();
+      return Boolean(
+        settledAt &&
+          paymentCurrency === currency &&
+          (!orderCreatedAt ||
+            Date.parse(settledAt) >= Date.parse(orderCreatedAt)),
+      );
+    });
+    const bankPaymentsCents = orderPayments.reduce(
+      (sum, payment) => sum + numericCents(payment.amount),
+      0,
+    );
+    const lastBankPaymentAt = latestIso(
+      ...orderPayments.map((payment) => payment.settled_at),
+    );
+    const amountCents = Math.max(
+      0,
+      sourceAmountCents - bankPaymentsCents,
+    );
+    const orderTotalCents =
+      numericCents(order?.total_price) || sourceAmountCents;
+    const sourceFinancialStatus =
       cleanText(order?.financial_status, 60) ||
-      (amountCents > 0 ? "unpaid" : "unknown");
+      (sourceAmountCents > 0 ? "unpaid" : "unknown");
+    const financialStatus =
+      bankPaymentsCents > 0
+        ? amountCents > 0
+          ? "partially_paid"
+          : "paid"
+        : sourceFinancialStatus;
     const fulfillmentStatus =
       cleanText(order?.fulfillment_status, 60) || "unknown";
     const closed = isFinanciallyClosed(
@@ -1026,11 +1101,10 @@ export function buildDunningCases(input: {
     );
     const paymentException = Boolean(closed && waitingPaymentTag);
     const displayAmountCents =
-      closed && order ? numericCents(order.total_outstanding) : amountCents;
+      closed && order && bankPaymentsCents === 0
+        ? numericCents(order.total_outstanding)
+        : amountCents;
     const preliminaryOnly = candidate?.preliminary_only === true;
-    const orderCreatedAt = validIso(
-      order?.created_at || candidate?.shopify_order_created_at,
-    );
     const shipmentRows = [
       ...(shipmentsByOrder.get(orderNumber) || []),
       ...(orderId ? shipmentsByOrderId.get(orderId) || [] : []),
@@ -1185,6 +1259,7 @@ export function buildDunningCases(input: {
       ...messageTimes,
       ...locks.map((lock) => lock.updated_at),
       ...courtEvents.map((event) => event.createdAt),
+      lastBankPaymentAt,
     );
     const phone =
       cleanText(order?.phone, 60) ||
@@ -1229,6 +1304,20 @@ export function buildDunningCases(input: {
       nextActionAt = null;
       nextActionLabel = courtNextAction;
     }
+    const paymentAfterCourtEvent = Boolean(
+      courtEvent &&
+        lastBankPaymentAt &&
+        Date.parse(lastBankPaymentAt) >
+          Date.parse(courtEvent.createdAt || courtEvent.occurredOn),
+    );
+    if (paymentAfterCourtEvent) {
+      nextActionKind = "manual_review";
+      nextActionAt = null;
+      nextActionLabel =
+        courtEvent?.eventType === "application_draft_created"
+          ? "Mahnantrag nach Teilzahlung neu erstellen"
+          : "Gericht über Teilzahlung informieren und Restforderung prüfen";
+    }
     if (closed && !paymentException) continue;
     cases.push({
       key: orderNumber.slice(1),
@@ -1243,6 +1332,8 @@ export function buildDunningCases(input: {
       orderTotalCents,
       currency,
       financialStatus,
+      bankPaymentsCents,
+      lastBankPaymentAt,
       fulfillmentStatus,
       orderCreatedAt,
       invoiceDate: validIso(candidate?.easybill_document_created_at),
@@ -1402,6 +1493,273 @@ async function loadRelevantShopifyOrders(
       ]),
     ).values(),
   ];
+}
+
+function recordValue(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function arrayValue(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function shopifyLiveConfig() {
+  const token = cleanText(
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN ||
+      process.env.SHOPIFY_ADMIN_TOKEN ||
+      process.env.SHOPIFY_ADMIN_API_TOKEN ||
+      process.env.SHOPIFY_ACCESS_TOKEN,
+    500,
+  );
+  const domain = cleanText(
+    process.env.SHOPIFY_SHOP_DOMAIN || process.env.SHOPIFY_STORE_DOMAIN,
+    260,
+  )
+    ?.replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+  const version =
+    cleanText(process.env.SHOPIFY_ADMIN_API_VERSION, 40) || "2026-01";
+  if (!token || domain !== "galaxybuzzdk.myshopify.com") return null;
+  return { token, domain, version };
+}
+
+function numericShopifyOrderId(value: unknown) {
+  const raw = cleanText(value, 260);
+  if (!raw) return null;
+  const numeric = raw.replace(/^gid:\/\/shopify\/Order\//, "");
+  return /^\d+$/.test(numeric) ? numeric : null;
+}
+
+function shopifyMoney(value: unknown) {
+  const moneyBag = recordValue(value);
+  const shopMoney = recordValue(moneyBag.shopMoney);
+  const amount = Number(shopMoney.amount);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function shopifyAddress(value: unknown) {
+  const address = recordValue(value);
+  return Object.keys(address).length ? address : null;
+}
+
+async function refreshShopifyOrdersLive(orders: ShopifyOrderRow[]) {
+  const config = shopifyLiveConfig();
+  const orderById = new Map(
+    orders.flatMap((order) => {
+      const id = numericShopifyOrderId(order.shopify_order_id);
+      return id ? [[id, order] as const] : [];
+    }),
+  );
+  if (!orderById.size)
+    return {
+      orders,
+      live: Boolean(config),
+      observedAt: config ? new Date().toISOString() : null,
+    };
+  if (!config)
+    return { orders, live: false, observedAt: null as string | null };
+
+  const refreshed = new Map(orderById);
+  const matchedIds = new Set<string>();
+  const ids = [...orderById.keys()];
+  try {
+    for (let index = 0; index < ids.length; index += 100) {
+      const chunk = ids.slice(index, index + 100);
+      const response = await fetch(
+        `https://${config.domain}/admin/api/${config.version}/graphql.json`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": config.token,
+          },
+          body: JSON.stringify({
+            query: `
+              query DunningOrdersLive($ids: [ID!]!) {
+                nodes(ids: $ids) {
+                  ... on Order {
+                    id
+                    name
+                    email
+                    phone
+                    tags
+                    createdAt
+                    updatedAt
+                    cancelledAt
+                    displayFinancialStatus
+                    displayFulfillmentStatus
+                    totalPriceSet { shopMoney { amount currencyCode } }
+                    totalOutstandingSet { shopMoney { amount currencyCode } }
+                    customer { firstName lastName email phone }
+                    billingAddress {
+                      name company firstName lastName phone
+                      address1 address2 city zip country countryCodeV2
+                    }
+                    shippingAddress {
+                      name company firstName lastName phone
+                      address1 address2 city zip country countryCodeV2
+                    }
+                  }
+                }
+              }
+            `,
+            variables: {
+              ids: chunk.map((id) => `gid://shopify/Order/${id}`),
+            },
+          }),
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null;
+      const graphErrors = arrayValue(payload?.errors);
+      if (!response.ok || graphErrors.length)
+        throw new Error(
+          `Shopify Live-Abgleich fehlgeschlagen (HTTP ${response.status}).`,
+        );
+      const nodes = arrayValue(recordValue(payload?.data).nodes);
+      for (const rawNode of nodes) {
+        const node = recordValue(rawNode);
+        const id = numericShopifyOrderId(node.id);
+        const current = id ? orderById.get(id) : null;
+        if (!id || !current) continue;
+        const totalPrice = shopifyMoney(node.totalPriceSet);
+        const outstanding = shopifyMoney(node.totalOutstandingSet);
+        const price = recordValue(recordValue(node.totalPriceSet).shopMoney);
+        const customer = recordValue(node.customer);
+        const customerName = cleanText(
+          [customer.firstName, customer.lastName].filter(Boolean).join(" "),
+          180,
+        );
+        const customerEmail = cleanText(customer.email, 320);
+        const updatedAt = validIso(node.updatedAt);
+        matchedIds.add(id);
+        refreshed.set(id, {
+          ...current,
+          name: cleanText(node.name, 80) || current.name,
+          financial_status:
+            cleanText(node.displayFinancialStatus, 60)?.toLowerCase() ||
+            current.financial_status,
+          fulfillment_status:
+            cleanText(node.displayFulfillmentStatus, 60)?.toLowerCase() ||
+            current.fulfillment_status,
+          total_price: totalPrice ?? current.total_price,
+          total_outstanding: outstanding ?? current.total_outstanding,
+          currency: cleanText(price.currencyCode, 3) || current.currency,
+          email: cleanText(node.email, 320) || current.email,
+          kunde: customerName || current.kunde,
+          kunde_email:
+            customerEmail || cleanText(node.email, 320) || current.kunde_email,
+          tags: arrayValue(node.tags)
+            .map((tag) => cleanText(tag, 200))
+            .filter(Boolean)
+            .join(", "),
+          created_at: validIso(node.createdAt) || current.created_at,
+          cancelled_at: validIso(node.cancelledAt),
+          ship_address:
+            shopifyAddress(node.shippingAddress) || current.ship_address,
+          bill_address:
+            shopifyAddress(node.billingAddress) || current.bill_address,
+          phone:
+            cleanText(node.phone, 60) ||
+            cleanText(customer.phone, 60) ||
+            current.phone,
+          shopify_updated_at: updatedAt,
+        });
+      }
+    }
+  } catch (error) {
+    console.warn("dunning Shopify live refresh unavailable", {
+      message:
+        error instanceof Error
+          ? error.message
+          : "Shopify Live-Abgleich fehlgeschlagen.",
+    });
+    return { orders, live: false, observedAt: null as string | null };
+  }
+
+  return {
+    orders: orders.map((order) => {
+      const id = numericShopifyOrderId(order.shopify_order_id);
+      return (id && refreshed.get(id)) || order;
+    }),
+    live: matchedIds.size === orderById.size,
+    observedAt: new Date().toISOString(),
+  };
+}
+
+function dunningOrderDigits(orderNumber: string) {
+  return (
+    normalizeDunningOrderNumber(orderNumber)?.match(/NEONT(\d+)$/)?.[1] || null
+  );
+}
+
+function transactionIdentityAliases(value: unknown) {
+  const raw = cleanText(value, 300);
+  if (!raw) return [];
+  const suffix = raw.match(/transaction-([a-z0-9-]+)$/i)?.[1] || null;
+  return suffix ? [raw, suffix] : [raw];
+}
+
+async function loadUnpostedQontoPayments(orderNames: string[]) {
+  const digits = [
+    ...new Set(
+      orderNames
+        .map(dunningOrderDigits)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+  if (!digits.length)
+    return {
+      payments: [] as QontoPaymentCreditRow[],
+      observedAt: null as string | null,
+    };
+
+  const payments: QontoPaymentCreditRow[] = [];
+  for (let index = 0; index < digits.length; index += 80) {
+    const chunk = digits.slice(index, index + 80);
+    payments.push(
+      ...(await supabaseRequest<QontoPaymentCreditRow[]>(
+        "qonto_transactions",
+        undefined,
+        {
+          select:
+            "transaction_id,amount,currency,reference_digits,settled_at,ingested_at",
+          reference_digits: inFilter(chunk),
+          side: "eq.credit",
+          status: "eq.completed",
+          order: "settled_at.asc",
+          limit: 1000,
+        },
+      )),
+    );
+  }
+  const processed = await pagedRequest<ProcessedTransactionRow>(
+    "processed_transactions",
+    {
+      select: "transaction_id",
+      order: "processed_at.desc",
+    },
+    5000,
+  );
+  const processedAliases = new Set(
+    processed.flatMap((row) => transactionIdentityAliases(row.transaction_id)),
+  );
+  const unposted = payments.filter(
+    (payment) =>
+      !transactionIdentityAliases(payment.transaction_id).some((alias) =>
+        processedAliases.has(alias),
+      ),
+  );
+  return {
+    payments: unposted,
+    observedAt: latestIso(...payments.map((payment) => payment.ingested_at)),
+  };
 }
 
 async function loadRelevantShippingShipments(
@@ -1580,7 +1938,12 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       ].filter((value): value is string => Boolean(value)),
     ),
   ];
-  const orders = await loadRelevantShopifyOrders(orderNames, orderIds);
+  const mirroredOrders = await loadRelevantShopifyOrders(
+    orderNames,
+    orderIds,
+  );
+  const shopifyRefresh = await refreshShopifyOrdersLive(mirroredOrders);
+  const orders = shopifyRefresh.orders;
   const shipmentOrderNames = [
     ...new Set(
       orders
@@ -1595,10 +1958,10 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
         .filter((value): value is string => Boolean(value)),
     ),
   ];
-  const shipments = await loadRelevantShippingShipments(
-    shipmentOrderNames,
-    shipmentOrderIds,
-  );
+  const [shipments, bankPaymentRefresh] = await Promise.all([
+    loadRelevantShippingShipments(shipmentOrderNames, shipmentOrderIds),
+    loadUnpostedQontoPayments(shipmentOrderNames),
+  ]);
   const messages = [
     ...new Map(
       [...inboundMessages, ...senderMessages].map((row) => [row.id, row]),
@@ -1616,6 +1979,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     insolvencyChecks,
     courtEvents,
     shipments,
+    bankPayments: bankPaymentRefresh.payments,
   });
   const openCases = cases.filter((entry) => !entry.paymentException);
   return {
@@ -1627,6 +1991,9 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       intakeFresh,
       candidateCount: candidates.length,
       legacyUpdatedAt: latestIso(...statuses.map((row) => row.updated_at)),
+      shopifyLive: shopifyRefresh.live,
+      shopifyObservedAt: shopifyRefresh.observedAt,
+      bankObservedAt: bankPaymentRefresh.observedAt,
     },
     sendConfigured: dunningSendConfigured(),
     stats: {
@@ -1711,6 +2078,18 @@ function timelineFromCase(summary: DunningCaseSummary) {
         status: "delivered",
       });
   }
+  if (summary.lastBankPaymentAt && summary.bankPaymentsCents > 0)
+    entries.push({
+      id: `bank-payment:${summary.key}:${summary.lastBankPaymentAt}`,
+      occurredAt: summary.lastBankPaymentAt,
+      kind: "evidence",
+      title: "Bankzahlung berücksichtigt",
+      detail: `${(summary.bankPaymentsCents / 100).toFixed(2)} ${summary.currency} · noch nicht in Shopify verbucht`,
+      source: "Qonto",
+      direction: "internal",
+      stage: null,
+      status: "completed",
+    });
   if (summary.legalReviewDueAt)
     entries.push({
       id: `legal-review:${summary.key}`,
