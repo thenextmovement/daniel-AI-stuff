@@ -563,6 +563,44 @@ test("a created court application is auditable without pretending it was submitt
   assert.equal(entry?.nextActionAt, null);
 });
 
+test("a court event keeps a case visible without a normal dunning stage", () => {
+  const courtEvents: NonNullable<BuildInput["courtEvents"]> = new Map([
+    [
+      "#NEONT5000",
+      [
+        {
+          id: "court-event-only",
+          orderNumber: "#NEONT5000",
+          eventKey:
+            "ticket-test-neont5000-application-draft-created-2026-08-25",
+          eventType: "application_draft_created",
+          eventLabel: "Mahnantrag erstellt",
+          occurredOn: "2026-08-25",
+          sourceReference: "TICKET-TEST",
+          actor: null,
+          note: "Amtlicher Barcode-PDF-Entwurf.",
+          createdAt: "2026-08-25T14:30:00.000Z",
+        },
+      ],
+    ],
+  ]);
+
+  const [entry] = buildDunningCases(
+    input({
+      statuses: [],
+      sendlogs: [],
+      locks: [],
+      audits: [],
+      messages: [],
+      candidates: [],
+      courtEvents,
+    }),
+  );
+  assert.equal(entry?.orderNumber, "#NEONT5000");
+  assert.equal(entry?.currentStage, 0);
+  assert.equal(entry?.courtEvent?.eventType, "application_draft_created");
+});
+
 test("official court PDF preparation fails closed and treats tracking-only evidence as a warning", () => {
   const previous = {
     iban: process.env.DUNNING_COURT_APPLICANT_IBAN,

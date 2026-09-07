@@ -145,6 +145,7 @@ test("manual stage actions require auth, same-origin, a fresh snapshot, confirma
 
 test("court application steps remain visibly distinct and seed only the real pilot draft", () => {
   const client = read("src/app/ops/mahnwesen/page-client.tsx");
+  const dunning = read("src/lib/ops/dunning.ts");
   const domain = read("src/lib/ops/dunning-court.ts");
   const migration = read(
     "supabase/migrations/20260826143000_create_dunning_court_events.sql",
@@ -157,6 +158,10 @@ test("court application steps remain visibly distinct and seed only the real pil
   assert.match(client, /Noch nicht beim Gericht eingereicht/);
   assert.match(client, /entry\.courtEvents\.flatMap/);
   assert.match(client, /event\.sourceReference/);
+  assert.match(
+    dunning,
+    /const orderNames = \[[\s\S]*\.\.\.courtEvents\.keys\(\)/,
+  );
   assert.match(
     client,
     /noch nicht als gelber Brief\s+zugestellt/,

@@ -880,6 +880,10 @@ export function buildDunningCases(input: {
     if (order) allOrderNumbers.add(order);
   for (const order of sendlogsByOrder.keys()) allOrderNumbers.add(order);
   for (const order of candidateByOrder.keys()) allOrderNumbers.add(order);
+  for (const order of input.courtEvents?.keys() || []) {
+    const normalized = normalizeDunningOrderNumber(order);
+    if (normalized) allOrderNumbers.add(normalized);
+  }
   for (const [id, candidate] of candidateById) {
     const number =
       normalizeDunningOrderNumber(candidate.shopify_order_name) ||
@@ -1562,6 +1566,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
         ...candidates.map((row) =>
           normalizeDunningOrderNumber(row.shopify_order_name),
         ),
+        ...courtEvents.keys(),
       ].filter((value): value is string => Boolean(value)),
     ),
   ];
