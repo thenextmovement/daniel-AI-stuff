@@ -41,3 +41,4 @@ $$;
 revoke all on function public.billing_change_request_decide_silent(uuid,uuid,text,jsonb,text,text,text)
   from public, anon, authenticated;
 grant execute on function public.billing_change_request_decide_silent(uuid,uuid,text,jsonb,text,text,text)
+  to service_role;
