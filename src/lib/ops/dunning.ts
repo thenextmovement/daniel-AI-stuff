@@ -1726,7 +1726,7 @@ async function refreshShopifyOrdersLive(
                 }
               }
             `,
-            variables: { query: `name:${orderName}` },
+            variables: { query: `name:${orderName.replace(/^#/, "")}` },
           }),
           signal: AbortSignal.timeout(15_000),
         },
