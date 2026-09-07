@@ -70,6 +70,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         note: typeof parsed.payload.note === "string" ? parsed.payload.note : "",
         actor,
         idempotencyKey: parsed.idempotencyKey,
+        notifyCustomer: parsed.payload.notifyCustomer !== false,
       });
     } else {
       result = await applyBillingOpsAction({ caseId, action: parsed.action, payload: parsed.payload, actor, idempotencyKey: parsed.idempotencyKey });
