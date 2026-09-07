@@ -170,6 +170,7 @@ test("court application steps remain visibly distinct and seed only the real pil
   );
   assert.match(dunning, /refreshShopifyOrdersLive\([\s\S]*orderNames/);
   assert.match(dunning, /orders\(first: 5, query: \$query\)/);
+  assert.match(dunning, /orderName\.replace\(\/\^#\//);
   assert.match(
     client,
     /noch nicht als gelber Brief\s+zugestellt/,
