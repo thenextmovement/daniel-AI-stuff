@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ArrivalDataClients } from "../src/lib/ops/arrival-labels/clients";
-import type { DhlMailEvidence, ExistingDpdEvidence, ProductConfig, ShopifyOrderEvidence, TrelloCardEvidence } from "../src/lib/ops/arrival-labels/domain";
+import type { DhlMailEvidence, ExistingDpdEvidence, ProductConfig, ShopifyOrderEvidence, TrelloCardEvidence, TrelloSignShippedTriggerSettings } from "../src/lib/ops/arrival-labels/domain";
 import { arrivalRunMarkdown } from "../src/lib/ops/arrival-labels/report";
 import { runArrivalLabels } from "../src/lib/ops/arrival-labels/service";
 
@@ -11,6 +11,7 @@ type Fixture = {
   orders: ShopifyOrderEvidence[];
   existingLabels?: Record<string, ExistingDpdEvidence[]>;
   productConfig?: ProductConfig | null;
+  trelloTriggerSettings?: TrelloSignShippedTriggerSettings | null;
 };
 
 function argument(name: string) {
@@ -33,7 +34,7 @@ async function fixtureClients(fixturePath: string) {
     shopify: { async listRecentOrders() { return fixture.orders; } },
     existingLabels: { async findForOrders() { return new Map(Object.entries(fixture.existingLabels || {})); } },
   };
-  return { clients, productConfig: fixture.productConfig };
+  return { clients, productConfig: fixture.productConfig, trelloTriggerSettings: fixture.trelloTriggerSettings };
 }
 
 async function main() {
@@ -53,6 +54,7 @@ async function main() {
     triggerType: fixture ? "fixture_test" : "manual_cli",
     clients: fixture?.clients,
     productConfig: fixture ? fixture.productConfig : undefined,
+    trelloTriggerSettings: fixture?.trelloTriggerSettings,
   });
   const report = arrivalRunMarkdown(result);
   const reportRoot = path.resolve(process.env.ARRIVAL_LABEL_REPORT_DIR || "var/arrival-labels/reports");

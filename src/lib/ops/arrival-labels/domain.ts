@@ -482,11 +482,9 @@ export function arrivalsFromTrelloSignShipped(
   for (const card of cards) {
     const isSignShipped = card.listId === settings.sourceListId
       && normalizeHumanText(card.listName) === "sign shipped neon trip";
-    const isCreateInvoice = card.listId === ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID
-      && normalizeHumanText(card.listName) === normalizeHumanText(ARRIVAL_LABEL_CREATE_INVOICE_LIST_NAME);
     if (
       card.boardId !== settings.boardId
-      || (!isSignShipped && !isCreateInvoice)
+      || !isSignShipped
     ) continue;
 
     const trackingNumber = extractTrailingDhlExpressTracking(card.name);
@@ -508,10 +506,10 @@ export function arrivalsFromTrelloSignShipped(
       deliveryState: "unknown",
       expectedArrivalAt: null,
       messageIds: [],
-      sourceKinds: [isCreateInvoice ? "trello_create_invoice" : "trello_sign_shipped"],
+      sourceKinds: ["trello_sign_shipped"],
       trelloTrigger: {
         boardId: settings.boardId,
-        listId: isCreateInvoice ? ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID : settings.sourceListId,
+        listId: settings.sourceListId,
         cardIds: [...new Set([...(previousTrigger?.cardIds || []), card.id])].sort(),
         latestActivityAt: laterInstant(previousTrigger?.latestActivityAt, activityAt),
         enabledAfter: enabledAfter.toString(),

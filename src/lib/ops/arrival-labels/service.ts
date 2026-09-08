@@ -218,7 +218,7 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
       runtimeClients.trello.listQuentinCards(),
     ]);
     const orders = await runtimeClients.shopify.listRecentOrders(localDate, cards);
-    const arrivals = mergeDhlArrivals(
+    const observedArrivals = mergeDhlArrivals(
       arrivalsFromDhlMessages(messages, localDate),
       arrivalsFromTrelloSignShipped(cards, localDate, trelloTriggerSettings),
     );
@@ -226,9 +226,14 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
     const [existingByOrder, handledCasesByTracking] = await Promise.all([
       runtimeClients.existingLabels.findForOrders(orderIds),
       runtimeClients.existingLabels.findHandledCasesForIncomingTrackings?.(
-        arrivals.map((arrival) => arrival.trackingNumber),
+        observedArrivals.map((arrival) => arrival.trackingNumber),
       ) || Promise.resolve(new Map<string, ExistingArrivalCaseEvidence>()),
     ]);
+    // New purchases require current Sign SHIPPED membership; DHL mail alone is not a release.
+    // Keep handled cases for later delivery/mail reconciliation, always as existing_label below.
+    const arrivals = observedArrivals.filter((arrival) =>
+      arrival.sourceKinds.includes("trello_sign_shipped")
+      || handledCasesByTracking.has(arrival.trackingNumber));
     const hints = Object.fromEntries(cards.map((card) => [card.id, customerNameHintsFromCard(card)]));
     const cases = arrivals.map((arrival) => {
       const preliminary = decideArrivalCase({

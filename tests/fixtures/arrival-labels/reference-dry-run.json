@@ -18,13 +18,19 @@
   "cards": [
     {
       "id": "fixture-card-reference",
-      "name": "2619113486 | #NEONT4498 | Alexander Walden",
-      "url": "https://trello.example.invalid/reference"
+      "name": "#NEONT4498 | Alexander Walden | 2619113486",
+      "url": "https://trello.example.invalid/reference",
+      "boardId": "62bae9b97705e7419ed64593",
+      "listId": "6347e09cb326e6014856bc3b",
+      "listName": "Sign SHIPPED (NEON TRIP)"
     },
     {
       "id": "fixture-card-dimmer",
-      "name": "5538051234 | 100 pieces Single color Dimmers",
-      "url": "https://trello.example.invalid/dimmer"
+      "name": "100 pieces Single color Dimmers | 5538051234",
+      "url": "https://trello.example.invalid/dimmer",
+      "boardId": "62bae9b97705e7419ed64593",
+      "listId": "6347e09cb326e6014856bc3b",
+      "listName": "Sign SHIPPED (NEON TRIP)"
     }
   ],
   "orders": [
@@ -62,5 +68,13 @@
     }
   ],
   "existingLabels": {},
-  "productConfig": null
+  "productConfig": null,
+  "trelloTriggerSettings": {
+    "enabled": true,
+    "enabledAfter": "2026-07-20T00:00:00Z",
+    "boardId": "62bae9b97705e7419ed64593",
+    "sourceListId": "6347e09cb326e6014856bc3b",
+    "sourceListName": "Sign SHIPPED (NEON TRIP)",
+    "titlePatternVersion": "dhl-10-digit-suffix-v1"
+  }
 }

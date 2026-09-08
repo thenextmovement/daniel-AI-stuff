@@ -13,12 +13,13 @@
 
 ## Trello-Soforttrigger: zusätzliche Pflichtprüfungen
 
-- Nur das exakte Quentin-Board und die exakten Listen `Sign SHIPPED (NEON TRIP)` oder `Create Invoice (With Tracking)` akzeptieren.
+- Für neue Labelkäufe nur das exakte Quentin-Board und die exakte Liste `Sign SHIPPED (NEON TRIP)` akzeptieren. `Create Invoice (With Tracking)` darf weder allein noch mit DHL-Mail einen Kauf oder Druck auslösen; erst der Wechsel nach `Sign SHIPPED` darf einen sonst gültigen Auftrag planen.
 - Nur eine zusammenhängende zehnstellige DHL-Express-Nummer am Titelende akzeptieren; Präfix-, Kurz-, Lang- und Nachtext-Treffer ablehnen.
-- `dateLastActivity` muss am oder nach dem produktiven `enabled_after` liegen; bestehende historische Karten bleiben unberührt.
+- Die aktuelle Listenmitgliedschaft gilt unabhängig von `dateLastActivity`. Ein fehlender oder deaktivierter Trigger darf auch mit einer DHL-Mail keinen neuen Auftrag planen.
 - Wiederholte Scheduler-Läufe müssen denselben Datenbankfall, Kaufauftrag und Druckauftrag verwenden.
 - Ohne Outlook-Mail bleibt `outlook_delivery_state=unknown`; dadurch darf kein `Sign Arrived`-Job entstehen.
 - Trifft später eine Zustellbestätigung ein, müssen Mail-IDs monoton vereinigt, nach bestätigtem Druck archiviert und erst danach der bestehende Trello-Finalizer freigegeben werden.
+- Bereits behandelte Fälle müssen spätere DHL-Mails auch außerhalb von `Sign SHIPPED` weiterhin als `existing_label` abgleichen, ohne einen neuen Kauf- oder Druckauftrag anzulegen.
 
 Operativer Sofort-Rollback:
 

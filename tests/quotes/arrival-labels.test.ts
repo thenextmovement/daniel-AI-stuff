@@ -205,7 +205,7 @@ test("Sign SHIPPED accepts only an exact ten-digit DHL number at the title end",
   assert.deepEqual(result[0].sourceKinds, ["trello_sign_shipped"]);
 });
 
-test("Create Invoice with tracking uses the same exact DHL suffix trigger", () => {
+test("Create Invoice with valid tracking no longer triggers label purchase", () => {
   const createInvoiceCard = {
     ...signShippedCard("50cm | #NEONT4568 Thomas Rehberg | 8109922111"),
     listId: ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID,
@@ -216,11 +216,7 @@ test("Create Invoice with tracking uses the same exact DHL suffix trigger", () =
     "2026-08-12",
     trelloTriggerSettings,
   );
-  assert.equal(result.length, 1);
-  assert.equal(result[0].trackingNumber, "8109922111");
-  assert.equal(result[0].lastSix, "922111");
-  assert.deepEqual(result[0].sourceKinds, ["trello_create_invoice"]);
-  assert.equal(result[0].trelloTrigger?.listId, ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID);
+  assert.deepEqual(result, []);
 });
 
 test("Sign SHIPPED uses current list membership even for cards last changed before activation", () => {
@@ -243,7 +239,7 @@ test("Sign SHIPPED fails closed for disabled, wrong-board and wrong-list cards",
   }
 });
 
-test("Create Invoice trigger fails closed for a spoofed list name or list id", () => {
+test("Create Invoice also remains ineligible with a spoofed list name or list id", () => {
   const valid = {
     ...signShippedCard("#NEONT4568 | Thomas Rehberg | 8109922111"),
     listId: ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID,
@@ -947,14 +943,17 @@ test("repeated dry runs produce the same decisions and idempotency keys", async 
   }];
   const clients: ArrivalDataClients = {
     outlook: { async listMessagesForLocalDate() { return messages; } },
-    trello: { async listQuentinCards() { return [card()]; } },
+    trello: { async listQuentinCards() { return [signShippedCard()]; } },
     shopify: { async listRecentOrders() { return [standardOrder]; } },
     existingLabels: { async findForOrders() { return new Map(); } },
   };
-  const first = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config });
-  const second = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config });
+  const first = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config, trelloTriggerSettings });
+  const second = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config, trelloTriggerSettings });
   assert.deepEqual(first.cases, second.cases);
   assert.equal(first.cases[0].status, "label_planned");
+  assert.equal(first.summary.found, 1);
+  assert.equal(first.summary.outlookTriggered, 1);
+  assert.equal(first.summary.trelloSignShippedTriggered, 1);
 });
 
 test("a previously handled DHL tracking is never planned again when Shopify history is outside the live search", async () => {
@@ -1010,29 +1009,95 @@ test("Sign SHIPPED alone plans the label immediately while retaining unknown del
   assert.equal(result.summary.trelloSignShippedTriggered, 1);
 });
 
-test("Create Invoice with tracking alone plans through the same guarded service path", async () => {
+test("Create Invoice never plans a label, with or without a DHL email, until moved to Sign SHIPPED", async () => {
   const createInvoiceCard = {
     ...signShippedCard("#NEONT100 | Ada Beispiel | 1234567890"),
     listId: ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID,
     listName: ARRIVAL_LABEL_CREATE_INVOICE_LIST_NAME,
   };
+  let currentCard: TrelloCardEvidence = createInvoiceCard;
+  let messages: DhlMailEvidence[] = [];
   const clients: ArrivalDataClients = {
-    outlook: { async listMessagesForLocalDate() { return []; } },
-    trello: { async listQuentinCards() { return [createInvoiceCard]; } },
+    outlook: { async listMessagesForLocalDate() { return messages; } },
+    trello: { async listQuentinCards() { return [currentCard]; } },
     shopify: { async listRecentOrders() { return [standardOrder]; } },
     existingLabels: { async findForOrders() { return new Map(); } },
   };
-  const result = await runArrivalLabels({
+  const options = {
     localDate: "2026-08-12",
     clients,
     productConfig: config,
     trelloTriggerSettings,
-  });
+  };
+  const beforeMail = await runArrivalLabels(options);
+  assert.deepEqual(beforeMail.cases, []);
+  assert.equal(beforeMail.summary.labelPlanned, 0);
+  messages = [{
+    messageId: "mail-before-shipped", receivedAt: "2026-08-12T06:00:00Z", senderAddress: "DHL Express <tracking@example.invalid>",
+    subject: "DHL Express wurde zugestellt", bodyText: "Sendungsnummer: 1234567890",
+  }];
+  const withMail = await runArrivalLabels(options);
+  assert.deepEqual(withMail.cases, []);
+  assert.equal(withMail.summary.labelPlanned, 0);
+  assert.equal(withMail.summary.reviewNotifications, 0);
+  currentCard = { ...createInvoiceCard, listId: ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID, listName: "Sign SHIPPED (NEON TRIP)" };
+  const result = await runArrivalLabels(options);
+  assert.equal(result.cases.length, 1);
   assert.equal(result.cases[0].status, "label_planned");
   assert.equal(result.cases[0].lastSix, "567890");
-  assert.equal(result.summary.outlookTriggered, 0);
+  assert.equal(result.summary.trelloSignShippedTriggered, 1);
+  assert.equal(result.summary.trelloCreateInvoiceTriggered, 0);
+  assert.equal(result.summary.outlookTriggered, 1);
+});
+
+test("DHL mail cannot bypass missing or disabled Sign SHIPPED settings", async () => {
+  const clients: ArrivalDataClients = {
+    outlook: { async listMessagesForLocalDate() { return [{
+      messageId: "mail-no-release", receivedAt: "2026-07-20T06:00:00Z", senderAddress: "DHL Express <tracking@example.invalid>",
+      subject: "DHL Express kommt HEUTE", bodyText: "Sendungsnummer: 1234567890",
+    }]; } },
+    trello: { async listQuentinCards() { return [signShippedCard()]; } },
+    shopify: { async listRecentOrders() { return [standardOrder]; } },
+    existingLabels: { async findForOrders() { return new Map(); } },
+  };
+  for (const settings of [null, { ...trelloTriggerSettings, enabled: false }]) {
+    const result = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config, trelloTriggerSettings: settings });
+    assert.deepEqual(result.cases, []);
+    assert.equal(result.summary.labelPlanned, 0);
+  }
+});
+
+test("handled cases still reconcile later DHL mail outside Sign SHIPPED without another label", async () => {
+  const clients: ArrivalDataClients = {
+    outlook: { async listMessagesForLocalDate() { return [{
+      messageId: "mail-after-print", receivedAt: "2026-07-20T06:00:00Z", senderAddress: "DHL Express <tracking@example.invalid>",
+      subject: "DHL Express wurde zugestellt", bodyText: "Sendungsnummer: 1234567890",
+    }]; } },
+    trello: { async listQuentinCards() { return [{ ...signShippedCard(), listId: "arrived-list", listName: "Sign Arrived" }]; } },
+    shopify: { async listRecentOrders() { return []; } },
+    existingLabels: {
+      async findForOrders() { return new Map(); },
+      async findHandledCasesForIncomingTrackings(trackings) {
+        assert.deepEqual(trackings, ["1234567890"]);
+        return new Map([["1234567890", {
+          caseId: "case-completed", idempotencyKey: "shopify:gid://shopify/Order/100:dhl:1234567890",
+          trackingNumber: "1234567890", status: "completed", existingDpdTracking: "01476817890573",
+          shopifyOrderId: "gid://shopify/Order/100", shopifyOrderName: "#NEONT100",
+        }]]);
+      },
+    },
+  };
+  const result = await runArrivalLabels({
+    localDate: "2026-07-20", clients, productConfig: config, trelloTriggerSettings,
+  });
+  assert.equal(result.cases.length, 1);
+  assert.equal(result.cases[0].status, "existing_label");
+  assert.equal(result.cases[0].selectedDpdProduct, null);
+  assert.equal(result.cases[0].existingDpdTracking, "01476817890573");
+  assert.match(result.cases[0].expectedArrival, /\(delivered_today\)$/);
+  assert.equal(result.summary.labelPlanned, 0);
+  assert.equal(result.summary.outlookTriggered, 1);
   assert.equal(result.summary.trelloSignShippedTriggered, 0);
-  assert.equal(result.summary.trelloCreateInvoiceTriggered, 1);
 });
 
 test("a pickup order produces no label plan and one internal review notification preview", async () => {
@@ -1042,11 +1107,11 @@ test("a pickup order produces no label plan and one internal review notification
   }];
   const clients: ArrivalDataClients = {
     outlook: { async listMessagesForLocalDate() { return messages; } },
-    trello: { async listQuentinCards() { return [card()]; } },
+    trello: { async listQuentinCards() { return [signShippedCard()]; } },
     shopify: { async listRecentOrders() { return [{ ...standardOrder, note: "Abholer – Ladenlokal" }]; } },
     existingLabels: { async findForOrders() { return new Map(); } },
   };
-  const result = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config });
+  const result = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config, trelloTriggerSettings });
   assert.equal(result.cases[0].status, "manual_review");
   assert.equal(result.cases[0].selectedDpdProduct, null);
   assert.equal(result.summary.reviewNotifications, 1);

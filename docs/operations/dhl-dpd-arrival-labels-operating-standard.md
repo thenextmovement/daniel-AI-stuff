@@ -1,6 +1,6 @@
 # Betriebsstandard — DHL-Eingänge und DPD-Etiketten
 
-Version: 1.1, festgehalten am 20.07.2026 und erweitert am 29.07.2026.
+Version: 1.2, Triggergrenze aktualisiert am 08.09.2026.
 
 Status: verbindliche Safety-Baseline. Produktive EasyDPD-Käufe und Drucke sind nur hinter den dokumentierten Schreib-, Audit-, Idempotenz- und Aktivierungsgates zulässig.
 
@@ -8,9 +8,9 @@ Implementierungsstand 23.07.2026: Der vorgesehene lokale Browserpfad ist die [Ex
 
 ## Quellen und Entscheidungsgrenze
 
-- Outlook liefert DHL-Express-Zustellmeldungen und die vollständige DHL-Sendungsnummer.
+- Outlook liefert DHL-Express-Zustellmeldungen und die vollständige DHL-Sendungsnummer, aber keine eigenständige Freigabe für einen neuen Labelkauf oder Druck.
 - Shopify und die persistierte Ops-Datenbank sind die fachlichen Quellen für Bestellung, Adresse, Hinweise, Fulfillment, vorhandene Sendungen und Idempotenz.
-- Trello ist Projektion und deterministischer Eingangskanal. Eine neue Karte in der exakt freigegebenen Quentin-Liste `Sign SHIPPED (NEON TRIP)` darf nach dem Aktivierungszeitpunkt einen Fall anlegen, wenn ihr Titel mit genau einer zusammenhängenden zehnstelligen DHL-Express-Nummer endet. Erst der persistierte Datenbankfall darf nach allen Shopify-, Existing-Label-, Produkt- und Idempotenzprüfungen Kauf und Druck freigeben.
+- Trello ist Projektion und deterministischer Eingangskanal. Nur die aktuelle Mitgliedschaft in der exakt freigegebenen Quentin-Liste `Sign SHIPPED (NEON TRIP)` bei aktiviertem Trigger darf einen neuen Fall zur Labelerstellung freigeben, wenn der Kartentitel mit genau einer zusammenhängenden zehnstelligen DHL-Express-Nummer endet. `Create Invoice (With Tracking)` und alle anderen Listen sind keine Druckauslöser, auch nicht zusammen mit einer DHL-Mail. Erst der persistierte Datenbankfall darf nach allen Shopify-, Existing-Label-, Produkt- und Idempotenzprüfungen Kauf und Druck freigeben.
 - EasyDPD muss vor jedem zukünftigen Kauf gegen vorhandene Labels abgeglichen werden.
 - Die KI darf Fälle lesen, zusammenfassen und zur Prüfung vorschlagen. Nur deterministische Regeln dürfen Kauf, Download und Druck freigeben.
 
@@ -18,7 +18,7 @@ Implementierungsstand 23.07.2026: Der vorgesehene lokale Browserpfad ist die [Ex
 
 Alle folgenden Bedingungen müssen gleichzeitig erfüllt sein:
 
-1. Die vollständige DHL-Nummer stammt entweder aus einer erlaubten DHL-Express-Mail oder aus einer nach Aktivierung geänderten Karte in der exakt freigegebenen Quentin-Liste, deren Titel mit genau zehn DHL-Ziffern endet.
+1. Die Karte liegt aktuell in `Sign SHIPPED (NEON TRIP)` auf dem freigegebenen Quentin-Board, der Trigger ist aktiviert und der Titel endet mit genau zehn DHL-Ziffern. Eine DHL-Mail allein genügt nicht; vor diesem Listenstatus wird kein neuer Kauf- oder Druckauftrag angelegt.
 2. Genau eine Trello-Karte enthält die vollständige DHL-Nummer. Ein Treffer nur über die letzten vier oder sechs Ziffern ist verboten.
 3. Genau eine Shopify-Bestellung ist über die explizite Bestellnummer oder einen eindeutigen, geprüften Abgleich zugeordnet.
 4. Shopify enthält entweder keine Notiz, ausschließlich das freigegebene vierzeilige NEONTRIP-Angebotsformat oder eine einzelne interne UUID ohne menschlichen Hinweistext. Zusatzfelder entsprechen exakt dem freigegebenen Schema.
@@ -37,7 +37,8 @@ Fehlt eine Bedingung oder widersprechen sich Quellen, ist der Fall manuell.
 - Der Titel-Suffix ist nur der Eingang. Vollständige Trello-, Shopify-, Existing-Label-, Produkt-, Ziel- und Notizprüfungen bleiben verpflichtend.
 - Das A6-Label wird unverändert mit den letzten sechs Ziffern der vollständigen DHL-Nummer annotiert.
 - `Sign Arrived` bleibt strikt getrennt: Die Karte darf erst nach `delivered_today`, bestätigtem Labeldruck und Archivierung aller exakt zugehörigen Outlook-Mails verschoben werden.
-- Der Trigger ist standardmäßig deaktiviert und besitzt einen produktiven Aktivierungszeitpunkt. Karten mit älterer `dateLastActivity` werden nicht rückwirkend verarbeitet.
+- Der Trigger besitzt eine explizite Aktivierung. Maßgeblich ist die aktuelle Listenmitgliedschaft, nicht `dateLastActivity`; wiederholte Läufe bleiben durch bestehende Label- und Idempotenzprüfungen geschützt.
+- Bereits behandelte Fälle behalten auch außerhalb von `Sign SHIPPED` den nachgelagerten Zustell- und Mailabgleich. Sie werden ausschließlich als `existing_label` verarbeitet und erlauben keinen erneuten Kauf oder Druck.
 
 ## Harte Stopper
 
