@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isBillingWorkerAuthorized } from "@/lib/ops/billing/internal-auth";
-import { claimBillingJob } from "@/lib/ops/billing/repository";
+import { claimBillingJob, claimManualPaidReconciliation } from "@/lib/ops/billing/repository";
+
+import { validManualPaidClaim, manualPaidError } from "@/lib/ops/billing/manual-paid-reconciliation";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   if (!isBillingWorkerAuthorized(request.headers)) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  if (body && typeof body === "object" && Object.prototype.hasOwnProperty.call(body, "scope")) {
+    if (!validManualPaidClaim(body)) return NextResponse.json({ ok: false, error: "manual_paid_request_invalid" }, { status: 422 });
+    try {
+      return NextResponse.json(await claimManualPaidReconciliation(body));
+    } catch (error) {
+      const failure = manualPaidError(error);
+      return NextResponse.json({ ok: false, error: failure.error }, { status: failure.status });
+    }
+  }
   const worker = typeof body.worker === "string" ? body.worker.trim().slice(0, 120) : "";
   const leaseSeconds = Math.min(Math.max(Number(body.leaseSeconds || 120), 30), 600);
   const allowed = new Set(["CREATE_PROFORMA", "CREATE_INVOICE", "CREATE_CREDIT", "CREATE_CANCELLATION", "VOID_PROFORMA", "PROJECT_PAYMENT_SHOPIFY", "PROJECT_PAYMENT_EASYBILL", "SEND_CUSTOMER_DOCUMENT", "NOTIFY_CHANGE_REQUEST", "VERIFY_VAT", "SYNC_SHOPIFY_TAX", "RECONCILE"]);

@@ -66,3 +66,8 @@
 - `[offen]` Ob `Snapshot` ein eigenes unveränderliches Offers-Artefakt oder die intern generierte AB bleiben soll, ist in der aktuellen UI/API semantisch nicht sauber entschieden.
 - `[offen]` Ob Supplier-Trello-Karten produktiv automatisch erstellt werden sollen, ist trotz vorhandener Listen-Konfiguration nicht belegt; der Code-Default ist aus.
 - `[offen]` Die gewünschte eindeutige direkte Trello-Kartenauflösung über Nerdyforms-/Request-ID ist nicht als garantiertes End-to-End-Verhalten belegt.
+
+## NEONTRIP manual-paid Billing state (2026-09-09)
+
+- `[lokal implementiert; Veröffentlichung und natürlicher Betrieb offen]` Der vorhandene Billing-Jobtyp `RECONCILE` erhält einen strikt isolierten Manual-Paid-Scope mit einem stabilen Job pro vorhandenem Case. Aufnahme und fairer Claim bleiben in der bestehenden internen API; normale 5-/15-/60-Minuten-Fälligkeit bleibt von unbekannter Wirkung getrennt. Generische Worker können diese Jobs nicht übernehmen.
+- `[Vertrag]` Outlook-`success:true` ist API-Annahme, kein Zustellnachweis. Abgelaufene Claims und unklare Wirkungen werden nicht automatisch wiederholt. 2A verwendet noch keinen Cache. Quellen, isolierte Prüfung und die vor Veröffentlichung offene Cutover-/2B-Grenze: [Billing-Vertrag](../../../workflows/billing-v2/MANUAL-PAID-RECONCILIATION.md).
