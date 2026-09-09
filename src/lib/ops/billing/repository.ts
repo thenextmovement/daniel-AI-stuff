@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ManualPaidClaimRequest, ManualPaidCompletion } from "./manual-paid-reconciliation";
+import { manualPaidSourceRevision, type ManualPaidClaimRequest, type ManualPaidCompletion } from "./manual-paid-reconciliation";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { buildBillingCaseInput, derivePortalToken, portalTokenHash, type BillingIntake } from "./domain";
 import { selectCurrentBillingDocuments, type BillingDocumentVersion } from "./current-documents";
@@ -286,7 +286,11 @@ export async function ingestBillingShopifyEvent(input: {
 
 // Scoped manual-paid state uses the existing jobs without generic retry or financial effects.
 export async function claimManualPaidReconciliation(request: ManualPaidClaimRequest) {
-  return supabaseRpc<Record<string, unknown>>("billing_manual_paid_claim", { p_request: request });
+  return supabaseRpc<Record<string, unknown>>("billing_manual_paid_claim", {
+    p_request: { ...request, candidates: request.candidates.map((candidate) => ({
+      ...candidate, sourceRevision: manualPaidSourceRevision(candidate.sourceRevision),
+    })) },
+  });
 }
 
 export async function completeManualPaidReconciliation(jobId: string, result: ManualPaidCompletion) {

@@ -10,6 +10,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 CONTAINER = f"neontrip-manual-paid-contract-{os.getpid()}"
 MIGRATION = ROOT / 'supabase/migrations/20260909163454_manual_paid_reconciliation_state.sql'
+REUSE = ROOT / 'supabase/migrations/20260909170545_manual_paid_reconciliation_reuse.sql'
 
 
 def run(args, **kwargs):
@@ -223,7 +224,88 @@ def rollback_boundary():
     sql(rollback)
     assert sql("select count(*) from pg_proc where proname in ('billing_manual_paid_claim','billing_manual_paid_complete');") == '0'
     sql(MIGRATION.read_text())
+    sql(REUSE.read_text())
     assert claim([candidate(8000)], 'admit')['claimed'] is None
+
+
+SOURCE = dict(updatedAt='2026-09-01T00:00:00Z', financialStatus='paid', cancelledAt=None, refundCount=0, manualPaidObserved=True, paymentRoute='VORKASSE')
+
+
+def warm_paid(**overrides):
+    sql("insert into public.billing_documents(billing_case_id,document_type,revision,document_number,status,easybill_document_id,payload_hash,amount_cents,currency) select id,'INVOICE',0,'#NEONT8006','FINALIZED','888888','reuse-proof',1000,'EUR' from public.billing_cases where shopify_order_name='#NEONT8006' on conflict(billing_case_id,document_type,revision) do nothing;")
+    sql("delete from public.billing_jobs where job_type<>'RECONCILE';")
+    row = candidate(8006, sourceRevision=SOURCE) | overrides
+    owned = claim([row])
+    complete(owned)
+    return row
+
+
+def stored_job():
+    return json.loads(sql("select jsonb_build_object('row',to_jsonb(j),'xmin',j.xmin::text,'ctid',j.ctid::text) from public.billing_jobs j where job_type='RECONCILE';"))
+
+
+def fresh_hit_no_writes():
+    row = warm_paid()
+    before = stored_job()
+    assert before['row']['payload']['lastCheck']['validUntil'] is not None
+    result = claim([row | {'sourceEventId': 'changed-trace-only', 'requestedAt': '2099-01-01T00:00:00Z'}], execution='2000')
+    assert result['claimed'] is None and result['intake'][0]['result'] == 'FRESH_REUSED'
+    assert before == stored_job(), 'Cache hit changed job data, tuple/version, proof or deadline'
+    assert claim()['claimed'] is None
+    sql("update public.billing_jobs set payload=jsonb_set(payload,'{lastCheck,validUntil}',to_jsonb(now()-interval '1 second'));")
+    assert claim()['claimed'] is None, 'Expired DONE was turned into permanent polling'
+    assert claim([row])['claimed'] is not None
+
+
+def freshness_expiry_while_waiting():
+    row = warm_paid()
+    sql("update public.billing_jobs set payload=jsonb_set(payload,'{lastCheck,validUntil}',to_jsonb(clock_timestamp()+interval '400 milliseconds'));")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        lock = pool.submit(sql, "begin; select id from public.billing_cases where shopify_order_name='#NEONT8006' for update; select pg_sleep(0.8); commit;")
+        time.sleep(0.1)
+        result = claim([row])
+        lock.result()
+    assert result['intake'][0]['result'] != 'FRESH_REUSED'
+    assert result['claimed'] is not None
+
+
+def changed_missing_and_other_due():
+    row = warm_paid()
+    claim([candidate(8000)], 'admit')
+    result = claim([row])
+    assert result['intake'][0]['result'] == 'FRESH_REUSED'
+    assert result['claimed']['billingCase']['shopify_order_name'] == '#NEONT8000'
+    complete(result)
+    assert claim([row | {'sourceRevision': SOURCE | {'updatedAt': '2026-09-02T00:00:00Z'}}])['claimed'] is not None
+    reset()
+    row = warm_paid()
+    assert claim([row | {'sourceRevision': None}])['claimed'] is not None
+    reset()
+    row = warm_paid()
+    sql("update public.billing_documents set easybill_document_id='777777' where document_number='#NEONT8006';")
+    assert claim([row])['claimed'] is not None
+
+
+def incomplete_sources_cannot_reuse():
+    variants = [dict(sourceRevision=None), dict(sourceRevision={}), dict(sourceRevision=SOURCE | {'cancelledAt': '2026-09-01T00:00:00Z'}),
+      dict(sourceRevision=SOURCE | {'financialStatus': 'refunded'}), dict(sourceRevision=SOURCE | {'refundCount': 1}),
+      dict(sourceRevision=SOURCE | {'manualPaidObserved': False}), dict(sourceRevision=SOURCE | {'paymentRoute': 'KAUF_AUF_RECHNUNG'}),
+      dict(sourceRevision=SOURCE | {'updatedAt': '2099-01-01T00:00:00Z'}), dict(amountCents=None), dict(currency=None)]
+    for variant in variants:
+        reset()
+        row = warm_paid(**variant)
+        assert stored_job()['row']['payload']['lastCheck']['validUntil'] is None
+        assert claim([row])['claimed'] is not None
+
+
+def reuse_rollback_keeps_state():
+    row = warm_paid()
+    before = stored_job()
+    rollback = ROOT/'supabase/rollbacks/20260909170545_manual_paid_reconciliation_reuse_rollback.sql'
+    sql(rollback.read_text())
+    assert before == stored_job()
+    assert claim([row])['claimed'] is not None, '2B rollback must restore 2A without state loss'
+    sql(REUSE.read_text())
 
 
 def role_boundary():
@@ -247,10 +329,13 @@ try:
     for path in migrations:
         sql(path.read_text())
     sql(MIGRATION.read_text())
+    sql(REUSE.read_text())
     sql("""insert into public.billing_cases(source_system,source_snapshot_hash,shopify_order_id,shopify_order_name,currency,subtotal_net_cents,vat_cents,total_gross_cents,tax_treatment,tax_review_status,status,portal_token_hash)
       select 'ISOLATED_TEST','snapshot-'||i,'gid://shopify/Order/'||i,'#NEONT'||i,'EUR',1000,0,1000,'DE_STANDARD','NOT_REQUIRED','INVOICED','portal-'||i from generate_series(8000,8007) i;""")
     for name, callback in [('admit without lease or case creation', admission), ('six duplicate starts, one owner, no 2A cache', duplicate), ('six independent concurrent completions', parallel_cases), ('new input while owned', changed_input), ('canonical invoice and amount proof binding', canonical_proof), ('expired lease cannot replay', lease_expiry), ('lease expiry while waiting for the row lock', expired_while_waiting), ('5/15/60 minute normal due states', waits_and_alerts), ('legacy alert memory and Outlook API acceptance', accepted_mail), ('generic worker isolation', generic_isolation), ('fair canonical/legacy selection and closed DONE', fairness), ('bounded complete admission and atomic rejection', limits_and_atomicity), ('service-role only RPC access', role_boundary), ('rollback refuses admitted state; empty rollback/reapply works', rollback_boundary)]:
         check(name, callback)
-    print('PASS 14 isolated PostgreSQL scenarios; no payment/event/case-status side effects')
+    for name, callback in [('fresh reuse changes no job tuple, event or deadline', fresh_hit_no_writes), ('freshness expiry while waiting for canonical case lock', freshness_expiry_while_waiting), ('changed/missing/canonical revision and other due work', changed_missing_and_other_due), ('incomplete or ineligible raw source never reuses', incomplete_sources_cannot_reuse), ('2B rollback preserves all canonical state', reuse_rollback_keeps_state)]:
+        check(name, callback)
+    print('PASS 19 isolated PostgreSQL scenarios; no payment/event/case-status side effects')
 finally:
     subprocess.run(['docker', 'rm', '-f', CONTAINER], capture_output=True, text=True)

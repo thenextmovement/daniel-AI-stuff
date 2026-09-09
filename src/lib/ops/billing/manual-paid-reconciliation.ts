@@ -33,6 +33,15 @@ export type ManualPaidCompletion = ObjectValue & {
   outcome: string;
 };
 
+// Missing/invalid raw Shopify revision is a cache miss, never a synthesized paid revision.
+export function manualPaidSourceRevision(value: unknown): ObjectValue | null {
+  if (!object(value) || !timestamp(value.updatedAt) || !text(value.financialStatus, 1, 50) ||
+    !(value.cancelledAt === null || timestamp(value.cancelledAt)) || !integer(value.refundCount, 0, 1_000_000) ||
+    typeof value.manualPaidObserved !== "boolean" || !text(value.paymentRoute, 1, 50)) return null;
+  return { updatedAt: value.updatedAt, financialStatus: value.financialStatus, cancelledAt: value.cancelledAt,
+    refundCount: value.refundCount, manualPaidObserved: value.manualPaidObserved, paymentRoute: value.paymentRoute };
+}
+
 export function validManualPaidClaim(value: unknown): value is ManualPaidClaimRequest {
   if (!object(value) || value.scope !== MANUAL_PAID_SCOPE || !["admit", "claim"].includes(String(value.operation)) ||
     !text(value.worker, 3, 120) || !orderId(value.executionId) ||

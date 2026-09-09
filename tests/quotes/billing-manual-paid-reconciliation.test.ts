@@ -3,7 +3,7 @@ import test from "node:test";
 import { NextRequest } from "next/server";
 import { POST as claim } from "@/app/api/internal/billing/jobs/claim/route";
 import { POST as complete } from "@/app/api/internal/billing/jobs/[jobId]/complete/route";
-import { validManualPaidClaim, validManualPaidCompletion } from "@/lib/ops/billing/manual-paid-reconciliation";
+import { validManualPaidClaim, validManualPaidCompletion, manualPaidSourceRevision } from "@/lib/ops/billing/manual-paid-reconciliation";
 
 const base = { scope: "MANUAL_SHOPIFY_PAID", operation: "claim", worker: "manual-paid-test", executionId: "42", jobTypes: ["RECONCILE"], candidates: [] };
 const candidate = { origin: "handoff", shopifyOrderId: "8000", shopifyOrderName: "#NEONT8000", amountCents: 1000, currency: "EUR" };
@@ -79,4 +79,19 @@ test("existing authenticated routes dispatch only the explicit scope and never r
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
   }
+});
+
+
+test("2B raw revision keeps only complete source facts and never invents defaults", () => {
+  const source = { updatedAt: "2026-09-01T00:00:00Z", financialStatus: "paid", cancelledAt: null, refundCount: 0, manualPaidObserved: true, paymentRoute: "VORKASSE" };
+  assert.deepEqual(manualPaidSourceRevision({ ...source, requestedAt: "volatile", executionId: "volatile" }), source);
+  for (const key of Object.keys(source)) {
+    const partial: Record<string, unknown> = { ...source };
+    delete partial[key];
+    assert.equal(manualPaidSourceRevision(partial), null);
+  }
+  assert.equal(manualPaidSourceRevision({ ...source, updatedAt: "not-a-date" }), null);
+  assert.equal(manualPaidSourceRevision({ ...source, refundCount: -1 }), null);
+  assert.equal(manualPaidSourceRevision({ ...source, refundCount: 0.5 }), null);
+  assert.equal(manualPaidSourceRevision({ ...source, manualPaidObserved: "true" }), null);
 });

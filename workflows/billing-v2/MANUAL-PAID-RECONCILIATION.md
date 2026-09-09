@@ -1,4 +1,4 @@
-# Manual Shopify paid reconciliation — scoped state (2A)
+# Manual Shopify paid reconciliation — scoped state and separate reuse release
 
 Local implementation, not a deployment or production workflow proof. This contract repairs the existing NEONTRIP child `6NZnfGpyfUVikqpf` with existing canonical BillingCases. The parent remains `evaWllMchZnV4xTh`. No new schedule/service/table, no automatic case creation, no provider calls in either RPC.
 
@@ -35,6 +35,14 @@ Before production: verify active versions and DB function baseline, preserve ful
 
 The rollback script refuses once scoped state exists. After admission, retain canonical state and guards; plan reconciliation of actual outcomes and ownership before any rollback. Never restore old StaticData or allow generic workers to take these jobs.
 
-## 2B remains deferred
+## 2B: separately prepared, activation requires natural 2A proof
 
-This 2A implementation has no freshness skip. Only a new handoff reopens DONE; legacy snapshots and timer calls do not. A later separate release may reuse an exact paid proof for at most five minutes after reliable 2A behavior is demonstrated. It first requires original Shopify `updated_at`, financial/cancel/refund fields retained in the existing parent normalizer/handoff. The old `<orderId>:paid` fingerprint is insufficient. DONE must keep `next_attempt_at=null`; expiry only matters on a new relevant handoff. No permanent polling of historical completed jobs and no feature flag are introduced here.
+The second migration `20260909170545_manual_paid_reconciliation_reuse.sql` adds bounded reuse, not a new scheduler. The 2A commit remains a separate release candidate. Before activating 2B, prove natural 2A ownership, terminal completion and independent persistence; prepare the compatible child accepting `FRESH_REUSED` and the existing parent carrying raw revision fields first.
+
+A reusable source has original `updatedAt`, `financialStatus`, explicit `cancelledAt`, integer `refundCount`, boolean `manualPaidObserved`, and `paymentRoute`. Cache eligibility requires a nonfuture timestamp, paid, null cancellation, zero refunds, true manual observation, VORKASSE, positive raw integer cents and explicit EUR. Missing/incomplete source revision is normalized to null and proceeds to a full claim. Normalized/default EUR, a zero amount or the old `<orderId>:paid` fingerprint never creates eligibility. The API strips unrelated volatile source fields before fingerprinting.
+
+A paid completion must match the existing canonical case amount/currency and provider document binding. It stores `reusePolicy:2` and `validUntil=claim.startedAt+5 minutes` only for eligible inputs with a canonical invoice and unchanged generation/binding. A new matching handoff within that original window yields `intake.result=FRESH_REUSED`; the job row, recorded proof, due and expiry are unchanged. Canonical binding and remaining freshness are checked again after any case-row lock wait. Another open due case can still be claimed.
+
+DONE retains `next_attempt_at=null` in both releases. A timer or old legacy entry never reopens it, even after expiry. Only a new relevant handoff can request another real check. Every actual fresh provider confirmation starts its own conservative proof window; a hit never extends one. External Easybill changes are not promised immediate detection.
+
+The second rollback restores the exact 2A functions and preserves every existing job/marker/proof; it cannot roll back actual external effects. The original 2A rollback still refuses once any scoped state exists. No runtime feature flag is used.
