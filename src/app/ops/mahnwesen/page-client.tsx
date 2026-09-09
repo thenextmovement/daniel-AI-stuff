@@ -21,6 +21,7 @@ import {
   MailCheck,
   MessageSquareReply,
   Phone,
+  Play,
   ReceiptText,
   RefreshCw,
   Search,
@@ -1470,6 +1471,7 @@ function DetailDrawer({
   note,
   error,
   notice,
+  pauseAction,
   onClose,
   onPreview,
   onSend,
@@ -1477,9 +1479,18 @@ function DetailDrawer({
   onCourtPreview,
   onCourtPrepare,
   onInsolvencyOpen,
+  onPauseOpen,
+  onPauseCancel,
+  onPauseSubmit,
   setConfirmation,
   setCourtConfirmation,
   setNote,
+  pauseReason,
+  pauseMode,
+  pauseUntil,
+  setPauseReason,
+  setPauseMode,
+  setPauseUntil,
 }: {
   detail: DunningCaseDetail;
   preview: DunningActionPreview | null;
@@ -1492,6 +1503,7 @@ function DetailDrawer({
   note: string;
   error: string | null;
   notice: string | null;
+  pauseAction: "pause" | "resume" | null;
   onClose: () => void;
   onPreview: () => void;
   onSend: () => void;
@@ -1499,9 +1511,18 @@ function DetailDrawer({
   onCourtPreview: () => void;
   onCourtPrepare: () => void;
   onInsolvencyOpen: (entry: DunningCaseSummary) => void;
+  onPauseOpen: (action: "pause" | "resume") => void;
+  onPauseCancel: () => void;
+  onPauseSubmit: () => void;
   setConfirmation: (value: string) => void;
   setCourtConfirmation: (value: string) => void;
   setNote: (value: string) => void;
+  pauseReason: string;
+  pauseMode: "manual" | "until_date";
+  pauseUntil: string;
+  setPauseReason: (value: string) => void;
+  setPauseMode: (value: "manual" | "until_date") => void;
+  setPauseUntil: (value: string) => void;
 }) {
   const entry = detail.case;
   return (
@@ -1606,6 +1627,157 @@ function DetailDrawer({
                 Letzter Kontakt {dateLabel(entry.lastContactAt, true)}
               </p>
             </div>
+          </section>
+          <section className={`rounded-[22px] border p-5 ${entry.paused ? "border-amber-300 bg-amber-50" : "border-stone-200 bg-white"}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="max-w-xl">
+                <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+                  Mahnprozess steuern
+                </p>
+                <h3 className="mt-1 flex items-center gap-2 text-lg font-semibold text-stone-950">
+                  {entry.paused ? (
+                    <CirclePause className="h-5 w-5 text-amber-700" />
+                  ) : (
+                    <Play className="h-5 w-5 text-emerald-700" />
+                  )}
+                  {entry.paused ? "Mahnprozess pausiert" : "Mahnprozess läuft"}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-stone-600">
+                  {entry.paused
+                    ? "Solange diese Pause aktiv ist, darf der automatische Workflow keine Kundenmail versenden."
+                    : "Eine Pause sperrt alle automatischen Mahn-E-Mails für diesen Fall."}
+                </p>
+              </div>
+              {!entry.paymentException ? (
+                <button
+                  type="button"
+                  onClick={() => onPauseOpen(entry.paused ? "resume" : "pause")}
+                  disabled={actionBusy || pauseAction !== null}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${entry.paused ? "bg-emerald-800 text-white" : "border border-amber-300 bg-amber-50 text-amber-950"}`}
+                >
+                  {entry.paused ? (
+                    <Play className="h-4 w-4" />
+                  ) : (
+                    <CirclePause className="h-4 w-4" />
+                  )}
+                  {entry.paused ? "Mahnprozess fortsetzen" : "Mahnprozess pausieren"}
+                </button>
+              ) : null}
+            </div>
+            {entry.paused ? (
+              <dl className="mt-4 grid gap-3 rounded-xl border border-amber-200 bg-white/70 p-4 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-stone-500">Grund</dt>
+                  <dd className="mt-1 font-semibold text-stone-900">
+                    {entry.pauseNote || "Bestehende Pause ohne hinterlegten Grund"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-stone-500">Wiedervorlage</dt>
+                  <dd className="mt-1 font-semibold text-stone-900">
+                    {entry.pauseMode === "until_date" && entry.pauseUntil
+                      ? dateLabel(entry.pauseUntil, true)
+                      : "Nur durch manuelles Fortsetzen"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-stone-500">Pausiert durch</dt>
+                  <dd className="mt-1 font-semibold text-stone-900">
+                    {entry.pausedBy || "Altbestand / Automatik"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-stone-500">Pausiert seit</dt>
+                  <dd className="mt-1 font-semibold text-stone-900">
+                    {dateLabel(entry.pausedAt || entry.pauseUpdatedAt, true)}
+                  </dd>
+                </div>
+              </dl>
+            ) : null}
+            {pauseAction ? (
+              <div className="mt-4 grid gap-4 rounded-2xl border border-stone-200 bg-white p-4">
+                <div>
+                  <h4 className="font-semibold text-stone-950">
+                    {pauseAction === "pause"
+                      ? "Pause festlegen"
+                      : "Fortsetzung bestätigen"}
+                  </h4>
+                  <p className="mt-1 text-sm leading-6 text-stone-600">
+                    {pauseAction === "pause"
+                      ? "Die Sperre gilt sofort nach dem Speichern."
+                      : "Es wird jetzt keine E-Mail verschickt. Der Fall geht zurück in den regulären Workflow und durchläuft vor jedem späteren Versand alle Live-Prüfungen."}
+                  </p>
+                </div>
+                <label className="grid gap-1.5 text-sm font-semibold text-stone-700">
+                  <span>
+                    {pauseAction === "pause"
+                      ? "Warum wird pausiert?"
+                      : "Warum darf der Mahnprozess weiterlaufen?"}
+                  </span>
+                  <textarea
+                    value={pauseReason}
+                    onChange={(event) => setPauseReason(event.target.value)}
+                    minLength={3}
+                    maxLength={500}
+                    rows={3}
+                    autoFocus
+                    className="rounded-xl border border-stone-300 bg-white px-3 py-2 font-normal outline-none focus:border-[#fa31a2]"
+                    placeholder="Kurze interne Begründung"
+                  />
+                </label>
+                {pauseAction === "pause" ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1.5 text-sm font-semibold text-stone-700">
+                      <span>Art der Pause</span>
+                      <select
+                        value={pauseMode}
+                        onChange={(event) =>
+                          setPauseMode(event.target.value as "manual" | "until_date")
+                        }
+                        className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+                      >
+                        <option value="until_date">Automatisch wieder prüfen</option>
+                        <option value="manual">Bis zur manuellen Freigabe</option>
+                      </select>
+                    </label>
+                    {pauseMode === "until_date" ? (
+                      <label className="grid gap-1.5 text-sm font-semibold text-stone-700">
+                        <span>Wiedervorlage</span>
+                        <input
+                          type="datetime-local"
+                          value={pauseUntil}
+                          onChange={(event) => setPauseUntil(event.target.value)}
+                          className="h-11 rounded-xl border border-stone-300 bg-white px-3 font-normal"
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={onPauseCancel}
+                    disabled={actionBusy}
+                    className="h-11 rounded-xl border border-stone-300 bg-white px-4 text-sm font-semibold"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onPauseSubmit}
+                    disabled={actionBusy || pauseReason.trim().length < 3 || (pauseAction === "pause" && pauseMode === "until_date" && !pauseUntil)}
+                    className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-white disabled:opacity-40 ${pauseAction === "pause" ? "bg-amber-700" : "bg-emerald-800"}`}
+                  >
+                    {pauseAction === "pause" ? <CirclePause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    {actionBusy
+                      ? "Wird gespeichert"
+                      : pauseAction === "pause"
+                        ? "Pause jetzt aktivieren"
+                        : "Sicher fortsetzen"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </section>
           {entry.paymentException ? (
             <section className="rounded-[22px] border border-amber-200 bg-amber-50 p-5 text-amber-950">
@@ -2217,6 +2389,10 @@ export function DunningOpsClient({
   const [confirmation, setConfirmation] = useState("");
   const [courtConfirmation, setCourtConfirmation] = useState("");
   const [note, setNote] = useState("");
+  const [pauseAction, setPauseAction] = useState<"pause" | "resume" | null>(null);
+  const [pauseReason, setPauseReason] = useState("");
+  const [pauseMode, setPauseMode] = useState<"manual" | "until_date">("until_date");
+  const [pauseUntil, setPauseUntil] = useState("");
 
   useEffect(() => {
     if (hasSession || localMode) void loadDashboard();
@@ -2272,6 +2448,10 @@ export function DunningOpsClient({
     setConfirmation("");
     setCourtConfirmation("");
     setNote("");
+    setPauseAction(null);
+    setPauseReason("");
+    setPauseMode("until_date");
+    setPauseUntil("");
     try {
       const response = await fetch(
         `/api/ops/dunning/${encodeURIComponent(entry.key)}`,
@@ -2368,6 +2548,85 @@ export function DunningOpsClient({
           ? sendError.message
           : "Versand fehlgeschlagen.",
       );
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  function openPauseAction(action: "pause" | "resume") {
+    setPauseAction(action);
+    setPauseReason("");
+    setPauseMode("until_date");
+    setPauseUntil("");
+    setActionError(null);
+    setNotice(null);
+  }
+
+  function cancelPauseAction() {
+    setPauseAction(null);
+    setPauseReason("");
+    setPauseUntil("");
+  }
+
+  async function submitPauseAction() {
+    if (!selected || !pauseAction) return;
+    const selectedCase = selected.case;
+    const reason = pauseReason.trim();
+    if (reason.length < 3) return;
+    let pauseUntilIso: string | null = null;
+    if (pauseAction === "pause" && pauseMode === "until_date") {
+      const timestamp = Date.parse(pauseUntil);
+      if (!Number.isFinite(timestamp) || timestamp <= Date.now()) {
+        setActionError("Die Wiedervorlage muss in der Zukunft liegen.");
+        return;
+      }
+      pauseUntilIso = new Date(timestamp).toISOString();
+    }
+    setActionBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(
+        `/api/ops/dunning/${encodeURIComponent(selectedCase.key)}/actions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: pauseAction === "pause" ? "pause_dunning" : "resume_dunning",
+            reason,
+            pauseMode: pauseAction === "pause" ? pauseMode : undefined,
+            pauseUntil: pauseAction === "pause" ? pauseUntilIso : undefined,
+            expectedPauseSnapshotHash: selectedCase.pauseSnapshotHash,
+            idempotencyKey: `ops-dunning-pause:${selectedCase.orderNumber.slice(1)}:${pauseAction}:${crypto.randomUUID()}`,
+          }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        if (payload.error === "DUNNING_PAUSE_SEND_IN_PROGRESS")
+          throw new Error(
+            "Für diesen Fall wird gerade eine E-Mail vorbereitet. Bitte warten Sie kurz, laden Sie die Fallakte neu und pausieren Sie dann erneut.",
+          );
+        if (["stale_preview", "dunning_pause_state_changed", "DUNNING_PAUSE_STALE", "DUNNING_PAUSE_STATE_CHANGED"].includes(payload.error))
+          throw new Error("Der Pausenstatus wurde inzwischen geändert. Die Fallakte wird neu geladen.");
+        throw new Error(payload.error || "Pausenstatus konnte nicht gespeichert werden.");
+      }
+      setPauseAction(null);
+      setPauseReason("");
+      setPauseUntil("");
+      await Promise.all([loadDashboard(), openCase(selectedCase)]);
+      setNotice(
+        pauseAction === "pause"
+          ? "Der Mahnprozess ist pausiert. Für diesen Fall wird keine automatische Kundenmail versendet."
+          : "Der Mahnprozess ist wieder freigegeben. Vor einem späteren Versand prüft der Workflow Zahlung, Restbetrag, Antworten und Sperren erneut.",
+      );
+    } catch (pauseError) {
+      const message =
+        pauseError instanceof Error
+          ? pauseError.message
+          : "Pausenstatus konnte nicht gespeichert werden.";
+      await Promise.all([loadDashboard(), openCase(selectedCase)]);
+      setActionError(message);
     } finally {
       setActionBusy(false);
     }
@@ -2601,15 +2860,26 @@ export function DunningOpsClient({
             note={note}
             error={actionError}
             notice={notice}
+            pauseAction={pauseAction}
             onClose={() => {
               setSelected(null);
               setPreview(null);
               setCourtPreview(null);
               setCourtProfileOpen(false);
+              cancelPauseAction();
             }}
             onInsolvencyOpen={setInsolvencyCase}
             onPreview={() => void previewNextStage()}
             onSend={() => void sendNextStage()}
+            onPauseOpen={openPauseAction}
+            onPauseCancel={cancelPauseAction}
+            onPauseSubmit={() => void submitPauseAction()}
+            pauseReason={pauseReason}
+            pauseMode={pauseMode}
+            pauseUntil={pauseUntil}
+            setPauseReason={setPauseReason}
+            setPauseMode={setPauseMode}
+            setPauseUntil={setPauseUntil}
             onCourtProfileOpen={() => setCourtProfileOpen(true)}
             onCourtPreview={() => void previewCourtApplication()}
             onCourtPrepare={() => void prepareCourtApplication()}

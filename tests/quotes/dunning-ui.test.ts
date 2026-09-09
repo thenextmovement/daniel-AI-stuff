@@ -143,6 +143,29 @@ test("manual stage actions require auth, same-origin, a fresh snapshot, confirma
   assert.match(domain, /Alt- und Neuverlauf haben unterschiedliche Mahnstufen/);
 });
 
+test("manual dunning pause controls are authenticated, stale-safe and never send directly", () => {
+  const client = read("src/app/ops/mahnwesen/page-client.tsx");
+  const route = read("src/app/api/ops/dunning/[orderKey]/actions/route.ts");
+  const domain = read("src/lib/ops/dunning-pause.ts");
+  assert.match(client, /Mahnprozess pausieren/);
+  assert.match(client, /Mahnprozess fortsetzen/);
+  assert.match(client, /Automatisch wieder prüfen/);
+  assert.match(client, /Bis zur manuellen Freigabe/);
+  assert.match(client, /Es wird jetzt keine E-Mail verschickt/);
+  assert.match(client, /expectedPauseSnapshotHash/);
+  assert.match(route, /pause_dunning/);
+  assert.match(route, /resume_dunning/);
+  assert.match(route, /resolveOpsRequestActor/);
+  assert.match(route, /sameOrigin/);
+  assert.match(route, /expectedPauseSnapshotHash !== detail[.]case[.]pauseSnapshotHash/);
+  assert.match(route, /invalid_pause_reason/);
+  assert.match(route, /invalid_pause_until/);
+  assert.match(route, /DUNNING_PAUSE_SEND_IN_PROGRESS/);
+  assert.match(route, /ops-dunning-pause:/);
+  assert.match(domain, /apply_dunning_pause_action/);
+  assert.doesNotMatch(domain, /MICROSOFT|GRAPH|sendMail|outlook/i);
+});
+
 test("court application steps remain visibly distinct and seed only the real pilot draft", () => {
   const client = read("src/app/ops/mahnwesen/page-client.tsx");
   const domain = read("src/lib/ops/dunning-court.ts");
