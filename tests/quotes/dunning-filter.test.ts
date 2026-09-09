@@ -5,6 +5,7 @@ import {
   matchesDunningOrderAge,
   matchesDunningOrderYear,
   matchesDunningStage,
+  matchesDunningStatus,
 } from "../../src/lib/ops/dunning-filter";
 
 const NOW = new Date("2026-03-31T12:00:00.000Z");
@@ -68,6 +69,48 @@ test("dunning stage filter distinguishes exact and minimum stages", () => {
   assert.equal(matchesDunningStage(6, "minimum:6"), true);
   assert.equal(matchesDunningStage(7, "minimum:6"), true);
   assert.equal(matchesDunningStage(3, "all"), true);
+});
+
+test("status filter separates court review from later court events", () => {
+  const review = { state: "court_review", courtEvent: null } as const;
+  const draft = {
+    state: "court_review",
+    courtEvent: { eventType: "application_draft_created" },
+  } as const;
+  const submitted = {
+    state: "court_review",
+    courtEvent: { eventType: "application_submitted" },
+  } as const;
+
+  assert.equal(matchesDunningStatus(review, "all"), true);
+  assert.equal(matchesDunningStatus(review, "work:court_review"), true);
+  assert.equal(matchesDunningStatus(draft, "work:court_review"), false);
+  assert.equal(
+    matchesDunningStatus(draft, "court:application_draft_created"),
+    true,
+  );
+  assert.equal(
+    matchesDunningStatus(submitted, "court:application_submitted"),
+    true,
+  );
+  assert.equal(
+    matchesDunningStatus(submitted, "court:application_draft_created"),
+    false,
+  );
+});
+
+test("non-court work statuses remain filterable alongside a court status", () => {
+  const pausedDraft = {
+    state: "paused",
+    courtEvent: { eventType: "application_draft_created" },
+  } as const;
+
+  assert.equal(matchesDunningStatus(pausedDraft, "work:paused"), true);
+  assert.equal(
+    matchesDunningStatus(pausedDraft, "court:application_draft_created"),
+    true,
+  );
+  assert.equal(matchesDunningStatus(pausedDraft, "court:closed"), false);
 });
 
 test("created or progressed court applications can be hidden", () => {
