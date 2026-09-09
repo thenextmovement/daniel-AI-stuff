@@ -86,6 +86,12 @@ type DunningStatusRow = {
   note: string | null;
   updated_by: string | null;
   updated_at: string | null;
+  pause_mode?: "manual" | "until_date" | null;
+  pause_until?: string | null;
+  pause_reason?: string | null;
+  paused_at?: string | null;
+  paused_by?: string | null;
+  pause_version?: number | null;
 };
 
 type DunningLogRow = {
@@ -95,6 +101,22 @@ type DunningLogRow = {
   shopify_order_number: string;
   mahnstufe: number | null;
   actor: string | null;
+};
+
+type DunningPauseEventRow = {
+  id: string;
+  shopify_order_number: string;
+  action: "pause" | "resume" | "auto_resume";
+  actor: string;
+  reason: string;
+  pause_mode: "manual" | "until_date" | null;
+  pause_until: string | null;
+  previous_paused: boolean;
+  new_paused: boolean;
+  previous_pause_version: number;
+  new_pause_version: number;
+  previous_note: string | null;
+  created_at: string;
 };
 
 type DunningSendlogRow = {
@@ -247,7 +269,14 @@ export type DunningCaseSummary = {
   lastContactAt: string | null;
   nextDueAt: string | null;
   paused: boolean;
+  pauseMode: "manual" | "until_date" | null;
+  pauseUntil: string | null;
   pauseNote: string | null;
+  pausedAt: string | null;
+  pausedBy: string | null;
+  pauseVersion: number;
+  pauseUpdatedAt: string | null;
+  pauseSnapshotHash: string;
   stopTag: boolean;
   customerReplied: boolean;
   lastReplyAt: string | null;
@@ -988,6 +1017,23 @@ export function buildDunningCases(input: {
     const stopTag = normalizedTags.includes("keine zahlungserinnerung n8n");
     const waitingPaymentTag = dunningPaymentExceptionTag(tags);
     const paused = Boolean(statusRow?.paused);
+    const pauseMode = ["manual", "until_date"].includes(
+      String(statusRow?.pause_mode || ""),
+    )
+      ? (statusRow?.pause_mode as "manual" | "until_date")
+      : null;
+    const pauseUntil = validIso(statusRow?.pause_until);
+    const pausedAt = validIso(statusRow?.paused_at);
+    const pausedBy = cleanText(statusRow?.paused_by, 180);
+    const pauseVersion = Number.isSafeInteger(Number(statusRow?.pause_version))
+      ? Math.max(0, Number(statusRow?.pause_version))
+      : 0;
+    const pauseNote = cleanText(
+      statusRow?.pause_reason || statusRow?.note,
+      500,
+    );
+    const pauseUpdatedAt = validIso(statusRow?.updated_at);
+    const pauseSnapshotHash = createHash("sha256").update(JSON.stringify({ orderNumber, paused, pauseMode, pauseUntil, pauseNote, pausedAt, pausedBy, pauseVersion, pauseUpdatedAt })).digest("hex");
     const email = normalizeEmail(
       order?.kunde_email ||
         order?.email ||
@@ -1342,7 +1388,14 @@ export function buildDunningCases(input: {
       lastContactAt,
       nextDueAt: validIso(statusRow?.next_due_at),
       paused,
-      pauseNote: cleanText(statusRow?.note, 500),
+      pauseMode,
+      pauseUntil,
+      pauseNote,
+      pausedAt,
+      pausedBy,
+      pauseVersion,
+      pauseUpdatedAt,
+      pauseSnapshotHash,
       stopTag,
       customerReplied,
       lastReplyAt,
@@ -1945,7 +1998,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
   ] = await Promise.all([
     supabaseRequest<DunningStatusRow[]>("dunning_status", undefined, {
       select:
-        "shopify_order_number,mahnstufe,last_sent_at,next_due_at,paused,note,updated_by,updated_at",
+        "shopify_order_number,mahnstufe,last_sent_at,next_due_at,paused,note,updated_by,updated_at,pause_mode,pause_until,pause_reason,paused_at,paused_by,pause_version",
       order: "updated_at.desc",
       limit: 1000,
     }),
@@ -2263,6 +2316,7 @@ export async function getDunningCaseDetail(
   if (!summary) return null;
   const [
     logs,
+    pauseEvents,
     sendlogs,
     messages,
     locks,
@@ -2272,6 +2326,13 @@ export async function getDunningCaseDetail(
   ] = await Promise.all([
     supabaseRequest<DunningLogRow[]>("dunning_log", undefined, {
       select: "id,created_at,action,shopify_order_number,mahnstufe,actor",
+      shopify_order_number: `eq.${normalized}`,
+      order: "created_at.asc",
+      limit: 1000,
+    }),
+    supabaseRequest<DunningPauseEventRow[]>("dunning_pause_events", undefined, {
+      select:
+        "id,shopify_order_number,action,actor,reason,pause_mode,pause_until,previous_paused,new_paused,previous_pause_version,new_pause_version,previous_note,created_at",
       shopify_order_number: `eq.${normalized}`,
       order: "created_at.asc",
       limit: 1000,
@@ -2331,6 +2392,31 @@ export async function getDunningCaseDetail(
       direction: "internal",
       stage: row.mahnstufe,
       status: row.action,
+    });
+  for (const event of pauseEvents)
+    timeline.push({
+      id: `pause:${event.id}`,
+      occurredAt: event.created_at,
+      kind: "status",
+      title:
+        event.action === "pause"
+          ? "Mahnprozess pausiert"
+          : event.action === "auto_resume"
+            ? "Mahnprozess zur Wiedervorlage freigegeben"
+            : "Mahnprozess fortgesetzt",
+      detail: [
+        event.reason,
+        event.pause_until
+          ? `Wiedervorlage ${new Date(event.pause_until).toLocaleString("de-DE")}`
+          : null,
+        `Durch ${event.actor}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      source: "Mahnwesen-Steuerung",
+      direction: "internal",
+      stage: summary.currentStage,
+      status: event.action,
     });
   for (const row of sendlogs)
     timeline.push({

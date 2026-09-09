@@ -1,0 +1,169 @@
+{
+  "schema": "neontrip.n8n.guarded-workflow-plan.v1",
+  "ticket": "TICKET-271",
+  "workflowId": "HzMgctp78bcMq44A",
+  "workflowName": "TICKET-099 | LIVE | 2 Live Gate + One-Shot Send",
+  "precondition": {
+    "activeVersionId": "6383e43f-f42a-471b-a5ed-594c7c67de69",
+    "updatedAt": "2026-09-09T10:33:55.773Z",
+    "nodeCount": 43
+  },
+  "validation": {
+    "validatedOn": "2026-09-09",
+    "operationCount": 14,
+    "valid": true,
+    "applied": false
+  },
+  "rolloutOrder": [
+    "Apply and verify the TICKET-271 database migration.",
+    "Deploy and smoke-test the Ops UI/API commit.",
+    "Re-fetch this exact active workflow and stop if its version changed.",
+    "Rebuild the 14 validated operations from this plan and validateOnly again.",
+    "Apply the n8n changes atomically, validate the saved workflow and keep it active.",
+    "Run no-send fixtures first, then one explicitly approved real-case smoke test."
+  ],
+  "changes": [
+    {
+      "type": "updateNode",
+      "node": "Read All Manual Dunning Holds",
+      "intent": "Read the managed pause metadata in addition to legacy paused/note fields.",
+      "select": [
+        "shopify_order_number",
+        "mahnstufe",
+        "last_sent_at",
+        "paused",
+        "note",
+        "updated_at",
+        "pause_mode",
+        "pause_until",
+        "pause_reason",
+        "paused_at",
+        "paused_by",
+        "pause_version"
+      ]
+    },
+    {
+      "type": "updateCodeNode",
+      "node": "Select Earliest Due Future Stage",
+      "precondition": "if (holdRow?.paused === true) continue;",
+      "replacementRules": [
+        "A paused row remains blocked unless it is a complete TICKET-271 until_date pause.",
+        "A managed pause is due only when pause_until is valid and not later than nowUtc.",
+        "Legacy/AI pauses with null pause_mode or incomplete metadata never auto-resume.",
+        "The candidate carries expected pause_version and updated_at for optimistic resume.",
+        "Existing reply_restart and partial_payment cycle calculations remain unchanged."
+      ]
+    },
+    {
+      "type": "addNode",
+      "node": "Route Managed Pause Auto-Resume",
+      "nodeType": "n8n-nodes-base.if",
+      "condition": "={{ $json.pause_resume_required === true }}"
+    },
+    {
+      "type": "addNode",
+      "node": "Auto-Resume Due Managed Pause",
+      "nodeType": "n8n-nodes-base.httpRequest",
+      "method": "POST",
+      "endpoint": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/apply_dunning_pause_action",
+      "action": "auto_resume",
+      "actor": "TICKET-271 n8n sender",
+      "reason": "Automatische Wiedervorlage erreicht",
+      "idempotencyKey": "n8n-dunning-resume:<order>:v<pause_version>:auto",
+      "retry": {
+        "enabled": true,
+        "maxTries": 3,
+        "waitBetweenTriesMs": 1000
+      },
+      "failureBehavior": "Stop this execution before live customer checks or sending."
+    },
+    {
+      "type": "rewire",
+      "from": "Select Earliest Due Future Stage",
+      "oldTarget": "Shopify Complete Live Gate",
+      "newTarget": "Route Managed Pause Auto-Resume",
+      "branches": {
+        "true": "Auto-Resume Due Managed Pause -> Shopify Complete Live Gate",
+        "false": "Shopify Complete Live Gate"
+      }
+    },
+    {
+      "type": "addNode",
+      "node": "Read Current Dunning Hold",
+      "nodeType": "n8n-nodes-base.httpRequest",
+      "method": "GET",
+      "intent": "Fetch zero or one exact dunning_status row immediately before the complete live gate.",
+      "filter": "shopify_order_number=eq.<selected order>&limit=2",
+      "retry": {
+        "enabled": true,
+        "maxTries": 3,
+        "waitBetweenTriesMs": 1000
+      }
+    },
+    {
+      "type": "rewire",
+      "sources": [
+        "Route T268 Reply Decision fallback",
+        "DB Record T268 Reply Decision"
+      ],
+      "oldTarget": "Build Complete Live Gate + Message",
+      "newPath": "Read Current Dunning Hold -> Build Complete Live Gate + Message"
+    },
+    {
+      "type": "updateCodeNode",
+      "node": "Build Complete Live Gate + Message",
+      "precondition": "paginatedResponse('Read All Manual Dunning Holds')",
+      "replacementRules": [
+        "Use only Read Current Dunning Hold for the final pause decision.",
+        "A failed request or more than one exact row adds MANUAL_HOLD_EVIDENCE_INCOMPLETE.",
+        "paused=true adds MANUAL_DUNNING_HOLD.",
+        "All existing payment, reply, stop-tag, dispute, refund, credit and schedule gates remain unchanged."
+      ]
+    },
+    {
+      "type": "updateNode",
+      "node": "DB Atomic Customer Claim No Upsert",
+      "method": "POST",
+      "endpoint": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_dunning_email_if_unpaused",
+      "body": {
+        "p_shopify_order_number": "Build Complete Live Gate + Message.shopify_order_name",
+        "p_lock_key": "Build Complete Live Gate + Message.lock_key"
+      },
+      "intent": "Use the same per-case advisory lock as pause actions so a pause and an email claim cannot cross."
+    }
+  ],
+  "requiredFixtures": [
+    {
+      "name": "future managed pause",
+      "expected": "No candidate and no customer send."
+    },
+    {
+      "name": "due managed pause",
+      "expected": "Exactly one auto_resume audit event, then all existing live gates run."
+    },
+    {
+      "name": "legacy or AI pause",
+      "expected": "No auto-resume and no customer send."
+    },
+    {
+      "name": "manual pause wins race",
+      "expected": "The atomic email claim fails closed and no customer send occurs."
+    },
+    {
+      "name": "email claim wins race",
+      "expected": "The pause request returns DUNNING_PAUSE_SEND_IN_PROGRESS instead of claiming success."
+    },
+    {
+      "name": "manual resume after stop or uncertain reply",
+      "expected": "Existing reply_restart S1 cycle resumes after three business days."
+    },
+    {
+      "name": "partial payment",
+      "expected": "Existing partial_payment S1 cycle continues for the remaining balance."
+    },
+    {
+      "name": "full payment, stop tag, refund, dispute or credit",
+      "expected": "Existing fail-closed live gate still blocks the send after resume."
+    }
+  ]
+}
