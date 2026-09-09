@@ -716,6 +716,131 @@ test("quote ready preflight groups two 3D source mockups into one design", async
   assert.equal(result.offerItemsJson, null);
 });
 
+function mixedProductCard(reverse = false) {
+  return {
+    id: "cardMixedProductSources",
+    idBoard: "board-mixed",
+    name: "LED Neon Flex | Mixed product inquiry",
+    desc: "Quote LED Neon Flex and 3D Mini Fullglow letters.",
+    customFields: {
+      "Product 1": reverse ? "LED Neon" : "Full Glow",
+      "Product 2": reverse ? "Full Glow" : "LED Neon",
+      Size_1: "91x75cm", Price_1: reverse ? "298" : "612",
+      Size_2: "91x75cm", Price_2: reverse ? "612" : "298",
+      Backboard_1: reverse ? "Formzuschnitt mit UV Druck" : "Formzuschnitt",
+      Backboard_2: reverse ? "Formzuschnitt" : "Formzuschnitt mit UV Druck",
+      Usage: "Innen",
+    },
+    attachments: (reverse
+      ? ["Mockup_1_1.jpg", "Mockup_2_1.jpg", "Mockup_2_2.jpg"]
+      : ["Mockup_1_1.jpg", "Mockup_1_2.jpg", "Mockup_2_1.jpg"]
+    ).map((name, index) => ({ id: `source-${index}`, name })),
+  };
+}
+
+test("mixed Full Glow and Neon retain their own source views and original supplier prices", async () => {
+  for (const reverse of [false, true]) {
+    const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard(mixedProductCard(reverse), { productModel: "neonflex" });
+    assert.deepEqual(result.sourceMockupCountsByDesign, reverse ? [1, 2] : [2, 1]);
+    assert.equal(result.expectedDesignCount, 2);
+    assert.deepEqual(result.designs.map((design) => design.anchorFieldIndexes), [[1], [2]]);
+    assert.deepEqual(result.designs.map((design) => design.productModel), reverse ? ["uv_print", "full_glow"] : ["full_glow", "uv_print"]);
+    assert.deepEqual(result.designs.map((design) => design.sizeLadder.anchorList[0]?.supplierTotal), reverse ? [298, 612] : [612, 298]);
+    assert.deepEqual(result.designs.flatMap((design) => design.sourceMockupNames), mixedProductCard(reverse).attachments.map((attachment) => attachment.name));
+    assert.ok(!result.issues.includes("anchor_count_below_design_count"));
+    assert.ok(!result.warnings.includes("anchor_count_not_evenly_divisible_by_design_count"));
+    assert.equal(result.offerItemsJson, null);
+    assert.equal(classifyManualReleaseSizeLadderPreflight(result).decision, "skipped");
+    assert.match(result.trelloComment, /Regel je Produkt:/);
+  }
+});
+
+test("mixed products still block missing source views, missing prices and ambiguous anchor assignments", async () => {
+  const incompleteSources = mixedProductCard();
+  incompleteSources.attachments.pop();
+  const extraSources = mixedProductCard();
+  extraSources.attachments.push({ id: "extra", name: "Mockup_3_1.jpg" });
+  const missingPrice = mixedProductCard();
+  missingPrice.customFields.Price_2 = "";
+  const extraAnchor = { ...mixedProductCard(), customFields: {
+    ...mixedProductCard().customFields, Size_3: "100x82cm", Price_3: "350",
+  } };
+  const wrongProductViews = mixedProductCard();
+  wrongProductViews.attachments[1]!.name = "Mockup_2_2.jpg";
+  const duplicateView = mixedProductCard();
+  duplicateView.attachments[1]!.name = "Mockup_1_1.jpg";
+  for (const card of [incompleteSources, extraSources, missingPrice, extraAnchor, wrongProductViews, duplicateView]) {
+    const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard(card);
+    const release = classifyManualReleaseSizeLadderPreflight(result);
+    assert.equal(release.decision, "blocked");
+    assert.ok(release.technicalIssues.some((issue) => [
+      "source_mockup_pair_incomplete", "mixed_product_anchor_assignment_ambiguous", "mixed_product_source_assignment_ambiguous",
+    ].includes(issue)));
+    assert.equal(result.offerItemsJson, null);
+  }
+});
+
+test("mixed product prices follow their field indexes even when dimensions sort in reverse", async () => {
+  const card = mixedProductCard();
+  card.customFields.Size_2 = "60x50cm";
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard(card);
+  assert.equal(classifyManualReleaseSizeLadderPreflight(result).decision, "skipped");
+  assert.deepEqual(result.designs.map((design) => design.anchorFieldIndexes), [[1], [2]]);
+  assert.deepEqual(result.designs.map((design) => design.sizeLadder.anchorList[0]?.supplierTotal), [612, 298]);
+  assert.deepEqual(result.designs.map((design) => design.sizeLadder.anchorList[0]?.widthCm), [91, 60]);
+});
+
+test("mixed products retain the existing ordered legacy source-name contract", async () => {
+  const card = mixedProductCard();
+  card.attachments.forEach((source, index) => { source.name = `Mockup0${index + 1}.jpg`; });
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard(card);
+  assert.equal(classifyManualReleaseSizeLadderPreflight(result).decision, "skipped");
+  assert.deepEqual(result.designs.map((design) => design.sourceMockupNames), [["Mockup01.jpg", "Mockup02.jpg"], ["Mockup03.jpg"]]);
+});
+
+test("two Neon source designs with only one supplier price remain blocked", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardTwoNeonMissingPrice", name: "LED Neon Flex two designs",
+    customFields: { "Product 1": "LED Neon", "Product 2": "LED Neon", Size_1: "100x50cm", Price_1: "298" },
+    attachments: [{ id: "source-1", name: "Mockup_1_1.jpg" }, { id: "source-2", name: "Mockup_2_1.jpg" }],
+  });
+  assert.equal(result.expectedDesignCount, 2);
+  assert.equal(result.sourceMockupCountsByDesign, undefined);
+  assert.ok(classifyManualReleaseSizeLadderPreflight(result).technicalIssues.includes("anchor_count_below_design_count"));
+  assert.equal(result.offerItemsJson, null);
+});
+
+test("mixed-product release uses existing offer flow without writing ladders or changing Trello", async () => {
+  const card = mixedProductCard();
+  const originalFetch = globalThis.fetch;
+  const previousKey = process.env.TRELLO_API_KEY;
+  const previousToken = process.env.TRELLO_TOKEN;
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+  const calls: string[] = [];
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    assert.equal(init?.method || "GET", "GET");
+    calls.push(url);
+    if (url.startsWith(`https://api.trello.com/1/cards/${card.id}`)) {
+      return new Response(JSON.stringify({ ...card, customFieldItems: Object.entries(card.customFields).map(([key, text]) => ({ idCustomField: key, value: { text } })), actions: [] }));
+    }
+    assert.ok(url.startsWith(`https://api.trello.com/1/boards/${card.idBoard}/customFields`));
+    return new Response(JSON.stringify(Object.keys(card.customFields).map((key) => ({ id: key, name: key, type: "text" }))));
+  }) as typeof fetch;
+  try {
+    const result = await ensureManualReleaseSizeLadder({ trelloCard: card.id, persist: true, projectToTrello: true });
+    assert.equal(result.decision, "skipped");
+    assert.equal(result.offerItemsProjected, false);
+    assert.equal(result.optionCount, 0);
+    assert.equal(calls.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousKey === undefined) delete process.env.TRELLO_API_KEY; else process.env.TRELLO_API_KEY = previousKey;
+    if (previousToken === undefined) delete process.env.TRELLO_TOKEN; else process.env.TRELLO_TOKEN = previousToken;
+  }
+});
+
 test("quote ready preflight blocks an incomplete 3D source-mockup pair", async () => {
   const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
     id: "cardQuoteReadyThreeDOdd",

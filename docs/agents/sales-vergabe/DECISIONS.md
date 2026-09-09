@@ -54,6 +54,12 @@
 - `[nur aus Thread erinnert]` Im Chat wurden weitere erfolgreiche Deploys ohne eindeutig zuordenbaren Commit-Hash gemeldet. Sie sind kein belastbarer Release-Nachweis.
 - `[verifiziert]` Ein erfolgreicher CI-/Coolify-Run belegt Build und Deployment-Workflow, aber nicht die fachliche Vollständigkeit produktiver Sales oder aktive n8n-Zeitpläne.
 
+## NEONTRIP Quote-ready: gemischte Produktquellen (2026-09-09)
+
+- `[im Code verifiziert; Veröffentlichung offen]` Sind `Product 1` und `Product 2` explizit gesetzt und benötigen sie unterschiedliche Ausgangsbildzahlen, gilt dieselbe Regel wie im Offers-Import: Neon besitzt ein Ausgangsmockup, das andere Produkt zwei. Reihenfolge und ursprüngliche Preisposition 1/2 bleiben erhalten; ein gemeinsamer Modell-Override ersetzt diese expliziten Produktarten nicht.
+- `[im Code verifiziert; Veröffentlichung offen]` Die Neon-Größenleiter wird für diese Sonderproduktkombination nicht erzeugt oder projiziert. Nach vollständiger Quellen- und Ankerprüfung wird der vorhandene Angebotsweg verwendet. Explizite Dateinamen `Mockup_1_x` / `Mockup_2_x` müssen vollständig zur jeweiligen Produktgruppe passen; flache Altnamen behalten ihre geordnete Zuordnung. Fehlende/zusätzliche/duplizierte Ausgangsbilder und fehlende oder mehrdeutige Preisanker bleiben technische Blocker. Mehr als zwei Anker in einer gemischten Karte werden nicht geraten oder umverteilt.
+- `[im Code verifiziert]` Reine Neon-Karten und homogene Mehrgrößen-Anker behalten ihre vorhandene Gruppierung; eine fehlende Preisposition wird dadurch nicht ersetzt. Es ändern sich keine Preisformeln, Versandwege oder Datenbankschemas.
+
 ## Nicht getroffene Entscheidungen
 
 - `[offen]` Ob private Kunden automatisch fünf Minuten nach Annahme einen Shopify-Bezahllink erhalten sollen, ist technisch und fachlich nicht abschließend geregelt.

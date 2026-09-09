@@ -1,5 +1,12 @@
 # Sales-Vergabe Verification
 
+## NEONTRIP Quote-ready: gemischte Produktquellen, 2026-09-09
+
+- `[lokal verifiziert; nicht veröffentlicht]` Aufgabenworktree `neontrip-ops-mixed-design-size-ladder-20260909-135648`, Basis `fbf50b73ce92cd03284c42d244c9504e50713905`; derselbe Commit wurde lesend am laufenden Ops-App-Container bestätigt.
+- `[lokal verifiziert]` Der nachgewiesene Fehlerfall besitzt zwei explizite Produkte (Full Glow / LED Neon), drei Ausgangsbilder im Verhältnis 2:1 und je einen Lieferantenpreis. Die Regression bildet diese Struktur anonymisiert nach, prüft auch die umgekehrte Reihenfolge, ungleiche Größen und flache Altnamen und erhält beide Originalpreise. Fehlende/zusätzliche/duplizierte Quellen, trotz gleicher Gesamtzahl falsch zugeordnete Quellen, fehlende Preise und zusätzliche mehrdeutige Anker bleiben blockiert. Der vorhandene reine Neon-Fall mit zwei Designs und nur einer Preisposition bleibt blockiert.
+- `[lokal verifiziert]` `node --import tsx --test tests/quotes/offer-size-ladder.test.ts`: 66/66 grün. `npm run test:quotes`: 1063/1063 grün. `npx tsc --noEmit` und `npm run build`: Exit 0. Der Release-Funktionstest erlaubt ausschließlich die zwei gemockten Trello-Leseaufrufe; weder Supabase-Persistenz noch Trello-Projektion oder Kundenversand werden ausgelöst.
+- `[Scope]` Keine UI-, Routing-, Tracking- oder Sales-Vergabe-Interaktion geändert; kein UI-Smoke und kein produktiver Probeauftrag ausgeführt. Preise/Formeln, Authentisierung, Versand und Schemas bleiben unverändert. Ein natürlicher produktiver Lauf nach Freigabe und Veröffentlichung ist noch offen.
+
 ## Verifikationsbasis
 
 - `[verifiziert]` Ops-Repository: `https://github.com/thenextmovement/daniel-AI-stuff.git`.

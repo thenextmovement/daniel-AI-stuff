@@ -267,6 +267,7 @@ export type QuoteReadySizeLadderPreflightResult = {
   trelloCardName: string | null;
   structureProductType: QuoteReadyOfferStructureProductType;
   sourceMockupsPerDesign: 1 | 2;
+  sourceMockupCountsByDesign?: Array<1 | 2>;
   sourceMockupCount: number;
   expectedDesignCount: number;
   anchorCount: number;
@@ -1399,6 +1400,19 @@ export function resolveQuoteReadyOfferStructure(card: TrelloCardData): QuoteRead
   };
 }
 
+function mixedQuoteReadyProductStructures(customFields: CustomFieldMap): QuoteReadyOfferStructure[] | null {
+  // Match Offers' explicit Product 1 / Product 2 contract. Homogeneous cards
+  // retain the existing source/anchor grouping, including multiple size anchors.
+  const types = [1, 2].map((index) => detectQuoteReadyProductType(readCustomFieldValue(customFields, [
+    `Product_${index}`, `Product ${index}`, `Produkt_${index}`, `Produkt ${index}`,
+  ])));
+  if (!types[0] || !types[1] || (types[0] === "neon") === (types[1] === "neon")) return null;
+  return types.map((productType) => ({
+    productType: productType!,
+    sourceMockupsPerDesign: productType === "neon" ? 1 : 2,
+  }));
+}
+
 function groupQuoteReadySourceMockups(
   sourceMockups: ReturnType<typeof listQuoteReadySourceMockups>,
   sourceMockupsPerDesign: 1 | 2,
@@ -1655,7 +1669,9 @@ export function formatQuoteReadySizeLadderPreflightComment(result: QuoteReadySiz
   const lines = [
     QUOTE_READY_SIZE_LADDER_COMMENT_MARKER,
     `Quote ready Groessenleiter: ${statusLabel}`,
-    `Produkttyp: ${result.structureProductType} | Regel: ${result.sourceMockupsPerDesign} Ausgangsmockup${result.sourceMockupsPerDesign === 1 ? "" : "s"} = 1 Design`,
+    result.sourceMockupCountsByDesign
+      ? `Regel je Produkt: ${result.sourceMockupCountsByDesign.map((count, index) => `${index + 1}. ${count} Ausgangsmockup${count === 1 ? "" : "s"}`).join(" | ")}`
+      : `Produkttyp: ${result.structureProductType} | Regel: ${result.sourceMockupsPerDesign} Ausgangsmockup${result.sourceMockupsPerDesign === 1 ? "" : "s"} = 1 Design`,
     `Designs: ${result.expectedDesignCount} | Ausgangsmockups: ${result.sourceMockupCount} | Supplier-Anker: ${result.anchorCount}`,
     result.anchorsPerDesign ? `Anker pro Design: ${result.anchorsPerDesign}` : null,
     result.designs.length ? "" : null,
@@ -1722,14 +1738,42 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   }
 
   const sourceMockups = listQuoteReadySourceMockups(resolvedCard);
-  const sourceMockupGroups = groupQuoteReadySourceMockups(sourceMockups, structure.sourceMockupsPerDesign);
+  const productStructures = mixedQuoteReadyProductStructures(resolvedCard.customFields || {});
+  const sourceCounts = productStructures?.map((product) => product.sourceMockupsPerDesign);
+  const explicitSourceProducts = sourceMockups.map((source) => {
+    const match = parseMockupName(source.name)?.normalizedSourceToken.match(/^_(1|2)_\d+$/);
+    return match ? Number(match[1]) : null;
+  });
+  const hasExplicitSourceProducts = explicitSourceProducts.some((product) => product !== null);
+  let sourceOffset = 0;
+  const sourceMockupGroups = sourceCounts
+    ? sourceCounts.map((count, index) => {
+        if (hasExplicitSourceProducts) {
+          return sourceMockups.filter((_source, sourceIndex) => explicitSourceProducts[sourceIndex] === index + 1);
+        }
+        const group = sourceMockups.slice(sourceOffset, sourceOffset + count);
+        sourceOffset += count;
+        return group;
+      })
+    : groupQuoteReadySourceMockups(sourceMockups, structure.sourceMockupsPerDesign);
   const expectedDesignCount = sourceMockupGroups.length;
   const indexedAnchors = extractIndexedTrelloAnchors(resolvedCard.customFields || {}, warnings);
   const customerFactor = getFactorOverride(resolvedCard.customFields || {}) ?? input.customerFactor;
 
   if (!sourceMockups.length) issues.push("source_mockups_missing");
-  if (sourceMockups.length % structure.sourceMockupsPerDesign !== 0) {
+  if (sourceCounts
+    ? sourceMockups.length !== sourceCounts.reduce<number>((sum, count) => sum + count, 0)
+    : sourceMockups.length % structure.sourceMockupsPerDesign !== 0) {
     issues.push("source_mockup_pair_incomplete");
+  }
+  if (sourceCounts && (
+    new Set(sourceMockups.map((source) => parseMockupName(source.name)?.normalizedSourceToken)).size !== sourceMockups.length
+    || (hasExplicitSourceProducts && (
+      explicitSourceProducts.some((product) => product === null)
+      || sourceMockupGroups.some((group, index) => group.length !== sourceCounts[index])
+    ))
+  )) {
+    issues.push("mixed_product_source_assignment_ambiguous");
   }
   if (!indexedAnchors.length) issues.push("supplier_anchor_fields_missing");
   if (expectedDesignCount && indexedAnchors.length < expectedDesignCount) {
@@ -1737,6 +1781,12 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   }
   if (expectedDesignCount && indexedAnchors.length > 0 && indexedAnchors.length % expectedDesignCount !== 0) {
     warnings.push("anchor_count_not_evenly_divisible_by_design_count");
+  }
+  if (productStructures && (
+    indexedAnchors.length !== 2
+    || ![1, 2].every((index) => indexedAnchors.some((anchor) => anchor.fieldIndex === index))
+  )) {
+    issues.push("mixed_product_anchor_assignment_ambiguous");
   }
 
   const designs: QuoteReadySizeLadderPreflightDesign[] = [];
@@ -1747,8 +1797,9 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   for (let index = 0; index < anchorGroups.length; index += 1) {
     const group = anchorGroups[index] || [];
     const sourceMockupGroup = sourceMockupGroups[index] || [];
+    const designStructure = productStructures?.[index] || structure;
     const sourceMockup = sourceMockupGroup[0];
-    if (!sourceMockup || sourceMockupGroup.length !== structure.sourceMockupsPerDesign || !group.length) continue;
+    if (!sourceMockup || sourceMockupGroup.length !== designStructure.sourceMockupsPerDesign || !group.length) continue;
     const anchors = normalizeExtractedAnchorRoles(group.map(({ fieldIndex: _fieldIndex, ...anchor }) => anchor));
     const fieldIndexes = group.map((anchor) => anchor.fieldIndex);
     const sourceText = sourceTextForAnchorGroup({
@@ -1758,7 +1809,13 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
       fieldIndexes,
       anchors,
     });
-    const productModel = input.productModel || productModelForQuoteReadyStructure(structure, sourceText);
+    const productSourceText = productStructures
+      ? (["product", "backboard", "usage"] as const).map((kind) => indexedDesignFieldValue(
+          resolvedCard.customFields || {}, index + 1, kind,
+        )).filter(Boolean).join("\n")
+      : sourceText;
+    const productModel = (productStructures ? null : input.productModel)
+      || productModelForQuoteReadyStructure(designStructure, productSourceText);
     const designId = `design_${index + 1}`;
     const sizeLadder = await generateOfferSizeLadder({
       trelloCardId: canonicalTrelloCardId,
@@ -1807,6 +1864,7 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
     trelloCardName: trimNullable(resolvedCard.name),
     structureProductType: structure.productType,
     sourceMockupsPerDesign: structure.sourceMockupsPerDesign,
+    ...(sourceCounts ? { sourceMockupCountsByDesign: sourceCounts } : {}),
     sourceMockupCount: sourceMockups.length,
     expectedDesignCount,
     anchorCount: indexedAnchors.length,
@@ -1884,6 +1942,18 @@ export function classifyManualReleaseSizeLadderPreflight(
       technicalIssues: [],
       ignoredReviewWarnings: [],
     };
+  }
+  if (preflight.sourceMockupCountsByDesign) {
+    const technicalIssues = preflight.issues.filter((issue) => !/^design_\d+:/.test(issue));
+    if (technicalIssues.length) {
+      return {
+        decision: "blocked",
+        reason: "technical_size_ladder_validation_failed",
+        productModels,
+        technicalIssues,
+        ignoredReviewWarnings: preflight.warnings,
+      };
+    }
   }
   if (preflight.structureProductType !== "neon") {
     return {
