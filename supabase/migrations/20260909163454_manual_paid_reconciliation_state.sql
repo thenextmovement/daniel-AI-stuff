@@ -178,8 +178,10 @@ begin
       if (v_candidate->>'origin'='legacy_due' or not exists(select 1 from jsonb_array_elements(p_request->'candidates') c
           where c->>'origin'='legacy_due' and c->>'shopifyOrderId'=v_order)) and v_next<=v_now and v_locked<=v_now
         and (v_legacy is null or (v_next,v_first,v_order)<((v_legacy->>'nextAttemptAt')::timestamptz,(v_legacy->>'firstSeenAt')::timestamptz,v_legacy->>'shopifyOrderId')) then
-        v_legacy:=(v_candidate-'legacyAlerts')||jsonb_build_object('firstSeenAt',v_first,'nextAttemptAt',v_next,
-          'lockedUntil',coalesce(v_candidate->'lockedUntil','0'::jsonb));
+        v_legacy:=v_candidate-'legacyAlerts';
+        if v_candidate->>'origin'='handoff' then
+          v_legacy:=v_legacy||jsonb_build_object('firstSeenAt',v_first,'nextAttemptAt',v_next,'lockedUntil',0);
+        end if;
       end if;
       continue;
     end if;

@@ -194,6 +194,9 @@ def fairness():
     claim([candidate(8000)], 'admit')
     result = claim([candidate(9000, 'legacy_due')])
     assert result['claimed'] is None and result['legacySelected']['shopifyOrderId'] == '9000'
+    assert result['legacySelected']['firstSeenAt'] == '2026-01-01T00:00:00Z'
+    assert result['legacySelected']['nextAttemptAt'] == '2026-01-01T00:00:00Z'
+    assert result['legacySelected']['lockedUntil'] == 0
     result = claim([candidate(8000, 'legacy_due'), candidate(9000, 'legacy_due', nextAttemptAt='2099-01-01T00:00:00Z')])
     assert result['legacySelected'] is None and result['claimed']['billingCase']['shopify_order_name'] == '#NEONT8000'
     complete(result)
