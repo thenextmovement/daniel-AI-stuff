@@ -1,7 +1,8 @@
 \set ON_ERROR_STOP on
 
--- Transactional checks for verified-private weekend follow-ups. The fixtures
--- are rolled back and the claim/send RPCs are never executed.
+-- Current contract: former private follow-ups use small-business weekdays.
+-- Legacy calendar helpers remain compatible but no current cadence enables them.
+-- The fixtures are rolled back and claim/send RPCs are never executed.
 
 begin;
 
@@ -326,13 +327,13 @@ begin
   );
 
   if private_decision->>'cadence_tier' <> 'frequent'
-     or private_decision->>'weekend_allowed' <> 'true'
-     or private_decision->>'delay_day_mode' <> 'calendar_days'
+     or private_decision->>'weekend_allowed' <> 'false'
+     or private_decision->>'delay_day_mode' <> 'business_days'
      or (private_decision->>'max_followups')::integer <> 6
      or (private_decision->>'first_delay_days')::integer <> 2
      or (private_decision->>'next_delay_days')::integer <> 3
      or ((private_decision->>'first_due_at')::timestamptz
-           at time zone 'Europe/Berlin')::date <> date '2026-08-30' then
+           at time zone 'Europe/Berlin')::date <> date '2026-09-01' then
     raise exception 'Verified private cadence is wrong: %', private_decision;
   end if;
 
@@ -356,8 +357,8 @@ begin
 
   if ai_private_decision->>'source_authority' <> 'ai_shadow'
      or ai_private_decision->>'segment' <> 'NT-8'
-     or ai_private_decision->>'weekend_allowed' <> 'true'
-     or ai_private_decision->>'delay_day_mode' <> 'calendar_days'
+     or ai_private_decision->>'weekend_allowed' <> 'false'
+     or ai_private_decision->>'delay_day_mode' <> 'business_days'
      or (ai_private_decision->>'max_followups')::integer <> 6 then
     raise exception 'Verified AI private cadence is wrong: %',
       ai_private_decision;
@@ -368,7 +369,58 @@ begin
      or coalesce((missing_decision->>'send_allowed')::boolean, true) then
     raise exception 'Missing/unclear cadence did not fail closed: %', missing_decision;
   end if;
+
+  -- A weekend-dated row cannot bypass the unchanged claim window gate.
+  -- The business window opens independently of the separate due-date check.
+  if public.neontrip_followup_delivery_window_allowed(
+       private_decision, '2026-08-29 10:00:00+02'
+     ) or public.neontrip_followup_delivery_window_allowed(
+       ai_private_decision, '2026-08-30 15:30:00+02'
+     ) or public.neontrip_followup_delivery_window_allowed(
+       private_decision, '2026-08-31 08:59:59+02'
+     ) or public.neontrip_followup_delivery_window_allowed(
+       private_decision, '2026-08-31 16:00:00+02'
+     ) or not public.neontrip_followup_delivery_window_allowed(
+       private_decision, '2026-08-31 09:00:00+02'
+     ) then
+    raise exception 'Former-private follow-ups did not use the business window';
+  end if;
+
+  if private_decision->>'segment' <> 'NT-8'
+     or ai_private_decision->>'segment' <> 'NT-8'
+     or private_decision->>'first_delay_days' <> small_decision->>'first_delay_days'
+     or private_decision->>'next_delay_days' <> small_decision->>'next_delay_days'
+     or private_decision->>'max_followups' <> small_decision->>'max_followups'
+     or public.neontrip_followup_business_slot(
+       '2026-08-27 10:00:00+02', (private_decision->>'next_delay_days')::integer, 'same-series'
+     ) is distinct from public.neontrip_followup_business_slot(
+       '2026-08-27 10:00:00+02', (small_decision->>'next_delay_days')::integer, 'same-series'
+     ) then
+    raise exception 'Former-private treatment differs from small business or rewrites identity';
+  end if;
 end;
 $private_weekend_cadence_test$;
+
+reset role;
+update public.request_segment_classifications
+set organization_scale = null,
+    classifier_json = jsonb_set(classifier_json,
+  '{db_validation,first_party_business_choice_valid}', 'true')
+where id = '87000000-0000-4000-8000-000000000001';
+
+set role service_role;
+do $contradictory_classification_stays_safe$
+declare
+  result jsonb := public.neontrip_get_followup_queue_cadence_decision(
+    '86000000-0000-4000-8000-000000000004'
+  );
+begin
+  if result->>'cadence_tier' <> 'weekly'
+     or result->>'source_authority' <> 'none'
+     or result->>'weekend_allowed' <> 'false' then
+    raise exception 'Unclear-size contradictory evidence became authoritative: %', result;
+  end if;
+end;
+$contradictory_classification_stays_safe$;
 
 rollback;
