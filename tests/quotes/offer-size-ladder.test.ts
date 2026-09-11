@@ -20,10 +20,15 @@ import {
   OFFER_SIZE_LADDER_CUSTOMER_FACTOR,
   OFFER_SIZE_LADDER_SAME_SIZE_VARIANT_ISSUE,
   TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS,
+  ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_ASPECT_RATIO,
+  ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_LONG_SIDE_CM,
+  ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS,
+  ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE,
   resolveQuoteReadyOfferStructure,
   validateOfferItemsJsonProjection,
 } from "../../src/lib/ops/offer-size-ladder";
 import { OpsOfferApiError } from "../../src/lib/ops/offers";
+import { DEFAULT_PRICE_FACTOR } from "../../src/lib/quotes/pricing";
 import { hasNoSizeLadderLabel, NO_SIZE_LADDER_TRELLO_LABEL } from "../../src/lib/quotes/trello";
 
 test("recognizes the no-size-ladder Trello control label", () => {
@@ -589,6 +594,11 @@ test("quote ready structure uses one source mockup per Neon design and two for e
     { name: "3D Non-Lit Letters", expectedType: "three_d", expectedDivisor: 2 },
     { name: "Full Glow Letters", expectedType: "three_d", expectedDivisor: 2 },
     { name: "Ultra Thin Acrylic Lightbox", expectedType: "ultra_thin", expectedDivisor: 2 },
+    { name: "Ultra Thin Acrylic Box", expectedType: "ultra_thin", expectedDivisor: 2 },
+    { name: "Ultra Thin Lightbox", expectedType: "ultra_thin", expectedDivisor: 2 },
+    { name: "LED Leuchtkasten Slim", expectedType: "ultra_thin", expectedDivisor: 2 },
+    { name: "Ultra Thin LED Neon Flex", expectedType: "neon", expectedDivisor: 1 },
+    { name: "Double-sided Ultra-Thin Acrylic Lightbox", expectedType: "lightbox_double_sided", expectedDivisor: 2 },
     { name: "Lightbox Double Sided", expectedType: "lightbox_double_sided", expectedDivisor: 2 },
     { name: "Acrylic Lightbox", expectedType: "acrylic_lightbox", expectedDivisor: 2 },
     { name: "Lightbox New Design Volkan", expectedType: "lightbox", expectedDivisor: 2 },
@@ -607,6 +617,526 @@ test("quote ready structure uses one source mockup per Neon design and two for e
     });
     assert.equal(structure.productType, entry.expectedType, entry.name);
     assert.equal(structure.sourceMockupsPerDesign, entry.expectedDivisor, entry.name);
+  }
+});
+
+test("standard Ultra Thin uses the configured supplier totals and existing customer factor", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardUltraThinExact50",
+    idBoard: "board-1",
+    name: "Ultra Thin Acrylic Lightbox | 50cm | Blue",
+    customFields: {
+      Size_1: "50x40cm",
+      Price_1: "999",
+      Product_1: "Ultra Thin Acrylic",
+    },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+    ],
+  }, {
+    trelloCard: "cardUltraThinExact50",
+    projectToTrello: false,
+    persist: false,
+  });
+
+  assert.equal(DEFAULT_PRICE_FACTOR, 2.3);
+  assert.equal(OFFER_SIZE_LADDER_CUSTOMER_FACTOR, DEFAULT_PRICE_FACTOR);
+  assert.deepEqual(
+    ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS.map((tier) => [
+      tier.longSideCm,
+      tier.totalSupplierCostUsd,
+      tier.corridorMinUsd,
+      tier.corridorMaxUsd,
+    ]),
+    [
+      [30, 75, 70, 80],
+      [40, 100, 95, 145],
+      [50, 125, 110, 165],
+      [60, 155, 150, 180],
+      [70, 190, 185, 190],
+      [80, 235, 190, 305],
+      [90, 270, 225, 355],
+      [100, 320, 280, 380],
+      [110, 395, 300, 470],
+      [120, 480, 440, 520],
+      [130, 500, 380, 595],
+      [140, 555, 420, 660],
+      [150, 610, 465, 730],
+    ],
+  );
+  assert.equal(result.status, "ready");
+  assert.equal(result.structureProductType, "ultra_thin");
+  assert.equal(result.designs.length, 1);
+  assert.equal(result.designs[0]?.productModel, "acryl_light_box");
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.designs[0]?.sizeLadder.options.length, 11);
+
+  const minimum = result.designs[0]?.sizeLadder.options.find((option) => option.isDefault);
+  assert.equal(minimum?.longSideCm, 50);
+  assert.equal(minimum?.supplierTotalEstimated, 125);
+  assert.equal(
+    Number(((minimum?.productionPriceEstimated || 0) + (minimum?.shippingPriceEstimated || 0)).toFixed(2)),
+    minimum?.supplierTotalEstimated,
+  );
+  assert.equal(minimum?.customerUnitPriceNet, 285);
+  assert.equal(minimum?.metadata.pricing_profile, ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE);
+  assert.equal(minimum?.metadata.supplier_total_includes_supplier_shipping, true);
+
+  const maximum = result.designs[0]?.sizeLadder.options.at(-1);
+  assert.equal(maximum?.longSideCm, ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_LONG_SIDE_CM);
+  assert.equal(maximum?.supplierTotalEstimated, 610);
+  assert.equal(maximum?.customerUnitPriceNet, 1400);
+  const offerItems = JSON.parse(result.offerItemsJson || "[]") as Array<Record<string, unknown>>;
+  assert.equal(offerItems.length, 11);
+  assert.match(String(offerItems[0]?.title), /LED Leuchtkasten Slim/);
+  assert.equal(offerItems[0]?.pricingProfile, ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE);
+  assert.equal(offerItems[0]?.customerUnitPriceNet, 285);
+  assert.equal(classifyManualReleaseSizeLadderPreflight(result).decision, "ready");
+});
+
+test("Ultra Thin intake labels allow Indoor while actual Outdoor evidence stays excluded", async () => {
+  const card = {
+    id: "ultraThinIntakeRegression",
+    name: "Ultra-thin acrylic light box | Smallest Size | Color as logo | cut to shape",
+    desc: "Additional Information:\nIndoor/Outdoor: Indoor\nBackboard: CUT TO SHAPE\nAngefragte Groesse: 150 cm",
+    customFields: { Usage: "Innen", Size_1: "30x26cm", Price_1: "78", Color_1: "Farbe wie im Logo" },
+    attachments: [{ id: "a", name: "mockup_0911_1522.jpg" }, { id: "b", name: "mockup_0911_1523.jpg" }],
+  };
+  const readOnly = { persist: false, projectToTrello: false, commentToTrello: false };
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard(card, readOnly);
+  assert.equal(classifyManualReleaseSizeLadderPreflight(result).decision, "ready");
+  const options = result.designs[0]!.sizeLadder.options;
+  assert.equal(options.length, 13);
+  assert.equal(options[0]!.sizeLabel, "30 x 26cm");
+  assert.equal(options[0]!.supplierTotalEstimated, 75);
+  assert.equal(options[0]!.customerUnitPriceNet, 170);
+  assert.equal(options.at(-1)!.longSideCm, 150);
+  assert.equal(options.at(-1)!.supplierTotalEstimated, 610);
+  assert.equal(options.filter(option => option.isDefault).length, 1);
+
+  for (const input of [
+    { ...card, desc: card.desc.replace("Indoor/Outdoor: Indoor", "Indoor / Outdoor: Outdoor") },
+    { ...card, customFields: { ...card.customFields, Usage: "Outdoor" } },
+    { ...card, desc: card.desc + "\nIP67" },
+    { ...card, desc: card.desc + "\nRGBW" },
+  ]) {
+    const blocked = await buildQuoteReadySizeLadderPreflightFromTrelloCard(input, readOnly);
+    assert.equal(blocked.skipReason, "ultra_thin_non_standard_requires_manual_review");
+    assert.equal(blocked.offerItemsJson, null);
+  }
+  const supplierOutdoor = await buildQuoteReadySizeLadderPreflightFromTrelloCard(card, {
+    ...readOnly, sourceText: "Supplier PDF extra info: outdoor",
+  });
+  assert.equal(supplierOutdoor.skipReason, "ultra_thin_non_standard_requires_manual_review");
+});
+
+test("standard Ultra Thin keeps the longest-side intermediate size and reuses Neon interpolation", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardUltraThinIntermediate",
+    idBoard: "board-1",
+    name: "Ultra Thin Acrylic Lightbox | 37x51cm",
+    customFields: {
+      Size_1: "37x51cm",
+      Product_1: "Ultra Thin Acrylic",
+    },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+    ],
+  }, {
+    trelloCard: "cardUltraThinIntermediate",
+    projectToTrello: false,
+    persist: false,
+  });
+
+  const minimum = result.designs[0]?.sizeLadder.options.find((option) => option.isDefault);
+  assert.equal(minimum?.longSideCm, 51);
+  assert.equal(minimum?.widthCm, 37);
+  assert.equal(minimum?.heightCm, 51);
+  const neon = await generateOfferSizeLadder({
+    trelloCardId: "neonInterpolationReference",
+    productModel: "neonflex",
+    anchors: [
+      { role: "minimum", widthCm: 36.3, heightCm: 50, productionPrice: 56.25, shippingPrice: 68.75 },
+      { role: "requested", widthCm: 43.5, heightCm: 60, productionPrice: 69.75, shippingPrice: 85.25 },
+    ],
+    stepCm: 1,
+    maxLongSideCm: 60,
+    persist: false,
+  });
+  const neon51 = neon.options.find(option => option.longSideCm === 51)!;
+  assert.equal(minimum?.supplierTotalEstimated, neon51.supplierTotalEstimated);
+  assert.equal(minimum?.customerUnitPriceNet, neon51.customerUnitPriceNet);
+  assert.ok(minimum!.supplierTotalEstimated > 125 && minimum!.supplierTotalEstimated < 155);
+  assert.deepEqual(result.designs[0]?.sizeLadder.options.slice(0, 3).map(option => option.longSideCm), [51, 60, 70]);
+});
+
+test("Ultra Thin preserves every configured total, shape parity and NT-Number precedence", async () => {
+  for (const size of ["30x30cm", "30x20cm"]) {
+    const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+      id: "ultraThinAllTiers",
+      name: "Ultra Thin Acrylic Lightbox",
+      customFields: { Size_1: size, "NT-Number": "3", Price_1: "999", Shipping_1: "999" },
+      attachments: [{ id: "a", name: "Mockup01.jpg" }, { id: "b", name: "Mockup02.jpg" }],
+    }, { persist: false, projectToTrello: false, customerFactor: 7 });
+    const options = result.designs[0]!.sizeLadder.options;
+    assert.equal(options.length, 13);
+    for (const [index, tier] of ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS.entries()) {
+      const option = options[index]!;
+      assert.equal(option.longSideCm, tier.longSideCm);
+      assert.equal(option.supplierTotalEstimated, tier.totalSupplierCostUsd);
+      assert.equal(Number((option.productionPriceEstimated + option.shippingPriceEstimated).toFixed(2)), tier.totalSupplierCostUsd);
+      assert.equal(option.customerFactor, 3);
+      assert.equal(option.customerUnitPriceNet, tier.totalSupplierCostUsd * 3);
+      assert.equal(option.metadata.configured_guidance_only, tier.longSideCm > 100);
+    }
+    assert.equal(classifyManualReleaseSizeLadderPreflight(result).decision, "ready");
+  }
+});
+
+test("Ultra Thin near-boundary dimensions keep 150 cm at exactly 610 USD with only one default", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "ultraThinNearBoundary",
+    name: "Ultra Thin Acrylic Lightbox",
+    customFields: { Size_1: "149.9x100cm" },
+    attachments: [{ id: "a", name: "Mockup01.jpg" }, { id: "b", name: "Mockup02.jpg" }],
+  }, { persist: false, projectToTrello: false });
+  const options = result.designs[0]!.sizeLadder.options;
+  assert.deepEqual(options.map(option => option.longSideCm), [149.9, 150]);
+  assert.equal(options.at(-1)?.supplierTotalEstimated, 610);
+  assert.equal(options.filter(option => option.isDefault).length, 1);
+  assert.equal(options[0]?.widthCm, 149.9);
+});
+
+test("standard Ultra Thin accepts 150cm exactly and keeps larger sizes manual", async () => {
+  const exactBoundary = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardUltraThin150",
+    idBoard: "board-1",
+    name: "Ultra Thin Acrylic Lightbox | 150cm",
+    customFields: { Size_1: "150x60cm", Product_1: "Ultra Thin Acrylic" },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+    ],
+  }, {
+    trelloCard: "cardUltraThin150",
+    projectToTrello: false,
+    persist: false,
+  });
+  assert.equal(exactBoundary.status, "ready");
+  assert.equal(exactBoundary.designs[0]?.sizeLadder.options.length, 1);
+  assert.equal(exactBoundary.designs[0]?.sizeLadder.options[0]?.supplierTotalEstimated, 610);
+  assert.equal(exactBoundary.designs[0]?.sizeLadder.options[0]?.customerUnitPriceNet, 1400);
+  assert.equal(classifyManualReleaseSizeLadderPreflight(exactBoundary).decision, "ready");
+  assert.equal(ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_ASPECT_RATIO, 4);
+
+  const historicalSlimFormat = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardUltraThin150x39",
+    idBoard: "board-1",
+    name: "Ultra Thin Acrylic Lightbox | 150x39cm",
+    customFields: { Size_1: "150x39cm", Product_1: "Ultra Thin Acrylic" },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+    ],
+  }, {
+    trelloCard: "cardUltraThin150x39",
+    projectToTrello: false,
+    persist: false,
+  });
+  assert.equal(historicalSlimFormat.skipReason, null);
+  assert.equal(classifyManualReleaseSizeLadderPreflight(historicalSlimFormat).decision, "ready");
+
+  const aboveBoundary = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardUltraThin151",
+    idBoard: "board-1",
+    name: "Ultra Thin Acrylic Lightbox | 151cm",
+    customFields: { Size_1: "151x60cm", Product_1: "Ultra Thin Acrylic" },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+    ],
+  }, {
+    trelloCard: "cardUltraThin151",
+    projectToTrello: false,
+    persist: false,
+  });
+  assert.equal(aboveBoundary.skipReason, "ultra_thin_size_over_150cm_requires_manual_review");
+  assert.equal(aboveBoundary.designs.length, 0);
+  assert.equal(aboveBoundary.offerItemsJson, null);
+  assert.equal(classifyManualReleaseSizeLadderPreflight(aboveBoundary).decision, "skipped");
+
+  const unusualFormat = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "cardUltraThin150x1",
+    idBoard: "board-1",
+    name: "Ultra Thin Acrylic Lightbox | 150x1cm",
+    customFields: { Size_1: "150x1cm", Product_1: "Ultra Thin Acrylic" },
+    attachments: [
+      { id: "att-1", name: "Mockup01.jpg" },
+      { id: "att-2", name: "Mockup02.jpg" },
+    ],
+  }, {
+    trelloCard: "cardUltraThin150x1",
+    projectToTrello: false,
+    persist: false,
+  });
+  assert.equal(unusualFormat.skipReason, "ultra_thin_unusual_format_requires_manual_review");
+  assert.equal(classifyManualReleaseSizeLadderPreflight(unusualFormat).decision, "skipped");
+});
+
+test("Ultra Thin special variants and neighboring lightbox products stay outside the standard ladder", async () => {
+  for (const entry of [
+    { id: "cardUltraThinRgb", name: "Ultra Thin Acrylic Lightbox RGB Outdoor | 80cm" },
+    { id: "cardUltraThinRgbw", name: "Ultra Thin Acrylic Lightbox RGBW | 80cm" },
+    { id: "cardUltraThinIp68", name: "Ultra Thin Acrylic Lightbox IP68 | 80cm" },
+    { id: "cardUltraThinSpecialBuild", name: "Ultra Thin Acrylic Lightbox Sonderbau | 80cm" },
+    { id: "cardUltraThinBacklitUpdate", name: "Ultra Thin Acrylic Backlit (Update-Reihe) | 80cm" },
+  ]) {
+    const special = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+      id: entry.id,
+      idBoard: "board-1",
+      name: entry.name,
+      customFields: { Size_1: "80x50cm", Product_1: "Ultra Thin Acrylic" },
+      attachments: [
+        { id: "att-1", name: "Mockup01.jpg" },
+        { id: "att-2", name: "Mockup02.jpg" },
+      ],
+    }, {
+      trelloCard: entry.id,
+      projectToTrello: false,
+      persist: false,
+    });
+    assert.equal(special.skipReason, "ultra_thin_non_standard_requires_manual_review", entry.name);
+    assert.equal(classifyManualReleaseSizeLadderPreflight(special).decision, "skipped", entry.name);
+  }
+
+  for (const entry of [
+    { id: "cardAcrylicNeighbor", name: "Acrylic Lightbox | 80cm", expectedType: "acrylic_lightbox" },
+    { id: "cardDoubleSidedNeighbor", name: "Double-sided Lightbox | 80cm", expectedType: "lightbox_double_sided" },
+  ] as const) {
+    const neighbor = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+      id: entry.id,
+      idBoard: "board-1",
+      name: entry.name,
+      customFields: { Size_1: "80x50cm", Price_1: "235", Product_1: "Lightbox" },
+      attachments: [
+        { id: "att-1", name: "Mockup01.jpg" },
+        { id: "att-2", name: "Mockup02.jpg" },
+      ],
+    }, {
+      trelloCard: entry.id,
+      projectToTrello: false,
+      persist: false,
+    });
+    assert.equal(neighbor.structureProductType, entry.expectedType);
+    assert.equal(classifyManualReleaseSizeLadderPreflight(neighbor).decision, "skipped");
+  }
+});
+
+test("Ultra Thin outside the configured minimum, unreadable sizes and the no-ladder label stay manual", async () => {
+  for (const [size, reason] of [
+    ["29x20cm", "ultra_thin_size_below_30cm_requires_manual_review"],
+    ["150.1x60cm", "ultra_thin_size_over_150cm_requires_manual_review"],
+    ["unbekannt", "ultra_thin_size_unreadable_requires_manual_review"],
+  ]) {
+    const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+      id: "ultraThinManual", name: "Ultra Thin Acrylic Lightbox", customFields: { Size_1: size },
+      attachments: [{ id: "a", name: "Mockup01.jpg" }, { id: "b", name: "Mockup02.jpg" }],
+    }, { projectToTrello: false, persist: false });
+    assert.equal(result.skipReason, reason);
+    assert.equal(result.offerItemsJson, null);
+    assert.equal(classifyManualReleaseSizeLadderPreflight(result).decision, "skipped");
+  }
+  const noLadder = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "ultraThinDisabled", name: "Ultra Thin Acrylic Lightbox", customFields: { Size_1: "50x40cm" },
+    labels: [{ id: "no-ladder", name: NO_SIZE_LADDER_TRELLO_LABEL }],
+    attachments: [],
+  }, { projectToTrello: false, persist: false });
+  assert.equal(noLadder.skipReason, "trello_label_no_size_ladder");
+  assert.equal(noLadder.offerItemsJson, null);
+});
+
+test("Ultra Thin preserves additional entered intermediate sizes like Neon anchors", async () => {
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    id: "ultraThinRequestedSizes", name: "Ultra Thin Acrylic Lightbox",
+    customFields: { Size_1: "50x40cm", Size_2: "75x60cm", Size_3: "95x76cm" },
+    attachments: [{ id: "a", name: "Mockup01.jpg" }, { id: "b", name: "Mockup02.jpg" }],
+  }, { projectToTrello: false, persist: false });
+  const options = result.designs[0]!.sizeLadder.options;
+  assert.equal(result.status, "ready");
+  assert.deepEqual(options.slice(0, 8).map(option => option.longSideCm), [50, 60, 70, 75, 80, 90, 95, 100]);
+  assert.equal(options.filter(option => option.isDefault).length, 1);
+  assert.equal(options.at(-1)?.supplierTotalEstimated, 610);
+});
+
+test("an owned Ultra Thin projection is cleared when the card becomes a manual special case", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
+  const originalSupabaseUrl = process.env.SUPABASE_URL;
+  const originalSupabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+  process.env.SUPABASE_URL = "https://supabase.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
+  let updateBody: string | null = null;
+  let supersededStatus = "";
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.startsWith("https://api.trello.com/") && method === "PUT") {
+      updateBody = String(init?.body || "");
+      return new Response(null, { status: 200 });
+    }
+    if (url.includes("/rest/v1/offer_size_quote_anchor_sets") && method === "GET") {
+      const parsedUrl = new URL(url);
+      assert.equal(parsedUrl.searchParams.get("trello_card_id"), "eq.cardUltraThinBecameRgb");
+      assert.equal(parsedUrl.searchParams.get("status"), "neq.superseded");
+      return new Response(JSON.stringify([{
+        id: "owned-ultra-special",
+        metadata: { pricing_profile: ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE },
+      }]), { status: 200 });
+    }
+    if (url.includes("/rest/v1/offer_size_quote_anchor_sets") && method === "PATCH") {
+      supersededStatus = String(JSON.parse(String(init?.body || "{}")).status || "");
+      return new Response(null, { status: 204 });
+    }
+    return new Response(`unexpected ${method} ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+      id: "cardUltraThinBecameRgb",
+      idBoard: "board-1",
+      name: "Ultra Thin Acrylic Lightbox RGB | 80cm",
+      customFields: {
+        Size_1: "80x50cm",
+        Product_1: "Ultra Thin Acrylic",
+      },
+      editableFields: [{
+        id: "offer-items-field",
+        name: "offer_items_json",
+        type: "text",
+        value: JSON.stringify([{
+          pricingProfile: ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE,
+          title: "LED Leuchtkasten Slim Design",
+        }]),
+        displayValue: null,
+        options: [],
+      }],
+      attachments: [
+        { id: "att-1", name: "Mockup01.jpg" },
+        { id: "att-2", name: "Mockup02.jpg" },
+      ],
+    }, {
+      trelloCard: "cardUltraThinBecameRgb",
+      projectToTrello: true,
+      persist: true,
+    });
+
+    assert.equal(result.skipReason, "ultra_thin_non_standard_requires_manual_review");
+    assert.equal(result.trelloProjection?.written, true);
+    assert.equal(result.trelloProjection?.optionCount, 0);
+    assert.deepEqual(JSON.parse(updateBody || "{}"), { value: { text: "[]" } });
+    assert.equal(supersededStatus, "superseded");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
+    if (originalSupabaseUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalSupabaseUrl;
+    if (originalSupabaseKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalSupabaseKey;
+  }
+});
+
+test("an owned Ultra Thin projection and draft are retired when the card becomes double-sided", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTrelloKey = process.env.TRELLO_API_KEY;
+  const originalTrelloToken = process.env.TRELLO_TOKEN;
+  const originalSupabaseUrl = process.env.SUPABASE_URL;
+  const originalSupabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.TRELLO_API_KEY = "trello-key";
+  process.env.TRELLO_TOKEN = "trello-token";
+  process.env.SUPABASE_URL = "https://supabase.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
+
+  let trelloValue: unknown = null;
+  let supersededStatus = "";
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.startsWith("https://api.trello.com/") && method === "PUT") {
+      trelloValue = JSON.parse(String(init?.body || "{}")).value?.text;
+      return new Response(null, { status: 200 });
+    }
+    if (url.includes("/rest/v1/offer_size_quote_anchor_sets") && method === "GET") {
+      const parsedUrl = new URL(url);
+      assert.equal(parsedUrl.searchParams.get("trello_card_id"), "eq.cardUltraThinBecameDoubleSided");
+      assert.equal(parsedUrl.searchParams.get("status"), "neq.superseded");
+      return new Response(JSON.stringify([
+        {
+          id: "owned-ultra-double-sided",
+          metadata: { pricing_profile: ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE },
+        },
+        {
+          id: "neighbor-draft",
+          metadata: { pricing_profile: "another_profile" },
+        },
+      ]), { status: 200 });
+    }
+    if (url.includes("/rest/v1/offer_size_quote_anchor_sets") && method === "PATCH") {
+      const parsedUrl = new URL(url);
+      assert.equal(parsedUrl.searchParams.get("id"), "in.(owned-ultra-double-sided)");
+      supersededStatus = String(JSON.parse(String(init?.body || "{}")).status || "");
+      return new Response(null, { status: 204 });
+    }
+    return new Response(`unexpected ${method} ${url}`, { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+      id: "cardUltraThinBecameDoubleSided",
+      idBoard: "board-1",
+      name: "Double-sided Ultra-Thin Acrylic Lightbox | 80cm",
+      customFields: { Size_1: "80x50cm", Product_1: "Double-sided Lightbox" },
+      editableFields: [{
+        id: "offer-items-field",
+        name: "offer_items_json",
+        type: "text",
+        value: JSON.stringify([{
+          pricingProfile: ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE,
+          title: "LED Leuchtkasten Slim Design",
+        }]),
+        displayValue: null,
+        options: [],
+      }],
+      attachments: [
+        { id: "att-1", name: "Mockup01.jpg" },
+        { id: "att-2", name: "Mockup02.jpg" },
+      ],
+    }, {
+      trelloCard: "cardUltraThinBecameDoubleSided",
+      projectToTrello: true,
+      persist: true,
+    });
+
+    assert.equal(result.structureProductType, "lightbox_double_sided");
+    assert.equal(trelloValue, "[]");
+    assert.equal(supersededStatus, "superseded");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTrelloKey === undefined) delete process.env.TRELLO_API_KEY;
+    else process.env.TRELLO_API_KEY = originalTrelloKey;
+    if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
+    else process.env.TRELLO_TOKEN = originalTrelloToken;
+    if (originalSupabaseUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalSupabaseUrl;
+    if (originalSupabaseKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalSupabaseKey;
   }
 });
 
@@ -1035,11 +1565,16 @@ test("manual release skips an unsupported overflowing ladder before any Supabase
   const originalFetch = globalThis.fetch;
   const originalTrelloKey = process.env.TRELLO_API_KEY;
   const originalTrelloToken = process.env.TRELLO_TOKEN;
+  const originalSupabaseUrl = process.env.SUPABASE_URL;
+  const originalSupabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   process.env.TRELLO_API_KEY = "trello-key";
   process.env.TRELLO_TOKEN = "trello-token";
-  let supabaseCalls = 0;
+  process.env.SUPABASE_URL = "https://test-project.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
+  let supabaseReads = 0;
+  let supabaseWrites = 0;
 
-  globalThis.fetch = (async (input) => {
+  globalThis.fetch = (async (input, init) => {
     const url = String(input);
     if (url.startsWith("https://api.trello.com/1/cards/cardManualOverflow")) {
       return new Response(JSON.stringify({
@@ -1081,7 +1616,12 @@ test("manual release skips an unsupported overflowing ladder before any Supabase
       ]), { status: 200 });
     }
     if (url.includes("supabase.co")) {
-      supabaseCalls += 1;
+      const method = String(init?.method || "GET").toUpperCase();
+      if (method === "GET") {
+        supabaseReads += 1;
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      supabaseWrites += 1;
       return new Response("unexpected Supabase write", { status: 500 });
     }
     return new Response(`unexpected ${url}`, { status: 500 });
@@ -1098,7 +1638,8 @@ test("manual release skips an unsupported overflowing ladder before any Supabase
     assert.equal(release.decision, "skipped");
     assert.equal(release.reason, "special_product_uses_existing_offer_flow");
     assert.equal(release.offerItemsProjected, false);
-    assert.equal(supabaseCalls, 0);
+    assert.equal(supabaseReads, 0);
+    assert.equal(supabaseWrites, 0);
     assert.ok(release.quoteReadySizeLadder.issues.includes("design_1:generated_price_out_of_supported_range"));
     assert.ok(release.quoteReadySizeLadder.designs[0]?.sizeLadder.options.every((option) => option.reviewStatus === "blocked"));
   } finally {
@@ -1107,6 +1648,10 @@ test("manual release skips an unsupported overflowing ladder before any Supabase
     else process.env.TRELLO_API_KEY = originalTrelloKey;
     if (originalTrelloToken === undefined) delete process.env.TRELLO_TOKEN;
     else process.env.TRELLO_TOKEN = originalTrelloToken;
+    if (originalSupabaseUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalSupabaseUrl;
+    if (originalSupabaseKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalSupabaseKey;
   }
 });
 
@@ -1121,12 +1666,15 @@ test("manual release still persists a valid Neon ladder after classification", a
   process.env.SUPABASE_URL = "https://test-project.supabase.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
   let supabaseCalls = 0;
+  let cleanupCardFilter = "";
+  let supersededSetFilter = "";
+  let persistedTrelloCardId = "";
 
   globalThis.fetch = (async (input, init) => {
     const url = String(input);
-    if (url.startsWith("https://api.trello.com/1/cards/cardManualValid")) {
+    if (url.startsWith("https://api.trello.com/1/cards/abcD1234")) {
       return new Response(JSON.stringify({
-        id: "cardManualValid",
+        id: "6a7980ad0e57d85671cf6399",
         idBoard: "board-valid",
         name: "LED Flex valid ladder",
         customFieldItems: [
@@ -1148,7 +1696,29 @@ test("manual release still persists a valid Neon ladder after classification", a
     if (url.startsWith("https://test-project.supabase.co/rest/v1/")) {
       supabaseCalls += 1;
       const method = String(init?.method || "GET").toUpperCase();
+      if (url.includes("/offer_size_quote_anchor_sets") && method === "GET") {
+        const parsedUrl = new URL(url);
+        if (parsedUrl.searchParams.has("trello_card_id")) {
+          cleanupCardFilter = parsedUrl.searchParams.get("trello_card_id") || "";
+          return new Response(JSON.stringify([
+            {
+              id: "owned-canonical",
+              metadata: { pricing_profile: ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE },
+            },
+            {
+              id: "owned-shortlink",
+              metadata: { pricing_profile: ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE },
+            },
+          ]), { status: 200 });
+        }
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.includes("/offer_size_quote_anchor_sets") && method === "PATCH") {
+        supersededSetFilter = new URL(url).searchParams.get("id") || "";
+        return new Response(null, { status: 204 });
+      }
       if (url.includes("/offer_size_quote_anchor_sets") && method === "POST") {
+        persistedTrelloCardId = String(JSON.parse(String(init?.body || "{}")).trello_card_id || "");
         return new Response(JSON.stringify([{ id: "set-valid" }]), { status: 201 });
       }
       return new Response(JSON.stringify([]), { status: method === "POST" ? 201 : 200 });
@@ -1158,7 +1728,7 @@ test("manual release still persists a valid Neon ladder after classification", a
 
   try {
     const release = await ensureManualReleaseSizeLadder({
-      trelloCard: "cardManualValid",
+      trelloCard: "https://trello.com/c/abcD1234/valid-neon-card",
       maxLongSideCm: 120,
       persist: true,
       projectToTrello: false,
@@ -1166,6 +1736,10 @@ test("manual release still persists a valid Neon ladder after classification", a
 
     assert.equal(release.decision, "ready");
     assert.ok(supabaseCalls > 0);
+    assert.equal(cleanupCardFilter, "");
+    assert.equal(supersededSetFilter, "");
+    assert.equal(persistedTrelloCardId, "6a7980ad0e57d85671cf6399");
+    assert.equal(release.trelloCardId, "6a7980ad0e57d85671cf6399");
     assert.equal(release.quoteReadySizeLadder.designs[0]?.sizeLadder.persisted?.anchorSetId, "set-valid");
   } finally {
     globalThis.fetch = originalFetch;

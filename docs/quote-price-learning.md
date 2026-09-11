@@ -179,6 +179,8 @@ Hard exclusions for the Neonflex model:
 
 These rows should be retained for future separate models, not deleted.
 
+The standard single-sided `Ultra Thin Acrylic Lightbox` ladder is such a separate path: it uses a deterministic, reviewable 30-150 cm supplier-total configuration in the existing quote-ready ladder engine. It is not part of the Neonflex learning model and its configured values are not a supplier guarantee. Supplier totals already include supplier shipping; RGB/RGBW, Outdoor/IP variants, explicitly special constructions or formats, unreadable sizes, sizes above 150 cm, and aspect ratios above the historically supported 4:1 envelope stay manual. Generic and double-sided lightboxes remain separate products.
+
 ## Integration With Existing Quote Engine
 
 The existing Quote Engine currently turns Trello `Price_1..4` into customer-facing quote items using `NT-Number` as the sales factor.

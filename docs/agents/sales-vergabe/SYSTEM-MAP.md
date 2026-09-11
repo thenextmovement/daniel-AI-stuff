@@ -39,6 +39,17 @@
 | Integrationsdoku | `docs/operations/supplier-sales-integrations.md` | `[verifiziert]` |
 | AB-E-Mail-Doku | `docs/operations/supplier-order-confirmation-email.md` | `[verifiziert]` |
 
+## Quote-ready Groessenleiter
+
+- `[verifiziert]` `src/lib/ops/offer-size-ladder.ts` erzeugt die bestehende Neon- und Ultra-Thin-Groessenleiter und projiziert freigegebene Nettopreise als `offer_items_json`; die Offers-App uebernimmt `customerUnitPriceNet` ohne einen zweiten Verkaufsfaktor.
+- `[verifiziert]` Nur der explizite Produkttyp `Ultra Thin Acrylic Lightbox` nutzt das feste Profil `ultra_thin_acrylic_lightbox_standard`. Generische Acrylic Lightboxes und Double-sided Lightboxes bleiben in ihren bisherigen, getrennten Pfaden.
+- `[lokal verifiziert; Veröffentlichung offen, 2026-09-11]` Das Formularlabel `Indoor/Outdoor:` wird vor dem Sonderfallguard neutralisiert; tatsächliche Outdoor-Werte, IP-Ausführungen und RGB bleiben ausgeschlossen. Die vorhandene Vorbereitung wurde mit aktuellem Main einschließlich gemischter Produktgruppen abgeglichen. Releaseablauf und fachliche Belege: [Ultra-Thin-Reparatur](../../operations/ultra-thin-size-ladder-repair-20260911.md).
+- `[im Worktree verifiziert; nicht deployed]` Aufrufpfad: `/api/internal/quote-ready-size-ladder` → `ensureManualReleaseSizeLadder` / `buildQuoteReadySizeLadderPreflightFromTrelloCard` → `generateOfferSizeLadder` → `offer_items_json` → Offers `lib/trello/map.ts`. Keine neue Preis-Engine oder Datenbankstruktur.
+- `[im Worktree verifiziert; nicht deployed]` Die laengste Aussenkante bestimmt die Klasse. Zwischenmasse bleiben erhalten (z. B. 37 × 51 cm); Preise verwenden dieselbe Flaecheninterpolation wie Neon (Produktion logarithmisch, Shipping linear), anschliessend folgen die naechsten 10-cm-Stufen bis 150 cm. Masse werden wie bei Neon auf 0,1 cm gerundet. Exakte Tabellenstufen behalten exakt ihre konfigurierten Gesamtkosten.
+- `[im Worktree verifiziert; nicht deployed]` Quelle: `Ultra-Thin-Acrylic-Lightbox-Preisleiter.xlsx`, `Preisleiter!A9:G21`. Alle 13 Leitwerte und Korridore sind Konfigurationswerte; 110–150 cm sind ausdruecklich unsichere Orientierung (`configured_guidance_only`). Der bestehende 4:1-Formatguard bleibt erhalten (groesster lesbarer Standardfall 150 × 39 cm, ca. 3,85:1); das ist eine manuelle Pruefgrenze, keine Lieferantengarantie. Runde und eckige Standardformen haben denselben Preis.
+- `[im Worktree verifiziert; nicht deployed]` Die konfigurierten USD-Werte sind Supplier-Gesamtkosten inklusive Supplier-Shipping. Der vorhandene rechnerische 45/55-Split teilt diese Summe nur auf, er ist keine neue Frachtposition. Der aktive Neon-Pfad rechnet direkt `Supplier-Total × Faktor`, abgerundet auf 5 EUR netto; keine separate Live-Wechselkursabfrage. `DEFAULT_PRICE_FACTOR` ist aktuell 2,3, `NT-Number` hat Vorrang vor dem Aufrufparameter. Offers uebernimmt `customerUnitPriceNet` ohne weiteren Faktor; Kundenversand (30 EUR netto), Mengenrabatte und MwSt bleiben in Offers unveraendert.
+- `[im Worktree verifiziert; nicht deployed]` RGB/RGBW, Outdoor beziehungsweise IP-Sonderausfuehrungen, explizite Sonderkonstruktionen/Update-Reihen oder Sonderformate, gemischte Nachbarprodukte, unlesbare Groessen und Groessen ausserhalb 30–150 cm bleiben im manuellen Angebotspfad. Keine Kundenangebote oder Trello-Karten wurden fuer die lokale Verifikation veraendert.
+
 ## Persistenz
 
 - `[verifiziert]` `supplier_sales`: kanonischer Vergabestatus, Kunden-/Offer-/Shopify-Referenzen, Zahlung, Deadline, Snapshot, Supplier und Projektionszustände.

@@ -8,7 +8,7 @@ import {
   updateTrelloCustomField,
 } from "@/lib/quotes/trello";
 import type { CustomFieldMap, TrelloCardData, TrelloEditableCustomField } from "@/lib/quotes/types";
-import { getFactorOverride, roundDownToFive } from "@/lib/quotes/pricing";
+import { DEFAULT_PRICE_FACTOR, getFactorOverride, roundDownToFive } from "@/lib/quotes/pricing";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import {
@@ -23,12 +23,34 @@ import {
   type OpsOfferSnapshot,
 } from "@/lib/ops/offers";
 
-export const OFFER_SIZE_LADDER_CUSTOMER_FACTOR = 2.3;
+export const OFFER_SIZE_LADDER_CUSTOMER_FACTOR = DEFAULT_PRICE_FACTOR;
 export const OFFER_SIZE_LADDER_MODEL_KEY = "anchored_offer_size_ladder";
 export const OFFER_SIZE_LADDER_MODEL_VERSION = "anchored_offer_size_ladder_v1";
 export const OFFER_SIZE_LADDER_MAX_OFFER_ITEMS = 300;
 export const OFFER_SIZE_LADDER_MAX_OPTIONS = 300;
 export const TRELLO_CUSTOM_FIELD_TEXT_MAX_CHARS = 16_384;
+export const ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE = "ultra_thin_acrylic_lightbox_standard" as const;
+export const ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_LONG_SIDE_CM = 150;
+export const ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_ASPECT_RATIO = 4;
+// Source: Ultra-Thin-Acrylic-Lightbox-Preisleiter.xlsx, Preisleiter!A9:G21
+// (2026-08-27; 22 cases / 56 standard values). Total USD cost already includes
+// supplier shipping. Corridors are review guidance, not supplier guarantees;
+// 110–150 cm have sparse evidence / cautious modelling. No shape surcharge.
+export const ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS = [
+  { longSideCm: 30, totalSupplierCostUsd: 75, corridorMinUsd: 70, corridorMaxUsd: 80, evidence: "historical_high" },
+  { longSideCm: 40, totalSupplierCostUsd: 100, corridorMinUsd: 95, corridorMaxUsd: 145, evidence: "historical_high" },
+  { longSideCm: 50, totalSupplierCostUsd: 125, corridorMinUsd: 110, corridorMaxUsd: 165, evidence: "historical_high" },
+  { longSideCm: 60, totalSupplierCostUsd: 155, corridorMinUsd: 150, corridorMaxUsd: 180, evidence: "historical_high" },
+  { longSideCm: 70, totalSupplierCostUsd: 190, corridorMinUsd: 185, corridorMaxUsd: 190, evidence: "historical_medium" },
+  { longSideCm: 80, totalSupplierCostUsd: 235, corridorMinUsd: 190, corridorMaxUsd: 305, evidence: "historical_medium" },
+  { longSideCm: 90, totalSupplierCostUsd: 270, corridorMinUsd: 225, corridorMaxUsd: 355, evidence: "historical_medium" },
+  { longSideCm: 100, totalSupplierCostUsd: 320, corridorMinUsd: 280, corridorMaxUsd: 380, evidence: "historical_high" },
+  { longSideCm: 110, totalSupplierCostUsd: 395, corridorMinUsd: 300, corridorMaxUsd: 470, evidence: "modelled_medium" },
+  { longSideCm: 120, totalSupplierCostUsd: 480, corridorMinUsd: 440, corridorMaxUsd: 520, evidence: "historical_medium" },
+  { longSideCm: 130, totalSupplierCostUsd: 500, corridorMinUsd: 380, corridorMaxUsd: 595, evidence: "modelled_low_medium" },
+  { longSideCm: 140, totalSupplierCostUsd: 555, corridorMinUsd: 420, corridorMaxUsd: 660, evidence: "modelled_low_medium" },
+  { longSideCm: 150, totalSupplierCostUsd: 610, corridorMinUsd: 465, corridorMaxUsd: 730, evidence: "historical_low_medium" },
+] as const;
 const OFFER_SIZE_LADDER_NUMERIC_12_2_MAX_ABS = 10_000_000_000;
 const OFFER_SIZE_LADDER_STORAGE_RANGE_ISSUE = "generated_price_out_of_supported_range";
 export const OFFER_SIZE_LADDER_SAME_SIZE_VARIANT_ISSUE = "same_size_supplier_variants_require_manual_selection";
@@ -66,6 +88,7 @@ export type OfferSizeLadderGenerateInput = {
   offerItemId?: string | null;
   designId?: string | null;
   productModel?: OfferSizeLadderProductModel | null;
+  pricingProfile?: typeof ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE | null;
   sourceText?: string | null;
   anchors: OfferSizeLadderAnchorInput[];
   stepCm?: number | null;
@@ -232,6 +255,13 @@ export type OfferSizeLadderIndexedAnchorInput = OfferSizeLadderAnchorInput & {
   fieldIndex: number;
 };
 
+type OfferSizeLadderIndexedSizeInput = {
+  fieldIndex: number;
+  widthCm: number;
+  heightCm: number;
+  rawText: string;
+};
+
 export type QuoteReadySizeLadderPreflightStatus = "ready" | "needs_review" | "blocked";
 export type QuoteReadyOfferStructureProductType =
   | "neon"
@@ -261,7 +291,14 @@ export type QuoteReadySizeLadderPreflightDesign = {
 
 export type QuoteReadySizeLadderPreflightResult = {
   status: QuoteReadySizeLadderPreflightStatus;
-  skipReason?: "trello_label_no_size_ladder" | null;
+  skipReason?:
+    | "trello_label_no_size_ladder"
+    | "ultra_thin_non_standard_requires_manual_review"
+    | "ultra_thin_size_over_150cm_requires_manual_review"
+    | "ultra_thin_size_below_30cm_requires_manual_review"
+    | "ultra_thin_unusual_format_requires_manual_review"
+    | "ultra_thin_size_unreadable_requires_manual_review"
+    | null;
   trelloCardId: string;
   trelloCardUrl: string | null;
   trelloCardName: string | null;
@@ -885,6 +922,77 @@ function extractIndexedTrelloAnchors(customFields: CustomFieldMap, warnings: str
   return normalizeExtractedAnchorRoles(anchors);
 }
 
+function extractIndexedTrelloSizes(customFields: CustomFieldMap): OfferSizeLadderIndexedSizeInput[] {
+  const sizes: OfferSizeLadderIndexedSizeInput[] = [];
+  for (const index of customFieldIndexes(customFields)) {
+    const sizeText = readCustomFieldValue(customFields, indexedFieldNames(index, "size"));
+    const size = parseSizeText(sizeText);
+    if (!size) continue;
+    sizes.push({
+      fieldIndex: index,
+      widthCm: size.widthCm,
+      heightCm: size.heightCm,
+      rawText: String(sizeText || size.raw),
+    });
+  }
+  return sizes.sort((left, right) => left.fieldIndex - right.fieldIndex);
+}
+
+function ultraThinTierConfidence(evidence: string) {
+  if (evidence === "historical_high") return 0.9;
+  if (evidence === "historical_medium") return 0.78;
+  if (evidence === "historical_low_medium") return 0.68;
+  return 0.64;
+}
+
+function configuredUltraThinAnchorsForSize(
+  size: Pick<OfferSizeLadderIndexedSizeInput, "widthCm" | "heightCm">,
+): OfferSizeLadderAnchorInput[] {
+  const requestedLongSideCm = roundDimension(Math.max(size.widthCm, size.heightCm));
+  const tierAnchors = ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS.map<OfferSizeLadderAnchorInput>((tier, index) => {
+    const scale = tier.longSideCm / requestedLongSideCm;
+    const supplierSplit = splitTotalSupplierPrice(tier.totalSupplierCostUsd);
+    return {
+      role: `anchor_${index + 1}`,
+      widthCm: roundDimension(size.widthCm * scale),
+      heightCm: roundDimension(size.heightCm * scale),
+      ...supplierSplit,
+      currency: "USD",
+      source: "manual",
+      confidence: ultraThinTierConfidence(tier.evidence),
+      rawText: [
+        `Ultra-Thin Standardkonfiguration ${tier.longSideCm} cm`,
+        `Supplier Total inkl. Supplier-Shipping: ${tier.totalSupplierCostUsd} USD`,
+        `Pruefkorridor: ${tier.corridorMinUsd}-${tier.corridorMaxUsd} USD`,
+        `Evidenz: ${tier.evidence}`,
+      ].join(" | "),
+    };
+  });
+  const applicableAnchors = tierAnchors.filter((anchor) => Math.max(anchor.widthCm, anchor.heightCm) >= requestedLongSideCm);
+  if (!applicableAnchors.length) return [];
+  if (tierAnchors.some((anchor) => Math.abs(Math.max(anchor.widthCm, anchor.heightCm) - requestedLongSideCm) < 0.001)) {
+    return applicableAnchors;
+  }
+
+  // Keep the entered size, just as Neon keeps non-grid supplier anchors.
+  // Reuse its production/shipping interpolation and rounding, then its normal
+  // 10-cm ladder. The split only partitions the total; no extra freight is added.
+  const normalizedTiers = normalizeAnchorList(tierAnchors);
+  const targetArea = round2(roundDimension(size.widthCm) * roundDimension(size.heightCm));
+  const requestedAnchor: OfferSizeLadderAnchorInput = {
+    role: "minimum",
+    widthCm: size.widthCm,
+    heightCm: size.heightCm,
+    productionPrice: interpolatePrice(targetArea, normalizedTiers, "productionPrice"),
+    shippingPrice: interpolatePrice(targetArea, normalizedTiers, "shippingPrice"),
+    currency: "USD",
+    source: "manual",
+    confidence: 0.64,
+    rawText: `Ultra-Thin Standardkonfiguration ${requestedLongSideCm} cm; bestehende Neon-Interpolation; Supplier Total inkl. Supplier-Shipping`,
+  };
+  return [requestedAnchor, ...applicableAnchors];
+}
+
 export function extractOfferSizeLadderAnchorsFromTrelloFields(customFields: CustomFieldMap): OfferSizeLadderTrelloAnchorExtraction {
   const warnings: string[] = [];
   const sourceText = customFieldEntries(customFields).map((entry) => `${entry.key}: ${entry.value}`).join("\n");
@@ -1362,12 +1470,17 @@ function detectQuoteReadyProductType(text: string | null | undefined): QuoteRead
   if (!normalized.trim()) return null;
 
   if (/\bmarque+s?\b/.test(normalized)) return "marquee";
-  if (
-    /(?:light\s*box|lightbox|lichtbox|lichtkasten)\s*(?:double\s*-?\s*sided|doppelseitig|zweiseitig|beidseitig)|(?:double\s*-?\s*sided|doppelseitig|zweiseitig|beidseitig)\s*(?:light\s*box|lightbox|lichtbox|lichtkasten)|nasenschild/.test(normalized)
-  ) {
+  const hasDoubleSidedMarker = /double\s*-?\s*sided|doppelseitig|zweiseitig|beidseitig/.test(normalized);
+  const hasLightboxMarker = /light\s*-?\s*box|lightbox|lichtbox|lichtkasten|leuchtkasten|ultra\s*-?\s*thin[\s-]+acryl(?:ic)?/.test(normalized);
+  if (/nasenschild/.test(normalized) || (hasDoubleSidedMarker && hasLightboxMarker)) {
     return "lightbox_double_sided";
   }
-  if (/ultra\s*-?\s*thin/.test(normalized)) return "ultra_thin";
+  if (
+    /ultra\s*-?\s*thin[\s-]+(?:acryl(?:ic)?(?:[\s-]+(?:light\s*-?\s*box|lightbox|box))?|(?:light\s*-?\s*box|lightbox))\b|(?:led\s+)?leuchtkasten\s+slim|slim\s+led\s+lightbox/.test(normalized)
+    || /^ultra\s*-?\s*thin$/.test(normalized.trim())
+  ) {
+    return "ultra_thin";
+  }
   if (/acryl(?:ic)?\s*-?\s*(?:light\s*-?\s*box|lightbox)|(?:light\s*-?\s*box|lightbox)\s*-?\s*acryl(?:ic)?/.test(normalized)) {
     return "acrylic_lightbox";
   }
@@ -1522,11 +1635,45 @@ function sourceTextForAnchorGroup(params: {
   ].filter(Boolean).join("\n");
 }
 
-function distributeAnchorGroups(anchors: OfferSizeLadderIndexedAnchorInput[], designCount: number) {
+function ultraThinManualReviewReason(
+  card: TrelloCardData,
+  inputSourceText: string | null | undefined,
+  sizes: OfferSizeLadderIndexedSizeInput[],
+): QuoteReadySizeLadderPreflightResult["skipReason"] {
+  const productContext = [
+    card.name,
+    card.desc,
+    inputSourceText,
+    ...customFieldEntries(card.customFields || {}).map((entry) => `${entry.key}: ${entry.value}`),
+  ].filter(Boolean).join("\n")
+    // The form label lists both choices; only its value states the usage.
+    .replace(/\bindoor\s*\/\s*outdoor\s*:/gi, "Einsatzort:");
+  if (
+    /\brgb[\w-]*\b|\boutdoor\b|aussen|außen|exterior|weatherproof|wetterfest|\bip\s*-?\s*\d{2}\b|sonder(?:konstruktion|ausf(?:u|ü)hrung|format|bau\w*)|special\s+(?:construction|build|format)|custom\s+(?:construction|build|format)|unusual\s+format|ungew(?:o|ö)hnliches?\s+format|update\s*-?\s*reihe|(?:back\s*-?\s*lit|backlit).{0,40}update|update.{0,40}(?:back\s*-?\s*lit|backlit)|neon\s*flex|neonflex|led\s*flex|full\s*-?\s*glow|fullglow|\b3\s*-?\s*d\b|marque+s?|double\s*-?\s*sided|doppelseitig|zweiseitig|beidseitig|nasenschild/i.test(productContext)
+  ) {
+    return "ultra_thin_non_standard_requires_manual_review";
+  }
+  if (!sizes.length) return "ultra_thin_size_unreadable_requires_manual_review";
+  if (sizes.some((size) => Math.max(size.widthCm, size.heightCm) < ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS[0].longSideCm)) {
+    return "ultra_thin_size_below_30cm_requires_manual_review";
+  }
+  if (sizes.some((size) => Math.max(size.widthCm, size.heightCm) > ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_LONG_SIDE_CM + 0.001)) {
+    return "ultra_thin_size_over_150cm_requires_manual_review";
+  }
+  if (sizes.some((size) => (
+    Math.max(size.widthCm, size.heightCm) / Math.min(size.widthCm, size.heightCm)
+      > ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_ASPECT_RATIO + 0.001
+  ))) {
+    return "ultra_thin_unusual_format_requires_manual_review";
+  }
+  return null;
+}
+
+function distributeAnchorGroups<T extends { fieldIndex: number }>(anchors: T[], designCount: number) {
   const sorted = [...anchors].sort((left, right) => left.fieldIndex - right.fieldIndex);
   const base = Math.floor(sorted.length / designCount);
   const remainder = sorted.length % designCount;
-  const groups: OfferSizeLadderIndexedAnchorInput[][] = [];
+  const groups: T[][] = [];
   let offset = 0;
   for (let index = 0; index < designCount; index += 1) {
     const size = base + (index < remainder ? 1 : 0);
@@ -1552,9 +1699,10 @@ function publicOfferItemsForQuoteReadyPreflight(card: TrelloCardData, result: Qu
     const backboard = indexedDesignFieldValue(customFields, firstFieldIndex, "backboard");
     const usage = indexedDesignFieldValue(customFields, firstFieldIndex, "usage");
     const defaultOption = options.find((option) => option.isDefault) || options[0]!;
+    const titleBase = result.structureProductType === "ultra_thin" ? "LED Leuchtkasten Slim" : "Leuchtschild";
     const title = result.expectedDesignCount > 1
-      ? `${useHighDensityProjection ? "" : "Leuchtschild "}Design ${design.designIndex}`
-      : "Leuchtschild Design";
+      ? `${useHighDensityProjection && result.structureProductType !== "ultra_thin" ? "" : `${titleBase} `}Design ${design.designIndex}`
+      : `${titleBase} Design`;
 
     for (const option of options) {
       const description = useHighDensityProjection
@@ -1573,6 +1721,9 @@ function publicOfferItemsForQuoteReadyPreflight(card: TrelloCardData, result: Qu
       items.push({
         section: "LED-Leuchtschild",
         title,
+        pricingProfile: result.structureProductType === "ultra_thin"
+          ? ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE
+          : undefined,
         description,
         quantity: 1,
         customerUnitPriceNet: option.customerUnitPriceNet,
@@ -1595,6 +1746,98 @@ function publicOfferItemsForQuoteReadyPreflight(card: TrelloCardData, result: Qu
     );
   }
   return stringifyCompactOfferItemsForTrello(items, { omitFalseDefaults: useHighDensityProjection });
+}
+
+function isOwnedUltraThinOfferItemsProjection(value: string | null | undefined) {
+  if (!value) return false;
+  try {
+    const items = JSON.parse(value) as unknown;
+    return Array.isArray(items)
+      && items.length > 0
+      && items.every((item) => Boolean(
+        item
+        && typeof item === "object"
+        && (item as Record<string, unknown>).pricingProfile === ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE,
+      ));
+  } catch {
+    return false;
+  }
+}
+
+async function clearOwnedUltraThinOfferItemsProjection(card: TrelloCardData) {
+  const field = findEditableCustomField(card.editableFields, ["offer_items_json", "Offer Items JSON", "Offer_Items_JSON"]);
+  const currentValue = typeof field?.value === "string"
+    ? field.value
+    : readCustomFieldValue(card.customFields || {}, ["offer_items_json", "Offer Items JSON", "Offer_Items_JSON"]);
+  if (!isOwnedUltraThinOfferItemsProjection(currentValue)) return null;
+  if (!field) {
+    throw new QuoteValidationError(
+      "Die alte Ultra-Thin-Groessenleiter konnte nicht aus Trello entfernt werden.",
+      ["trello_offer_items_json_field_not_editable"],
+      409,
+    );
+  }
+  await updateTrelloCustomField({
+    cardId: card.id,
+    fieldId: field.id,
+    type: field.type || "text",
+    value: "[]",
+  });
+  return {
+    written: true,
+    fieldName: field.name,
+    optionCount: 0,
+  };
+}
+
+async function supersedeOwnedUltraThinSizeLadderDrafts(trelloCardIds: string[]) {
+  const cardIds = [...new Set(trelloCardIds.map((value) => String(value || "").trim()).filter(Boolean))];
+  if (!cardIds.length) return 0;
+  const rows = await supabaseRequest<OfferSizeLadderAnchorSetRow[]>("offer_size_quote_anchor_sets", undefined, {
+    select: "id,metadata",
+    trello_card_id: cardIds.length === 1 ? `eq.${cardIds[0]}` : `in.(${cardIds.join(",")})`,
+    status: "neq.superseded",
+  });
+  const ownedIds = rows
+    .filter((row) => row.metadata?.pricing_profile === ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE)
+    .map((row) => row.id)
+    .filter(Boolean);
+  if (!ownedIds.length) return 0;
+
+  await supabaseRequest("offer_size_quote_anchor_sets", {
+    method: "PATCH",
+    body: JSON.stringify({
+      status: "superseded",
+      updated_at: new Date().toISOString(),
+    }),
+    headers: { Prefer: "return=minimal" },
+  }, {
+    id: `in.(${ownedIds.join(",")})`,
+  });
+  return ownedIds.length;
+}
+
+async function retireOwnedUltraThinSizeLadderState(input: {
+  card: TrelloCardData;
+  trelloCardIds: string[];
+  projectToTrello: boolean;
+  persist: boolean;
+}) {
+  const field = findEditableCustomField(input.card.editableFields, ["offer_items_json", "Offer Items JSON", "Offer_Items_JSON"]);
+  const currentValue = typeof field?.value === "string"
+    ? field.value
+    : readCustomFieldValue(input.card.customFields || {}, ["offer_items_json", "Offer Items JSON", "Offer_Items_JSON"]);
+  // Do not add reads or writes to unrelated products' existing release paths.
+  if (!isOwnedUltraThinOfferItemsProjection(currentValue)) return null;
+  // Clear the customer-facing projection first. If either boundary fails, the
+  // release remains blocked instead of allowing a stale Ultra-Thin ladder.
+  const trelloProjection = input.projectToTrello
+    ? await clearOwnedUltraThinOfferItemsProjection(input.card)
+    : null;
+  if (input.persist) {
+    await supersedeOwnedUltraThinSizeLadderDrafts(input.trelloCardIds);
+  }
+  return trelloProjection;
 }
 
 async function projectQuoteReadySizeLadderToTrello(card: TrelloCardData, result: QuoteReadySizeLadderPreflightResult) {
@@ -1666,13 +1909,14 @@ function quoteReadyPreflightStatus(input: {
 
 export function formatQuoteReadySizeLadderPreflightComment(result: QuoteReadySizeLadderPreflightResult) {
   const statusLabel = result.status === "ready" ? "READY" : result.status === "needs_review" ? "NEEDS REVIEW" : "BLOCKED";
+  const inputLabel = result.structureProductType === "ultra_thin" ? "Groessenangaben" : "Supplier-Anker";
   const lines = [
     QUOTE_READY_SIZE_LADDER_COMMENT_MARKER,
     `Quote ready Groessenleiter: ${statusLabel}`,
     result.sourceMockupCountsByDesign
       ? `Regel je Produkt: ${result.sourceMockupCountsByDesign.map((count, index) => `${index + 1}. ${count} Ausgangsmockup${count === 1 ? "" : "s"}`).join(" | ")}`
       : `Produkttyp: ${result.structureProductType} | Regel: ${result.sourceMockupsPerDesign} Ausgangsmockup${result.sourceMockupsPerDesign === 1 ? "" : "s"} = 1 Design`,
-    `Designs: ${result.expectedDesignCount} | Ausgangsmockups: ${result.sourceMockupCount} | Supplier-Anker: ${result.anchorCount}`,
+    `Designs: ${result.expectedDesignCount} | Ausgangsmockups: ${result.sourceMockupCount} | ${inputLabel}: ${result.anchorCount}`,
     result.anchorsPerDesign ? `Anker pro Design: ${result.anchorsPerDesign}` : null,
     result.designs.length ? "" : null,
     ...result.designs.map((design) => {
@@ -1737,6 +1981,15 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
     };
   }
 
+  if (structure.productType !== "ultra_thin") {
+    await retireOwnedUltraThinSizeLadderState({
+      card,
+      trelloCardIds: [canonicalTrelloCardId],
+      projectToTrello: input.projectToTrello !== false,
+      persist: input.persist === true,
+    });
+  }
+
   const sourceMockups = listQuoteReadySourceMockups(resolvedCard);
   const productStructures = mixedQuoteReadyProductStructures(resolvedCard.customFields || {});
   const sourceCounts = productStructures?.map((product) => product.sourceMockupsPerDesign);
@@ -1757,7 +2010,53 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
       })
     : groupQuoteReadySourceMockups(sourceMockups, structure.sourceMockupsPerDesign);
   const expectedDesignCount = sourceMockupGroups.length;
-  const indexedAnchors = extractIndexedTrelloAnchors(resolvedCard.customFields || {}, warnings);
+  const indexedAnchors = structure.productType === "ultra_thin"
+    ? []
+    : extractIndexedTrelloAnchors(resolvedCard.customFields || {}, warnings);
+  const indexedSizes = structure.productType === "ultra_thin"
+    ? extractIndexedTrelloSizes(resolvedCard.customFields || {})
+    : [];
+  const ultraThinSkipReason = structure.productType === "ultra_thin"
+    ? ultraThinManualReviewReason(resolvedCard, input.sourceText, indexedSizes)
+    : null;
+
+  if (ultraThinSkipReason) {
+    const skippedResult: QuoteReadySizeLadderPreflightResult = {
+      status: "ready",
+      skipReason: ultraThinSkipReason,
+      trelloCardId: canonicalTrelloCardId,
+      trelloCardUrl,
+      trelloCardName: trimNullable(card.name),
+      structureProductType: structure.productType,
+      sourceMockupsPerDesign: structure.sourceMockupsPerDesign,
+      sourceMockupCount: sourceMockups.length,
+      expectedDesignCount,
+      anchorCount: indexedSizes.length,
+      anchorsPerDesign: null,
+      issues: [],
+      warnings: [],
+      designs: [],
+      offerItemsJson: null,
+      trelloComment: [
+        QUOTE_READY_SIZE_LADDER_COMMENT_MARKER,
+        "Quote ready Groessenleiter: SKIPPED",
+        `Grund: ${ultraThinSkipReason}.`,
+      ].join("\n"),
+      trelloProjection: null,
+      commentProjection: input.commentToTrello === true ? { written: false, skipped: true } : null,
+    };
+    skippedResult.trelloProjection = await retireOwnedUltraThinSizeLadderState({
+      card,
+      trelloCardIds: [canonicalTrelloCardId],
+      projectToTrello: input.projectToTrello !== false,
+      persist: input.persist === true,
+    });
+    return skippedResult;
+  }
+
+  const indexedInputs: Array<OfferSizeLadderIndexedAnchorInput | OfferSizeLadderIndexedSizeInput> = structure.productType === "ultra_thin"
+    ? indexedSizes
+    : indexedAnchors;
   const customerFactor = getFactorOverride(resolvedCard.customFields || {}) ?? input.customerFactor;
 
   if (!sourceMockups.length) issues.push("source_mockups_missing");
@@ -1775,12 +2074,12 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   )) {
     issues.push("mixed_product_source_assignment_ambiguous");
   }
-  if (!indexedAnchors.length) issues.push("supplier_anchor_fields_missing");
-  if (expectedDesignCount && indexedAnchors.length < expectedDesignCount) {
-    issues.push("anchor_count_below_design_count");
+  if (!indexedInputs.length) issues.push(structure.productType === "ultra_thin" ? "size_fields_missing" : "supplier_anchor_fields_missing");
+  if (expectedDesignCount && indexedInputs.length < expectedDesignCount) {
+    issues.push(structure.productType === "ultra_thin" ? "size_count_below_design_count" : "anchor_count_below_design_count");
   }
-  if (expectedDesignCount && indexedAnchors.length > 0 && indexedAnchors.length % expectedDesignCount !== 0) {
-    warnings.push("anchor_count_not_evenly_divisible_by_design_count");
+  if (expectedDesignCount && indexedInputs.length > 0 && indexedInputs.length % expectedDesignCount !== 0) {
+    warnings.push(structure.productType === "ultra_thin" ? "size_count_not_evenly_divisible_by_design_count" : "anchor_count_not_evenly_divisible_by_design_count");
   }
   if (productStructures && (
     indexedAnchors.length !== 2
@@ -1790,8 +2089,8 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   }
 
   const designs: QuoteReadySizeLadderPreflightDesign[] = [];
-  const anchorGroups = expectedDesignCount && indexedAnchors.length >= expectedDesignCount
-    ? distributeAnchorGroups(indexedAnchors, expectedDesignCount)
+  const anchorGroups = expectedDesignCount && indexedInputs.length >= expectedDesignCount
+    ? distributeAnchorGroups(indexedInputs, expectedDesignCount)
     : [];
 
   for (let index = 0; index < anchorGroups.length; index += 1) {
@@ -1800,7 +2099,18 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
     const designStructure = productStructures?.[index] || structure;
     const sourceMockup = sourceMockupGroup[0];
     if (!sourceMockup || sourceMockupGroup.length !== designStructure.sourceMockupsPerDesign || !group.length) continue;
-    const anchors = normalizeExtractedAnchorRoles(group.map(({ fieldIndex: _fieldIndex, ...anchor }) => anchor));
+    const anchors = structure.productType === "ultra_thin"
+      ? [...group]
+          .sort((left, right) => Math.max(left.widthCm, left.heightCm) - Math.max(right.widthCm, right.heightCm))
+          .flatMap((size, sizeIndex) => {
+            const configured = configuredUltraThinAnchorsForSize(size);
+            // Like Neon, keep further entered non-grid anchors as selectable sizes.
+            return sizeIndex === 0 ? configured : configured.slice(0, 1);
+          })
+      : normalizeExtractedAnchorRoles(
+        (group as OfferSizeLadderIndexedAnchorInput[]).map(({ fieldIndex: _fieldIndex, ...anchor }) => anchor),
+      );
+    if (!anchors.length) continue;
     const fieldIndexes = group.map((anchor) => anchor.fieldIndex);
     const sourceText = sourceTextForAnchorGroup({
       card: resolvedCard,
@@ -1814,7 +2124,9 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
           resolvedCard.customFields || {}, index + 1, kind,
         )).filter(Boolean).join("\n")
       : sourceText;
-    const productModel = (productStructures ? null : input.productModel)
+    const productModel = structure.productType === "ultra_thin"
+      ? "acryl_light_box"
+      : (productStructures ? null : input.productModel)
       || productModelForQuoteReadyStructure(designStructure, productSourceText);
     const designId = `design_${index + 1}`;
     const sizeLadder = await generateOfferSizeLadder({
@@ -1824,9 +2136,14 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
       offerItemId: input.offerItemId,
       designId,
       productModel,
+      pricingProfile: structure.productType === "ultra_thin" ? ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE : null,
       sourceText,
-      stepCm: input.stepCm,
-      maxLongSideCm: input.maxLongSideCm,
+      stepCm: structure.productType === "ultra_thin"
+        ? ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS[1].longSideCm - ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS[0].longSideCm
+        : input.stepCm,
+      maxLongSideCm: structure.productType === "ultra_thin"
+        ? ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_LONG_SIDE_CM
+        : input.maxLongSideCm,
       customerFactor,
       createdBy: input.createdBy,
       persist: input.persist === true,
@@ -1867,9 +2184,9 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
     ...(sourceCounts ? { sourceMockupCountsByDesign: sourceCounts } : {}),
     sourceMockupCount: sourceMockups.length,
     expectedDesignCount,
-    anchorCount: indexedAnchors.length,
-    anchorsPerDesign: expectedDesignCount && indexedAnchors.length >= expectedDesignCount
-      ? Math.floor(indexedAnchors.length / expectedDesignCount)
+    anchorCount: indexedInputs.length,
+    anchorsPerDesign: expectedDesignCount && indexedInputs.length >= expectedDesignCount
+      ? Math.floor(indexedInputs.length / expectedDesignCount)
       : null,
     issues,
     warnings,
@@ -1884,6 +2201,15 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
     result.offerItemsJson = publicOfferItemsForQuoteReadyPreflight(resolvedCard, result);
   }
   result.trelloComment = formatQuoteReadySizeLadderPreflightComment(result);
+
+  if (structure.productType === "ultra_thin" && status === "blocked") {
+    result.trelloProjection = await retireOwnedUltraThinSizeLadderState({
+      card,
+      trelloCardIds: [canonicalTrelloCardId],
+      projectToTrello: input.projectToTrello !== false,
+      persist: input.persist === true,
+    });
+  }
 
   if (input.projectToTrello !== false && result.offerItemsJson && status !== "blocked") {
     try {
@@ -1934,7 +2260,7 @@ export function classifyManualReleaseSizeLadderPreflight(
   preflight: QuoteReadySizeLadderPreflightResult,
 ): Pick<ManualReleaseSizeLadderResult, "decision" | "reason" | "productModels" | "technicalIssues" | "ignoredReviewWarnings"> {
   const productModels = [...new Set(preflight.designs.map((design) => design.productModel))];
-  if (preflight.skipReason === "trello_label_no_size_ladder") {
+  if (preflight.skipReason) {
     return {
       decision: "skipped",
       reason: preflight.skipReason,
@@ -1955,7 +2281,7 @@ export function classifyManualReleaseSizeLadderPreflight(
       };
     }
   }
-  if (preflight.structureProductType !== "neon") {
+  if (preflight.structureProductType !== "neon" && preflight.structureProductType !== "ultra_thin") {
     return {
       decision: "skipped",
       reason: "special_product_uses_existing_offer_flow",
@@ -1964,8 +2290,10 @@ export function classifyManualReleaseSizeLadderPreflight(
       ignoredReviewWarnings: preflight.warnings,
     };
   }
-  const supportedNeonModels: OfferSizeLadderProductModel[] = ["neonflex", "uv_print", "outdoor"];
-  if (productModels.some((model) => !supportedNeonModels.includes(model))) {
+  const supportedModels: OfferSizeLadderProductModel[] = preflight.structureProductType === "ultra_thin"
+    ? ["acryl_light_box"]
+    : ["neonflex", "uv_print", "outdoor"];
+  if (productModels.some((model) => !supportedModels.includes(model))) {
     if (productModels.includes("unknown")) {
       return {
         decision: "blocked",
@@ -1987,9 +2315,16 @@ export function classifyManualReleaseSizeLadderPreflight(
   const technicalIssues = [...preflight.issues];
   if (
     preflight.expectedDesignCount > 1
-    && preflight.warnings.includes("anchor_count_not_evenly_divisible_by_design_count")
+    && (
+      preflight.warnings.includes("anchor_count_not_evenly_divisible_by_design_count")
+      || preflight.warnings.includes("size_count_not_evenly_divisible_by_design_count")
+    )
   ) {
-    technicalIssues.push("anchor_count_not_evenly_divisible_by_design_count");
+    technicalIssues.push(
+      preflight.structureProductType === "ultra_thin"
+        ? "size_count_not_evenly_divisible_by_design_count"
+        : "anchor_count_not_evenly_divisible_by_design_count",
+    );
   }
   for (const warning of preflight.warnings) {
     if (/larger_but_cheaper_than/i.test(warning)) technicalIssues.push(warning);
@@ -2033,22 +2368,42 @@ export async function ensureManualReleaseSizeLadder(
     commentToTrello: false,
   });
   const classification = classifyManualReleaseSizeLadderPreflight(quoteReadySizeLadder);
+  const canonicalTrelloCardId = quoteReadySizeLadder.trelloCardId;
   let offerItemsProjected = false;
   let optionCount = 0;
+
+  if (
+    quoteReadySizeLadder.structureProductType !== "ultra_thin"
+    || classification.decision !== "ready"
+  ) {
+    quoteReadySizeLadder.trelloProjection = await retireOwnedUltraThinSizeLadderState({
+      card,
+      trelloCardIds: [canonicalTrelloCardId, trelloCardId],
+      projectToTrello: input.projectToTrello !== false,
+      persist: input.persist !== false,
+    });
+  }
 
   if (classification.decision === "ready" && input.persist !== false) {
     for (const design of quoteReadySizeLadder.designs) {
       design.sizeLadder.persisted = await persistOfferSizeLadder({
-        trelloCardId,
+        trelloCardId: canonicalTrelloCardId,
         trelloCardUrl: quoteReadySizeLadder.trelloCardUrl,
         offerId: input.offerId,
         offerItemId: input.offerItemId,
         designId: design.designId,
         productModel: design.productModel,
+        pricingProfile: quoteReadySizeLadder.structureProductType === "ultra_thin"
+          ? ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE
+          : null,
         sourceText: input.sourceText,
         anchors: design.sizeLadder.anchorList,
-        stepCm: input.stepCm,
-        maxLongSideCm: input.maxLongSideCm,
+        stepCm: quoteReadySizeLadder.structureProductType === "ultra_thin"
+          ? ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS[1].longSideCm - ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS[0].longSideCm
+          : input.stepCm,
+        maxLongSideCm: quoteReadySizeLadder.structureProductType === "ultra_thin"
+          ? ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_LONG_SIDE_CM
+          : input.maxLongSideCm,
         customerFactor: design.sizeLadder.customerFactor,
         createdBy: input.createdBy,
         persist: false,
@@ -2088,7 +2443,7 @@ export async function ensureManualReleaseSizeLadder(
   return {
     ...classification,
     manuallyApproved: true,
-    trelloCardId,
+    trelloCardId: canonicalTrelloCardId,
     structureProductType: quoteReadySizeLadder.structureProductType,
     offerItemsProjected,
     optionCount,
@@ -2341,6 +2696,7 @@ async function persistOfferSizeLadder(input: OfferSizeLadderGenerateInput, resul
     metadata: {
       model_key: OFFER_SIZE_LADDER_MODEL_KEY,
       model_version: OFFER_SIZE_LADDER_MODEL_VERSION,
+      pricing_profile: input.pricingProfile || null,
       option_count: result.options.length,
       supplier_anchor_count: result.anchorList.length,
       supplier_anchor_roles: result.anchorList.map((anchor) => anchor.role),
@@ -2517,13 +2873,22 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   const trelloCardId = normalizeTrelloCardIdentifier(input.trelloCardId);
   if (!trelloCardId) throw new QuoteValidationError("Trello Card ID fehlt.");
 
+  const isConfiguredUltraThin = input.pricingProfile === ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE;
   const allAnchors = normalizeAnchorList(input.anchors);
   const anchors = anchorsByRole(allAnchors);
   const sortedByArea = [...allAnchors].sort((a, b) => a.areaCm2 - b.areaCm2);
   const sourceText = [input.sourceText, ...allAnchors.map((anchor) => anchor.rawText)].filter(Boolean).join("\n");
   const productModel = input.productModel || detectOfferSizeLadderProductModel(sourceText);
-  const stepCm = requiredPositiveNumber("Schrittweite", input.stepCm || 10);
-  const maxLongSideCm = requiredPositiveNumber("Maximale Laengsseite", input.maxLongSideCm || 250);
+  const stepCm = requiredPositiveNumber(
+    "Schrittweite",
+    isConfiguredUltraThin
+      ? ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS[1].longSideCm - ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS[0].longSideCm
+      : input.stepCm || 10,
+  );
+  const maxLongSideCm = requiredPositiveNumber(
+    "Maximale Laengsseite",
+    isConfiguredUltraThin ? ULTRA_THIN_ACRYLIC_LIGHTBOX_MAX_LONG_SIDE_CM : input.maxLongSideCm || 250,
+  );
   const customerFactor = requiredPositiveNumber("Customer Faktor", input.customerFactor || OFFER_SIZE_LADDER_CUSTOMER_FACTOR);
   const issues: string[] = [];
   const warnings: string[] = [];
@@ -2531,7 +2896,7 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   if (Math.abs(customerFactor - OFFER_SIZE_LADDER_CUSTOMER_FACTOR) > 0.001) {
     warnings.push("customer_factor_differs_from_current_2_3_policy");
   }
-  if (allAnchors.length === 1) {
+  if (allAnchors.length === 1 && !isConfiguredUltraThin) {
     warnings.push("single_supplier_anchor_pricing_curve_low_confidence");
   }
   if (anchors.max_250.longSideCm < maxLongSideCm - 15) {
@@ -2541,7 +2906,12 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   }
   if (new Set(allAnchors.map((anchor) => anchor.currency)).size > 1) warnings.push("anchor_currencies_differ");
   if (productModel === "uv_print" || productModel === "outdoor") warnings.push(`${productModel}_requires_manual_review`);
-  if (["three_d", "full_glow", "acryl_light_box", "unsupported"].includes(productModel)) issues.push(`${productModel}_not_supported_for_neonflex_ladder`);
+  if (isConfiguredUltraThin && productModel !== "acryl_light_box") {
+    issues.push("ultra_thin_pricing_profile_product_model_mismatch");
+  }
+  if (["three_d", "full_glow", "unsupported"].includes(productModel) || (productModel === "acryl_light_box" && !isConfiguredUltraThin)) {
+    issues.push(`${productModel}_not_supported_for_neonflex_ladder`);
+  }
   if (productModel === "unknown") warnings.push("product_model_unknown");
 
   for (let index = 0; index < allAnchors.length - 1; index += 1) {
@@ -2549,12 +2919,12 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   }
 
   const baseConfidence = (() => {
-    let score = productModel === "neonflex" ? 0.88 : productModel === "unknown" ? 0.62 : 0.52;
+    let score = isConfiguredUltraThin ? 0.82 : productModel === "neonflex" ? 0.88 : productModel === "unknown" ? 0.62 : 0.52;
     const anchorConfidenceValues = allAnchors.map((anchor) => anchor.confidence).filter((value): value is number => Number.isFinite(value));
     if (anchorConfidenceValues.length) {
       score = Math.min(score, anchorConfidenceValues.reduce((sum, value) => sum + value, 0) / anchorConfidenceValues.length);
     }
-    if (allAnchors.length === 1) score -= 0.22;
+    if (allAnchors.length === 1 && !isConfiguredUltraThin) score -= 0.22;
     score -= warnings.length * 0.05;
     score -= issues.length * 0.2;
     return roundConfidence(score);
@@ -2562,7 +2932,12 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   const largestSupplierAnchorLongSide = anchors.max_250.longSideCm;
   const longSides = ladderLongSides(anchors.minimum.longSideCm, maxLongSideCm, stepCm, allAnchors.map((anchor) => anchor.longSideCm));
   let options = longSides.map<OfferSizeLadderOption>((longSideCm, index) => {
-    const exactAnchor = allAnchors.find((anchor) => Math.abs(anchor.longSideCm - longSideCm) < 0.5);
+    // Nearby entered sizes must not replace an exact configured price (149.9/150).
+    const exactTolerance = isConfiguredUltraThin ? 0.001 : 0.5;
+    const exactAnchor = allAnchors.find((anchor) => Math.abs(anchor.longSideCm - longSideCm) < exactTolerance);
+    const configuredTier = isConfiguredUltraThin
+      ? ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS.find((tier) => Math.abs(tier.longSideCm - longSideCm) < 0.001) || null
+      : null;
     const dimensions = exactAnchor || optionDimensionsForLongSide(anchors.minimum, longSideCm);
     const widthCm = roundDimension(dimensions.widthCm);
     const heightCm = roundDimension(dimensions.heightCm);
@@ -2574,7 +2949,7 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
     const optionWarnings = [...warnings];
     if (longSideCm > 200) optionWarnings.push("long_side_over_200cm_requires_review");
     if (longSideCm > largestSupplierAnchorLongSide + 0.5) optionWarnings.push("extrapolated_beyond_largest_supplier_anchor");
-    if (allAnchors.length === 1 && !exactAnchor) optionWarnings.push("single_anchor_estimated_size");
+    if (allAnchors.length === 1 && !exactAnchor && !isConfiguredUltraThin) optionWarnings.push("single_anchor_estimated_size");
     const reviewStatus: OfferSizeLadderReviewStatus = optionIssues.length
       ? "blocked"
       : optionWarnings.length
@@ -2600,14 +2975,22 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
       reviewStatus,
       reviewReason: optionIssues[0] || optionWarnings[0] || null,
       issues: optionIssues.length ? optionIssues : optionWarnings,
-      isDefault: Math.abs(longSideCm - anchors.minimum.longSideCm) < 0.5,
+      isDefault: Math.abs(longSideCm - anchors.minimum.longSideCm) < exactTolerance,
       sortOrder: index,
       metadata: {
         exact_anchor_role: exactAnchor?.role || null,
         supplier_anchor_count: allAnchors.length,
-        single_anchor_estimate: allAnchors.length === 1 && !exactAnchor,
+        single_anchor_estimate: allAnchors.length === 1 && !exactAnchor && !isConfiguredUltraThin,
         extrapolated_beyond_largest_anchor: longSideCm > largestSupplierAnchorLongSide + 0.5,
         pricing_basis: "new_supplier_direct_2_6",
+        pricing_profile: input.pricingProfile || null,
+        configured_supplier_total_usd: configuredTier?.totalSupplierCostUsd ?? null,
+        configured_supplier_cost_corridor_usd: configuredTier
+          ? [configuredTier.corridorMinUsd, configuredTier.corridorMaxUsd]
+          : null,
+        configured_evidence: configuredTier?.evidence ?? null,
+        ...(isConfiguredUltraThin ? { configured_guidance_only: longSideCm > 100 } : {}),
+        supplier_total_includes_supplier_shipping: isConfiguredUltraThin,
       },
     };
   });
