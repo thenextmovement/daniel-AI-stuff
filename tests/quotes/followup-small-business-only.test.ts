@@ -11,7 +11,7 @@ test("changes only the private weekend predicate in the exact live cadence funct
   const next = migration.match(/new_block constant text := \$new\$([\s\S]*?)\$new\$/)?.[1];
   assert.ok(old?.includes("resolved_segment = 'NT-8'"));
   assert.equal(next, "      false as weekend_allowed,");
-  assert.match(migration, /7b81bf6b3fa457e4cc0974b2f948ae9d/);
+  assert.match(migration, /0e01a0bf2b507621985304cbfe8da46f/);
   assert.match(migration, /replace\(before_definition, old_block, new_block\)/);
   assert.doesNotMatch(migration, /\b(?:update|insert into|delete from|drop function|create table)\b/i);
 });
@@ -27,8 +27,8 @@ test("refuses a concurrent delivery or unexpected source/permissions change", ()
 });
 
 test("rollback is exact and does not revive any queue entries", () => {
-  assert.match(rollback, /7d26968effd57fce22fa23d884d8f1db/);
-  assert.match(rollback, /7b81bf6b3fa457e4cc0974b2f948ae9d/);
+  assert.match(rollback, /363a2d172fb8934ddb9f190b8311c092/);
+  assert.match(rollback, /0e01a0bf2b507621985304cbfe8da46f/);
   assert.match(rollback, /status = 'processing'/);
   assert.doesNotMatch(rollback, /\b(?:update|insert into|delete from|drop function|create table)\b/i);
 });

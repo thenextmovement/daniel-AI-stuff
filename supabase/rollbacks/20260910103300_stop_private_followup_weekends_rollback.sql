@@ -18,7 +18,7 @@ begin
     raise exception using errcode = '55000', message = 'followup_cadence_missing';
   end if;
   current_definition := pg_get_functiondef(target);
-  if md5(current_definition) <> '7d26968effd57fce22fa23d884d8f1db' then
+  if md5(current_definition) <> '363a2d172fb8934ddb9f190b8311c092' then
     raise exception using errcode = '55000', message = 'followup_cadence_rollback_source_drift';
   end if;
   if exists (select 1 from public.followup_delivery_attempts where status = 'processing') then
@@ -26,7 +26,7 @@ begin
   end if;
   select proacl::text into before_acl from pg_proc where oid = target;
   restored_definition := replace(current_definition, old_block, new_block);
-  if md5(restored_definition) <> '7b81bf6b3fa457e4cc0974b2f948ae9d' then
+  if md5(restored_definition) <> '0e01a0bf2b507621985304cbfe8da46f' then
     raise exception using errcode = '55000', message = 'followup_cadence_rollback_diff';
   end if;
   execute restored_definition;

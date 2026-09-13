@@ -19,7 +19,7 @@ begin
     raise exception using errcode = '55000', message = 'followup_cadence_missing';
   end if;
   before_definition := pg_get_functiondef(target);
-  if md5(before_definition) <> '7b81bf6b3fa457e4cc0974b2f948ae9d' then
+  if md5(before_definition) <> '0e01a0bf2b507621985304cbfe8da46f' then
     raise exception using errcode = '55000', message = 'followup_cadence_source_drift';
   end if;
   if exists (select 1 from public.followup_delivery_attempts where status = 'processing') then
