@@ -60,6 +60,21 @@
 - `[im Code verifiziert; Veröffentlichung offen]` Die Neon-Größenleiter wird für diese Sonderproduktkombination nicht erzeugt oder projiziert. Nach vollständiger Quellen- und Ankerprüfung wird der vorhandene Angebotsweg verwendet. Explizite Dateinamen `Mockup_1_x` / `Mockup_2_x` müssen vollständig zur jeweiligen Produktgruppe passen; flache Altnamen behalten ihre geordnete Zuordnung. Fehlende/zusätzliche/duplizierte Ausgangsbilder und fehlende oder mehrdeutige Preisanker bleiben technische Blocker. Mehr als zwei Anker in einer gemischten Karte werden nicht geraten oder umverteilt.
 - `[im Code verifiziert]` Reine Neon-Karten und homogene Mehrgrößen-Anker behalten ihre vorhandene Gruppierung; eine fehlende Preisposition wird dadurch nicht ersetzt. Es ändern sich keine Preisformeln, Versandwege oder Datenbankschemas.
 
+## NEONTRIP Quote-ready: veraltete Ausgangsmockups (2026-09-15)
+
+- Die vorhandene Quellenauswahl vor Designzaehlung und Ankerzuordnung ignoriert
+  Ausgangsmockups, deren Datum mehr als 24 Stunden vor dem neuesten Ausgangsmockup
+  liegt. Das explizite Trello-Anhangsdatum hat Vorrang vor dem Object-ID-Zeitstempel,
+  insbesondere bei kopierten Karten. Unbekannte Daten und die exakte Grenze
+  bleiben erhalten. Ohne neueren Bildsatz veraltet ein Angebot nicht durch Zeitablauf.
+- Generierte KI-Bilder bestimmen den Zeitvergleich nicht. Produktgruppierung,
+  Preisanker und Preisformeln bleiben unveraendert. Echte fehlende Positionen
+  blockieren weiterhin. Die Regel gilt fuer Vorbereitung und manuelle Freigabe
+  ueber denselben bestehenden Pfad; sie loescht keine Trello-Anhaenge.
+- Der Offers-Import verwendet denselben 24-Stunden-Vergleich; die engere
+  30-Minuten-Auswahl einzelner n8n-Update-Worker wird hier nicht ausgeweitet.
+  Lokale Regression: `tests/quotes/offer-size-ladder.test.ts`.
+
 ## Nicht getroffene Entscheidungen
 
 - `[offen]` Ob private Kunden automatisch fünf Minuten nach Annahme einen Shopify-Bezahllink erhalten sollen, ist technisch und fachlich nicht abschließend geregelt.

@@ -93,6 +93,7 @@ export type QuoteTotals = {
 
 export type TrelloAttachment = {
   id: string;
+  date?: string;
   name?: string;
   fileName?: string;
   url?: string;

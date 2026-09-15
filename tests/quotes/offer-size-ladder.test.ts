@@ -30,6 +30,61 @@ import {
 import { OpsOfferApiError } from "../../src/lib/ops/offers";
 import { DEFAULT_PRICE_FACTOR } from "../../src/lib/quotes/pricing";
 import { hasNoSizeLadderLabel, NO_SIZE_LADDER_TRELLO_LABEL } from "../../src/lib/quotes/trello";
+import type { TrelloCardData, TrelloAttachment } from "../../src/lib/quotes/types";
+
+test("update size ladder excludes source revisions older than 24 hours before counting designs", async () => {
+  for (const [name, product, currentNames] of [
+    ["UPDATE NEON 210cm", "LED Flex", ["mockup5433.jpg"]],
+    ["UPDATE 60cm 3D Frontlit", "3D Frontlit", ["mockup_0915_1156.jpg", "mockup_0915_1157.jpg"]],
+  ] as const) {
+    const card: TrelloCardData = {
+      id: "cardRevisionUpdate", idBoard: "board", name,
+      customFields: { Size_1: "210x126cm", Price_1: "835", Product_1: product },
+      attachments: [
+        // Copied Trello IDs are newer than the preserved attachment date.
+        { id: "6aa8c1f5e60dec767822829d", name: "mockup_0912_1001.jpg", date: "2026-09-12T02:05:00Z" },
+        { id: "6aa8c1f5e60dec76782282a6", name: "mockup_0912_1002.jpg", date: "2026-09-12T02:05:00Z" },
+        ...currentNames.map(name => ({ id: name, name, date: "2026-09-15T03:55:00Z" })),
+        { id: "late-generated", name: "mockup_0912_1001_ai_1.jpg", date: "2026-09-16T08:00:00Z" },
+      ],
+    };
+    const before = structuredClone(card);
+    const options = { persist: false, projectToTrello: false, commentToTrello: false };
+    const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard(card, options);
+    assert.equal(result.expectedDesignCount, 1);
+    assert.equal(result.sourceMockupCount, currentNames.length);
+    assert.deepEqual(result.designs[0]?.sourceMockupNames, currentNames);
+    assert.equal(result.issues.includes("anchor_count_below_design_count"), false);
+    assert.equal(result.issues.includes("anchor_count_not_evenly_divisible_by_design_count"), false);
+    const currentOnly = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+      ...card, attachments: card.attachments?.filter(a => currentNames.some(name => name === a.name)),
+    }, options);
+    assert.deepEqual(result, currentOnly);
+    assert.deepEqual(card, before);
+  }
+});
+
+test("size ladder source freshness preserves recent independent designs and missing date evidence", async () => {
+  const attachments: TrelloAttachment[] = [
+    { id: "oldest", name: "Mockup101.jpg", date: "2025-01-01T12:00:00Z" },
+    { id: "newest", name: "Mockup102.jpg", date: "2025-01-02T12:00:00Z" },
+    { id: "unknown", name: "Mockup103.jpg" },
+  ];
+  const card: TrelloCardData = {
+    id: "boundary", idBoard: "board", name: "LED Flex",
+    customFields: { Size_1: "100x60cm", Price_1: "300" }, attachments,
+  };
+  const options = { persist: false, projectToTrello: false, commentToTrello: false };
+  const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard(card, options);
+  assert.equal(result.sourceMockupCount, 3);
+  assert.ok(result.issues.includes("anchor_count_below_design_count"));
+  const later = await buildQuoteReadySizeLadderPreflightFromTrelloCard({
+    ...card, attachments: attachments.map(a => a.id === "newest" ? { ...a, date: "2025-01-02T12:00:00.001Z" } : a),
+  }, options);
+  assert.equal(later.sourceMockupCount, 2);
+  const onlyOld = await buildQuoteReadySizeLadderPreflightFromTrelloCard({ ...card, attachments: [attachments[0]!] }, options);
+  assert.equal(onlyOld.sourceMockupCount, 1);
+});
 
 test("recognizes the no-size-ladder Trello control label", () => {
   assert.equal(hasNoSizeLadderLabel([{ id: "label-1", name: NO_SIZE_LADDER_TRELLO_LABEL }]), true);

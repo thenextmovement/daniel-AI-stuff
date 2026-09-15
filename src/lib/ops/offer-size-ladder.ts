@@ -1452,10 +1452,25 @@ function sourceMockupSortValue(name: string) {
 }
 
 function listQuoteReadySourceMockups(card: TrelloCardData) {
-  return (card.attachments || [])
+  const sources = (card.attachments || [])
     .map((attachment) => ({ name: trelloAttachmentName(attachment), attachment }))
     .filter((entry) => isQuoteReadySourceMockupName(entry.name))
     .sort((left, right) => sourceMockupSortValue(left.name) - sourceMockupSortValue(right.name) || left.name.localeCompare(right.name, "de"));
+  const createdAt = (source: typeof sources[number]) => {
+    const explicit = Date.parse(source.attachment.date || "");
+    if (Number.isFinite(explicit)) return explicit;
+    const id = source.attachment.id;
+    return /^[0-9a-f]{24}$/i.test(id) ? parseInt(id.slice(0, 8), 16) * 1000 : null;
+  };
+  const times = sources.map(createdAt).filter((time): time is number => time !== null);
+  if (!times.length) return sources;
+  // Match the Offers import and mockup worker's 24-hour revision rule.
+  // Undated sources and the newest source batch remain visible indefinitely.
+  const cutoff = Math.max(...times) - 24 * 60 * 60 * 1000;
+  return sources.filter(source => {
+    const time = createdAt(source);
+    return time === null || time >= cutoff;
+  });
 }
 
 type QuoteReadyOfferStructure = {
