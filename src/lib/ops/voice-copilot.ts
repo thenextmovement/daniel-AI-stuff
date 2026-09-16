@@ -498,7 +498,7 @@ export function buildVoiceCopilotTranscriptionSession(modelInput: unknown) {
     type: "transcription",
     audio: {
       input: {
-        transcription: { model, language: "de", delay: "low" },
+        transcription: { model, ...(model==="gpt-live-transcribe"?{languages:["de"]}:{language:"de"}), delay: "low" },
         turn_detection: null,
       },
     },

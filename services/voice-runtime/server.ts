@@ -1,4 +1,5 @@
 import {BrowserPhoneCalls,TwilioPhoneProvider,browserCallingReady,browserPhoneControlReady,phoneWebhookParameters} from "./phone-calls.js";
+import {PhoneCaptures,TwilioCaptureProvider,installPhoneCapture,phoneCaptureReady} from "./phone-capture.js";
 import {RuntimePhoneTransfers} from "./phone-transfer-controller.js";
 import { browserPhoneReady, browserPhoneToken } from "./phone-token.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -15,6 +16,7 @@ const config = loadRuntimeConfig();
 const ops = new OpsClient(config);
 const browserCalls = browserPhoneControlReady(config) ? new BrowserPhoneCalls(config,ops,new TwilioPhoneProvider(config)) : null;
 const phoneTransfers=browserCalls?new RuntimePhoneTransfers(config,ops,call=>browserCalls.closeRecorded(call)):null;
+const phoneCaptures=browserCalls?new PhoneCaptures(ops,new TwilioCaptureProvider(config),()=>phoneCaptureReady(config)):null;
 const telephony = config.providerReadiness.telephony ? (config.transport === "media_streams" ? new TwilioMediaAdapter(config) : new TwilioSipAdapter(config)) : null;
 const realtime = config.providerReadiness.openAi ? new OpenAiLiveAdapter(config, ops) : null;
 let mediaStopping = false;
@@ -218,7 +220,7 @@ const server = createServer(async (request, response) => {
         service: "neontrip-voice-runtime",
         commit: config.commitSha,
         ready: config.providerReadiness.dispatch,
-        browserPhone: {tokens:browserPhoneReady(config),calls:browserCallingReady(config)},
+        browserPhone: {tokens:browserPhoneReady(config),calls:browserCallingReady(config),transcription:phoneCaptureReady(config)},
         providers: {
           openAi: config.providerReadiness.openAi,
           telephony: config.providerReadiness.telephony,
@@ -240,6 +242,15 @@ const server = createServer(async (request, response) => {
       const transferred=url.pathname.endsWith("/conference") && await phoneTransfers!.conference(callId,params);
       if(!transferred)await browserCalls.event(callId,url.pathname.endsWith("/conference")?"conference":"customer",params);
       return json(response,200,{ok:true});
+    }
+    if(request.method==="POST" && url.pathname==="/phone/capture") {
+      if(!bearerMatches(request.headers.authorization,config.dispatchToken))return json(response,401,{ok:false,error:"unauthorized"});
+      if(!phoneCaptures)return json(response,503,{ok:false,error:"phone_capture_unavailable"});
+      let input:Record<string,unknown>;
+      try{input=JSON.parse(await rawBody(request,2048));}catch{return json(response,400,{ok:false,error:"invalid_capture_payload"});}
+      if(!input||typeof input!=="object"||Array.isArray(input)||typeof input.captureId!=="string"||!/^[a-f0-9-]{36}$/i.test(input.captureId))return json(response,422,{ok:false,error:"invalid_capture_id"});
+      await phoneCaptures.kick(input.captureId);
+      return json(response,202,{ok:true});
     }
     if(request.method==="POST" && url.pathname==="/phone/transfer") {
       if(!bearerMatches(request.headers.authorization,config.dispatchToken))return json(response,401,{ok:false,error:"unauthorized"});
@@ -329,11 +340,13 @@ const reconcilePhone=async()=>{
   if(!browserCalls || reconcilingPhone)return;
   reconcilingPhone=true;
   try{
-    const results=await Promise.allSettled([browserCalls.reconcile(),phoneTransfers!.reconcile()]);
+    const results=await Promise.allSettled([browserCalls.reconcile(),phoneTransfers!.reconcile(),phoneCaptures!.reconcile()]);
     if(results.some(result=>result.status==="rejected"))console.warn("browser phone recovery unavailable");
   }finally{reconcilingPhone=false;}
 };
 const phoneRecoveryTimer=browserCalls?setInterval(()=>void reconcilePhone(),20000):null;
+
+const stopPhoneCapture=installPhoneCapture(server,config,ops,phoneCaptures);
 
 const stopMedia = config.transport === "media_streams" && realtime && telephony
   ? installTwilioMedia(server, config, ops, realtime)
@@ -348,12 +361,11 @@ server.listen(config.port, "0.0.0.0", () => {
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
     if(phoneRecoveryTimer)clearInterval(phoneRecoveryTimer);
-    if (!stopMedia || !realtime) return server.close(() => process.exit(0));
     if (mediaStopping) return;
     mediaStopping = true;
     const httpClosed = new Promise<void>(resolve => server.close(() => resolve()));
-    void Promise.all([httpClosed, realtime.shutdownMedia()]).finally(() => {
-      stopMedia();
+    void Promise.all([httpClosed, stopPhoneCapture(), realtime?.shutdownMedia()]).finally(() => {
+      stopMedia?.();
       process.exit(0);
     });
   });

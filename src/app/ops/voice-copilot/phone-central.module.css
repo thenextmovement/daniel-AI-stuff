@@ -686,3 +686,16 @@
  .transferIncoming .actions, .transferPanel .actions { width: 100%; }
  .phoneTeamMember { flex-wrap: wrap; }
 }
+
+.phoneTranscript { margin: 0 0 1.5rem; padding: 1.2rem; border: 1px solid #dde5e0; border-radius: 14px; background: #fbfdfb; }
+.phoneTranscriptTitle { display:flex; justify-content:space-between; align-items:baseline; gap:1rem; flex-wrap:wrap; }
+.phoneTranscriptTitle h3 { margin:0 0 .8rem; }
+.phoneTranscriptTitle span { font-size:.8rem; color:#367257; }
+.phoneTranscriptConsent { display:grid; gap:.8rem; margin:.4rem 0 1rem; }
+.phoneTranscriptConsent label { display:flex; gap:.65rem; align-items:flex-start; font-size:.85rem; line-height:1.5; }
+.phoneTranscriptConsent input { flex:0 0 auto; margin-top:.3rem; }
+.phoneTranscriptConsent button { justify-self:start; }
+.phoneTranscriptLines { max-height:360px; overflow:auto; list-style:none; padding:0; margin:1rem 0; }
+.phoneTranscriptLines li { border-top:1px solid #e5ebe7; padding:.85rem 0; }
+.phoneTranscriptLines li div { display:flex; gap:.6rem; flex-wrap:wrap; font-size:.75rem; color:#6b7280; }
+.phoneTranscriptLines li p { margin:.35rem 0 0; line-height:1.55; overflow-wrap:anywhere; }
