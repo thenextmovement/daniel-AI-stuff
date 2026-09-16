@@ -5,6 +5,7 @@ import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
+import { OpsAppSwitcher } from "../ops-app-switcher";
 
 type CustomerResult = {
   requestId: string;
@@ -47,6 +48,7 @@ export function PhoneCentral(props: Props) {
   const [device, setDevice] = useState("app");
   const [notice, setNotice] = useState("");
   const selection = useRef(0);
+  const settingsRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     const controller = new AbortController();
     if (query.trim().length < 2) {
@@ -55,6 +57,8 @@ export function PhoneCentral(props: Props) {
       setError("");
       return;
     }
+    setResults([]);
+    setError("");
     setLoading(true);
     const timer = window.setTimeout(async () => {
       try {
@@ -64,6 +68,7 @@ export function PhoneCentral(props: Props) {
           { cache: "no-store", signal: controller.signal },
         );
         const data = await response.json();
+        if (controller.signal.aborted) return;
         if (!response.ok)
           throw new Error("Die Kundensuche ist gerade nicht erreichbar.");
         setResults(data.results || []);
@@ -114,16 +119,28 @@ export function PhoneCentral(props: Props) {
   const lastCall = selected?.recentCalls?.[0];
   const lastMail = selected?.outlook[0];
   return (
+    <div className={styles.page}>
     <main className={styles.shell}>
       <header className={styles.top}>
+        <div className={styles.brandrow}>
         <a className={styles.brand} href="/ops">
           NEONTRIP
         </a>
         <span className={styles.breadcrumb}>Ops / Telefonzentrale</span>
         <span className={styles.spacer} />
-        <a className={styles.small} href="#voice-settings">
+        <a
+          className={styles.small}
+          href="#voice-settings"
+          onClick={() => {
+            if (settingsRef.current) settingsRef.current.open = true;
+          }}
+        >
           Einstellungen
         </a>
+        </div>
+        <div className={styles.navigation}>
+          <OpsAppSwitcher active="voiceCopilot" tone="light" />
+        </div>
       </header>
       <div className={styles.titlebar}>
         <h1>Telefonzentrale</h1>
@@ -214,13 +231,14 @@ export function PhoneCentral(props: Props) {
                     : "")
                 }
                 disabled={busy}
+                aria-pressed={selected?.requestId === customer.requestId}
                 onClick={() => void select(customer.requestId)}
               >
                 <strong>
                   {customer.company || customer.displayName || "Kontakt"}
                 </strong>
                 <span>
-                  {customer.company ? customer.displayName + " · " : ""}
+                  {customer.company && customer.displayName ? customer.displayName + " · " : ""}
                   {customer.phone || "Keine Telefonnummer hinterlegt"}
                 </span>
                 <span>{customer.email}</span>
@@ -526,10 +544,11 @@ export function PhoneCentral(props: Props) {
           </div>
         </div>
       </div>
-      <details id="voice-settings" className={styles.admin}>
+      <details ref={settingsRef} id="voice-settings" className={styles.admin}>
         <summary>Einstellungen &amp; Wissen</summary>
         <div className="mt-6">{props.settings}</div>
       </details>
     </main>
+    </div>
   );
 }
