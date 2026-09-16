@@ -7,6 +7,7 @@ import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
 import { OpsAppSwitcher } from "../ops-app-switcher";
 import { useBrowserPhone } from "./use-browser-phone";
+import { PhoneTranscriptPanel } from "./phone-transcript-panel";
 import { PhoneTransferPanel } from "./phone-transfer-panel";
 import { PhoneAccount } from "./phone-account";
 import type { PhoneTeamMember, PhoneIdentity } from "@/lib/ops/voice-phone-contract";
@@ -203,7 +204,7 @@ export function PhoneCentral(props: Props) {
       {phoneIdentity?.browserCallingAvailable ? <section className={styles.browserPhoneBar} aria-label="Browser-Telefon">
         <div><strong>{browserPhone.call ? (browserPhone.call.cleanupPending ? "Anruf wird beendet …" :
           browserPhone.transfer ? "Gesprächsübergabe" : browserPhone.call.connected ? "Im Gespräch" : browserPhone.call.state==="ringing" ? "Es klingelt beim Angerufenen …" : "Anruf wird verbunden …") : "Browser-Telefon · Pilot"}</strong>
-          <p className={styles.small}>{browserPhone.call ? browserPhone.call.phone : "Nur freigegebene Testnummern. In diesem Pilot wird noch kein Gesprächstranskript erstellt."}</p>
+          <p className={styles.small}>{browserPhone.call ? browserPhone.call.phone : "Nur freigegebene Testnummern. Eine Mitschrift startest du nach bestätigter Absprache."}</p>
         </div>
         {browserPhone.call ? <div className={styles.actions}>
           <button type="button" className={styles.button} aria-pressed={browserPhone.muted} onClick={browserPhone.mute}>{browserPhone.muted?"Mikrofon einschalten":"Stummschalten"}</button>
@@ -380,6 +381,7 @@ export function PhoneCentral(props: Props) {
           </section>
           <div className={styles.detailgrid}>
             <section className={styles.conversation} aria-label="Gespräch">
+              <PhoneTranscriptPanel call={browserPhone.call} recipientConsultation={browserPhone.transfer?.role==="recipient"&&!browserPhone.transfer.ownerAdopted}/>
               {notice ? (
                 <p className={styles.notice} role="status">
                   {notice}

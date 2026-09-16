@@ -10,6 +10,7 @@ import { technicalOutcome } from "./outcomes.js";
 export function installTwilioMedia(server: Server, config: RuntimeConfig, ops: OpsClient, live: OpenAiLiveAdapter) {
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 128000, perMessageDeflate: false });
   server.on("upgrade", (request, socket, head) => {
+    if (["/media/phone", "/media/phone/"].includes((request.url || "").split("?")[0])) return;
     const signature = request.headers["x-twilio-signature"];
     if (!validateMediaUpgrade({
       method: request.method, path: request.url, signature: typeof signature === "string" ? signature : undefined,

@@ -20,7 +20,7 @@ export function getVoiceCopilotSuggestionModel() {
 }
 
 export function getVoiceCopilotTranscriptionModel() {
-  return String(process.env.VOICE_COPILOT_TRANSCRIPTION_MODEL || "gpt-realtime-whisper").trim();
+  return String(process.env.VOICE_COPILOT_TRANSCRIPTION_MODEL || "gpt-live-transcribe").trim();
 }
 
 export function isVoiceLiveCopilotEnabled() {

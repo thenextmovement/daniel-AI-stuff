@@ -198,6 +198,7 @@ test("transcription session is text-only and uses manual turn commits", () => {
   const session = buildVoiceCopilotTranscriptionSession("gpt-realtime-whisper");
   assert.equal(session.type, "transcription");
   assert.equal(session.audio.input.transcription.model, "gpt-realtime-whisper");
+  assert("language" in session.audio.input.transcription);
   assert.equal(session.audio.input.transcription.language, "de");
   assert.equal(session.audio.input.turn_detection, null);
   assert.equal("output" in session.audio, false);
@@ -231,7 +232,7 @@ test("voice OpenAI configuration accepts the existing Ops aliases", () => {
     assert.equal(getVoiceOpenAiApiKey(), "ops-test-key");
     assert.equal(getVoiceCopilotExtractionModel(), "ops-test-model");
     assert.equal(getVoiceCopilotSuggestionModel(), "ops-test-model");
-    assert.equal(getVoiceCopilotTranscriptionModel(), "gpt-realtime-whisper");
+    assert.equal(getVoiceCopilotTranscriptionModel(), "gpt-live-transcribe");
     assert.equal(isVoiceLiveCopilotEnabled(), true);
   } finally {
     if (originalOpenAiKey === undefined) delete env.OPENAI_API_KEY;
@@ -323,4 +324,10 @@ test("voice copilot is exposed in ops navigation", () => {
   const source = readFileSync("src/app/ops/ops-app-switcher.tsx", "utf8");
   assert.match(source, /Voice Copilot/);
   assert.match(source, /\/ops\/voice-copilot/);
+});
+
+test("current live transcription uses the supported language list",()=>{
+ const session=buildVoiceCopilotTranscriptionSession("gpt-live-transcribe");
+ assert.deepEqual(session.audio.input.transcription,{model:"gpt-live-transcribe",languages:["de"],delay:"low"});
+ assert.equal(session.audio.input.turn_detection,null);
 });

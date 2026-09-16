@@ -327,3 +327,15 @@ Weiter offen bleiben externe eingehende Anrufe, mobile Teilnahme, menschliche
 Audiotranskription, Integration mit T293 und der freigegebene kontrollierte
 Telefon-Ende-zu-Ende-Test. Dieser Abschnitt beschreibt einen Entwicklungsstand,
 keine bereits aktivierte Telefonanlage.
+
+## Menschliche Mitschrift im Browser-Pilot (T295)
+
+Die optionale Mitschrift braucht `VOICE_PHONE_TRANSCRIPTION_ENABLED=true` in Ops und Runtime sowie die Mitarbeiter-, Browsercall-, Transfer- und Capture-Migrationen. Die Capture-Migration setzt die bereits vorhandene `voice_transcript_history` voraus. Es werden keine produktiven Profile, Codes, Providerressourcen oder Anrufe durch die Migration angelegt. Alle Telefonie-Freigaben bleiben standardmäßig aus.
+
+Der aktuelle Besitzer des verbundenen Gesprächs bestätigt die Absprache zur Transkription und Speicherung, bevor Ops eine dauerhafte Capture-Reservierung anlegt. Ein atomarer Startanspruch verhindert doppelte Streams; ein unklarer Anbieter-Start wird nicht wiederholt. Die Runtime startet einen unidirektionalen Twilio-Stream mit beiden Tracks der gespeicherten Kunden-Call-Leg. Signierter WebSocket, Account, HMAC, Capture-ID, Call-SID und einmalige Stream-Bindung werden vor Modellstart geprüft. Die KI-Stimme bleibt GPT-Live 1. Menschliche Mitschriften verwenden GPT-Live-Transcribe mit zwei getrennten Transkriptionsverbindungen.
+
+Inbound ist der Kunde, outbound ist die beim Kunden hörbare Gegenseite (auch Ansagen/Haltemedien können darin vorkommen). Es werden keine individuellen Mitarbeiternamen aus dem Ton erraten. Private Rücksprache ist nicht Teil des Kunden-Audiotracks. Zeitangaben stammen aus Audioabschnitten, nicht aus Wortzeitstempeln des Modells. Teiltexte werden als vorläufig gespeichert; endgültige Fassungen bleiben unveränderlich. Kundenzuordnung, Datum und Gesprächs-ID bleiben bei Weitergaben erhalten. Der neue Gesprächsbesitzer kann die Mitschrift sehen/stoppen; der ehemalige Besitzer verliert die persönliche Live-Steuerung.
+
+Mitschriftfehler beenden keine Telefonverbindung. Unvollständige Modellantworten, Speicherausfälle und verwaiste Captures werden als unterbrochen gekennzeichnet. Ein Neustart der Mitschrift verdeckt vorherige Lücken nicht. Anbieter-Cleanup wird erst nach bestätigtem Streamstopp quittiert; ein nicht auffindbarer Stream bei weiterhin lebendem Anruf bleibt zur Prüfung offen. Über den internen Runtime-Pfad gespeicherte Herzschläge verhindern, dass veraltete Recovery-Beobachtungen eine aktive Mitschrift beenden.
+
+Die Oberfläche zeigt gespeicherte Beiträge, Status und Start/Stop mit Absprachebestätigung. Die Live-Ansicht enthält die letzten 100 Beiträge. Pilotgespräche bleiben als `internal_test` von der regulären Kundenhistorie getrennt. Diese Umsetzung ist noch kein Nachweis für produktive Placetel-Audioerfassung, Mobiltelefonie oder einen echten OpenAI-/Twilio-Anruf: Anbieterfreischaltung, echte Audioqualität, Ein-/Ausfalltests und Rahims kontrollierter Pilot stehen aus. Der neue Transkriptions-API-Vertrag wurde anhand offizieller Dokumentation umgesetzt und lokal simuliert, noch nicht mit dem produktiven OpenAI-Projekt bestätigt.
