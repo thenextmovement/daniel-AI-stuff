@@ -6,6 +6,7 @@ export type VoiceTool = {
 };
 
 export type RuntimeSession = {
+  providerCallId?: string | null;
   attemptId: string;
   requestId: string;
   allowlistOnly: boolean;
