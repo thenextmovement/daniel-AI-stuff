@@ -6,6 +6,8 @@ import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
 import { OpsAppSwitcher } from "../ops-app-switcher";
+import { PhoneAccount } from "./phone-account";
+import type { PhoneTeamMember } from "@/lib/ops/voice-phone-contract";
 
 import type { VoiceDirectoryContact } from "@/lib/ops/voice-directory";
 import { dialPhoneNumber, readPhoneCentralResponse } from "./phone-central-data";
@@ -37,6 +39,7 @@ function initials(value: string) {
 export function PhoneCentral(props: Props) {
   const { selected, busy } = props;
   const [query, setQuery] = useState("");
+  const [phoneTeam,setPhoneTeam] = useState<PhoneTeamMember[]>([]);
   const [results, setResults] = useState<VoiceDirectoryContact[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -164,16 +167,7 @@ export function PhoneCentral(props: Props) {
       <div className={styles.titlebar}>
         <h1>Telefonzentrale</h1>
         <span className={styles.spacer} />
-        <label>
-          <span className="sr-only">Mitarbeiter</span>
-          <input
-            className={styles.device}
-            value={props.operatorName}
-            disabled={busy}
-            placeholder="Dein Name"
-            onChange={(e) => props.onOperatorNameChange(e.target.value)}
-          />
-        </label>
+        <PhoneAccount value={props.operatorName} onChange={props.onOperatorNameChange} busy={busy} onTeam={setPhoneTeam}/>
         <span className={styles.connectionState}><span />{busy ? "Begleitung aktiv" : "Telefon-App"}</span>
       </div>
       <div className={styles.layout}>
@@ -242,6 +236,16 @@ export function PhoneCentral(props: Props) {
           <div className={styles.providerNote}>
             <Phone size={16}/><p><strong>Telefon-App auf diesem Gerät</strong>Placetel ist noch nicht mit dem CRM verbunden. Annehmen und Übernehmen folgen mit dem Anschluss.</p>
           </div>
+          {phoneTeam.length ? <section className={styles.phoneTeam} aria-label="Telefonteam">
+            <h3>Dein Team</h3>
+            {phoneTeam.map(member=><div className={styles.phoneTeamMember} key={member.id}>
+              <span className={styles.contactAvatar}>{initials(member.displayName)}</span>
+              <div><strong>{member.displayName}</strong><p className={styles.small}>
+                {member.extension?"Nebenstelle "+member.extension+" · ":""}
+                {member.presence==="available"?"Bereit":member.presence==="away"?"Abwesend":"Telefon offline"}
+              </p></div>
+            </div>)}
+          </section>:null}
           <section className={styles.team}>
             <div className={styles.sectionhead}>
               <h3>Im Gespräch</h3>

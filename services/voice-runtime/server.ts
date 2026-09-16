@@ -1,3 +1,4 @@
+import { browserPhoneReady, browserPhoneToken } from "./phone-token.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { loadRuntimeConfig } from "./config.js";
 import { OpsClient } from "./ops-client.js";
@@ -194,6 +195,22 @@ const server = createServer(async (request, response) => {
           missing: config.providerReadiness.missing,
         },
       });
+    }
+    if (request.method === "POST" && url.pathname === "/phone/token") {
+      if (!bearerMatches(request.headers.authorization, config.dispatchToken)) return json(response, 401, { ok: false, error: "unauthorized" });
+      if (!browserPhoneReady(config)) return json(response,503,{ok:false,error:"browser_phone_not_configured"});
+      let input:Record<string,unknown>;
+      try {input=JSON.parse(await rawBody(request,2048));}
+      catch {return json(response,400,{ok:false,error:"invalid_phone_payload"});}
+      if(!input || typeof input!=="object" || Array.isArray(input))return json(response,422,{ok:false,error:"invalid_phone_identity"});
+      try {
+        const result=await browserPhoneToken(config,ops,input);
+        return json(response,200,{ok:true,...result});
+      } catch(error) {
+        if(error instanceof Error && ["invalid_phone_identity","phone_identity_not_current"].includes(error.message))
+          return json(response,403,{ok:false,error:"phone_identity_required"});
+        throw error;
+      }
     }
     if (request.method === "POST" && url.pathname === "/dispatch") {
       if (!bearerMatches(request.headers.authorization, config.dispatchToken)) return json(response, 401, { ok: false, error: "unauthorized" });
