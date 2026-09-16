@@ -4,9 +4,10 @@ import type {Call,Device} from "@twilio/voice-sdk";
 import type {PhoneIdentity} from "@/lib/ops/voice-phone-contract";
 import {readPhoneCentralResponse} from "./phone-central-data";
 
-export type BrowserCall = {id:string;state:string;phone:string;connected:boolean;endedAt:string|null;cleanupPending:boolean;isTest:boolean;customerId?:string|null;requestId?:string|null};
+export type BrowserCall = {id:string;state:string;direction?:"inbound"|"outbound";phone:string;connected:boolean;endedAt:string|null;cleanupPending:boolean;isTest:boolean;customerId?:string|null;requestId?:string|null};
 export type PhoneTransferView = {id:string;state:string;fromStaffId:string;toStaffId:string;call:BrowserCall;role:"source"|"recipient";fromName:string;toName:string;
  expiresAt:string;targetJoined:boolean;cancelRequested:boolean;ownerAdopted:boolean;endedAt:string|null;cleanupPending:boolean};
+export type IncomingPhoneView = {id:string;phone:string;displayName:string|null;customerId:string|null;requestId:string|null;expiresAt:string;state:string};
 export type PhoneDialTarget = {customerId?:string;requestId?:string|null;phone?:string};
 const terminal=(call:BrowserCall)=>!!call.endedAt && !call.cleanupPending;
 async function phoneJson<T>(path:string,body?:Record<string,unknown>):Promise<T> {
@@ -18,6 +19,8 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  const [registered,setRegistered]=useState(false),[working,setWorking]=useState(false);
  const [call,setCall]=useState<BrowserCall|null>(null),[muted,setMuted]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [transfer,setTransfer]=useState<PhoneTransferView|null>(null),[incoming,setIncoming]=useState<PhoneTransferView|null>(null);
+ const [externalIncoming,setExternalIncoming]=useState<IncomingPhoneView|null>(null);
+ const externalOffer=useRef<IncomingPhoneView|null>(null);
  const device=useRef<Device|null>(null),audioCall=useRef<Call|null>(null),active=useRef<BrowserCall|null>(null);
  const activeTransfer=useRef<PhoneTransferView|null>(null),offer=useRef<PhoneTransferView|null>(null);
  const generation=useRef(0),starting=useRef(false),polling=useRef(false),ending=useRef(false);
@@ -27,6 +30,10 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  function updateCall(value:BrowserCall|null) {active.current=value;setCall(value);}
  function updateTransfer(value:PhoneTransferView|null) {activeTransfer.current=value;setTransfer(value);}
  function updateOffer(value:PhoneTransferView|null) {offer.current=value;setIncoming(value);}
+ function updateExternalOffer(value:IncomingPhoneView|null) {
+  if(value&&value.id!==externalOffer.current?.id)setNotice("");
+  externalOffer.current=value;setExternalIncoming(value);
+ }
  function releaseAudio() {const old=audioCall.current;audioCall.current=null;old?.disconnect();setMuted(false);}
  function releaseCall() {releaseAudio();updateCall(null);request.current=null;ending.current=false;setWorking(false);}
  async function presence(online:boolean) {
@@ -39,11 +46,11 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   return ()=>{
    if(generation.current===currentGeneration)generation.current++;
    const old=device.current;device.current=null;audioCall.current=null;active.current=null;
-   activeTransfer.current=null;offer.current=null;old?.destroy();
+   activeTransfer.current=null;offer.current=null;externalOffer.current=null;old?.destroy();
   };
  },[profileId]);
  useEffect(()=>{
-  setRegistered(false);setWorking(false);setCall(null);setTransfer(null);setIncoming(null);setMuted(false);setError("");setNotice("");
+  setRegistered(false);setWorking(false);setCall(null);setTransfer(null);setIncoming(null);setExternalIncoming(null);setMuted(false);setError("");setNotice("");
   starting.current=false;ending.current=false;request.current=null;transferRequest.current=null;
  },[profileId]);
  useEffect(()=>{
@@ -92,14 +99,22 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[call?.id,transfer?.id]);
  useEffect(()=>{
-  if(!registered || call || transfer || otherBusy)return;
+  if(!registered || call || transfer || otherBusy){updateOffer(null);updateExternalOffer(null);return;}
   let stopped=false,running=false;const epoch=generation.current;
   const poll=async()=>{
-   if(running||active.current||activeTransfer.current)return;running=true;
+   if(running||starting.current||active.current||activeTransfer.current)return;running=true;
    try{
-    const data=await phoneJson<{incoming:PhoneTransferView[]}>("/transfers");
-    if(!stopped && epoch===generation.current && !active.current && !activeTransfer.current)updateOffer(data.incoming[0]||null);
-   }catch{if(!stopped)setError("Eingehende Übergaben können gerade nicht geprüft werden.");}
+    const [team,external]=await Promise.allSettled([
+     phoneJson<{incoming:PhoneTransferView[]}>("/transfers"),
+     phoneJson<{incoming:IncomingPhoneView[]}>("/incoming"),
+    ]);
+    if(!stopped && epoch===generation.current && !starting.current && !active.current && !activeTransfer.current){
+     if(team.status==="fulfilled")updateOffer(team.value.incoming[0]||null);
+     if(offer.current)updateExternalOffer(null);
+     else if(external.status==="fulfilled")updateExternalOffer(external.value.incoming[0]||null);
+     if(team.status==="rejected"||external.status==="rejected")setError("Eingehende Anrufe können gerade nicht vollständig geprüft werden.");
+    }
+   }catch{if(!stopped)setError("Eingehende Anrufe können gerade nicht geprüft werden.");}
    finally{running=false;}
   };
   void poll();const timer=window.setInterval(()=>void poll(),1500);
@@ -158,7 +173,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
    own.on("registered",()=>{if(device.current===own){setRegistered(true);setError("");}});
    own.on("unregistered",()=>{if(device.current===own){setRegistered(false);void presence(false);}});
    own.on("error",()=>{if(device.current===own)setError("Der Browser-Anschluss meldet eine Störung. Prüfe deine Verbindung.");});
-   // Team invitations use the bound Ops offer. Unknown provider calls are rejected.
+   // Incoming calls and team invitations use the bound Ops offer. Unknown provider calls are rejected.
    own.on("incoming",(incoming:Call)=>incoming.reject());
    own.on("tokenWillExpire",()=>{
     void phoneJson<{token:string}>("/token",{}).then(next=>{if(device.current===own)own.updateToken(next.token);})
@@ -171,7 +186,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   }finally{if(epoch===generation.current){starting.current=false;setWorking(false);}}
  }
  async function dial(target:PhoneDialTarget) {
-  if(!allowed||!registered||!device.current||starting.current||active.current||activeTransfer.current||offer.current||otherBusy)return;
+  if(!allowed||!registered||!device.current||starting.current||active.current||activeTransfer.current||offer.current||externalOffer.current||otherBusy)return;
   starting.current=true;setWorking(true);setError("");setNotice("");const epoch=generation.current;
   const signature=JSON.stringify(target);
   if(request.current?.target!==signature)request.current={key:crypto.randomUUID(),target:signature};
@@ -225,8 +240,38 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
    }
   }finally{if(epoch===generation.current){starting.current=false;setWorking(false);}}
  }
+ async function acceptIncoming() {
+  const current=externalOffer.current,own=device.current;
+  if(!current||!own||!registered||starting.current||active.current||activeTransfer.current||offer.current||otherBusy)return;
+  starting.current=true;setWorking(true);setError("");setNotice("");const epoch=generation.current;
+  try{
+   const result=await phoneJson<{call:BrowserCall}>("/incoming",{action:"accept",incomingId:current.id});
+   if(epoch!==generation.current)return;
+   if(result.call.id!==current.id||result.call.direction!=="inbound"||result.call.endedAt)throw Error("incoming_accept_unconfirmed");
+   updateCall(result.call);updateExternalOffer(null);
+   const sdkCall=await own.connect({params:{callId:result.call.id}});
+   if(epoch!==generation.current||(active.current as BrowserCall|null)?.id!==result.call.id){sdkCall.disconnect();return;}
+   attachAudio(sdkCall,result.call.id);
+  }catch{
+   if(epoch===generation.current){
+    setError("Der Anruf konnte noch nicht angenommen werden. Die Verfügbarkeit wird erneut geprüft.");
+    // A lost accept response can be retried with the same incoming ID.
+    if((active.current as BrowserCall|null)?.id===current.id)void finish();
+   }
+  }finally{if(epoch===generation.current){starting.current=false;setWorking(false);}}
+ }
+ async function declineIncoming() {
+  const current=externalOffer.current;
+  if(!current||starting.current)return;
+  starting.current=true;setWorking(true);setError("");const epoch=generation.current;
+  try{
+   await phoneJson("/incoming",{action:"decline",incomingId:current.id});
+   if(epoch===generation.current){updateExternalOffer(null);setNotice("Bei dir abgelehnt. Die anderen verfügbaren Mitarbeiter können weiterhin annehmen.");}
+  }catch{if(epoch===generation.current)setError("Das Ablehnen konnte noch nicht bestätigt werden.");}
+  finally{if(epoch===generation.current){starting.current=false;setWorking(false);}}
+ }
  function mute() {if(!audioCall.current)return;const next=!audioCall.current.isMuted();audioCall.current.mute(next);setMuted(next);}
  function sendDigits(value:string) {if(audioCall.current && /^[0-9*#]{1,32}$/.test(value))audioCall.current.sendDigits(value);}
- return {allowed,registered,working,call,muted,error,notice,transfer,incoming,enable,dial,finish,mute,sendDigits,beginTransfer,acceptTransfer,transferAction,
-  busy:!!call||!!transfer||!!incoming||working};
+ return {allowed,registered,working,call,muted,error,notice,transfer,incoming,externalIncoming,acceptIncoming,declineIncoming,enable,dial,finish,mute,sendDigits,beginTransfer,acceptTransfer,transferAction,
+  busy:!!call||!!transfer||!!incoming||!!externalIncoming||working};
 }

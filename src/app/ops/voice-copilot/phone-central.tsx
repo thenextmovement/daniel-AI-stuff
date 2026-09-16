@@ -95,7 +95,7 @@ export function PhoneCentral(props: Props) {
 
   // Adopt the persisted customer binding when joining another person's call.
   // Clear a previously selected customer before loading the incoming context.
-  const receivedCall = browserPhone.transfer?.role==="recipient" ? browserPhone.transfer.call : null;
+  const receivedCall = browserPhone.transfer?.role==="recipient" ? browserPhone.transfer.call : browserPhone.call?.direction==="inbound" ? browserPhone.call : null;
   const receivedId=useRef<string|null>(null);
   useEffect(()=>{
     if(!receivedCall || receivedId.current===receivedCall.id)return;
@@ -280,7 +280,7 @@ export function PhoneCentral(props: Props) {
                 {customerId:activeContact.customerId,requestId:activeContact.requestId}:{phone:freeDialPhone})}>Im Browser anrufen</button>:null}
             {freeDialPhone && !busy ? <a className={styles.button + " " + styles.primary + " " + styles.dialAction}
               href={"tel:" + freeDialPhone} onClick={appNotice}><Phone size={17}/>In Telefon-App anrufen</a> :
-              !browserPhone.call ? <button className={styles.button + " " + styles.primary + " " + styles.dialAction} disabled><Phone size={17}/>{busy?"Gespräch aktiv":"Nummer eingeben"}</button>:null}
+              !browserPhone.call ? <button className={styles.button + " " + styles.primary + " " + styles.dialAction} disabled><Phone size={17}/>{browserPhone.externalIncoming?"Eingehender Anruf":browserPhone.incoming?"Eingehende Übergabe":busy?"Gespräch aktiv":"Nummer eingeben"}</button>:null}
             {number && !freeDialPhone ? <p className={styles.small}>Bitte eine vollständige Telefonnummer eingeben.</p> : null}
           </section>}
           <div className={styles.providerNote}>

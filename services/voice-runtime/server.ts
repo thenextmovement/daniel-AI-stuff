@@ -1,5 +1,6 @@
 import {BrowserPhoneCalls,TwilioPhoneProvider,browserCallingReady,browserPhoneControlReady,phoneWebhookParameters} from "./phone-calls.js";
 import {PhoneCaptures,TwilioCaptureProvider,installPhoneCapture,phoneCaptureReady} from "./phone-capture.js";
+import {IncomingPhoneCalls,inboundPhoneReady} from "./phone-incoming.js";
 import {RuntimePhoneTransfers} from "./phone-transfer-controller.js";
 import { browserPhoneReady, browserPhoneToken } from "./phone-token.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -17,6 +18,7 @@ const ops = new OpsClient(config);
 const browserCalls = browserPhoneControlReady(config) ? new BrowserPhoneCalls(config,ops,new TwilioPhoneProvider(config)) : null;
 const phoneTransfers=browserCalls?new RuntimePhoneTransfers(config,ops,call=>browserCalls.closeRecorded(call)):null;
 const phoneCaptures=browserCalls?new PhoneCaptures(ops,new TwilioCaptureProvider(config),()=>phoneCaptureReady(config)):null;
+const incomingCalls=browserCalls&&phoneTransfers?new IncomingPhoneCalls(config,ops,browserCalls,phoneTransfers):null;
 const telephony = config.providerReadiness.telephony ? (config.transport === "media_streams" ? new TwilioMediaAdapter(config) : new TwilioSipAdapter(config)) : null;
 const realtime = config.providerReadiness.openAi ? new OpenAiLiveAdapter(config, ops) : null;
 let mediaStopping = false;
@@ -220,13 +222,22 @@ const server = createServer(async (request, response) => {
         service: "neontrip-voice-runtime",
         commit: config.commitSha,
         ready: config.providerReadiness.dispatch,
-        browserPhone: {tokens:browserPhoneReady(config),calls:browserCallingReady(config),transcription:phoneCaptureReady(config)},
+        browserPhone: {tokens:browserPhoneReady(config),calls:browserCallingReady(config),transcription:phoneCaptureReady(config),incoming:inboundPhoneReady(config)},
         providers: {
           openAi: config.providerReadiness.openAi,
           telephony: config.providerReadiness.telephony,
           missing: config.providerReadiness.missing,
         },
       });
+    }
+    if(request.method==="POST"&&["/phone/twilio/incoming","/phone/twilio/incoming/conference","/phone/twilio/incoming/end"].includes(url.pathname)){
+      if(!incomingCalls)return json(response,503,{ok:false,error:"incoming_not_configured"});
+      let params:URLSearchParams;
+      try{params=phoneWebhookParameters(config,url,request.headers["x-twilio-signature"] as string|undefined,await rawBody(request,16000));}
+      catch{return json(response,401,{ok:false,error:"invalid_phone_signature"});}
+      if(url.pathname.endsWith("/conference")){await incomingCalls.conference(url.searchParams.get("id")||"",params);return json(response,200,{ok:true});}
+      const xml=url.pathname.endsWith("/end")?await incomingCalls.end(url.searchParams.get("id")||"",params):await incomingCalls.receive(params);
+      response.writeHead(200,{"content-type":"text/xml","cache-control":"no-store"});response.end(xml);return;
     }
     if (request.method==="POST" && ["/phone/twilio/client","/phone/twilio/conference","/phone/twilio/customer"].includes(url.pathname)) {
       if(!browserCalls)return json(response,503,{ok:false,error:"browser_calling_not_configured"});
@@ -340,7 +351,7 @@ const reconcilePhone=async()=>{
   if(!browserCalls || reconcilingPhone)return;
   reconcilingPhone=true;
   try{
-    const results=await Promise.allSettled([browserCalls.reconcile(),phoneTransfers!.reconcile(),phoneCaptures!.reconcile()]);
+    const results=await Promise.allSettled([browserCalls.reconcile(),phoneTransfers!.reconcile(),phoneCaptures!.reconcile(),incomingCalls!.reconcile()]);
     if(results.some(result=>result.status==="rejected"))console.warn("browser phone recovery unavailable");
   }finally{reconcilingPhone=false;}
 };
