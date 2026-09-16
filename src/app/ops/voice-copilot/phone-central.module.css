@@ -660,3 +660,11 @@
 .phoneTeamMember{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:14px}
 .phoneTeamMember p{margin:3px 0 0}
 @media(max-width:600px){.phoneAccount{min-width:0;width:100%}.phoneAccountBody{position:relative;top:8px;width:100%;margin-bottom:14px}.phoneAccountSummary{width:100%}}
+
+.browserPhoneBar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px; padding:18px 24px; background:#eef7f2; border-top:1px solid #d9e8df; border-bottom:1px solid #d9e8df; }
+.browserPhoneBar p { margin:5px 0 0; }
+.browserPhoneBar > [role="alert"] { flex-basis:100%; }
+.callDigits { position:relative; }
+.callDigits summary { cursor:pointer; padding:12px; border:1px solid #dce4df; border-radius:12px; background:white; }
+.callDigits > div { position:absolute; top:100%; right:0; min-width:220px; padding:12px; background:white; border:1px solid #dce4df; border-radius:12px; box-shadow:0 12px 28px #25382a20; z-index:4; }
+@media(max-width:600px) { .browserPhoneBar { padding:16px; } .browserPhoneBar .actions { width:100%; } .callDigits > div { left:0; right:auto; } }

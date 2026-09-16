@@ -6,8 +6,9 @@ import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
 import { OpsAppSwitcher } from "../ops-app-switcher";
+import { useBrowserPhone } from "./use-browser-phone";
 import { PhoneAccount } from "./phone-account";
-import type { PhoneTeamMember } from "@/lib/ops/voice-phone-contract";
+import type { PhoneTeamMember, PhoneIdentity } from "@/lib/ops/voice-phone-contract";
 
 import type { VoiceDirectoryContact } from "@/lib/ops/voice-directory";
 import { dialPhoneNumber, readPhoneCentralResponse } from "./phone-central-data";
@@ -37,7 +38,10 @@ function initials(value: string) {
     .toLocaleUpperCase("de");
 }
 export function PhoneCentral(props: Props) {
-  const { selected, busy } = props;
+  const { selected } = props;
+  const [phoneIdentity,setPhoneIdentity]=useState<PhoneIdentity|null>(null);
+  const browserPhone=useBrowserPhone(phoneIdentity,props.busy);
+  const busy=props.busy||browserPhone.busy;
   const [query, setQuery] = useState("");
   const [phoneTeam,setPhoneTeam] = useState<PhoneTeamMember[]>([]);
   const [results, setResults] = useState<VoiceDirectoryContact[]>([]);
@@ -167,9 +171,24 @@ export function PhoneCentral(props: Props) {
       <div className={styles.titlebar}>
         <h1>Telefonzentrale</h1>
         <span className={styles.spacer} />
-        <PhoneAccount value={props.operatorName} onChange={props.onOperatorNameChange} busy={busy} onTeam={setPhoneTeam}/>
-        <span className={styles.connectionState}><span />{busy ? "Begleitung aktiv" : "Telefon-App"}</span>
+        <PhoneAccount value={props.operatorName} onChange={props.onOperatorNameChange} busy={busy} onTeam={setPhoneTeam} onIdentity={setPhoneIdentity}/>
+        <span className={styles.connectionState}><span />{browserPhone.registered ? "Browser verbunden" : props.busy ? "Begleitung aktiv" : "Telefon-App"}</span>
       </div>
+      {phoneIdentity?.browserCallingAvailable ? <section className={styles.browserPhoneBar} aria-label="Browser-Telefon">
+        <div><strong>{browserPhone.call ? (browserPhone.call.cleanupPending ? "Anruf wird beendet …" :
+          browserPhone.call.connected ? "Im Gespräch" : browserPhone.call.state==="ringing" ? "Es klingelt beim Angerufenen …" : "Anruf wird verbunden …") : "Browser-Telefon · Pilot"}</strong>
+          <p className={styles.small}>{browserPhone.call ? browserPhone.call.phone : "Nur freigegebene Testnummern. In diesem Pilot wird noch kein Gesprächstranskript erstellt."}</p>
+        </div>
+        {browserPhone.call ? <div className={styles.actions}>
+          <button type="button" className={styles.button} aria-pressed={browserPhone.muted} onClick={browserPhone.mute}>{browserPhone.muted?"Mikrofon einschalten":"Stummschalten"}</button>
+          <details className={styles.callDigits}><summary>Wahltasten im Gespräch</summary><div className={styles.keypad}>
+            {["1","2","3","4","5","6","7","8","9","*","0","#"].map(digit=><button type="button" key={digit} onClick={()=>browserPhone.sendDigits(digit)}>{digit}</button>)}
+          </div></details>
+          <button type="button" className={styles.button} onClick={()=>void browserPhone.finish()}>Auflegen</button>
+        </div> : <button type="button" className={styles.button} disabled={!browserPhone.allowed||browserPhone.working||browserPhone.registered||props.busy}
+          onClick={()=>void browserPhone.enable()}>{browserPhone.registered?"Browser bereit":browserPhone.working?"Verbindet …":"Browser-Telefon verbinden"}</button>}
+        {browserPhone.error?<p className={styles.searchError} role="alert">{browserPhone.error}</p>:null}
+      </section>:null}
       <div className={styles.layout}>
         <aside className={styles.left} aria-label="Kundensuche und Team">
           <div className={styles.panelTabs} aria-label="Telefonbereich">
@@ -228,9 +247,12 @@ export function PhoneCentral(props: Props) {
               <button type="button" aria-label="Letzte Ziffer löschen" disabled={busy || !number}
                 onClick={() => changeNumber(number.slice(0,-1))}><Delete size={21}/></button>
             </div>
+            {browserPhone.allowed && freeDialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary+" "+styles.dialAction}
+              disabled={busy||!browserPhone.registered} onClick={()=>void browserPhone.dial(activeContact?
+                {customerId:activeContact.customerId,requestId:activeContact.requestId}:{phone:freeDialPhone})}>Im Browser anrufen</button>:null}
             {freeDialPhone && !busy ? <a className={styles.button + " " + styles.primary + " " + styles.dialAction}
               href={"tel:" + freeDialPhone} onClick={appNotice}><Phone size={17}/>In Telefon-App anrufen</a> :
-              <button className={styles.button + " " + styles.primary + " " + styles.dialAction} disabled><Phone size={17}/>Nummer eingeben</button>}
+              !browserPhone.call ? <button className={styles.button + " " + styles.primary + " " + styles.dialAction} disabled><Phone size={17}/>{busy?"Gespräch aktiv":"Nummer eingeben"}</button>:null}
             {number && !freeDialPhone ? <p className={styles.small}>Bitte eine vollständige Telefonnummer eingeben.</p> : null}
           </section>}
           <div className={styles.providerNote}>
@@ -242,7 +264,7 @@ export function PhoneCentral(props: Props) {
               <span className={styles.contactAvatar}>{initials(member.displayName)}</span>
               <div><strong>{member.displayName}</strong><p className={styles.small}>
                 {member.extension?"Nebenstelle "+member.extension+" · ":""}
-                {member.presence==="available"?"Bereit":member.presence==="away"?"Abwesend":"Telefon offline"}
+                {browserPhone.call && member.id===phoneIdentity?.profile?.id?"Im Gespräch":member.presence==="available"?"Bereit":member.presence==="away"?"Abwesend":"Telefon offline"}
               </p></div>
             </div>)}
           </section>:null}
@@ -258,8 +280,8 @@ export function PhoneCentral(props: Props) {
                     : initials(props.operatorName || "Du")}
                 </span>
                 <div>
-                  <strong>{name}</strong>
-                  <div className={styles.small}>{props.status}</div>
+                  <strong>{browserPhone.call && !customer ? browserPhone.call.phone : name}</strong>
+                  <div className={styles.small}>{browserPhone.call ? browserPhone.call.cleanupPending?"Wird beendet …":browserPhone.call.connected?"Im Gespräch":"Verbindet …" : props.status}</div>
                 </div>
                 <ChevronRight size={19} />
               </div>
@@ -277,7 +299,7 @@ export function PhoneCentral(props: Props) {
                 {customer ? initials(name) : <Phone size={23} />}
               </span>
               <div>
-                <h2>{name}</h2>
+                <h2>{browserPhone.call && !customer ? browserPhone.call.phone : name}</h2>
                 <p>
                   {customer
                     ? [
@@ -286,7 +308,7 @@ export function PhoneCentral(props: Props) {
                       ]
                         .filter(Boolean)
                         .join(" · ")
-                    : "Kontakt auswählen oder links eine Nummer wählen."}
+                    : browserPhone.call ? "Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}
                 </p>
               </div>
             </div>
@@ -297,6 +319,8 @@ export function PhoneCentral(props: Props) {
               </span>
             ) : null}
             <div className={styles.actions}>
+              {browserPhone.allowed && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
+                disabled={busy||!browserPhone.registered} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId})}>Im Browser anrufen</button>:null}
               {customer && dialPhone && !busy ? (
                 <a className={styles.button + " " + styles.primary} href={"tel:" + dialPhone} onClick={appNotice}>
                   <Phone size={17} />In Telefon-App anrufen

@@ -47,6 +47,8 @@ export function loadRuntimeConfig() {
     openAiWebhookSecret: optional("OPENAI_WEBHOOK_SECRET"),
     openAiProjectId: optional("OPENAI_PROJECT_ID"),
     sipBindingSecret: optional("VOICE_SIP_BINDING_SECRET"),
+    browserCallsEnabled: optional("VOICE_BROWSER_CALLS_ENABLED")==="true",
+    phoneAllowedNumbers: optional("VOICE_PHONE_ALLOWED_NUMBERS").split(",").map(x=>x.trim()).filter(x=>/^[+][1-9][0-9]{6,14}$/.test(x)),
     teamPhoneEnabled: optional("VOICE_TEAM_PHONE_ENABLED")==="true",
     twilioApiKeySid: optional("TWILIO_API_KEY_SID"),
     twilioApiKeySecret: optional("TWILIO_API_KEY_SECRET"),

@@ -38,7 +38,7 @@ export async function getPhoneRuntimeDevice(deviceId:unknown,staffId:unknown) {
   return {deviceId:current.device.id,staffId:current.staff.id,expiresAt:current.device.expires_at};
 }
 export async function readPhoneIdentity(request: NextRequest): Promise<PhoneIdentity> {
-  const empty: PhoneIdentity = {enabled:isPhoneEnabled(),profile:null,device:null,team:[],personalAccessAvailable:false};
+  const empty: PhoneIdentity = {enabled:isPhoneEnabled(),browserCallingAvailable:isPhoneEnabled() && process.env.VOICE_BROWSER_CALLS_ENABLED==="true" && !!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim(),profile:null,device:null,team:[],personalAccessAvailable:false};
   if (!empty.enabled) return empty;
   const [current,email,staff,devices] = await Promise.all([
     currentPhoneDevice(),verifiedPhoneEmail(request),
