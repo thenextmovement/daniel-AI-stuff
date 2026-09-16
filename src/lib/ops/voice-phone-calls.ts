@@ -5,7 +5,7 @@ import {requireVoiceUuid,normalizePhoneE164} from "./voice-platform-contract";
 import {loadVoiceContextRecord} from "./voice-context-record";
 import type {PhoneCallRecord,PhoneEventResult} from "../../../services/voice-runtime/phone-calls";
 
-const FIELDS="id,device_id,staff_id,phone,state,customer_id,request_id,agent_call_sid,customer_call_sid,conference_sid,customer_dispatch,agent_joined,customer_joined,created_at,updated_at,ended_at,cleanup_pending";
+const FIELDS="id,direction,device_id,staff_id,phone,state,customer_id,request_id,agent_call_sid,customer_call_sid,conference_sid,customer_dispatch,agent_joined,customer_joined,created_at,updated_at,ended_at,cleanup_pending";
 async function phoneRowRpc(name:string,args:Record<string,unknown>) {
  const row=await supabaseRequest<PhoneCallRecord>("rpc/"+name,{
   method:"POST",headers:{accept:"application/vnd.pgrst.object+json"},body:JSON.stringify(args),
@@ -61,7 +61,7 @@ export async function reservePhoneCall(input:Record<string,unknown>) {
  }
 }
 export function publicPhoneCall(call:PhoneCallRecord) {
- return {id:call.id,state:call.state,phone:call.phone,customerId:call.customer_id||null,requestId:call.request_id||null,startedAt:call.created_at,endedAt:call.ended_at,connected:call.customer_joined && !call.ended_at,cleanupPending:call.cleanup_pending,isTest:true};
+ return {id:call.id,direction:call.direction||"outbound",state:call.state,phone:call.phone,customerId:call.customer_id||null,requestId:call.request_id||null,startedAt:call.created_at,endedAt:call.ended_at,connected:call.agent_joined && call.customer_joined && !call.ended_at,cleanupPending:call.cleanup_pending,isTest:true};
 }
 export async function getPersonalPhoneCall(id:unknown) {
  const current=await requirePersonalPhone();

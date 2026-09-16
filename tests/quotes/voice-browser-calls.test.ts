@@ -130,3 +130,13 @@ test("a stale operator or recovery observation cannot close the adopted call",as
  assert.equal(f.closes,0);
  assert(!f.actions.some(x=>x.action==="cleanup"));
 });
+
+test("incoming browser joins require the inbound flag, and answered caller alone is not a connected public call",async()=>{
+ const p=new URLSearchParams({callId:id,From:"client:ntd_"+deviceId.replace(/-/g,""),CallSid:agent});
+ const enabled=fixture({direction:"inbound"},{...config,inboundPhoneEnabled:true});
+ assert.match(await enabled.engine.client(p),/<Conference/);
+ await assert.rejects(fixture({direction:"inbound"},{...config,inboundPhoneEnabled:false}).engine.client(p),/phone_call_forbidden/);
+ const {publicPhoneCall}=await import("../../src/lib/ops/voice-phone-calls");
+ assert.equal(publicPhoneCall(record({direction:"inbound",customer_joined:true,agent_joined:false})).connected,false);
+ assert.equal(publicPhoneCall(record({direction:"inbound",customer_joined:true,agent_joined:true})).connected,true);
+});

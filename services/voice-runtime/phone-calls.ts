@@ -4,7 +4,7 @@ import {browserPhoneReady} from "./phone-token.js";
 import {verifyTwilioSignature} from "./security.js";
 
 export type PhoneCallRecord = {
- id:string;device_id:string;staff_id:string;phone:string;state:string;customer_id?:string|null;request_id?:string|null;
+ id:string;device_id:string;staff_id:string;phone:string;state:string;direction?:"inbound"|"outbound";customer_id?:string|null;request_id?:string|null;
  agent_call_sid:string|null;customer_call_sid:string|null;conference_sid:string|null;
  customer_dispatch:string;agent_joined:boolean;customer_joined:boolean;
  created_at:string;updated_at:string;ended_at:string|null;cleanup_pending:boolean;
@@ -113,7 +113,7 @@ export class BrowserPhoneCalls {
   const hex=from.slice("client:ntd_".length),deviceId=hex.slice(0,8)+"-"+hex.slice(8,12)+"-"+hex.slice(12,16)+"-"+hex.slice(16,20)+"-"+hex.slice(20);
   const {call}=await this.ops.phoneCall("bind",{callId:id,deviceId,agentCallSid:sid});
   if(call.id!==id || call.device_id!==deviceId || call.agent_call_sid!==sid || call.ended_at ||
-   !this.config.phoneAllowedNumbers.includes(call.phone))throw Error("phone_call_forbidden");
+   !this.config.phoneAllowedNumbers.includes(call.phone) || (call.direction==="inbound"&&!this.config.inboundPhoneEnabled))throw Error("phone_call_forbidden");
   return phoneAgentTwiml(this.config,call);
  }
  async event(id:string,source:"conference"|"customer",params:URLSearchParams) {
@@ -172,7 +172,7 @@ export class BrowserPhoneCalls {
     if(call.ended_at){if(call.cleanup_pending)await this.closeRecorded(call);continue;}
     // Reservations have no provider side effect. All other abandoned setup
     // states close after 60s; an uncertain dispatch never triggers a second dial.
-    const abandoned=!call.customer_joined && Date.now()-Date.parse(call.created_at)>60000;
+    const abandoned=(!call.customer_joined||!call.agent_joined) && Date.now()-Date.parse(call.created_at)>60000;
     const ended=await this.provider.ended(call);
     let revoked=false;
     try{await this.ops.getPhoneDevice(call.device_id,call.staff_id);}catch(error){

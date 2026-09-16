@@ -14,7 +14,7 @@ export function PhoneTransferPanel({phone}:{phone:Phone}) {
  }
  useEffect(()=>()=>{void audio.current?.close();audio.current=null;},[]);
  useEffect(()=>{
-  if(!ringtone||!phone.incoming)return;
+  if(!ringtone||(!phone.incoming&&!phone.externalIncoming))return;
   const ring=()=>{
    const context=audio.current;if(!context||context.state!=="running")return;
    const oscillator=context.createOscillator(),gain=context.createGain();
@@ -25,12 +25,20 @@ export function PhoneTransferPanel({phone}:{phone:Phone}) {
    oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};
   };
   ring();const timer=window.setInterval(ring,3000);return ()=>window.clearInterval(timer);
- },[ringtone,phone.incoming?.id]);
+ },[ringtone,phone.incoming?.id,phone.externalIncoming?.id]);
  const t=phone.transfer,offer=phone.incoming;
  const locked=phone.working||t?.state==="committing"||!!t?.ownerAdopted||!!t?.cancelRequested||!!t?.endedAt;
  return <>
-  <div className={styles.phoneSound}><label><input type="checkbox" checked={ringtone} onChange={event=>void toggleSound(event.target.checked)}/> Klingelton für Übergaben</label>
+  <div className={styles.phoneSound}><label><input type="checkbox" checked={ringtone} onChange={event=>void toggleSound(event.target.checked)}/> Klingelton</label>
    {soundError?<span role="status">{soundError}</span>:null}</div>
+  {phone.externalIncoming?<section className={styles.transferIncoming} aria-label="Eingehender Anruf">
+   <div role="status"><span className={styles.transferDot}/><strong>Eingehender Anruf · {phone.externalIncoming.displayName||phone.externalIncoming.phone}</strong>
+    <p>{phone.externalIncoming.displayName?phone.externalIncoming.phone+" · ":""}{phone.externalIncoming.customerId?"Passender Kundenkontakt gefunden":"Rufnummer ohne eindeutige Kundenzuordnung"}</p></div>
+   <div className={styles.actions}>
+    <button type="button" className={styles.button+" "+styles.primary} disabled={phone.working} onClick={()=>void phone.acceptIncoming()}>Annehmen</button>
+    <button type="button" className={styles.button} disabled={phone.working} onClick={()=>void phone.declineIncoming()}>Ablehnen</button>
+   </div>
+  </section>:null}
   {offer?<section className={styles.transferIncoming} aria-label="Eingehende Übergabe">
    <div role="status"><span className={styles.transferDot}/><strong>{offer.fromName} möchte ein Gespräch weitergeben</strong><p>{offer.call.phone} · Erst Rücksprache mit dem Kollegen</p></div>
    <div className={styles.actions}>

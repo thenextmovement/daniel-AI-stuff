@@ -323,8 +323,8 @@ neue Person, mobilen Umbruch und unveränderte Ops-Cookie. Provider-Audio und
 Provider-Ereignisse sind in dieser Vorschau synthetisch. Kein echter Anruf
 oder produktiver Mitarbeiterdatensatz wurde angelegt.
 
-Weiter offen bleiben externe eingehende Anrufe, mobile Teilnahme, menschliche
-Audiotranskription, Integration mit T293 und der freigegebene kontrollierte
+Die nachfolgenden Abschnitte ergänzen Mitschrift und eingehende Anrufe. Offen
+bleiben mobile Teilnahme, KI-Übergabe und der freigegebene kontrollierte
 Telefon-Ende-zu-Ende-Test. Dieser Abschnitt beschreibt einen Entwicklungsstand,
 keine bereits aktivierte Telefonanlage.
 
@@ -339,3 +339,18 @@ Inbound ist der Kunde, outbound ist die beim Kunden hörbare Gegenseite (auch An
 Mitschriftfehler beenden keine Telefonverbindung. Unvollständige Modellantworten, Speicherausfälle und verwaiste Captures werden als unterbrochen gekennzeichnet. Ein Neustart der Mitschrift verdeckt vorherige Lücken nicht. Anbieter-Cleanup wird erst nach bestätigtem Streamstopp quittiert; ein nicht auffindbarer Stream bei weiterhin lebendem Anruf bleibt zur Prüfung offen. Über den internen Runtime-Pfad gespeicherte Herzschläge verhindern, dass veraltete Recovery-Beobachtungen eine aktive Mitschrift beenden.
 
 Die Oberfläche zeigt gespeicherte Beiträge, Status und Start/Stop mit Absprachebestätigung. Die Live-Ansicht enthält die letzten 100 Beiträge. Pilotgespräche bleiben als `internal_test` von der regulären Kundenhistorie getrennt. Diese Umsetzung ist noch kein Nachweis für produktive Placetel-Audioerfassung, Mobiltelefonie oder einen echten OpenAI-/Twilio-Anruf: Anbieterfreischaltung, echte Audioqualität, Ein-/Ausfalltests und Rahims kontrollierter Pilot stehen aus. Der neue Transkriptions-API-Vertrag wurde anhand offizieller Dokumentation umgesetzt und lokal simuliert, noch nicht mit dem produktiven OpenAI-Projekt bestätigt.
+
+
+## Eingehende Browser-Anrufe im Pilot (T295)
+
+Mit der Migration 20260917010000 und VOICE_PHONE_INBOUND_ENABLED=true in Ops und Runtime kann ein freigegebener Anrufer an einer freigegebenen Pilotnummer angenommen werden. VOICE_PHONE_INBOUND_NUMBERS enthält die gerufenen Nummern; VOICE_PHONE_ALLOWED_NUMBERS bleibt die Liste erlaubter Anrufer. Alle bisherigen Browser-Telefon-Voraussetzungen gelten weiter. Neue Schalter sind standardmäßig aus. Es werden keine Placetel- oder Twilio-Rufnummern automatisch umkonfiguriert.
+
+Ein signierter, kontogebundener POST an /phone/twilio/incoming legt den vorhandenen Anrufer in eine wartende Konferenz. Es wird kein zweiter Kundenanruf ausgelöst. Eingehende Konferenzereignisse einschließlich späterer Mitarbeiterübergaben laufen über /phone/twilio/incoming/conference; der Dial-Abschluss über /phone/twilio/incoming/end. Twilio verwendet die Callback-Einstellungen des ersten Konferenzteilnehmers, hier des Anrufers. Das ist bei einer späteren Provider-Einrichtung zu berücksichtigen.
+
+Ops sucht die Rufnummer im zentralen Kundenverzeichnis. Nur ein eindeutiger exakter Treffer aus einer vollständigen Suchseite wird automatisch zugeordnet; bei Mehrdeutigkeit oder fehlender Suche bleibt der Anruf ohne Kundenbindung. Die angezeigte Rufnummer authentifiziert keinen Kunden. Vor der Annahme sehen frisch registrierte, verfügbare Mitarbeiter den Anrufer mit optionalem Klingelton. Ablehnen betrifft nur die jeweilige Person. Die erste gültige Annahme reserviert Gespräch und Mitarbeiter atomar; ein verlorener HTTP-Antworttext kann mit derselben Anruf-ID erneut angefordert werden.
+
+Die bestehende Gesprächszeile entsteht erst bei der Annahme, mit unverändertem Session-/Kundenbezug und bereits vorhandenem Kunden-Leg. Der Browser verbindet ausschließlich sein geprüftes persönliches Gerät mit dieser Zeile. „Im Gespräch“ und der tatsächliche Gesprächsbeginn werden erst nach bestätigtem Mitarbeiterbeitritt gesetzt. Vorherige Kundenauswahl wird bei Annahme gelöscht und gegebenenfalls der fest gebundene Vorgang geladen. Mitschrift und Weitergabe verwenden anschließend die vorhandene Gesprächskette.
+
+Nicht angenommene Anrufe haben eine Wartefrist von 60 Sekunden, angenommene ohne Mitarbeiterbeitritt eine Verbindungsfrist von 30 Sekunden. Der periodische Recoverylauf beendet solche Anrufe beim Anbieter und bestätigt die Bereinigung danach. Verspätete Ereignisse dürfen beendete Anrufe nicht wieder öffnen. Ein ungültiges, widerrufenes, belegtes oder nicht mehr verfügbares Telefonprofil kann keinen Anruf übernehmen. Die Datenbank bewahrt unangenommene Anrufe mit Datum als abgebrochenen Pilotversuch; Wartezeit wird nicht als geführtes Kundengespräch dargestellt.
+
+Diese Entwicklung ersetzt noch keinen realen Provider-Test. Öffentliche Kundenannahme, mobile Teilnahme, KI-Übergabe, verteilte Runtime-Ausführung und die kontrollierte Prüfung mit Rahim sind weitere Schritte. Ohne aktivierte Konfiguration und Provider-Routing gehen weiterhin keine Anrufe über diesen neuen Pfad ein.
