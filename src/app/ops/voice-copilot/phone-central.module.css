@@ -699,3 +699,19 @@
 .phoneTranscriptLines li { border-top:1px solid #e5ebe7; padding:.85rem 0; }
 .phoneTranscriptLines li div { display:flex; gap:.6rem; flex-wrap:wrap; font-size:.75rem; color:#6b7280; }
 .phoneTranscriptLines li p { margin:.35rem 0 0; line-height:1.55; overflow-wrap:anywhere; }
+
+.phoneAdmin{margin:24px 0;border:1px solid #dce4df;border-radius:14px;padding:22px;background:#fff}
+.phoneAdminTitle{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.phoneAdminTitle h2{font-size:22px;margin:0}.phoneAdminTitle p{color:#697586;margin:6px 0 14px;font-size:14px}
+.phoneAdminGrid{display:grid;grid-template-columns:240px minmax(0,1fr);gap:28px;margin-top:20px}
+.phoneAdminGrid>*{min-width:0}.phoneAdminList{list-style:none;margin:16px 0;padding:0}
+.phoneAdminList button{width:100%;text-align:left;border:1px solid transparent;border-radius:10px;padding:12px;margin-bottom:6px;background:#f7f8fa;cursor:pointer}
+.phoneAdminList strong,.phoneAdminList span{display:block;overflow-wrap:anywhere}.phoneAdminList span{font-size:12px;color:#697586;margin-top:5px}
+.phoneAdminList .phoneAdminSelected{background:#edf7f1;border-color:#a9d4ba}
+.phoneAdminDetail h3{font-size:18px;margin:0 0 12px}.phoneAdminDetail form{max-width:540px}
+.phoneAdminCheck{display:flex;align-items:center;gap:8px;margin:16px 0;font-size:14px}
+.phoneAdminPart{border-top:1px solid #e4e8ed;margin-top:26px;padding-top:22px}.phoneAdminPart>p{margin-bottom:14px}
+.phoneAdminDevice{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #eef0f2;font-size:14px;overflow-wrap:anywhere}
+.phoneAdminDevice p{margin:5px 0 0}.phoneAdminCode{margin-top:16px;padding:16px;border:1px solid #e9dfc3;border-radius:10px;background:#fffbef;overflow-wrap:anywhere}
+.phoneAdminNotice{color:#237453;font-size:14px}.phoneAdminCode input{font-family:monospace}
+@media(max-width:760px){.phoneAdmin{padding:16px}.phoneAdminGrid{grid-template-columns:1fr;gap:16px}.phoneAdminDevice{align-items:flex-start;flex-direction:column}.phoneAdminGrid .actions{gap:8px}}
