@@ -6,10 +6,11 @@ import { readPhoneCentralResponse } from "./phone-central-data";
 import styles from "./phone-central.module.css";
 
 type Props = {
+  onManage:()=>void;
   value:string; onChange:(name:string)=>void; busy:boolean;
   onTeam:(team:PhoneTeamMember[])=>void; onIdentity:(identity:PhoneIdentity)=>void;
 };
-export function PhoneAccount({value,onChange,busy,onTeam,onIdentity}:Props) {
+export function PhoneAccount({value,onChange,busy,onTeam,onIdentity,onManage}:Props) {
   const [identity,setIdentity]=useState<PhoneIdentity|null>(null);
   const [code,setCode]=useState("");
   const [label,setLabel]=useState("Mein Browser");
@@ -65,6 +66,7 @@ export function PhoneAccount({value,onChange,busy,onTeam,onIdentity}:Props) {
         <strong>{identity.profile.displayName}</strong>
         <p className={styles.small}>Dieses Gerät: {identity.device.label}</p>
         <p className={styles.small}>Die Telefonanmeldung gilt für diese Person auf diesem Gerät.</p>
+        {identity.canManagePhone?<button type="button" className={styles.button} disabled={busy} onClick={onManage}>Telefonteam verwalten</button>:null}
         <button type="button" className={styles.button} disabled={busy||working} onClick={()=>void change("logout")}><LogOut size={16}/>Telefon abmelden</button>
       </>:<>
         <p>Melde dieses Gerät einmal für dein persönliches Telefonprofil an.</p>

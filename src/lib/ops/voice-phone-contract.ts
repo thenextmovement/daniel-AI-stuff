@@ -16,6 +16,7 @@ export type PhoneIdentity = {
   device: PhoneDevice | null;
   team: PhoneTeamMember[];
   personalAccessAvailable: boolean;
+  canManagePhone?: boolean;
 };
 
 export function newPhoneCredential() { return randomBytes(32).toString("base64url"); }

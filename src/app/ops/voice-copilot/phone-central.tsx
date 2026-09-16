@@ -9,6 +9,7 @@ import { OpsAppSwitcher } from "../ops-app-switcher";
 import { useBrowserPhone } from "./use-browser-phone";
 import { PhoneTranscriptPanel } from "./phone-transcript-panel";
 import { PhoneTransferPanel } from "./phone-transfer-panel";
+import {PhoneStaffAdmin} from "./phone-staff-admin";
 import { PhoneAccount } from "./phone-account";
 import type { PhoneTeamMember, PhoneIdentity } from "@/lib/ops/voice-phone-contract";
 
@@ -41,6 +42,7 @@ function initials(value: string) {
 }
 export function PhoneCentral(props: Props) {
   const { selected } = props;
+  const [phoneAdminOpen,setPhoneAdminOpen]=useState(false);
   const [phoneIdentity,setPhoneIdentity]=useState<PhoneIdentity|null>(null);
   const browserPhone=useBrowserPhone(phoneIdentity,props.busy);
   const busy=props.busy||browserPhone.busy;
@@ -198,7 +200,7 @@ export function PhoneCentral(props: Props) {
       <div className={styles.titlebar}>
         <h1>Telefonzentrale</h1>
         <span className={styles.spacer} />
-        <PhoneAccount value={props.operatorName} onChange={props.onOperatorNameChange} busy={busy} onTeam={setPhoneTeam} onIdentity={setPhoneIdentity}/>
+        <PhoneAccount value={props.operatorName} onChange={props.onOperatorNameChange} busy={busy} onTeam={setPhoneTeam} onIdentity={setPhoneIdentity} onManage={()=>{setPhoneAdminOpen(true);if(settingsRef.current)settingsRef.current.open=true;window.setTimeout(()=>document.getElementById("voice-phone-team")?.scrollIntoView({block:"start"}),0);}}/>
         <span className={styles.connectionState}><span />{browserPhone.registered ? "Browser verbunden" : props.busy ? "Begleitung aktiv" : "Telefon-App"}</span>
       </div>
       {phoneIdentity?.browserCallingAvailable ? <section className={styles.browserPhoneBar} aria-label="Browser-Telefon">
@@ -573,8 +575,9 @@ export function PhoneCentral(props: Props) {
           </div>
         </div>
       </div>
-      <details ref={settingsRef} id="voice-settings" className={styles.admin}>
+      <details ref={settingsRef} id="voice-settings" className={styles.admin} onToggle={event=>{if(event.target===event.currentTarget&&!event.currentTarget.open)setPhoneAdminOpen(false);}}>
         <summary>Einstellungen &amp; Wissen</summary>
+        {phoneIdentity?.canManagePhone?<PhoneStaffAdmin identity={phoneIdentity} open={phoneAdminOpen} onToggle={()=>setPhoneAdminOpen(!phoneAdminOpen)}/>:null}
         <div className="mt-6">{props.settings}</div>
       </details>
     </main>

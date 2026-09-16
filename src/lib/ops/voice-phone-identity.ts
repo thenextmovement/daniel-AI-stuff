@@ -5,12 +5,12 @@ import { supabaseRequest, supabaseRpc, SupabaseRestError } from "@/lib/quotes/su
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import { PHONE_DEVICE_COOKIE, newPhoneCredential, phoneCredentialHash, phoneDeviceLabel, phoneDeviceIsCurrent, phonePresence, type PhoneIdentity } from "./voice-phone-contract";
 
-type StaffRow = {id:string;display_name:string;extension:string|null;enabled:boolean;access_email:string|null};
+type StaffRow = {id:string;display_name:string;extension:string|null;enabled:boolean;access_email:string|null;can_manage_phone:boolean};
 type DeviceRow = {
   id:string;staff_id:string;label:string;available:boolean;registered:boolean;last_seen_at:string|null;
   expires_at:string;revoked_at:string|null;enrolled_via:string;access_email:string|null;
 };
-const STAFF_FIELDS = "id,display_name,extension,enabled,access_email";
+const STAFF_FIELDS = "id,display_name,extension,enabled,access_email,can_manage_phone";
 const DEVICE_FIELDS = "id,staff_id,label,available,registered,last_seen_at,expires_at,revoked_at,enrolled_via,access_email";
 export function isPhoneEnabled() { return process.env.VOICE_PHONE_ENABLED === "true"; }
 export async function verifiedPhoneEmail(request: NextRequest) {
@@ -38,7 +38,7 @@ export async function getPhoneRuntimeDevice(deviceId:unknown,staffId:unknown) {
   return {deviceId:current.device.id,staffId:current.staff.id,expiresAt:current.device.expires_at};
 }
 export async function readPhoneIdentity(request: NextRequest): Promise<PhoneIdentity> {
-  const empty: PhoneIdentity = {enabled:isPhoneEnabled(),browserCallingAvailable:isPhoneEnabled() && process.env.VOICE_BROWSER_CALLS_ENABLED==="true" && !!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim(),profile:null,device:null,team:[],personalAccessAvailable:false};
+  const empty: PhoneIdentity = {enabled:isPhoneEnabled(),browserCallingAvailable:isPhoneEnabled() && process.env.VOICE_BROWSER_CALLS_ENABLED==="true" && !!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim(),profile:null,device:null,team:[],personalAccessAvailable:false,canManagePhone:false};
   if (!empty.enabled) return empty;
   const [current,email,staff,devices,calls,transfers] = await Promise.all([
     currentPhoneDevice(),verifiedPhoneEmail(request),
@@ -50,6 +50,7 @@ export async function readPhoneIdentity(request: NextRequest): Promise<PhoneIden
   const busy=new Set([...calls.map(call=>call.staff_id),...transfers.flatMap(t=>[t.from_staff_id,t.to_staff_id])]);
   return {
     ...empty,
+    canManagePhone:!!current?.staff.can_manage_phone,
     profile:current ? {id:current.staff.id,displayName:current.staff.display_name,extension:current.staff.extension} : null,
     device:current ? {id:current.device.id,label:current.device.label,available:current.device.available,registered:current.device.registered,expiresAt:current.device.expires_at} : null,
     personalAccessAvailable:!!email && staff.some(member=>member.access_email===email),
