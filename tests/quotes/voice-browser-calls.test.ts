@@ -72,7 +72,7 @@ test("uncertain provider write never retries dialing, including recovery",async(
  await f.engine.event(id,"conference",join());
  assert.equal(f.creates,1);assert.deepEqual(f.events,["agent_join","dispatch_uncertain"]);
  await f.engine.event(id,"conference",join());assert.equal(f.creates,1);
- await f.engine.reconcile();assert.equal(f.creates,1);assert.equal(f.closes,1);assert(f.events.includes("cancel"));
+ f.effects.push({close:true});await f.engine.reconcile();assert.equal(f.creates,1);assert.equal(f.closes,1);assert(f.events.includes("cancel"));
 });
 test("revocation before provider write cancels without calling",async()=>{
  const f=fixture();f.revoke();f.effects.push({dial:true},{close:true,call:record({ended_at:new Date().toISOString(),cleanup_pending:true})});
@@ -96,7 +96,7 @@ test("failed cleanup is left pending and successful cleanup acknowledges only it
 });
 test("disabling new browser calls retains cleanup control and closes an active pilot",async()=>{
  const settings={...config,browserCallsEnabled:false};assert.equal(browserCallingReady(settings),false);assert.equal(browserPhoneControlReady(settings),true);
- const f=fixture({},settings);
+ const f=fixture({},settings);f.effects.push({close:true});
  await assert.rejects(f.engine.client(new URLSearchParams()),/not_configured/);
  await f.engine.reconcile();assert.equal(f.creates,0);assert.equal(f.closes,1);
 });
@@ -120,4 +120,13 @@ test("provider cleanup tolerates already-ended and racing call legs without hidi
  assert.equal(conferenceReads,1);assert.equal(agentReads,2);assert.equal(customerReads,1);assert.equal(updates,1);
  const failing={...client,calls:()=>({fetch:async()=>({status:"in-progress"}),update:async()=>{throw Error("network");}})};
  await assert.rejects(new TwilioPhoneProvider(config,failing as never).close(record()),/phone_cleanup_pending/);
+});
+
+test("a stale operator or recovery observation cannot close the adopted call",async()=>{
+ const f=fixture({created_at:new Date(Date.now()-70000).toISOString()});
+ // The SQL reducer returns close:false when its expected agent is no longer owner.
+ await f.engine.cancel(id,deviceId,staffId);
+ await f.engine.reconcile();
+ assert.equal(f.closes,0);
+ assert(!f.actions.some(x=>x.action==="cleanup"));
 });

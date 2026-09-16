@@ -200,7 +200,7 @@ Verbindungszustände, Stummschalten, DTMF, Auflegen und Erhalt derselben Ops-Coo
 Dies ist kein Nachweis eines echten Telefonanrufs oder der Audioqualität.
 
 Weiter offen: freigegebene Ersteinrichtung der drei Personen, eingehendes
-Routing/Klingeln, gegenseitige Weitergabe mit Rücksprache, optionaler mobiler
+Routing/Klingeln externer Anrufe, optionaler mobiler
 Rückruf sowie gemeinsame Audio-/Transkriptfortsetzung mit T293. Vor einer
 Produktionsfreigabe muss der kombinierte Stand nach Integration von T293 erneut
 geprüft werden. Neue Anrufschalter bleiben bis zum kontrollierten Gesamtpilot aus.
@@ -210,3 +210,61 @@ Primärquellen für den Anrufvertrag:
 - https://www.twilio.com/docs/voice/twiml/conference
 - https://www.twilio.com/docs/voice/api/call-resource
 - https://postgrest.org/en/latest/references/api/resource_representation.html
+
+## T295: Weitergabe mit persönlicher Einladung und Rücksprache
+
+Der interne Browser-Pilot unterstützt jetzt eine Einladung an das frisch
+registrierte, verfügbare Gerät eines Kollegen. Ops ermittelt Person und Gerät
+aus den geprüften Telefonprofilen. Der Kunde wird zuerst bestätigt in Hold
+gesetzt; erst danach erscheint die Einladung. Der Empfänger nimmt im CRM an
+und baut seine eigene SDK-Verbindung auf. Der signierte Client-Webhook bindet
+genau dessen Geräteidentität und Provider-Leg an die noch gültige Einladung.
+Es wird kein spekulativer Anbieteranruf an den Kollegen erzeugt.
+
+Nach dem bestätigten Konferenzbeitritt sprechen die Mitarbeiter untereinander.
+Der bisherige Mitarbeiter kann zurück zum Kunden oder die Übergabe abschließen.
+Dazu schützt zuerst der neue Mitarbeiter das Ende der Konferenz, der bisherige
+gibt diese Rolle frei; dann wechselt der Besitzer im bestehenden Gespräch.
+Erst nach bestätigtem Entfernen der bisherigen Telefonseite kehrt der Kunde
+aus Hold zurück. Call-ID und Kunden-/Vorgangsbindung bleiben erhalten.
+Die Oberfläche lädt einen gebundenen Vorgang für den Empfänger und entfernt
+eine zuvor ausgewählte andere Kundenübersicht.
+
+Die Migration 20260916233000 speichert Phasen und Ereignisse mit atomaren
+Prüfungen, replay-sicheren Schlüsseln und RLS. Die Annahme, ein weiterer Anruf
+und ein Abschluss sind während einer zurückgezogenen Einladung gesperrt.
+Quelle und Ziel bleiben bis zum Abschluss bzw. zur Bereinigung reserviert.
+Verspätete Abgänge des ehemaligen Mitarbeiters und veraltete
+Auflege-/Recovery-Beobachtungen dürfen den übernommenen Anruf nicht beenden.
+Die neue Telefonseite darf anschließend erneut weitergeben.
+
+Abbruchabsicht wird vor der HTTP-Bestätigung gespeichert. Der Runtime-Worker
+setzt angefangene Schritte fort und bestätigt Provideränderungen einzeln.
+Gleichzeitiges Hold und Abbrechen werden innerhalb einer Runtime serialisiert.
+Die Bereinigung bleibt auch nach Abschalten neuer Anrufe verfügbar.
+Mehrere gleichzeitig aktive Runtime-Instanzen sind für diesen Pilot noch nicht
+freigegeben; verteilte Ausführung und echtes Verhalten bei Provider-/Runtime-
+Ausfall müssen vor Aktivierung geprüft werden.
+
+Die helle Oberfläche bietet Weitergeben, Annehmen/Ablehnen, Rücksprache,
+Übergabe abschließen und optionalen Klingelton für Einladungen. Teambelegung
+kommt zusätzlich aus laufenden Gesprächen/Übergaben. Die Audioverbindung des
+bisherigen Mitarbeiters wird nach Adoption lokal getrennt, ohne einen globalen
+Auflegeauftrag auszulösen. Ein Empfänger kann vor Adoption nur seine Teilnahme
+beenden. Gemeinsame Ops-Anmeldung und Cookie bleiben unverändert.
+
+Prüfung: echte isolierte PostgreSQL-Funktionen für Einladung, falsches Gerät,
+doppelte Legs, gesperrte Profile, Reihenfolge, Zurückziehen, Besitzerwechsel,
+unveränderten Kundenbezug sowie alte Auflege-/Recovery-Meldungen. Runtime-
+Vertragstests prüfen Providerbestätigung, Wiederaufnahme, Hold/Cancel-Rennen
+und Callback-Zuordnung auch nach einer weiteren Übergabe. Zwei isolierte
+HTTPS-Browserprofile prüfen Ablehnen, Annehmen, Rücksprache, Weitergabe,
+verbotenes Auflegen durch die frühere Person, normalen Abschluss durch die
+neue Person, mobilen Umbruch und unveränderte Ops-Cookie. Provider-Audio und
+Provider-Ereignisse sind in dieser Vorschau synthetisch. Kein echter Anruf
+oder produktiver Mitarbeiterdatensatz wurde angelegt.
+
+Weiter offen bleiben externe eingehende Anrufe, mobile Teilnahme, menschliche
+Audiotranskription, Integration mit T293 und der freigegebene kontrollierte
+Telefon-Ende-zu-Ende-Test. Dieser Abschnitt beschreibt einen Entwicklungsstand,
+keine bereits aktivierte Telefonanlage.

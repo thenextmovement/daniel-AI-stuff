@@ -8,7 +8,7 @@ export type PhoneStaff = {
 export type PhoneDevice = {
   id: string; label: string; available: boolean; registered: boolean; expiresAt: string;
 };
-export type PhoneTeamMember = PhoneStaff & { presence: "available" | "away" | "offline" };
+export type PhoneTeamMember = PhoneStaff & { presence: "available" | "away" | "offline" | "busy" };
 export type PhoneIdentity = {
   enabled: boolean;
   browserCallingAvailable: boolean;
