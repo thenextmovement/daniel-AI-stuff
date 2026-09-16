@@ -40,18 +40,21 @@ export async function getPhoneRuntimeDevice(deviceId:unknown,staffId:unknown) {
 export async function readPhoneIdentity(request: NextRequest): Promise<PhoneIdentity> {
   const empty: PhoneIdentity = {enabled:isPhoneEnabled(),browserCallingAvailable:isPhoneEnabled() && process.env.VOICE_BROWSER_CALLS_ENABLED==="true" && !!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim(),profile:null,device:null,team:[],personalAccessAvailable:false};
   if (!empty.enabled) return empty;
-  const [current,email,staff,devices] = await Promise.all([
+  const [current,email,staff,devices,calls,transfers] = await Promise.all([
     currentPhoneDevice(),verifiedPhoneEmail(request),
     supabaseRequest<StaffRow[]>("voice_staff", {}, {select:STAFF_FIELDS,enabled:"eq.true",order:"display_name.asc",limit:50}),
     supabaseRequest<DeviceRow[]>("voice_staff_devices", {}, {select:DEVICE_FIELDS,revoked_at:"is.null",expires_at:"gt."+new Date().toISOString(),order:"last_seen_at.desc.nullslast",limit:400}),
+    supabaseRequest<Array<{staff_id:string}>>("voice_phone_calls",{}, {select:"staff_id",or:"(ended_at.is.null,cleanup_pending.eq.true)",limit:100}),
+    supabaseRequest<Array<{from_staff_id:string;to_staff_id:string}>>("voice_phone_transfers",{}, {select:"from_staff_id,to_staff_id",or:"(ended_at.is.null,cleanup_pending.eq.true)",limit:100}),
   ]);
+  const busy=new Set([...calls.map(call=>call.staff_id),...transfers.flatMap(t=>[t.from_staff_id,t.to_staff_id])]);
   return {
     ...empty,
     profile:current ? {id:current.staff.id,displayName:current.staff.display_name,extension:current.staff.extension} : null,
     device:current ? {id:current.device.id,label:current.device.label,available:current.device.available,registered:current.device.registered,expiresAt:current.device.expires_at} : null,
     personalAccessAvailable:!!email && staff.some(member=>member.access_email===email),
     team:staff.map(member=>({id:member.id,displayName:member.display_name,extension:member.extension,
-      presence:phonePresence(devices.filter(device=>device.staff_id===member.id))})),
+      presence:busy.has(member.id)?"busy":phonePresence(devices.filter(device=>device.staff_id===member.id))})),
   };
 }
 export async function enrollPhoneDevice(request: NextRequest, input: Record<string,unknown>) {

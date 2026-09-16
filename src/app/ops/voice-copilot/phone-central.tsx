@@ -7,6 +7,7 @@ import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
 import { OpsAppSwitcher } from "../ops-app-switcher";
 import { useBrowserPhone } from "./use-browser-phone";
+import { PhoneTransferPanel } from "./phone-transfer-panel";
 import { PhoneAccount } from "./phone-account";
 import type { PhoneTeamMember, PhoneIdentity } from "@/lib/ops/voice-phone-contract";
 
@@ -90,6 +91,31 @@ export function PhoneCentral(props: Props) {
     }, query.trim() ? 300 : 0);
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [query, offset, retry]);
+
+  // Adopt the persisted customer binding when joining another person's call.
+  // Clear a previously selected customer before loading the incoming context.
+  const receivedCall = browserPhone.transfer?.role==="recipient" ? browserPhone.transfer.call : null;
+  const receivedId=useRef<string|null>(null);
+  useEffect(()=>{
+    if(!receivedCall || receivedId.current===receivedCall.id)return;
+    receivedId.current=receivedCall.id;
+    const current=++selection.current;
+    setActiveContact(null);setNumber(receivedCall.phone);props.onSelect(null);props.onWorkspaceChange("prepare");
+    setContextError("");setNotice("");setContextLoading(false);
+    if(!receivedCall.customerId || !receivedCall.requestId)return;
+    setContextLoading(true);
+    void fetch("/api/ops/voice-copilot/context?requestId="+encodeURIComponent(receivedCall.requestId)+"&customerId="+encodeURIComponent(receivedCall.customerId),
+      {cache:"no-store",signal:AbortSignal.timeout(20000)})
+      .then(response=>readPhoneCentralResponse<{context:VoiceCustomerContext}>(response,"Die Kundenübersicht ist gerade nicht erreichbar."))
+      .then(data=>{
+        if(selection.current!==current)return;
+        if(data.context?.requestId!==receivedCall.requestId)throw Error("incoming_context_mismatch");
+        props.onSelect(data.context);
+      }).catch(()=>{if(selection.current===current)setContextError("Die Kundenübersicht ist gerade nicht erreichbar. Der Anruf bleibt verbunden.");})
+      .finally(()=>{if(selection.current===current)setContextLoading(false);});
+  // The server-bound call ID changes once for each incoming customer call.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[receivedCall?.id]);
 
   async function select(contact: VoiceDirectoryContact) {
     if (busy) return;
@@ -176,7 +202,7 @@ export function PhoneCentral(props: Props) {
       </div>
       {phoneIdentity?.browserCallingAvailable ? <section className={styles.browserPhoneBar} aria-label="Browser-Telefon">
         <div><strong>{browserPhone.call ? (browserPhone.call.cleanupPending ? "Anruf wird beendet …" :
-          browserPhone.call.connected ? "Im Gespräch" : browserPhone.call.state==="ringing" ? "Es klingelt beim Angerufenen …" : "Anruf wird verbunden …") : "Browser-Telefon · Pilot"}</strong>
+          browserPhone.transfer ? "Gesprächsübergabe" : browserPhone.call.connected ? "Im Gespräch" : browserPhone.call.state==="ringing" ? "Es klingelt beim Angerufenen …" : "Anruf wird verbunden …") : "Browser-Telefon · Pilot"}</strong>
           <p className={styles.small}>{browserPhone.call ? browserPhone.call.phone : "Nur freigegebene Testnummern. In diesem Pilot wird noch kein Gesprächstranskript erstellt."}</p>
         </div>
         {browserPhone.call ? <div className={styles.actions}>
@@ -184,11 +210,12 @@ export function PhoneCentral(props: Props) {
           <details className={styles.callDigits}><summary>Wahltasten im Gespräch</summary><div className={styles.keypad}>
             {["1","2","3","4","5","6","7","8","9","*","0","#"].map(digit=><button type="button" key={digit} onClick={()=>browserPhone.sendDigits(digit)}>{digit}</button>)}
           </div></details>
-          <button type="button" className={styles.button} onClick={()=>void browserPhone.finish()}>Auflegen</button>
+          <button type="button" className={styles.button} disabled={!!browserPhone.transfer && (browserPhone.transfer.state==="committing"||browserPhone.transfer.ownerAdopted)} onClick={()=>void browserPhone.finish()}>{browserPhone.transfer?.role==="recipient"?"Rücksprache verlassen":"Auflegen"}</button>
         </div> : <button type="button" className={styles.button} disabled={!browserPhone.allowed||browserPhone.working||browserPhone.registered||props.busy}
           onClick={()=>void browserPhone.enable()}>{browserPhone.registered?"Browser bereit":browserPhone.working?"Verbindet …":"Browser-Telefon verbinden"}</button>}
         {browserPhone.error?<p className={styles.searchError} role="alert">{browserPhone.error}</p>:null}
       </section>:null}
+      {phoneIdentity?.browserCallingAvailable?<PhoneTransferPanel phone={browserPhone}/>:null}
       <div className={styles.layout}>
         <aside className={styles.left} aria-label="Kundensuche und Team">
           <div className={styles.panelTabs} aria-label="Telefonbereich">
@@ -264,8 +291,11 @@ export function PhoneCentral(props: Props) {
               <span className={styles.contactAvatar}>{initials(member.displayName)}</span>
               <div><strong>{member.displayName}</strong><p className={styles.small}>
                 {member.extension?"Nebenstelle "+member.extension+" · ":""}
-                {browserPhone.call && member.id===phoneIdentity?.profile?.id?"Im Gespräch":member.presence==="available"?"Bereit":member.presence==="away"?"Abwesend":"Telefon offline"}
+                {(browserPhone.call && member.id===phoneIdentity?.profile?.id)||[browserPhone.transfer?.fromStaffId,browserPhone.transfer?.toStaffId].includes(member.id)?"Im Gespräch":member.presence==="busy"?"Im Gespräch":member.presence==="available"?"Bereit":member.presence==="away"?"Abwesend":"Telefon offline"}
               </p></div>
+              {browserPhone.call?.connected && member.id!==phoneIdentity?.profile?.id && !browserPhone.transfer?
+               <button type="button" className={styles.button} disabled={browserPhone.working||member.presence!=="available"}
+                onClick={()=>void browserPhone.beginTransfer(member.id)}>Weitergeben</button>:null}
             </div>)}
           </section>:null}
           <section className={styles.team}>
@@ -308,7 +338,7 @@ export function PhoneCentral(props: Props) {
                       ]
                         .filter(Boolean)
                         .join(" · ")
-                    : browserPhone.call ? "Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}
+                    : browserPhone.call ? browserPhone.call.customerId?"Kundenanruf · kein Vorgang geöffnet":"Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}
                 </p>
               </div>
             </div>

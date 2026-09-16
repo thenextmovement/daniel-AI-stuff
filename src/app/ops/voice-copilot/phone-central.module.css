@@ -668,3 +668,21 @@
 .callDigits summary { cursor:pointer; padding:12px; border:1px solid #dce4df; border-radius:12px; background:white; }
 .callDigits > div { position:absolute; top:100%; right:0; min-width:220px; padding:12px; background:white; border:1px solid #dce4df; border-radius:12px; box-shadow:0 12px 28px #25382a20; z-index:4; }
 @media(max-width:600px) { .browserPhoneBar { padding:16px; } .browserPhoneBar .actions { width:100%; } .callDigits > div { left:0; right:auto; } }
+
+.phoneSound { padding: 12px 26px; color: #626970; font-size: 13px; }
+.phoneSound label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.phoneSound input { accent-color: #237453; width: 16px; height: 16px; }
+.transferIncoming, .transferPanel { margin: 0 26px 18px; padding: 18px 20px; border: 1px solid #b8ddca; border-radius: 14px; display: flex; align-items: center; justify-content: space-between; gap: 20px; background: #edf8f1; }
+.transferPanel { border-color: #dfd4ec; background: #f8f5fc; }
+.transferIncoming strong, .transferPanel strong { font-size: 16px; }
+.transferIncoming p, .transferPanel p { margin: 6px 0 0; color: #606b65; font-size: 14px; }
+.transferDot { display: inline-block; width: 8px; height: 8px; margin-right: 9px; border-radius: 50%; background: #247452; animation: transferPulse 1.8s ease-in-out infinite; }
+.phoneNotice { margin: 0 26px 18px; color: #237453; font-size: 14px; }
+@keyframes transferPulse { 50% { box-shadow: 0 0 0 6px #24745218; } }
+@media (prefers-reduced-motion: reduce) { .transferDot { animation: none; } }
+@media (max-width: 650px) {
+ .phoneSound { padding: 12px 16px; }
+ .transferIncoming, .transferPanel { margin: 0 12px 14px; padding: 16px; align-items: stretch; flex-direction: column; gap: 14px; }
+ .transferIncoming .actions, .transferPanel .actions { width: 100%; }
+ .phoneTeamMember { flex-wrap: wrap; }
+}

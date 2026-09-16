@@ -4,7 +4,7 @@ import {browserPhoneReady} from "./phone-token.js";
 import {verifyTwilioSignature} from "./security.js";
 
 export type PhoneCallRecord = {
- id:string;device_id:string;staff_id:string;phone:string;state:string;
+ id:string;device_id:string;staff_id:string;phone:string;state:string;customer_id?:string|null;request_id?:string|null;
  agent_call_sid:string|null;customer_call_sid:string|null;conference_sid:string|null;
  customer_dispatch:string;agent_joined:boolean;customer_joined:boolean;
  created_at:string;updated_at:string;ended_at:string|null;cleanup_pending:boolean;
@@ -102,7 +102,7 @@ export class TwilioPhoneProvider implements PhoneCallProvider {
 export class BrowserPhoneCalls {
  constructor(private readonly config:RuntimeConfig,private readonly ops:PhoneCallOps,private readonly provider:PhoneCallProvider) {}
  private requireReady() {if(!browserCallingReady(this.config))throw Error("browser_calling_not_configured");}
- private async close(call:PhoneCallRecord) {
+ async closeRecorded(call:PhoneCallRecord) {
   await this.provider.close(call);
   await this.ops.phoneCall("cleanup",{callId:call.id,updatedAt:call.updated_at});
  }
@@ -137,7 +137,7 @@ export class BrowserPhoneCalls {
    kind="customer_"+(status==="in-progress"?"answered":status==="queued"?"initiated":status);key="leg:"+sid+":"+kind;
   }
   const result=await this.ops.phoneEvent(id,key,kind,sid,source==="conference"?conference:null);
-  if(result.close){await this.close(result.call);return;}
+  if(result.close){await this.closeRecorded(result.call);return;}
   if(!result.dial)return;
   // Atomic claim was persisted before the provider write. Never retry creation
   // after an ambiguous response; a later callback/reconciler resolves it.
@@ -145,31 +145,31 @@ export class BrowserPhoneCalls {
   try {
    this.requireReady();
    const fresh=(await this.ops.phoneCall("get",{callId:id})).call;
-   if(fresh.ended_at){await this.close(fresh);return;}
+   if(fresh.ended_at){await this.closeRecorded(fresh);return;}
    await this.ops.getPhoneDevice(fresh.device_id,fresh.staff_id);
    if(!this.config.phoneAllowedNumbers.includes(fresh.phone))throw Error("phone_target_not_allowed");
    attempted=true;
    const customerSid=await this.provider.startCustomer(fresh,this.config.publicUrl+"/phone/twilio/customer?id="+encodeURIComponent(id));
    if(!SID.test(customerSid))throw Error("invalid_customer_leg");
    const saved=await this.ops.phoneEvent(id,"dispatch:ack","dispatch_ack",customerSid);
-   if(saved.close)await this.close(saved.call);
+   if(saved.close)await this.closeRecorded(saved.call);
   } catch {
    const uncertain=await this.ops.phoneEvent(id,attempted?"dispatch:uncertain":"dispatch:ineligible",attempted?"dispatch_uncertain":"cancel");
-   if(uncertain.close)await this.close(uncertain.call);
+   if(uncertain.close)await this.closeRecorded(uncertain.call);
   }
  }
  async cancel(id:string,deviceId:string,staffId:string) {
   const {call}=await this.ops.phoneCall("get",{callId:id});
   if(call.device_id!==deviceId || call.staff_id!==staffId)throw Error("phone_call_forbidden");
-  const result=await this.ops.phoneEvent(id,"operator:cancel","cancel");
-  await this.close(result.call);
+  const result=await this.ops.phoneEvent(id,"operator:cancel","cancel",call.agent_call_sid);
+  if(result.close)await this.closeRecorded(result.call);
  }
  async reconcile() {
   if(!browserPhoneControlReady(this.config))return;
   const calls=await this.ops.phoneRecover();
   for(const call of calls) {
    try {
-    if(call.ended_at){if(call.cleanup_pending)await this.close(call);continue;}
+    if(call.ended_at){if(call.cleanup_pending)await this.closeRecorded(call);continue;}
     // Reservations have no provider side effect. All other abandoned setup
     // states close after 60s; an uncertain dispatch never triggers a second dial.
     const abandoned=!call.customer_joined && Date.now()-Date.parse(call.created_at)>60000;
@@ -179,8 +179,8 @@ export class BrowserPhoneCalls {
      if([401,403,404].includes((error as {status?:number}).status||0))revoked=true;else throw error;
     }
     if(abandoned || ended || revoked || !this.config.browserCallsEnabled) {
-     const result=await this.ops.phoneEvent(call.id,ended?"reconcile:ended":"reconcile:cancel",ended?"conference_end":"cancel");
-     await this.close(result.call);
+     const result=await this.ops.phoneEvent(call.id,ended?"reconcile:ended":"reconcile:cancel",ended?"conference_end":"cancel",call.agent_call_sid);
+     if(result.close)await this.closeRecorded(result.call);
     }
    } catch {console.warn("browser phone reconciliation pending",call.id);}
   }
