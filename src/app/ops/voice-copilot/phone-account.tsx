@@ -7,9 +7,9 @@ import styles from "./phone-central.module.css";
 
 type Props = {
   value:string; onChange:(name:string)=>void; busy:boolean;
-  onTeam:(team:PhoneTeamMember[])=>void;
+  onTeam:(team:PhoneTeamMember[])=>void; onIdentity:(identity:PhoneIdentity)=>void;
 };
-export function PhoneAccount({value,onChange,busy,onTeam}:Props) {
+export function PhoneAccount({value,onChange,busy,onTeam,onIdentity}:Props) {
   const [identity,setIdentity]=useState<PhoneIdentity|null>(null);
   const [code,setCode]=useState("");
   const [label,setLabel]=useState("Mein Browser");
@@ -19,9 +19,9 @@ export function PhoneAccount({value,onChange,busy,onTeam}:Props) {
     const response=await fetch("/api/ops/voice-phone",{cache:"no-store",signal:signal || AbortSignal.timeout(10000)});
     const state=await readPhoneCentralResponse<PhoneIdentity>(response,"Dein Telefonprofil ist gerade nicht erreichbar.");
     if(typeof state.enabled!=="boolean" || !Array.isArray(state.team))throw new Error("Dein Telefonprofil ist gerade nicht erreichbar.");
-    setIdentity(state);onTeam(state.team);setError("");
+    setIdentity(state);onIdentity(state);onTeam(state.team);setError("");
     return state;
-  },[onTeam]);
+  },[onTeam,onIdentity]);
   useEffect(()=>{
     const controller=new AbortController();
     void refresh(controller.signal).catch(()=>{if(!controller.signal.aborted)setError("Dein Telefonprofil ist gerade nicht erreichbar.");});

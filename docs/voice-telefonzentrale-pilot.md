@@ -138,3 +138,75 @@ Quellen:
 - https://www.twilio.com/docs/iam/access-tokens
 - https://www.twilio.com/docs/voice/sdks/javascript/twiliodevice
 - https://www.twilio.com/docs/voice/conference
+
+
+## T295: ausgehender Browser-Pilot und gemeinsame Gesprächskennung
+
+Der Browser verwendet jetzt das offizielle Voice-SDK für Anmeldung, ausgehende
+Audioverbindung, Token-Erneuerung, Stummschalten, DTMF und Auflegen. Er reserviert
+zuerst einen Anruf im eigenen persönlichen Profil. An das SDK geht nur die
+Gesprächskennung. Die Zielnummer eines ausgewählten Kunden wird in Ops erneut
+aus dessen Datensatz gelesen; eine vom Browser mitgeschickte andere Telefonnummer
+oder Mitarbeiter-ID ersetzt diese Zuordnung nicht. Ohne Kundenwahl bleibt ein
+freier Anruf ausdrücklich ohne Kundenbindung.
+
+Die additive Migration 20260916230000 ergänzt voice_phone_calls und
+voice_phone_events. Reservierung, Bindung an die echte Provider-Anruf-ID und
+Ereignisfortschreibung laufen unter Datenbanksperren. Pro Mitarbeiter darf nur
+ein offener oder noch nicht vollständig beendeter Anruf bestehen. Wiederholte
+Reservierungen mit demselben Schlüssel ergeben denselben Anruf; abweichende
+Parameter werden abgewiesen. Abgelaufene Geräte und andere Geräte können einen
+reservierten Anruf nicht übernehmen.
+
+Der erste Mitarbeiter tritt einer festen Twilio-Konferenz bei. Erst dessen
+signiertes participant-join löst nach erneuter Berechtigungsprüfung genau einen
+Kundenanruf aus. Ein Kunde gilt erst nach seinem eigenen Konferenzbeitritt als
+verbunden. Rückmeldungen werden mit Account, Signatur, Konferenzname, Kennung und
+Anrufseite abgeglichen. Doppelte Ereignisse und verspätetes Klingeln öffnen keinen
+beendeten Anruf erneut. Unklare Provider-Antworten lösen keinen zweiten
+Wählversuch aus. Der Hintergrundabgleich beendet verwaisten Aufbau, gesperrte
+Geräte und bekannte beendete Verbindungen. Beide Telefonseiten werden unabhängig
+von der Konferenz aufgeräumt; eine neue Verbindung bleibt bis zur bestätigten
+Bereinigung gesperrt. Änderungen während der Bereinigung werden nicht mit einem
+veralteten Stand bestätigt.
+
+Dieser Stand bleibt ein begrenzter interner Pilot. In Ops und Runtime müssen
+VOICE_BROWSER_CALLS_ENABLED und dieselbe ausdrücklich bestätigte Liste
+VOICE_PHONE_ALLOWED_NUMBERS gesetzt sein; ohne passende Ziele wird nicht gewählt.
+VOICE_PHONE_ENABLED bzw. VOICE_TEAM_PHONE_ENABLED und die bestehenden persönlichen
+Telefon-/Provider-Voraussetzungen gelten zusätzlich. Das Abschalten neuer
+Browser-Anrufe erhält bei weiter vorhandenem Team-Anschluss die Verarbeitung
+laufender Rückmeldungen und das Beenden. Die TwiML-App benötigt später den
+POST-Endpunkt /phone/twilio/client; Konferenz-/Kundencallbacks werden automatisch
+mit der festen Runtime-Adresse erzeugt. Der maximale Pilotanruf dauert 15 Minuten,
+ein unbeantworteter Kundenanruf höchstens 30 Sekunden.
+
+Pilotgespräche werden als internal_test in voice_call_sessions mit festem
+Mitarbeiter, Kunden-/Vorgangsbindung und bestätigtem Beginn/Ende gespeichert.
+Sie erscheinen nicht als reale Kundenhistorie. Die Audiotranskription ist in
+diesem Entwicklungsschritt noch nicht verbunden; die Oberfläche sagt das
+ausdrücklich. Eingehende, noch nicht serverseitig zugeordnete SDK-Anrufe werden
+abgewiesen. Es wurden keine produktiven Profile, Tokens, Rufnummern, Anrufe oder
+Provider-Einstellungen erstellt bzw. geändert.
+
+Prüfungen: 105 gezielte Voice-Tests, Typecheck, Runtime- und App-Build; isolierte
+PostgreSQL-Integration prüft Identität, fremde Geräte, Sperren, ein Gespräch pro
+Mitarbeiter, genau einen Dispatch, späte/doppelte Rückmeldungen und
+Bereinigungszustand. Zwei parallele echte Datenbanktransaktionen ergeben
+dieselbe Reservierungs-ID und genau einen Dispatch-Anspruch. Die HTTPS-Next-
+Vorschau prüft die echten Ops-Endpunkte mit synthetischen REST-Daten und einem
+ersetzten Provider-SDK: Anmeldung, serverseitige Zielwahl, gesperrte Nummern,
+Verbindungszustände, Stummschalten, DTMF, Auflegen und Erhalt derselben Ops-Cookie.
+Dies ist kein Nachweis eines echten Telefonanrufs oder der Audioqualität.
+
+Weiter offen: freigegebene Ersteinrichtung der drei Personen, eingehendes
+Routing/Klingeln, gegenseitige Weitergabe mit Rücksprache, optionaler mobiler
+Rückruf sowie gemeinsame Audio-/Transkriptfortsetzung mit T293. Vor einer
+Produktionsfreigabe muss der kombinierte Stand nach Integration von T293 erneut
+geprüft werden. Neue Anrufschalter bleiben bis zum kontrollierten Gesamtpilot aus.
+
+Primärquellen für den Anrufvertrag:
+- https://www.twilio.com/docs/voice/api/conference-participant-resource
+- https://www.twilio.com/docs/voice/twiml/conference
+- https://www.twilio.com/docs/voice/api/call-resource
+- https://postgrest.org/en/latest/references/api/resource_representation.html

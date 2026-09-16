@@ -11,6 +11,7 @@ export type PhoneDevice = {
 export type PhoneTeamMember = PhoneStaff & { presence: "available" | "away" | "offline" };
 export type PhoneIdentity = {
   enabled: boolean;
+  browserCallingAvailable: boolean;
   profile: PhoneStaff | null;
   device: PhoneDevice | null;
   team: PhoneTeamMember[];

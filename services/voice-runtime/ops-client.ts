@@ -1,6 +1,8 @@
 import type { RuntimeConfig } from "./config.js";
 import type { RecoveredRuntimeSession, RuntimeSession, StructuredOutcome } from "./types.js";
 
+import type {PhoneCallRecord,PhoneEventResult} from "./phone-calls.js";
+
 class OpsRequestError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -33,6 +35,16 @@ export class OpsClient {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  async phoneCall(action:string,input:Record<string,unknown>) {
+    return this.request<{call:PhoneCallRecord}>("/api/internal/voice-phone/calls",{method:"POST",body:JSON.stringify({action,...input})});
+  }
+  async phoneEvent(callId:string,key:string,kind:string,callSid?:string|null,conferenceSid?:string|null) {
+    return this.request<PhoneEventResult>("/api/internal/voice-phone/calls",{method:"POST",body:JSON.stringify({action:"event",callId,key,kind,callSid,conferenceSid})});
+  }
+  async phoneRecover() {
+    return (await this.request<{calls:PhoneCallRecord[]}>("/api/internal/voice-phone/calls",{method:"POST",body:JSON.stringify({action:"recover"})})).calls;
   }
 
   async getPhoneDevice(deviceId:string,staffId:string) {

@@ -1,3 +1,4 @@
+import {BrowserPhoneCalls,TwilioPhoneProvider,browserCallingReady,browserPhoneControlReady,phoneWebhookParameters} from "./phone-calls.js";
 import { browserPhoneReady, browserPhoneToken } from "./phone-token.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { loadRuntimeConfig } from "./config.js";
@@ -10,6 +11,7 @@ import { noClearOutcome, notReachedOutcome, technicalOutcome } from "./outcomes.
 
 const config = loadRuntimeConfig();
 const ops = new OpsClient(config);
+const browserCalls = browserPhoneControlReady(config) ? new BrowserPhoneCalls(config,ops,new TwilioPhoneProvider(config)) : null;
 const telephony = config.providerReadiness.telephony ? new TwilioSipAdapter(config) : null;
 const realtime = config.providerReadiness.openAi ? new OpenAiLiveAdapter(config, ops) : null;
 
@@ -189,12 +191,35 @@ const server = createServer(async (request, response) => {
         service: "neontrip-voice-runtime",
         commit: config.commitSha,
         ready: config.providerReadiness.dispatch,
+        browserPhone: {tokens:browserPhoneReady(config),calls:browserCallingReady(config)},
         providers: {
           openAi: config.providerReadiness.openAi,
           telephony: config.providerReadiness.telephony,
           missing: config.providerReadiness.missing,
         },
       });
+    }
+    if (request.method==="POST" && ["/phone/twilio/client","/phone/twilio/conference","/phone/twilio/customer"].includes(url.pathname)) {
+      if(!browserCalls)return json(response,503,{ok:false,error:"browser_calling_not_configured"});
+      let params:URLSearchParams;
+      try{params=phoneWebhookParameters(config,url,request.headers["x-twilio-signature"] as string|undefined,await rawBody(request,16000));}
+      catch{return json(response,401,{ok:false,error:"invalid_phone_signature"});}
+      if(url.pathname==="/phone/twilio/client") {
+        const twiml=await browserCalls.client(params);
+        response.writeHead(200,{"content-type":"text/xml","cache-control":"no-store"});response.end(twiml);return;
+      }
+      await browserCalls.event(url.searchParams.get("id")||"",url.pathname.endsWith("/conference")?"conference":"customer",params);
+      return json(response,200,{ok:true});
+    }
+    if(request.method==="POST" && url.pathname==="/phone/cancel") {
+      if(!bearerMatches(request.headers.authorization,config.dispatchToken))return json(response,401,{ok:false,error:"unauthorized"});
+      if(!browserCalls)return json(response,503,{ok:false,error:"browser_calling_not_configured"});
+      let input:Record<string,unknown>;
+      try{input=JSON.parse(await rawBody(request,2048));}catch{return json(response,400,{ok:false,error:"invalid_phone_payload"});}
+      if(!input || typeof input!=="object" || [input.callId,input.deviceId,input.staffId].some(x=>typeof x!=="string"))
+        return json(response,422,{ok:false,error:"invalid_phone_identity"});
+      await browserCalls.cancel(input.callId as string,input.deviceId as string,input.staffId as string);
+      return json(response,200,{ok:true});
     }
     if (request.method === "POST" && url.pathname === "/phone/token") {
       if (!bearerMatches(request.headers.authorization, config.dispatchToken)) return json(response, 401, { ok: false, error: "unauthorized" });
@@ -261,11 +286,21 @@ const server = createServer(async (request, response) => {
   }
 });
 
+let reconcilingPhone=false;
+const reconcilePhone=async()=>{
+  if(!browserCalls || reconcilingPhone)return;
+  reconcilingPhone=true;
+  try{await browserCalls.reconcile();}catch{console.warn("browser phone recovery unavailable");}
+  finally{reconcilingPhone=false;}
+};
+const phoneRecoveryTimer=browserCalls?setInterval(()=>void reconcilePhone(),20000):null;
+
 server.listen(config.port, "0.0.0.0", () => {
+  void reconcilePhone();
   console.log(`voice runtime listening on :${config.port}`);
   void recoverActiveCalls().catch((error) => console.error("voice runtime recovery request failed", error instanceof Error ? error.message : "unknown error"));
 });
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
-  process.on(signal, () => server.close(() => process.exit(0)));
+  process.on(signal, () => {if(phoneRecoveryTimer)clearInterval(phoneRecoveryTimer);server.close(() => process.exit(0));});
 }
