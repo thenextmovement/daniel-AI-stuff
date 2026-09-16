@@ -27,7 +27,7 @@ const scenario = (
 ): VoiceEvalScenario => ({ id, category, mode, customerUtterance, expected });
 
 export const VOICE_EVAL_SUITE_VERSION = "de-neontrip-voice-v1";
-export const VOICE_MODEL_COMPARISON_IDS = ["gpt-realtime-2.1", "gpt-realtime-1.5"] as const;
+export const VOICE_MODEL_COMPARISON_IDS = ["gpt-live-1"] as const;
 
 export const VOICE_EVAL_SCENARIOS: VoiceEvalScenario[] = [
   scenario("open-01", "opening_disclosure", "lead_qualification", "Ja, ich habe kurz Zeit.", { discloseBeforeQualification: true }),

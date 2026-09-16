@@ -35,6 +35,10 @@ export class OpsClient {
     }
   }
 
+  async transcript(attemptId: string, segments: unknown[], finish?: "complete" | "interrupted") {
+    return this.request<{saved:boolean}>("/api/internal/voice-platform/transcript", { method:"POST", body:JSON.stringify({attemptId,segments,...(finish?{finish}:{})}) });
+  }
+
   async claim() {
     const payload = await this.request<{ claimed: boolean; session?: RuntimeSession }>("/api/internal/voice-platform/claim", {
       method: "POST",

@@ -86,7 +86,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
   const publicUrl = requiredUrl("MCP_PUBLIC_URL", env.MCP_PUBLIC_URL || "http://localhost:8787/mcp", nodeEnv, true);
   const opsBaseUrl = optionalServiceUrl("OPS_BASE_URL", env.OPS_BASE_URL, nodeEnv);
   const offersBaseUrl = optionalServiceUrl("OFFERS_BASE_URL", env.OFFERS_BASE_URL, nodeEnv);
-  const requiredServices = z.array(z.enum(["billing", "offers"])).parse(csv(env.MCP_REQUIRED_SERVICES || "billing,offers"));
+  const requiredServices = z.array(z.enum(["billing", "offers", "customers"])).parse(csv(env.MCP_REQUIRED_SERVICES || "billing,offers"));
 
   return {
     env: nodeEnv,
@@ -111,5 +111,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
 }
 
 export function missingRequiredServices(config: GatewayConfig): ServiceName[] {
-  return config.requiredServices.filter((service) => service === "billing" ? !config.ops : !config.offers);
+  return config.requiredServices.filter((service) => service !== "offers" ? !config.ops : !config.offers);
 }

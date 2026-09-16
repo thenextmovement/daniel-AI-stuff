@@ -112,6 +112,8 @@ test("HTTP endpoint authenticates, filters tools and performs a guarded silent d
   assert.ok(toolNames.includes("billing_accept_change_request"));
   assert.ok(!toolNames.includes("billing_reject_change_request"));
   assert.ok(!toolNames.includes("offers_send"));
+  assert.ok(!toolNames.includes("customers_get_transcript"));
+  assert.ok(!toolNames.includes("customers_search"));
 
   const decisionResponse = await request("tools/call", {
     name: "billing_accept_change_request",

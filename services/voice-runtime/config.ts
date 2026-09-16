@@ -16,7 +16,8 @@ function optional(name: string) {
 }
 
 export function getProviderReadiness(env: Record<string, string | undefined> = process.env) {
-  const missingOpenAi = OPENAI_PROVIDER_VARIABLES.filter((name) => !String(env[name] || "").trim());
+  const missingOpenAi: string[] = OPENAI_PROVIDER_VARIABLES.filter((name) => !String(env[name] || "").trim());
+  if (env.VOICE_LIVE_SIP_ENABLED !== "true") missingOpenAi.push("VOICE_LIVE_SIP_ENABLED");
   const missingTelephony = TELEPHONY_PROVIDER_VARIABLES.filter((name) => !String(env[name] || "").trim());
   return {
     openAi: missingOpenAi.length === 0,

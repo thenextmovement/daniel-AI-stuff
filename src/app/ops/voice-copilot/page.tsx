@@ -4,7 +4,7 @@ import { VoiceCopilotClient } from "./page-client";
 import { isVoiceLiveCopilotEnabled } from "@/lib/ops/voice-openai-config";
 
 export const metadata = {
-  title: "Voice Copilot - NEONTRIP Ops",
+  title: "Telefonzentrale - NEONTRIP Ops",
   robots: { index: false, follow: false },
 };
 

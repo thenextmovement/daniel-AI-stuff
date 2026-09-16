@@ -1,5 +1,6 @@
 "use client";
 
+import { VoiceHistoryPanel } from "./voice-history-panel";
 import { useState } from "react";
 import { Check, LoaderCircle, Search, X } from "lucide-react";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
@@ -89,6 +90,7 @@ export function CustomerContextPanel({ selected, disabled, onSelect }: CustomerC
               : `${selected.outlookMatchCount ?? selected.outlook.length} Nachrichten${selected.outlookOrganizationMatchCount ? ` (${selected.outlookOrganizationMatchCount} Organisation)` : ""}`}
           </div>
         </div>
+        <VoiceHistoryPanel requestId={selected.requestId} />
       </div>
     );
   }

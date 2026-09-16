@@ -1,5 +1,6 @@
 export const SCOPES = [
   "system:read",
+  "customers:read",
   "billing:read",
   "billing:change:accept",
   "billing:change:draft",
@@ -22,7 +23,7 @@ export type Identity = {
   expiresAt: number;
 };
 
-export type ServiceName = "billing" | "offers";
+export type ServiceName = "billing" | "offers" | "customers";
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 

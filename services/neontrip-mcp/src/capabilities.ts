@@ -4,13 +4,16 @@ export type Capability = {
   name: string;
   title: string;
   scope: Scope;
-  service: "system" | "billing" | "offers";
+  service: "system" | "billing" | "offers" | "customers";
   access: "read" | "write";
   destructive: boolean;
   sideEffects: string[];
 };
 
 export const CAPABILITIES: Capability[] = [
+  { name: "customers_search", title: "Kunden finden", scope: "customers:read", service: "customers", access: "read", destructive: false, sideEffects: [] },
+  { name: "customers_get_history", title: "Kundenkontext und Telefonhistorie lesen", scope: "customers:read", service: "customers", access: "read", destructive: false, sideEffects: [] },
+  { name: "customers_get_transcript", title: "Telefontranskript mit Datum lesen", scope: "customers:read", service: "customers", access: "read", destructive: false, sideEffects: [] },
   { name: "neontrip_capabilities", title: "Verfügbare NEONTRIP-Funktionen", scope: "system:read", service: "system", access: "read", destructive: false, sideEffects: [] },
   { name: "neontrip_health", title: "NEONTRIP-Verbindungen prüfen", scope: "system:read", service: "system", access: "read", destructive: false, sideEffects: [] },
   { name: "billing_list_cases", title: "Rechnungsvorgänge suchen", scope: "billing:read", service: "billing", access: "read", destructive: false, sideEffects: [] },

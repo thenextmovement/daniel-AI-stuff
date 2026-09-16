@@ -21,12 +21,17 @@ import type {
   VoiceCopilotTranscriptTurn,
 } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
+import { VoiceTranscriptBuffer } from "@/lib/ops/voice-transcript-buffer";
+import type { TranscriptSegment } from "@/lib/ops/voice-history";
 import { CustomerContextPanel } from "./customer-context-panel";
 
 type LiveCallCopilotProps = {
   operatorName: string;
   knowledgeEnabled: boolean | null;
   enabled: boolean;
+  boundCustomer?: VoiceCustomerContext | null;
+  onBusyChange?: (busy: boolean) => void;
+  onSuggestionsChange?: (suggestions: VoiceCopilotSuggestion[]) => void;
 };
 
 type LiveStatus = "idle" | "capturing" | "connecting" | "live" | "stopping" | "stopped" | "error";
@@ -86,7 +91,7 @@ function waitForIceGathering(peerConnection: RTCPeerConnection) {
   });
 }
 
-export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: LiveCallCopilotProps) {
+export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, boundCustomer, onBusyChange, onSuggestionsChange }: LiveCallCopilotProps) {
   const [mode, setMode] = useState<VoiceCopilotMode>("internal_test");
   const [selectedContext, setSelectedContext] = useState<VoiceCustomerContext | null>(null);
   const [consentConfirmed, setConsentConfirmed] = useState(false);
@@ -107,6 +112,37 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
   const turnsRef = useRef<LiveTranscriptTurn[]>([]);
   const suggestionAbortRef = useRef<AbortController | null>(null);
   const suggestionRequestRef = useRef(0);
+  const writeTokenRef = useRef("");
+  const captureStartedRef = useRef(0);
+  const segmentStateRef = useRef(new Map<string, TranscriptSegment>());
+  const bufferRef = useRef<VoiceTranscriptBuffer | null>(null);
+  const [saveStatus, setSaveStatus] = useState("Noch kein Gespräch");
+  const [saveFailed, setSaveFailed] = useState(false);
+
+  async function flushTranscript() {
+    if (!bufferRef.current || !sessionIdRef.current) return;
+    try {
+      await bufferRef.current.flush();
+      setSaveStatus("Transkript gespeichert");
+      setSaveFailed(false);
+    } catch {
+      setSaveStatus("Speicherung ausstehend – Verbindung wird erneut versucht");
+      setSaveFailed(true);
+    }
+  }
+
+  function stageTranscript(id: string, speaker: VoiceCopilotSpeaker, text: string, final: boolean) {
+    const previous = segmentStateRef.current.get(id);
+    if (previous?.final || (previous?.text === text && previous.final === final)) return;
+    const segment: TranscriptSegment = {
+      id, speaker, text, final, revision: (previous?.revision || 0) + 1,
+      startMs: previous?.startMs ?? Math.max(0, Date.now() - captureStartedRef.current),
+      endMs: Math.max(0, Date.now() - captureStartedRef.current),
+    };
+    segmentStateRef.current.set(id, segment);
+    bufferRef.current?.stage(segment);
+    setSaveStatus("Speichert …");
+  }
 
   function appendEvent(message: string) {
     const time = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -131,8 +167,15 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
     const current = turnsRef.current;
     const existingIndex = current.findIndex((turn) => turn.id === id);
     const existing = existingIndex >= 0 ? current[existingIndex] : null;
-    const text = input.transcript?.trim() || `${existing?.text || ""}${input.delta || ""}`.trim();
+    const persisted = segmentStateRef.current.get(id);
+    const text = input.transcript ?? ((persisted?.text || existing?.text || "") + (input.delta || ""));
     if (!text) return current;
+    if (text.length > 16000) {
+      setSaveFailed(true);
+      setSaveStatus("Sprachsegment zu lang – Gespräch bitte beenden und prüfen.");
+      return current;
+    }
+    stageTranscript(id, input.speaker, text, input.final);
     const nextTurn: LiveTranscriptTurn = { id, speaker: input.speaker, text: text.slice(0, 1_200), final: input.final };
     const next = existingIndex >= 0
       ? current.map((turn, index) => index === existingIndex ? nextTurn : turn)
@@ -263,19 +306,27 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
 
   async function finishSession(finalStatus: "completed" | "cancelled") {
     const sessionId = sessionIdRef.current;
-    sessionIdRef.current = null;
     cleanupMedia();
     suggestionAbortRef.current?.abort();
     if (!sessionId) return;
     try {
+      await bufferRef.current?.flush();
       const response = await fetch("/api/ops/voice-copilot/session", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-voice-session-token": writeTokenRef.current },
         body: JSON.stringify({ sessionId, status: finalStatus }),
+        signal: AbortSignal.timeout(10_000),
       });
-      if (!response.ok) appendEvent("Session-Audit konnte nicht abgeschlossen werden.");
+      if (!response.ok) throw new Error("transcript_finalize_failed");
+      sessionIdRef.current = null;
+      writeTokenRef.current = "";
+      const hasPartial = [...segmentStateRef.current.values()].some((segment) => !segment.final);
+      setSaveStatus(hasPartial ? "Gespeichert – letzte Passage möglicherweise unvollständig" : "Telefontranskript gespeichert");
+      setSaveFailed(false);
     } catch {
-      appendEvent("Session-Audit konnte nicht abgeschlossen werden.");
+      setSaveFailed(true);
+      setSaveStatus("Abschluss noch nicht gespeichert – bitte erneut versuchen");
+      appendEvent("Speicherung ist noch ausstehend. Diese Seite offen lassen.");
     }
   }
 
@@ -283,20 +334,24 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
     if (!["capturing", "connecting", "live"].includes(status)) return;
     setStatus("stopping");
     vadCommittersRef.current.forEach((commit) => commit());
-    await new Promise((resolve) => window.setTimeout(resolve, 350));
+    await new Promise((resolve) => window.setTimeout(resolve, 2_000));
     await finishSession("completed");
     setStatus("stopped");
-    appendEvent("Live-Copilot beendet. Transkript wurde nicht serverseitig gespeichert.");
+    appendEvent("Live-Copilot beendet. Speicherstatus wird separat angezeigt.");
   }
 
   async function startSession() {
+    if (sessionIdRef.current || bufferRef.current?.size) {
+      setError("Das vorherige Transkript muss zuerst fertig gespeichert werden.");
+      return;
+    }
     setError(null);
     setSuggestionError(null);
     setSuggestions([]);
     setTranscript([]);
     setEvents([]);
     if (!enabled) {
-      setError("Live-Copilot ist ueber das Betriebs-Flag deaktiviert.");
+      setError("Die Gesprächsbegleitung wird noch eingerichtet.");
       return;
     }
     if (!knowledgeEnabled) {
@@ -312,11 +367,25 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
       return;
     }
     if (!consentConfirmed) {
-      setError("Die aktive Einwilligung zur Live-Transkription muss bestaetigt sein.");
+      setError("Die aktive Einwilligung zur Live-Transkription und dauerhaften Speicherung muss bestaetigt sein.");
       return;
     }
 
     try {
+      segmentStateRef.current.clear();
+      captureStartedRef.current = Date.now();
+      setSaveFailed(false);
+      bufferRef.current = new VoiceTranscriptBuffer(async (segments) => {
+        if (!sessionIdRef.current || !writeTokenRef.current) throw new Error("session_not_ready");
+        const response = await fetch("/api/ops/voice-copilot/transcript", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-voice-session-token": writeTokenRef.current },
+          body: JSON.stringify({ sessionId: sessionIdRef.current, segments }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || payload?.saved !== true) throw new Error("transcript_save_failed");
+      });
       setStatus("capturing");
       appendEvent("Kunden-Audio wird angefragt.");
       const customerStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
@@ -344,11 +413,14 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
           operatorName,
           requestId: selectedContext?.requestId || null,
           consentStatus: mode === "internal_test" ? "not_required_internal" : "confirmed",
+          transcriptStorageConsent: consentConfirmed,
         }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || "Transkriptionssessions konnten nicht gestartet werden.");
       sessionIdRef.current = String(payload.sessionId || "") || null;
+      writeTokenRef.current = String(payload.transcriptWriteToken || "");
+      captureStartedRef.current = Date.now();
       await customerPeer.peerConnection.setRemoteDescription({ type: "answer", sdp: payload.customerSdp });
       await operatorPeer.peerConnection.setRemoteDescription({ type: "answer", sdp: payload.operatorSdp });
       startLocalVad(customerStream, customerPeer.channel);
@@ -364,16 +436,36 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
     }
   }
 
+  useEffect(() => {
+    const timer = window.setInterval(() => { if (bufferRef.current?.size) void flushTranscript(); }, 1_000);
+    const warn = (event: BeforeUnloadEvent) => {
+      if (sessionIdRef.current || bufferRef.current?.size) { event.preventDefault(); event.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => { window.clearInterval(timer); window.removeEventListener("beforeunload", warn); };
+  }, []);
+
   useEffect(() => () => {
     suggestionAbortRef.current?.abort();
     cleanupMedia();
   }, []);
 
   const isBusy = ["capturing", "connecting", "live", "stopping"].includes(status);
+  useEffect(() => { onSuggestionsChange?.(suggestions); }, [suggestions, onSuggestionsChange]);
+  useEffect(() => { onBusyChange?.(isBusy || saveFailed); }, [isBusy, saveFailed, onBusyChange]);
+  useEffect(() => {
+    if (isBusy || saveFailed || boundCustomer === undefined) return;
+    setSelectedContext(boundCustomer);
+    setSuggestions([]);
+    setMode(boundCustomer ? "lead_qualification" : "internal_test");
+    setConsentConfirmed(false);
+  }, [boundCustomer, isBusy, saveFailed]);
+
   const canStart = enabled
     && knowledgeEnabled === true
     && operatorName.trim().length >= 2
     && consentConfirmed
+    && !saveFailed
     && (mode === "internal_test" || Boolean(selectedContext));
 
   return (
@@ -381,7 +473,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
       <section className="grid gap-4 rounded-lg border border-stone-200 bg-white p-5 shadow-[0_12px_32px_rgba(20,16,12,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase text-stone-500">Human-in-the-loop</p>
+            <p className="text-xs font-semibold uppercase text-stone-500">Nur für dich</p>
             <h2 className="mt-1 text-lg font-semibold text-stone-950">Live-Gespraechsbegleitung</h2>
           </div>
           <div className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
@@ -392,15 +484,15 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
 
         {!enabled ? (
           <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> Live-Copilot ist ueber das Betriebs-Flag deaktiviert.
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> Die Gesprächsbegleitung wird noch eingerichtet.
           </div>
         ) : knowledgeEnabled === false ? (
           <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> Wissenssystem und Session-Audit sind nicht aktiviert.
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> Wissen und Gesprächsspeicherung sind noch nicht bereit.
           </div>
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(320px,1.2fr)]">
+        <div className={boundCustomer !== undefined ? "grid gap-4" : "grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(320px,1.2fr)]"}>
           <div className="grid content-start gap-4">
             <div className="grid gap-2">
               <span className="text-xs font-semibold uppercase text-stone-500">Gespraechstyp</span>
@@ -414,7 +506,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
                       if (entry.value === "internal_test") setSelectedContext(null);
                     }}
                     disabled={isBusy}
-                    className={`min-h-9 flex-1 rounded-md px-2 text-sm font-semibold ${mode === entry.value ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white"}`}
+                    className={`min-h-9 flex-1 rounded-md px-2 text-sm font-semibold ${mode === entry.value ? "bg-[#f1edf7] text-[#66508a]" : "text-stone-600 hover:bg-white"}`}
                   >
                     {entry.label}
                   </button>
@@ -422,7 +514,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
               </div>
             </div>
 
-            {mode !== "internal_test" ? (
+            {boundCustomer !== undefined ? <p className="text-sm text-stone-600">{selectedContext?.customer.displayName || selectedContext?.customer.company || "Interner Test ohne Kundenzuordnung"}</p> : mode !== "internal_test" ? (
               <CustomerContextPanel selected={selectedContext} disabled={isBusy} onSelect={setSelectedContext} />
             ) : (
               <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
@@ -439,7 +531,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
                 disabled={isBusy}
                 className="mt-0.5 h-4 w-4"
               />
-              <span>Die aktive Einwilligung zur Live-Transkription wurde erteilt.</span>
+              <span>Die aktive Einwilligung zur Live-Transkription und dauerhaften Speicherung wurde erteilt.</span>
             </label>
 
             <div className="flex flex-wrap gap-2">
@@ -447,7 +539,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
                 type="button"
                 onClick={() => void startSession()}
                 disabled={!canStart || isBusy}
-                className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-stone-950 px-4 text-sm font-semibold text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#21714d] px-4 text-sm font-semibold text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Headphones className="h-4 w-4" /> Kunden-Audio teilen
               </button>
@@ -475,7 +567,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
               {status === "stopped" || status === "error" ? (
                 <button
                   type="button"
-                  title="Transkript verwerfen"
+                  title="Anzeige leeren (gespeicherte Historie bleibt erhalten)"
                   onClick={() => {
                     setTranscript([]);
                     setSuggestions([]);
@@ -486,6 +578,8 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
                 </button>
               ) : null}
             </div>
+            <p role="status" className={saveFailed ? "text-sm text-amber-800" : "text-xs text-stone-500"}>{saveStatus}</p>
+            {saveFailed ? <button type="button" className="text-left text-sm font-semibold underline" onClick={() => void (status === "stopped" || status === "error" ? finishSession("completed") : flushTranscript())}>Speicherung erneut versuchen</button> : null}
             <div className="min-h-72 max-h-[440px] overflow-y-auto rounded-lg border border-stone-200 bg-stone-50 p-3" aria-live="polite">
               {turns.length ? (
                 <div className="grid gap-3">
@@ -512,7 +606,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled }: Liv
         ) : null}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.45fr)]">
+      <section hidden={boundCustomer !== undefined} className={boundCustomer !== undefined ? "hidden" : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.45fr)]"}>
         <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-[0_12px_32px_rgba(20,16,12,0.06)]">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>

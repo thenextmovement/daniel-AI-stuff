@@ -8,6 +8,7 @@ const BLIND_GOLD_REVIEW_PATH = "/ops/customer-records/gold-review";
 
 export function OpsGlobalOverlays() {
   const pathname = usePathname();
+  if (pathname === "/ops/voice-copilot") return null;
   if (pathname === BLIND_GOLD_REVIEW_PATH || pathname.startsWith(`${BLIND_GOLD_REVIEW_PATH}/`)) {
     return null;
   }

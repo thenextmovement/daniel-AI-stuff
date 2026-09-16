@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { loadRuntimeConfig } from "./config.js";
 import { OpsClient } from "./ops-client.js";
-import { OpenAiRealtimeAdapter } from "./realtime.js";
+import { OpenAiLiveAdapter } from "./live.js";
+import { liveIncoming } from "./live-protocol.js";
 import { bearerMatches, verifyAttemptBinding, verifyTwilioSignature } from "./security.js";
 import { TwilioSipAdapter } from "./telephony.js";
 import { noClearOutcome, notReachedOutcome, technicalOutcome } from "./outcomes.js";
@@ -9,7 +10,7 @@ import { noClearOutcome, notReachedOutcome, technicalOutcome } from "./outcomes.
 const config = loadRuntimeConfig();
 const ops = new OpsClient(config);
 const telephony = config.providerReadiness.telephony ? new TwilioSipAdapter(config) : null;
-const realtime = config.providerReadiness.openAi ? new OpenAiRealtimeAdapter(config, ops) : null;
+const realtime = config.providerReadiness.openAi ? new OpenAiLiveAdapter(config, ops) : null;
 
 async function recoverActiveCalls() {
   if (!telephony || !realtime) {
@@ -111,32 +112,33 @@ async function openAiWebhook(request: IncomingMessage, response: ServerResponse)
   if (!realtime) return json(response, 503, { ok: false, error: "openai_not_ready", missing: config.providerReadiness.missing });
   const body = await rawBody(request);
   const event = await realtime.unwrapWebhook(body, request.headers);
-  if (event.type !== "realtime.call.incoming") return json(response, 200, { ok: true, ignored: true });
-  const attemptHeader = event.data.sip_headers.find((header) => header.name.toLowerCase() === "x-neontrip-attempt-id");
-  const bindingHeader = event.data.sip_headers.find((header) => header.name.toLowerCase() === "x-neontrip-binding");
+  const incoming = liveIncoming(event);
+  if (!incoming) return json(response, 200, { ok: true, ignored: true });
+  const attemptHeader = incoming.headers.find((header) => header.name.toLowerCase() === "x-neontrip-attempt-id");
+  const bindingHeader = incoming.headers.find((header) => header.name.toLowerCase() === "x-neontrip-binding");
   const attemptId = String(attemptHeader?.value || "").trim();
   const binding = String(bindingHeader?.value || "").trim();
   if (!attemptId || !verifyAttemptBinding(attemptId, binding, config.sipBindingSecret)) {
-    await realtime.reject(event.data.call_id);
+    await realtime.reject(incoming.sessionId);
     return json(response, 422, { ok: false, error: "invalid_attempt_binding" });
   }
   try {
-    const eventId = String(event.id || request.headers["webhook-id"] || "").trim();
+    const eventId = String(incoming.id || request.headers["webhook-id"] || "").trim();
     if (!eventId) {
-      await realtime.reject(event.data.call_id);
+      await realtime.reject(incoming.sessionId);
       return json(response, 422, { ok: false, error: "missing_webhook_id" });
     }
     const session = await ops.getAttempt(attemptId);
-    const registration = await ops.event(attemptId, "openai", "realtime.call.incoming", `openai-webhook:${eventId}`, {
+    const registration = await ops.event(attemptId, "openai", "live.transport.incoming", `openai-webhook:${eventId}`, {
       event_id: eventId,
-      call_id: event.data.call_id,
+      call_id: incoming.sessionId,
     });
     if (registration.result?.duplicate) return json(response, 200, { ok: true, duplicate: true });
-    await realtime.acceptIncomingCall(event.data.call_id, attemptId, session);
+    await realtime.acceptIncomingCall(incoming.sessionId, attemptId, session);
     return json(response, 200, { ok: true });
   } catch (error) {
-    await realtime.reject(event.data.call_id).catch((rejectError) => {
-      console.error("voice incoming call rejection failed", event.data.call_id, rejectError instanceof Error ? rejectError.message : "unknown error");
+    await realtime.reject(incoming.sessionId).catch((rejectError) => {
+      console.error("voice incoming call rejection failed", incoming.sessionId, rejectError instanceof Error ? rejectError.message : "unknown error");
     });
     await ops.finalize(attemptId, technicalOutcome("openai_accept_failed", error instanceof Error ? error.message : "unknown error")).catch((finalizeError) => {
       console.error("voice incoming call failure finalization failed", attemptId, finalizeError instanceof Error ? finalizeError.message : "unknown error");
@@ -233,12 +235,7 @@ const server = createServer(async (request, response) => {
       if (!realtime) return json(response, 503, { ok: false, error: "openai_not_ready", missing: config.providerReadiness.missing });
       const attemptId = url.pathname.split("/")[2] || "";
       const handedOff = await realtime.handoffAttempt(attemptId);
-      if (handedOff) await ops.finalize(attemptId, {
-        ...notReachedOutcome("completed"), terminalStatus: "handed_off", outcomeCode: "needs_human_followup",
-        summaryForHuman: "Anruf wurde durch einen Operator an einen Menschen uebergeben.",
-        humanHandoffRequested: true, humanHandoffCompleted: true,
-      });
-      return json(response, handedOff ? 200 : 404, { ok: handedOff });
+      return json(response, handedOff ? 202 : 404, { ok: handedOff, status: handedOff ? "handoff_requested" : "not_found", connected: false });
     }
     return json(response, 404, { ok: false, error: "not_found" });
   } catch (error) {

@@ -52,3 +52,20 @@ test("non-JSON upstream responses are rejected before parsing", async () => {
   }));
   await assert.rejects(() => api.getOffer("00000000-0000-4000-8000-000000000000"), /JSON-Antwort/);
 });
+
+test("customer history reads use fixed OPS origin, encoded binding and no mutation",async()=>{
+ const calls:Array<{url:URL;init?:RequestInit}>=[];
+ const api=new NeontripApi(config(),async(url,init)=>{calls.push({url:new URL(String(url)),init});return Response.json({ok:true,entries:[]});});
+ await api.searchCustomers("name+test@example.test");
+ await api.customerHistory("REQ-1&requestId=OTHER",20);
+ await api.customerTranscript("00000000-0000-4000-8000-000000000001",100);
+ assert.equal(calls.length,4);
+ for(const call of calls){
+  assert.equal(call.url.origin,"https://ops.example.test");
+  assert.equal(call.init?.method??"GET","GET");
+  assert.equal((call.init?.headers as Record<string,string>)["CF-Access-Client-Id"],"ops-id");
+ }
+ assert.equal(calls[1].url.searchParams.get("requestId"),"REQ-1&requestId=OTHER");
+ assert.equal(calls[2].url.searchParams.get("offset"),"20");
+ assert.equal(calls[3].url.searchParams.get("offset"),"100");
+});

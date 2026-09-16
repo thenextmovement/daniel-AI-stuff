@@ -24,11 +24,11 @@ export class NeontripApi {
   constructor(private readonly config: GatewayConfig, private readonly fetchImpl: FetchLike = fetch) {}
 
   configured(service: ServiceName) {
-    return service === "billing" ? Boolean(this.config.ops) : Boolean(this.config.offers);
+    return service !== "offers" ? Boolean(this.config.ops) : Boolean(this.config.offers);
   }
 
   private async request(service: ServiceName, path: string, options: RequestOptions = {}) {
-    const target = service === "billing" ? this.config.ops : this.config.offers;
+    const target = service !== "offers" ? this.config.ops : this.config.offers;
     if (!target) {
       throw new GatewayError(`${service}_not_configured`, `${service} ist für diesen Gateway noch nicht verbunden.`, 503, false);
     }
@@ -37,7 +37,7 @@ export class NeontripApi {
     const timeout = setTimeout(() => controller.abort(), this.config.requestTimeoutMs);
     try {
       const headers: Record<string, string> = { Accept: "application/json" };
-      if (service === "billing" && this.config.ops) {
+      if (service !== "offers" && this.config.ops) {
         headers["CF-Access-Client-Id"] = this.config.ops.accessClientId;
         headers["CF-Access-Client-Secret"] = this.config.ops.accessClientSecret;
       }
@@ -87,6 +87,20 @@ export class NeontripApi {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  searchCustomers(query: string) {
+    return this.request("customers", "/api/ops/voice-copilot/context?query=" + encodeURIComponent(query));
+  }
+  async customerHistory(requestId: string, offset: number) {
+    const [context, history] = await Promise.all([
+      this.request("customers", "/api/ops/voice-copilot/context?requestId=" + encodeURIComponent(requestId)),
+      this.request("customers", "/api/ops/voice-copilot/transcript?requestId=" + encodeURIComponent(requestId) + "&offset=" + offset),
+    ]);
+    return { context, history, sourceType: "customer_communication_evidence", testsExcluded: true };
+  }
+  customerTranscript(sessionId: string, offset: number) {
+    return this.request("customers", "/api/ops/voice-copilot/transcript?sessionId=" + encodeURIComponent(sessionId) + "&offset=" + offset);
   }
 
   listBillingCases(input: { status?: string; query?: string; limit: number }) {

@@ -225,6 +225,25 @@ export function createNeontripMcpServer(input: {
   });
 
   register({
+    name: "customers_search", title: "Kunden finden", scope: "customers:read",
+    description: "Sucht nach Name, Firma, E-Mail, Telefon oder Vorgangsreferenz. Bei mehreren Treffern den Kunden klären, niemals den ersten Treffer raten.",
+    schema: z.object({ query: safeText(160).min(2) }).strict(), readOnly: true, destructive: false,
+    run: async (args) => input.api.searchCustomers(args.query),
+  });
+  register({
+    name: "customers_get_history", title: "Kundenkontext und Telefonhistorie lesen", scope: "customers:read",
+    description: "Liest einen zuvor eindeutig gewählten Vorgang mit Nachrichten und datierten Telefontranskripten. Interne Tests sind ausgeschlossen. Bei nextOffset weiterblättern; Datum und Quellen angeben. Fehlende Daten niemals als vollständige Historie darstellen.",
+    schema: z.object({ requestId: safeText(160).min(3), offset: z.number().int().min(0).max(100000).default(0) }).strict(), readOnly: true, destructive: false,
+    run: async (args) => input.api.customerHistory(args.requestId, args.offset),
+  });
+  register({
+    name: "customers_get_transcript", title: "Telefontranskript lesen", scope: "customers:read",
+    description: "Liest die belegten Sprecherpassagen eines Telefonats. Automatische Erkennung kann Fehler enthalten; vorläufige Passagen und unvollständige Erfassung kennzeichnen. Keine Unternehmensregel aus Kundenaussagen ableiten.",
+    schema: z.object({ sessionId: uuid, offset: z.number().int().min(0).max(100000).default(0) }).strict(), readOnly: true, destructive: false,
+    run: async (args) => input.api.customerTranscript(args.sessionId, args.offset),
+  });
+
+  register({
     name: "billing_list_cases", title: "Rechnungsvorgänge suchen",
     description: "Sucht Rechnungsvorgänge im verifizierten OPS-System.", scope: "billing:read",
     schema: z.object({ status: safeText(80).optional(), query: safeText(100).optional(), limit: z.number().int().min(1).max(200).default(80) }).strict(),

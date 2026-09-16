@@ -22,7 +22,7 @@ export class TwilioSipAdapter implements TelephonyAdapter {
 
   async startOutboundCall(session: RuntimeSession) {
     const binding = signAttemptBinding(session.attemptId, this.config.sipBindingSecret);
-    const sipUri = `sip:${this.config.openAiProjectId}@sip.api.openai.com;transport=tls?x-neontrip-attempt-id=${encodeURIComponent(session.attemptId)}&x-neontrip-binding=${binding}`;
+    const sipUri = `sip:${this.config.openAiProjectId}@sip.api.openai.com;transport=tls;secure=true?x-neontrip-attempt-id=${encodeURIComponent(session.attemptId)}&x-neontrip-binding=${binding}`;
     const twiml = `<Response><Dial answerOnBridge="true"><Sip>${xmlEscape(sipUri)}</Sip></Dial></Response>`;
     const body = new URLSearchParams({
       To: session.phoneE164,

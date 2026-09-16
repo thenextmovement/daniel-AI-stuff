@@ -1,5 +1,7 @@
+import { randomBytes } from "node:crypto";
+import { transcriptTokenHash } from "@/lib/ops/voice-history";
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeVoiceCopilotApi, readVoiceCopilotJson, voiceCopilotApiFailure } from "@/lib/ops/voice-copilot-api";
+import { authorizeVoiceCopilotApi, readVoiceCopilotJson, resolveVoiceCopilotActor, voiceCopilotApiFailure } from "@/lib/ops/voice-copilot-api";
 import {
   buildVoiceCopilotSafetyIdentifier,
   buildVoiceCopilotTranscriptionSession,
@@ -45,6 +47,7 @@ async function createTranscriptionCall(input: {
       "OpenAI-Safety-Identifier": buildVoiceCopilotSafetyIdentifier(),
     },
     body: form,
+    signal: AbortSignal.timeout(20_000),
   });
   const answerSdp = await response.text();
   if (!response.ok) {
@@ -89,6 +92,7 @@ export async function POST(request: NextRequest) {
 
   let voiceSessionId: string | null = null;
   let customerCall: RealtimeTranscriptionCall | null = null;
+  let operatorCall: RealtimeTranscriptionCall | null = null;
   try {
     if (!isVoiceLiveCopilotEnabled()) {
       return NextResponse.json({ ok: false, error: "voice_live_copilot_disabled" }, { status: 503 });
@@ -96,7 +100,12 @@ export async function POST(request: NextRequest) {
     if (!isVoiceKnowledgeEnabled()) {
       return NextResponse.json({ ok: false, error: "voice_knowledge_not_enabled" }, { status: 503 });
     }
-    const input = validateVoiceCopilotTranscriptionInput(await readVoiceCopilotJson(request));
+    const body = await readVoiceCopilotJson(request);
+    if (body.transcriptStorageConsent !== true) {
+      throw new QuoteValidationError("Einwilligung zur Speicherung des Telefontranskripts fehlt.", ["transcript_storage_consent_required"], 422);
+    }
+    const input = validateVoiceCopilotTranscriptionInput(body);
+    const transcriptWriteToken = randomBytes(32).toString("hex");
     const apiKey = getVoiceOpenAiApiKey();
     const model = getVoiceCopilotTranscriptionModel();
     if (!apiKey || !model) {
@@ -116,9 +125,11 @@ export async function POST(request: NextRequest) {
       knowledgeMatches,
       consentStatus: input.consentStatus,
       interactionMode: "live_copilot",
-      consentEvidence: input.mode === "internal_test" ? null : {
+      transcriptWriteTokenHash: transcriptTokenHash(transcriptWriteToken),
+      consentEvidence: {
         method: "operator_attestation",
-        wordingVersion: "live-transcription-v1",
+        confirmedBy: await resolveVoiceCopilotActor(request) || "authenticated_ops",
+        wordingVersion: "live-transcription-storage-v2",
         confirmedAt: new Date().toISOString(),
       },
     });
@@ -129,23 +140,25 @@ export async function POST(request: NextRequest) {
       sdp: input.customerSdp,
       speaker: "customer",
     });
-    const operatorCall = await createTranscriptionCall({
+    operatorCall = await createTranscriptionCall({
       apiKey,
       model,
       sdp: input.operatorSdp,
       speaker: "operator",
     });
-    await markSession(voiceSessionId, "live");
+    await updateVoiceCallSessionStatus(voiceSessionId, "live");
 
     return NextResponse.json({
       ok: true,
       sessionId: voiceSessionId,
       customerSdp: customerCall.answerSdp,
       operatorSdp: operatorCall.answerSdp,
-      transcriptStored: false,
+      transcriptStorageEnabled: true,
+      transcriptWriteToken,
     }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     await markSession(voiceSessionId, "failed");
+    if (operatorCall) await hangupTranscriptionCall(getVoiceOpenAiApiKey(), operatorCall.callId);
     if (customerCall) await hangupTranscriptionCall(getVoiceOpenAiApiKey(), customerCall.callId);
     return voiceCopilotApiFailure(error, "transcription-session");
   }

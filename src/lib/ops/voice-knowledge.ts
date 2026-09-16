@@ -1,3 +1,4 @@
+import { listVoiceHistory, getVoiceTranscript } from "@/lib/ops/voice-history";
 import { createHash, randomUUID } from "node:crypto";
 import { getCustomerRecordByRequestId, searchCustomerRecords, type CustomerSearchResult } from "@/lib/ops/customer-records";
 import { getOfferById, getOfferByTrelloCardId, type OpsOfferSnapshot } from "@/lib/ops/offers";
@@ -70,7 +71,12 @@ export type VoiceCustomerContext = {
   customer: {
     displayName: string | null;
     company: string | null;
+    email?: string | null;
+    phone?: string | null;
   };
+  links?: { offer: string | null; trello: string | null };
+  recentCalls?: Array<{ id: string; startedAt: string | null; summary: string | null; excerpt: string; incomplete: boolean; sourceUrl: string }>;
+  historyStatus?: "ok" | "unavailable";
   request: {
     title: string | null;
     description: string | null;
@@ -550,6 +556,9 @@ function mapCustomerSummary(record: CustomerSearchResult) {
     requestId: record.requestId,
     displayName: record.displayName,
     company: record.company,
+    email: record.email,
+    phone: record.phone,
+    offerNumber: record.offerTracking?.offerNumber || null,
     requestTitle: record.request?.title || null,
     requestStatus: record.request?.status || null,
     offerId: record.offerTracking?.offerId || record.quote?.quoteId || null,
@@ -754,10 +763,29 @@ export async function getVoiceCustomerContext(requestIdInput: unknown): Promise<
     ...mirrorOutlook,
   ]);
   const outlook = outlookMatches.slice(0, 6);
+  let recentCalls: NonNullable<VoiceCustomerContext["recentCalls"]> = [];
+  let historyStatus: VoiceCustomerContext["historyStatus"] = "ok";
+  try {
+    const history = await listVoiceHistory(requestId);
+    recentCalls = await Promise.all(history.entries.slice(0, 3).map(async (entry) => {
+      const transcript = await getVoiceTranscript(entry.id, 0, true);
+      return { id: entry.id, startedAt: entry.startedAt, summary: entry.summary,
+        excerpt: transcript.segments.map(segment => segment.speaker + ": " + segment.text).join("\n").slice(-6000),
+        incomplete: entry.captureStatus !== "complete" || transcript.nextOffset !== null,
+        sourceUrl: entry.sourceUrl };
+    }));
+  } catch { historyStatus = "unavailable"; }
+  const trelloUrl = record.request?.trelloCardUrl || null;
+  const safeTrelloUrl = trelloUrl && /^https:\/\/trello\.com\/c\/[a-zA-Z0-9]+(?:[/?#]|$)/.test(trelloUrl) ? trelloUrl : null;
 
   return {
     requestId: record.requestId,
-    customer: { displayName: record.displayName, company: record.company },
+    customer: { displayName: record.displayName, company: record.company, email: record.email, phone: record.phone },
+    links: {
+      offer: boundOffer.offer?.offerId ? "/api/ops/customer-records/offers/" + encodeURIComponent(boundOffer.offer.offerId) + "/admin" : null,
+      trello: safeTrelloUrl,
+    },
+    recentCalls, historyStatus,
     request: {
       title: record.request?.title || null,
       description: cleanText(record.request?.description, 1200) || null,
@@ -798,15 +826,17 @@ export async function createVoiceCallSession(input: {
   knowledgeMatches: VoiceKnowledgeMatch[];
   consentStatus?: unknown;
   interactionMode?: VoiceCopilotInteractionMode;
+  transcriptWriteTokenHash?: string;
   consentEvidence?: {
     method: "operator_attestation";
+    confirmedBy?: string;
     wordingVersion: string;
     confirmedAt: string;
   } | null;
 }) {
   const operatorName = requiredText(input.operatorName, "Operator", 120, 2);
   const consentStatus = input.mode === "internal_test"
-    ? "not_required_internal"
+    ? (input.transcriptWriteTokenHash ? "confirmed" : "not_required_internal")
     : cleanText(input.consentStatus, 30);
   if (!["not_required_internal", "pending", "confirmed", "declined"].includes(consentStatus)) {
     throw new QuoteValidationError("Ein gueltiger Einwilligungsstatus ist erforderlich.", ["invalid_consent_status"], 422);
@@ -826,7 +856,8 @@ export async function createVoiceCallSession(input: {
       bound_request_id: input.context?.requestId || null,
       bound_offer_id: input.context?.offer?.offerId || null,
       consent_status: consentStatus,
-      transcript_storage_enabled: false,
+      transcript_storage_enabled: Boolean(input.transcriptWriteTokenHash),
+      ...(input.transcriptWriteTokenHash ? { transcript_write_token_hash: input.transcriptWriteTokenHash } : {}),
       status: "created",
       knowledge_version_ids: Array.from(new Set(input.knowledgeMatches.map((match) => match.versionId))),
       context_snapshot: {

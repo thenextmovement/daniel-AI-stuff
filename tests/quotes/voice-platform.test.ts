@@ -18,7 +18,7 @@ test("voice eval suite covers at least 50 unique German safety scenarios", () =>
   const result = validateVoiceEvalSuite();
   assert.equal(result.valid, true);
   assert.equal(result.scenarioCount, 56);
-  assert.deepEqual(VOICE_MODEL_COMPARISON_IDS, ["gpt-realtime-2.1", "gpt-realtime-1.5"]);
+  assert.deepEqual(VOICE_MODEL_COMPARISON_IDS, ["gpt-live-1"]);
   assert.ok(VOICE_EVAL_SCENARIOS.every((entry) => /[A-Za-zÄÖÜäöüß]/.test(entry.customerUtterance)));
 });
 
@@ -109,11 +109,12 @@ test("runtime provider readiness fails closed without claiming a call", () => {
     telephony: false,
     dispatch: false,
     missing: [
-      "OPENAI_API_KEY", "OPENAI_WEBHOOK_SECRET", "OPENAI_PROJECT_ID",
+      "OPENAI_API_KEY", "OPENAI_WEBHOOK_SECRET", "OPENAI_PROJECT_ID", "VOICE_LIVE_SIP_ENABLED",
       "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "VOICE_SIP_BINDING_SECRET",
     ],
   });
   assert.deepEqual(getProviderReadiness({
+    VOICE_LIVE_SIP_ENABLED: "true",
     OPENAI_API_KEY: "configured",
     OPENAI_WEBHOOK_SECRET: "configured",
     OPENAI_PROJECT_ID: "configured",
@@ -276,20 +277,16 @@ test("runtime restart recovery requests worker-bound active sideband sessions", 
 
 test("OpenAI ingress is replay-gated and receives a privacy-preserving safety identifier", () => {
   const server = readFileSync("services/voice-runtime/server.ts", "utf8");
-  const realtime = readFileSync("services/voice-runtime/realtime.ts", "utf8");
+  const realtime = readFileSync("services/voice-runtime/live.ts", "utf8");
   const data = readFileSync("src/lib/ops/voice-platform-data.ts", "utf8");
   assert.match(server, /openai-webhook:\$\{eventId\}/);
   assert.match(server, /registration\.result\?\.duplicate/);
   assert.match(realtime, /OpenAI-Safety-Identifier/);
   assert.match(data, /safetyIdentifier: voiceStableHash\(\{ requestId: call\.requestId \}\)/);
-  assert.match(realtime, /hangupAfterResponse/);
-  assert.match(realtime, /finishCustomerStop/);
-  assert.match(realtime, /setTimeout\(\(\) => void this\.finishCustomerStop\(active\), 5_000\)/);
-  assert.match(realtime, /active\.lastOutcome = active\.lastOutcome\?\.customerRequestedStop/);
-  assert.match(realtime, /active\.lastOutcome = \{[\s\S]+terminalStatus: "handed_off"/);
-  assert.match(realtime, /INTERNAL_TEST_OPENING_INSTRUCTION/);
-  assert.match(realtime, /Behaupte nicht, dass eine Kundenanfrage oder ein Angebot vorliegt/);
-  assert.match(realtime, /throw new Error\("invalid realtime event JSON"\)/);
+  assert.match(realtime, /customerRequestedStop/);
+  assert.match(realtime, /humanHandoffCompleted:\s*false/);
+  assert.match(realtime, /interner Test mit Kundendaten als Simulation/);
+  assert.match(realtime, /session.closed/);
   assert.doesNotMatch(server, /catch\(\(\) => undefined\)/);
 });
 

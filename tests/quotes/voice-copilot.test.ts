@@ -251,15 +251,15 @@ test("voice OpenAI configuration accepts the existing Ops aliases", () => {
   }
 });
 
-test("live copilot keeps raw transcript client-side and binds suggestions to an audited session", () => {
+test("live copilot persists consented transcripts and binds suggestions to an audited session", () => {
   const client = readFileSync("src/app/ops/voice-copilot/live-call-copilot.tsx", "utf8");
   const transcriptionRoute = readFileSync("src/app/api/ops/voice-copilot/transcription-session/route.ts", "utf8");
   const suggestionRoute = readFileSync("src/app/api/ops/voice-copilot/suggestions/route.ts", "utf8");
   assert.match(client, /getDisplayMedia/);
   assert.match(client, /input_audio_buffer\.commit/);
-  assert.match(transcriptionRoute, /transcriptStored: false/);
+  assert.match(transcriptionRoute, /transcriptStorageEnabled: true/);
   assert.match(transcriptionRoute, /interactionMode: "live_copilot"/);
-  assert.match(transcriptionRoute, /wordingVersion: "live-transcription-v1"/);
+  assert.match(transcriptionRoute, /wordingVersion: "live-transcription-storage-v2"/);
   assert.match(transcriptionRoute, /isVoiceLiveCopilotEnabled/);
   assert.match(suggestionRoute, /getVoiceCallSessionBinding/);
   assert.match(suggestionRoute, /isVoiceLiveCopilotEnabled/);
@@ -277,48 +277,45 @@ test("Coolify operations expose a restricted and reversible live copilot flag sw
   assert.doesNotMatch(workflow, /VOICE_LIVE_COPILOT_ENABLED.*process\.env\.FLAG_VALUE/);
 });
 
-test("voice copilot route proxies SDP without exposing OpenAI secrets", async () => {
-  const originalKey = process.env.OPENAI_API_KEY;
-  const originalNodeEnv = process.env.NODE_ENV;
-  const originalFetch = globalThis.fetch;
-  const env = process.env as Record<string, string | undefined>;
+test("voice copilot creates a Live session and persists consent without exposing OpenAI secrets", async () => {
+  const env = process.env as Record<string, string | undefined>, before = { ...env }, originalFetch = globalThis.fetch;
   try {
-    env.NODE_ENV = "development";
-    process.env.OPENAI_API_KEY = "test-openai-key";
+    env.NODE_ENV = "development"; env.OPENAI_API_KEY = "test-openai-key";
+    delete env.OPS_OPENAI_API_KEY;
+    env.VOICE_COPILOT_KNOWLEDGE_ENABLED = "true";
+    env.SUPABASE_URL = "https://database.test"; env.SUPABASE_SERVICE_ROLE_KEY = "test-database-key";
+    let captured: Record<string, unknown> = {};
     let capturedAuthorization = "";
-    let capturedSdp = "";
-    globalThis.fetch = (async (_url, init) => {
-      capturedAuthorization = String((init?.headers as Record<string, string> | undefined)?.authorization || "");
-      capturedSdp = String((init?.body as FormData).get("sdp") || "");
-      return new Response("v=0\r\nanswer", { status: 200, headers: { "content-type": "application/sdp" } });
+    globalThis.fetch = (async (url, init) => {
+      if (String(url).startsWith("https://api.openai.com/")) {
+        assert.equal(String(url), "https://api.openai.com/v1/live/sessions");
+        captured = JSON.parse(String(init?.body));
+        capturedAuthorization = String((init?.headers as Record<string, string>)?.authorization);
+        return Response.json({ session: { id: "live_fixture" }, transport: { sdp: "v=0\\r\\nanswer" } }, { status: 201 });
+      }
+      if (init?.method === "POST" && String(url).includes("/voice_call_sessions")) {
+        const session = JSON.parse(String(init.body));
+        assert.equal(session.transcript_storage_enabled, true);
+        assert.equal(session.consent_status, "confirmed");
+        return Response.json([{ id: "11111111-1111-4111-8111-111111111111" }]);
+      }
+      return Response.json([]);
     }) as typeof fetch;
-
     const response = await POST(new NextRequest("http://localhost/api/ops/voice-copilot/realtime-session", {
-      method: "POST",
-      headers: { "content-type": "application/json", host: "localhost" },
-      body: JSON.stringify({
-        sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n",
-        mode: "lead_qualification",
-      }),
+      method: "POST", headers: { "content-type": "application/json", host: "localhost" },
+      body: JSON.stringify({ sdp: "v=0\\r\\nfixture", mode: "internal_test", operatorName: "Test Operator", transcriptStorageConsent: true }),
     }));
-
     assert.equal(response.status, 200);
-    assert.equal(await response.text(), "v=0\r\nanswer");
+    assert.equal(await response.text(), "v=0\\r\\nanswer");
     assert.equal(capturedAuthorization, "Bearer test-openai-key");
-    assert.equal(capturedSdp, "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n");
+    assert.equal((captured.session as Record<string, unknown>).model, "gpt-live-1");
+    assert.equal((captured.transport as Record<string, unknown>).type, "webrtc");
+    assert.equal(response.headers.get("x-neontrip-transcript-token")?.length, 64);
     assert.doesNotMatch(readFileSync("src/app/ops/voice-copilot/page-client.tsx", "utf8"), /OPENAI_API_KEY/);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalKey === undefined) {
-      delete process.env.OPENAI_API_KEY;
-    } else {
-      process.env.OPENAI_API_KEY = originalKey;
-    }
-    if (originalNodeEnv === undefined) {
-      delete env.NODE_ENV;
-    } else {
-      env.NODE_ENV = originalNodeEnv;
-    }
+    for (const key of Object.keys(env)) if (!(key in before)) delete env[key];
+    Object.assign(env, before);
   }
 });
 
