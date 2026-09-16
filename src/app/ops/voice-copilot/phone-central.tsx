@@ -138,7 +138,12 @@ export function PhoneCentral(props: Props) {
           Einstellungen
         </a>
         </div>
-        <div className={styles.navigation}>
+        <div
+          className={styles.navigation}
+          onFocusCapture={(event) => {
+            event.target.closest("a")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+          }}
+        >
           <OpsAppSwitcher active="voiceCopilot" tone="light" />
         </div>
       </header>
