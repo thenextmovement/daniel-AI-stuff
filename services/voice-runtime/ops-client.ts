@@ -35,6 +35,13 @@ export class OpsClient {
     }
   }
 
+  async getPhoneDevice(deviceId:string,staffId:string) {
+    const payload=await this.request<{device:{deviceId:string;staffId:string;expiresAt:string}}>("/api/internal/voice-phone/device",{
+      method:"POST",body:JSON.stringify({deviceId,staffId}),
+    });
+    return payload.device;
+  }
+
   async transcript(attemptId: string, segments: unknown[], finish?: "complete" | "interrupted") {
     return this.request<{saved:boolean}>("/api/internal/voice-platform/transcript", { method:"POST", body:JSON.stringify({attemptId,segments,...(finish?{finish}:{})}) });
   }

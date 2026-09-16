@@ -70,3 +70,71 @@ Test des Anruf- und Audiowegs erforderlich. Ein REST-Anrufnachweis allein belegt
 keine Live-Transkription oder Mitarbeiterübernahme.
 Quellen: https://api.placetel.de/ und
 https://www.placetel.de/hilfe/telefonanlage/smartphone-app
+
+## Persönliche Telefonprofile – TICKET-295 (Entwicklungsstand)
+
+Die Telefonidentität ist vom vorhandenen Ops-Zugang getrennt. Eine allgemeine
+Ops-Sitzung und ein frei eingegebener Name berechtigen nicht zu einem persönlichen
+Browser-Telefon. Bei bekannter, verifizierter Cloudflare-Access-E-Mail kann ein
+zugeordnetes aktives Profil verbunden werden. Alternativ wird ein unabhängig
+ausgestellter, einmaliger persönlicher Einrichtungscode eingelöst. Der
+Einrichtungscode wählt seinen Besitzer serverseitig; der Browser übermittelt
+keine maßgebliche Mitarbeiter-ID.
+
+Die additive Migration 20260916220000 legt voice_staff, voice_staff_invites und
+voice_staff_devices an. Sie legt keine echten Mitarbeiter, Codes, Zugangswerte
+oder aktiven Anschlüsse an. Alle Tabellen haben RLS und keinen direkten Zugriff
+für anon/authenticated. Nur der bestehende serverseitige Service-Zugang darf
+sie bearbeiten. Codes und Gerätesitzungen werden nur als getrennt abgeleitete
+Hashes gespeichert. Die Geräte-Cookie ist HttpOnly, Secure in Produktion,
+SameSite Strict und auf /api/ops/voice-phone beschränkt. Die Ops-Cookie bleibt
+unverändert. Codes sind einmalig und maximal 24 Stunden gültig, Geräte maximal
+30 Tage; pro Mitarbeiter sind höchstens acht aktive Geräte möglich.
+
+Die Code-Ausstellung und erste produktive Profilzuordnung sind noch einzurichten.
+Sie dürfen nicht als frei zugängliche Selbstzuweisung unter einem gemeinsamen
+Ops-Token implementiert werden. Neue Codes werden einer bereits bestätigten
+Person zugeordnet und außerhalb von Logs und Chat ausgegeben. Keine Personen-
+oder E-Mail-Zuordnung aus Anzeigenamen erraten. Die verifizierten Placetel-Ziel-
+IDs können am Profil hinterlegt werden; dies verändert das Placetel-Routing nicht.
+
+VOICE_PHONE_ENABLED schaltet diesen zusätzlichen Ops-Pfad ausdrücklich ein.
+Ohne diesen Schalter bleibt die vorhandene Gesprächsbegleitung erhalten.
+Die Teamanzeige verwendet nur frische Gerätemeldungen (45 Sekunden) mit
+registriertem Telefon; dies ist eine Präsenzanzeige und noch kein Beweis für
+eine freie Leitung. Der Anrufstatus muss aus den Telefonereignissen ergänzt werden.
+
+Für Browser-Telefonberechtigungen fragt Ops die Runtime mit der bestehenden
+internen Authentifizierung an. Die Runtime prüft dasselbe aktive Gerät erneut in
+Ops. Das offizielle Twilio-SDK signiert einen höchstens zehn Minuten gültigen
+Token mit genau dessen stabiler Client-Identität. Die Gerätesitzung darf dadurch
+nicht verlängert werden. Ein frei mitgeschickter Name oder eine fremde Identität
+ändert die Signaturzuordnung nicht. Runtime-Voraussetzungen:
+VOICE_TEAM_PHONE_ENABLED, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET und
+TWILIO_PHONE_APP_SID; bestehende Twilio-Account-ID und Ops-Verbindung werden genutzt.
+Diese Werte werden durch den Codestand weder erstellt noch gesetzt.
+
+Neu benötigte Bibliotheken: @twilio/voice-sdk 2.18.5 und twilio 6.1.1. Deren
+Abhängigkeiten erfordern die angehobenen Patchstände von hasown, side-channel
+und side-channel-list. Weitere bestehende Paketversionen sind unverändert.
+Die Audit-Prüfung ergab keine Advisories für neu hinzugefügte Pakete.
+
+Geprüft: Vertragstests für getrennte Credentials, Identität, Ablauf, Präsenz,
+Origin-Schutz und signierte Telefontokens; isolierte PostgreSQL-17-Prüfung
+einschließlich Doppelverwendung, Sperren, Ablauf, Transaktionsrollback, Geräte-
+Limit und RLS. Zwei parallele echte SQL-Transaktionen ergaben genau ein Gerät.
+Die isolierte HTTPS-Next-Vorschau prüft den bestehenden Ops-Login, persönliche
+Anmeldung, abgewiesene falsche Access-Identität und Code-Replay, Cookie-Eigenschaften,
+Abmeldung ohne Ops-Logout sowie Desktop und 390-px-Ansicht. Keine reale Datenbank,
+keine Providerverbindung und keine produktiven Kundendaten in diesen Tests.
+
+Noch offen in T295: Browser-SDK mit Anrufsteuerung verbinden, bestätigter
+Anrufaufbau und Eingangsanzeige, Konferenz-/Rückfrage-/Weitergabeablauf, optionaler
+Rückruf auf ein verifiziertes Mitarbeitertelefon, personen- und kundengebundene
+Transkriptfortsetzung sowie administrative Ersteinrichtung. Dieser Zwischenstand
+ist keine betriebsbereite Telefonie und kein freigegebener Rollout.
+
+Quellen:
+- https://www.twilio.com/docs/iam/access-tokens
+- https://www.twilio.com/docs/voice/sdks/javascript/twiliodevice
+- https://www.twilio.com/docs/voice/conference

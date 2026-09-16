@@ -647,3 +647,16 @@
     padding: 22px 20px;
   }
 }
+
+.phoneAccount{position:relative;max-width:100%;min-width:220px}
+.phoneAccountSummary{display:flex;align-items:center;gap:8px;min-height:44px;padding:10px 14px;border:1px solid #dce2e8;border-radius:12px;background:white;cursor:pointer;font-size:15px}
+.phoneAccountSummary span{color:#697586}
+.phoneAccountBody{position:absolute;right:0;top:52px;z-index:25;width:min(350px,calc(100vw - 48px));padding:20px;background:white;border:1px solid #dce2e8;border-radius:14px;box-shadow:0 12px 35px #152b3b18}
+.phoneAccountBody p{margin:0 0 12px}
+.phoneAccountField{display:grid!important;gap:6px;margin:14px 0;font-size:14px}
+.phoneAccountField input{width:100%;min-width:0;border:1px solid #dce2e8;border-radius:8px;padding:10px;font-size:16px}
+.phoneTeam{margin:20px 0;border-top:1px solid #e4e8ed;padding-top:20px}
+.phoneTeam h3{margin:0 0 12px}
+.phoneTeamMember{display:flex;align-items:center;gap:10px;padding:9px 0;font-size:14px}
+.phoneTeamMember p{margin:3px 0 0}
+@media(max-width:600px){.phoneAccount{min-width:0;width:100%}.phoneAccountBody{position:relative;top:8px;width:100%;margin-bottom:14px}.phoneAccountSummary{width:100%}}
