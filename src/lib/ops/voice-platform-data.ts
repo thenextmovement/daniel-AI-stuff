@@ -314,7 +314,7 @@ export async function getVoiceRuntimeSessionByAttempt(attemptIdInput: unknown) {
   const capabilities = modelSnapshot.capabilities && typeof modelSnapshot.capabilities === "object" && !Array.isArray(modelSnapshot.capabilities)
     ? modelSnapshot.capabilities as Record<string, unknown>
     : {};
-  return prepareVoiceRuntimeSession({
+  const session = await prepareVoiceRuntimeSession({
     attemptId: attempt.id,
     targetId: target.id,
     campaignId: campaign.id,
@@ -334,6 +334,7 @@ export async function getVoiceRuntimeSessionByAttempt(attemptIdInput: unknown) {
     attemptNumber: attempt.attempt_number,
     allowlistOnly: contextSnapshot.allowlist_only === true,
   });
+  return { ...session, providerCallId: attempt.provider_call_id || null };
 }
 
 export async function listRecoverableVoiceRuntimeSessions(workerIdInput: unknown) {

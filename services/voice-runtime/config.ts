@@ -16,8 +16,10 @@ function optional(name: string) {
 }
 
 export function getProviderReadiness(env: Record<string, string | undefined> = process.env) {
-  const missingOpenAi: string[] = OPENAI_PROVIDER_VARIABLES.filter((name) => !String(env[name] || "").trim());
-  if (env.VOICE_LIVE_SIP_ENABLED !== "true") missingOpenAi.push("VOICE_LIVE_SIP_ENABLED");
+  const media = env.VOICE_LIVE_MEDIA_ENABLED === "true";
+  const openAiVariables = media ? ["OPENAI_API_KEY", "OPENAI_PROJECT_ID"] : OPENAI_PROVIDER_VARIABLES;
+  const missingOpenAi: string[] = openAiVariables.filter((name) => !String(env[name] || "").trim());
+  if (!media && env.VOICE_LIVE_SIP_ENABLED !== "true") missingOpenAi.push("VOICE_LIVE_SIP_ENABLED");
   const missingTelephony = TELEPHONY_PROVIDER_VARIABLES.filter((name) => !String(env[name] || "").trim());
   return {
     openAi: missingOpenAi.length === 0,
@@ -57,6 +59,7 @@ export function loadRuntimeConfig() {
     twilioAuthToken: optional("TWILIO_AUTH_TOKEN"),
     twilioFromNumber: optional("TWILIO_FROM_NUMBER"),
     providerReadiness: getProviderReadiness(),
+    transport: optional("VOICE_LIVE_MEDIA_ENABLED") === "true" ? "media_streams" as const : "sip" as const,
     handoffUri: String(process.env.VOICE_HUMAN_HANDOFF_URI || "").trim(),
     n8nOutcomeUrl,
     n8nWebhookToken,
