@@ -1,6 +1,7 @@
+import { loadVoiceContextRecord } from "@/lib/ops/voice-context-record";
 import { listVoiceHistory, getVoiceTranscript } from "@/lib/ops/voice-history";
 import { createHash, randomUUID } from "node:crypto";
-import { getCustomerRecordByRequestId, searchCustomerRecords, type CustomerSearchResult } from "@/lib/ops/customer-records";
+import { searchCustomerRecords, type CustomerSearchResult } from "@/lib/ops/customer-records";
 import { getOfferById, getOfferByTrelloCardId, type OpsOfferSnapshot } from "@/lib/ops/offers";
 import { fetchOutlookGraphEvidenceForBoundCustomer } from "@/lib/ops/company-brain";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
@@ -739,9 +740,9 @@ function mergeVoiceOutlookMessages(messages: VoiceCustomerContext["outlook"]) {
     });
 }
 
-export async function getVoiceCustomerContext(requestIdInput: unknown): Promise<VoiceCustomerContext> {
+export async function getVoiceCustomerContext(requestIdInput: unknown, options?: { customerId?: string | null }): Promise<VoiceCustomerContext> {
   const requestId = requiredText(requestIdInput, "Request-ID", 160, 3);
-  const record = await getCustomerRecordByRequestId(requestId, { includeTrello: false });
+  const record = await loadVoiceContextRecord(requestId, options?.customerId);
   if (record.requestId !== requestId) {
     throw new QuoteValidationError("Request-ID konnte nicht eindeutig gebunden werden.", ["request_binding_mismatch"], 409);
   }
@@ -802,8 +803,8 @@ export async function getVoiceCustomerContext(requestIdInput: unknown): Promise<
     outlookOrganizationMatchCount: outlookMatches.filter((message) => message.scope === "organization").length,
     sourceStatus: {
       customerRecord: "ok",
-      offer: boundOffer.status,
-      outlook: outlook.length ? "ok" : liveOutlook.diagnostic?.ok === true ? "empty" : "unavailable",
+      offer: boundOffer.status === "not_linked" && !record.optionalSources.offer ? "unavailable" : boundOffer.status,
+      outlook: outlook.length ? "ok" : liveOutlook.diagnostic?.ok === true && record.optionalSources.outlook ? "empty" : "unavailable",
     },
   };
 }

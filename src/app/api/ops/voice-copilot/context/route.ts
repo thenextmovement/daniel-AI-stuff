@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     }
     const requestId = request.nextUrl.searchParams.get("requestId");
     if (requestId) {
-      const context = await getVoiceCustomerContext(requestId);
+      const context = await getVoiceCustomerContext(requestId, { customerId: request.nextUrl.searchParams.get("customerId") });
       return NextResponse.json({ ok: true, context }, { headers: { "cache-control": "no-store" } });
     }
     const results = await searchVoiceCustomerContexts(request.nextUrl.searchParams.get("query"));

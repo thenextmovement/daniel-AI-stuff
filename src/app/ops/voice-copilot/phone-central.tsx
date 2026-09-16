@@ -97,7 +97,7 @@ export function PhoneCentral(props: Props) {
     if (!contact.requestId) return;
     try {
       const response = await fetch(
-        "/api/ops/voice-copilot/context?requestId=" + encodeURIComponent(contact.requestId),
+        "/api/ops/voice-copilot/context?requestId=" + encodeURIComponent(contact.requestId) + "&customerId=" + encodeURIComponent(contact.customerId),
         { cache: "no-store", signal: AbortSignal.timeout(20000) },
       );
       const data = await readPhoneCentralResponse<{context: VoiceCustomerContext}>(response,
