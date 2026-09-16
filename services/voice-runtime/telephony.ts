@@ -1,5 +1,6 @@
 import type { RuntimeConfig } from "./config.js";
 import type { RuntimeSession } from "./types.js";
+import { TWILIO_MEDIA_PATH } from "./media-protocol.js";
 import { signAttemptBinding, xmlEscape } from "./security.js";
 
 export interface TelephonyAdapter {
@@ -9,7 +10,7 @@ export interface TelephonyAdapter {
 }
 
 export class TwilioSipAdapter implements TelephonyAdapter {
-  constructor(private readonly config: RuntimeConfig) {}
+  constructor(protected readonly config: RuntimeConfig) {}
 
   private authorization() {
     return `Basic ${Buffer.from(`${this.config.twilioAccountSid}:${this.config.twilioAuthToken}`).toString("base64")}`;
@@ -20,10 +21,14 @@ export class TwilioSipAdapter implements TelephonyAdapter {
     return `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(this.config.twilioAccountSid)}/Calls${suffix}.json`;
   }
 
-  async startOutboundCall(session: RuntimeSession) {
+  protected outboundTwiml(session: RuntimeSession) {
     const binding = signAttemptBinding(session.attemptId, this.config.sipBindingSecret);
     const sipUri = `sip:${this.config.openAiProjectId}@sip.api.openai.com;transport=tls;secure=true?x-neontrip-attempt-id=${encodeURIComponent(session.attemptId)}&x-neontrip-binding=${binding}`;
-    const twiml = `<Response><Dial answerOnBridge="true"><Sip>${xmlEscape(sipUri)}</Sip></Dial></Response>`;
+    return `<Response><Dial answerOnBridge="true"><Sip>${xmlEscape(sipUri)}</Sip></Dial></Response>`;
+  }
+
+  async startOutboundCall(session: RuntimeSession) {
+    const twiml = this.outboundTwiml(session);
     const body = new URLSearchParams({
       To: session.phoneE164,
       From: this.config.twilioFromNumber,
@@ -61,5 +66,21 @@ export class TwilioSipAdapter implements TelephonyAdapter {
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) throw new Error(`Twilio call stop failed with ${response.status}`);
+  }
+}
+
+export class TwilioMediaAdapter extends TwilioSipAdapter {
+  protected outboundTwiml(session: RuntimeSession) {
+    if (!session.allowlistOnly || session.modelId !== "gpt-live-1")
+      throw new Error("media_internal_live_test_only");
+    const url = new URL(this.config.publicUrl);
+    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash)
+      throw new Error("invalid_media_public_url");
+    url.protocol = "wss:";
+    url.pathname = TWILIO_MEDIA_PATH;
+    const binding = signAttemptBinding(session.attemptId, this.config.sipBindingSecret);
+    // Twilio executes Say before opening the stream. A signed, attempt-bound
+    // start is therefore the disclosure signal, not a generated AI transcript.
+    return `<Response><Say language="de-DE">Hier ist Nia, der KI-Telefonassistent von NEONTRIP. Dies ist der vereinbarte interne Test.</Say><Connect><Stream url="${xmlEscape(url.toString())}"><Parameter name="attemptId" value="${xmlEscape(session.attemptId)}"/><Parameter name="binding" value="${xmlEscape(binding)}"/></Stream></Connect><Hangup/></Response>`;
   }
 }
