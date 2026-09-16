@@ -20,7 +20,17 @@ import {
   type LiveSegment,
 } from "./live-protocol.js";
 
+export interface LiveMediaTransport {
+  activateInput(consume: (audio: string) => void): void;
+  output(audio: string): void;
+  watchClose(handler: (clean: boolean) => void): void;
+  finishPlayback(): Promise<boolean>;
+  close(): void;
+}
+
 type ActiveCall = {
+  media?: LiveMediaTransport;
+  started: boolean;
   attemptId: string;
   callId: string;
   socket: WebSocket;
@@ -41,9 +51,13 @@ type ActiveCall = {
 export class OpenAiLiveAdapter {
   readonly client: OpenAI;
   private calls = new Map<string, ActiveCall>();
+  private mediaFinalizations = new Set<Promise<void>>();
+  private mediaStopping = false;
   constructor(
     private config: RuntimeConfig,
     private ops: OpsClient,
+    private socketFactory: (url: string, options: WebSocket.ClientOptions) => WebSocket =
+      (url, options) => new WebSocket(url, options),
   ) {
     this.client = new OpenAI({
       apiKey: config.openAiApiKey,
@@ -112,10 +126,45 @@ export class OpenAiLiveAdapter {
       throw error;
     }
   }
+  async connectMedia(session: RuntimeSession, media: LiveMediaTransport) {
+    if (this.mediaStopping) throw new Error("media_runtime_stopping");
+    if (!session.allowlistOnly) throw new Error("media_internal_test_only");
+    liveSessionConfig(session);
+    if ([...this.calls.values()].some(call => call.attemptId === session.attemptId))
+      throw new Error("attempt_already_connected");
+    const storage = await this.ops.transcript(session.attemptId, []);
+    if (!storage.saved) throw new Error("transcript_not_acknowledged");
+    if (this.mediaStopping) throw new Error("media_runtime_stopping");
+    this.attach("pending-" + session.attemptId, session, true, false, media);
+  }
+  async shutdownMedia() {
+    this.mediaStopping = true;
+    for (const active of this.calls.values()) {
+      if (!active.media) continue;
+      active.gap = true;
+      active.outcome ||= technicalOutcome("media_runtime_restart", "Der interne Test wurde durch einen Runtime-Neustart unterbrochen.");
+      await this.hangup(active.callId).catch(() => active.socket.terminate());
+    }
+    const deadline = Date.now() + 18000;
+    while (Date.now() < deadline &&
+      ([...this.calls.values()].some(call => call.media) || this.mediaFinalizations.size))
+      await new Promise(resolve => setTimeout(resolve, 50));
+  }
   async reject(id: string) {
     await this.command(id, "reject", { status_code: 603 });
   }
   async hangup(id: string) {
+    const active = this.calls.get(id);
+    if (active?.media) {
+      if (active.started && active.socket.readyState === WebSocket.OPEN) {
+        this.send(active, { type: "session.close" });
+        this.closeDeadline(active);
+      } else {
+        active.gap = true;
+        active.socket.terminate();
+      }
+      return;
+    }
     await this.command(id, "hangup");
   }
   async recoverCall(
@@ -192,26 +241,30 @@ export class OpenAiLiveAdapter {
     active.stopTimer = setTimeout(() => {
       active.gap = true;
       active.socket.close(1000, "close timeout");
-    }, 10000);
+    }, active.media ? 15000 : 10000);
   }
   private attach(
     id: string,
     session: RuntimeSession,
     disclosed: boolean,
     gap: boolean,
+    media?: LiveMediaTransport,
   ) {
-    const socket = new WebSocket(
-      "wss://api.openai.com/v1/live/sessions/" +
-        encodeURIComponent(id) +
-        "/attach",
+    const socket = this.socketFactory(
+      media ? "wss://api.openai.com/v1/live/sessions" :
+        "wss://api.openai.com/v1/live/sessions/" + encodeURIComponent(id) + "/attach",
       {
         headers: {
           authorization: "Bearer " + this.config.openAiApiKey,
           "OpenAI-Safety-Identifier": session.safetyIdentifier,
+          ...(media ? { "OpenAI-Project": this.config.openAiProjectId } : {}),
         },
+        ...(media ? { handshakeTimeout: 10000, maxPayload: 256000, perMessageDeflate: false } : {}),
       },
     );
     const active: ActiveCall = {
+      media,
+      started: !media,
       attemptId: session.attemptId,
       callId: id,
       socket,
@@ -230,8 +283,27 @@ export class OpenAiLiveAdapter {
       finalizing: false,
     };
     this.calls.set(id, active);
+    if (media) {
+      active.stopTimer = setTimeout(() => {
+        active.gap = true;
+        active.socket.terminate();
+      }, 12000);
+      media.watchClose((clean) => {
+        if (!clean) {
+          active.gap = true;
+          active.outcome ||= technicalOutcome("media_disconnected", "Die Audioverbindung wurde unterbrochen.");
+        }
+        if (!active.closed) void this.hangup(active.callId).catch(() => active.socket.terminate());
+      });
+    }
     socket.on("open", () => {
-      if (!disclosed)
+      if (media) {
+        const initial = liveSessionConfig(session);
+        this.send(active, {
+          type: "session.start",
+          session: { ...initial, audio: { ...initial.audio, format: { type: "audio/pcmu", rate: 8000 } } },
+        });
+      } else if (!disclosed)
         this.send(active, {
           type: "session.instructions.append",
           delegation_id: null,
@@ -245,15 +317,60 @@ export class OpenAiLiveAdapter {
       );
     });
     socket.on("message", (raw) => {
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(String(raw));
+        if (media && event.type === "session.started") {
+          if (active.started) throw new Error("duplicate_live_start");
+          const started = event.session as Record<string, unknown>;
+          if (typeof started?.id !== "string" || !/^[a-zA-Z0-9_-]{1,160}$/.test(started.id))
+            throw new Error("invalid_live_session_id");
+          if (active.stopTimer) clearTimeout(active.stopTimer);
+          active.stopTimer = null;
+          this.calls.delete(active.callId);
+          active.callId = started.id;
+          active.started = true;
+          this.calls.set(active.callId, active);
+          active.chain = active.chain.then(async () => {
+            await this.ops.updateAttempt(active.attemptId, { openAiCallId: active.callId, status: "live" });
+          }).catch(async () => {
+            active.gap = true;
+            active.outcome = technicalOutcome("live_state_save_failed", "Der Gesprächsstatus konnte nicht gespeichert werden.");
+            await this.hangup(active.callId);
+          });
+          media.activateInput((audio) => {
+            if (!active.started || active.closed || socket.readyState !== WebSocket.OPEN) return;
+            if (socket.bufferedAmount > 128000) throw new Error("live_input_backlog");
+            this.send(active, { type: "session.input_audio.append", audio });
+          });
+          this.send(active, {
+            type: "session.instructions.append",
+            delegation_id: null,
+            content: "Die Telefonansage hat dich bereits als KI-Assistenten vorgestellt. Dies ist ein freigegebener interner Test. Frage jetzt kurz auf Deutsch, ob es gerade passt. Kundendaten dienen nur der Simulation; keine realen Folgeaktionen.",
+          });
+          return;
+        }
+        // Audio must never wait for database writes or delegated tool work.
+        if (media && event.type === "session.output_audio.delta") {
+          if (!active.started || typeof event.delta !== "string") throw new Error("live_audio_before_start");
+          media.output(event.delta);
+          return;
+        }
+      } catch {
+        active.gap = true;
+        active.outcome = technicalOutcome("live_media_failed", "Der Audiostrom wurde unterbrochen.");
+        void this.hangup(active.callId).catch(() => active.socket.terminate());
+        return;
+      }
       active.chain = active.chain
-        .then(() => this.event(active, String(raw)))
+        .then(() => this.event(active, event))
         .catch(async () => {
           active.gap = true;
           active.outcome = technicalOutcome(
             "live_event_failed",
             "Live-Ereignis konnte nicht sicher verarbeitet werden.",
           );
-          await this.hangup(id).catch(() => {});
+          await this.hangup(active.callId).catch(() => {});
           this.closeDeadline(active);
         });
     });
@@ -261,7 +378,14 @@ export class OpenAiLiveAdapter {
       active.gap = true;
     });
     socket.on("close", () => {
-      void active.chain.then(() => this.finish(active));
+      const completion = active.chain.then(() => this.finish(active)).catch(() => {
+        active.gap = true;
+        console.error("voice disconnect finalization failed", active.attemptId);
+      });
+      if (active.media) {
+        this.mediaFinalizations.add(completion);
+        void completion.finally(() => this.mediaFinalizations.delete(completion));
+      }
     });
   }
   private flush(active: ActiveCall): Promise<void> {
@@ -288,8 +412,7 @@ export class OpenAiLiveAdapter {
     });
     return active.flush;
   }
-  private async event(active: ActiveCall, raw: string) {
-    const event = JSON.parse(raw) as Record<string, unknown>;
+  private async event(active: ActiveCall, event: Record<string, unknown>) {
     const segment = liveTranscript(event);
     if (segment) {
       active.queue.set(segment.id, segment);
@@ -314,8 +437,11 @@ export class OpenAiLiveAdapter {
     }
     if (event.type === "session.closed") {
       active.closed = true;
+      if (active.stopTimer) clearTimeout(active.stopTimer);
+      active.stopTimer = null;
       if (!["close_requested", "remote_hangup"].includes(String(event.reason)))
         active.gap = true;
+      if (active.media && !(await active.media.finishPlayback())) active.gap = true;
       active.socket.close(1000, "session closed");
       return;
     }
@@ -405,15 +531,17 @@ export class OpenAiLiveAdapter {
     if (active.timer) clearInterval(active.timer);
     if (active.stopTimer) clearTimeout(active.stopTimer);
     this.calls.delete(active.callId);
+    active.media?.close();
     let saved = false;
     for (let attempt = 0; attempt < 5 && !saved; attempt++) {
       try {
         await this.flush(active);
-        await this.ops.transcript(
+        const completion = await this.ops.transcript(
           active.attemptId,
           [],
           active.closed && !active.gap ? "complete" : "interrupted",
         );
+        if (active.media && !completion.saved) throw new Error("transcript_finish_not_acknowledged");
         saved = true;
       } catch {
         if (attempt < 4)

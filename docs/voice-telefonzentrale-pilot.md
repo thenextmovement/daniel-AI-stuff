@@ -70,3 +70,62 @@ Test des Anruf- und Audiowegs erforderlich. Ein REST-Anrufnachweis allein belegt
 keine Live-Transkription oder Mitarbeiterübernahme.
 Quellen: https://api.placetel.de/ und
 https://www.placetel.de/hilfe/telefonanlage/smartphone-app
+
+## Interne Audiobrücke – TICKET-293
+
+Der zusätzliche Modus verbindet die vorhandene Twilio-Sprachrufnummer mit dem
+primären GPT-Live-1-WebSocket. Er ist ausschließlich für vorhandene, freigegebene
+Allowlist-Testversuche implementiert. Reguläre Kundenversuche werden vor dem
+Wählen und erneut vor der Modellverbindung abgewiesen. Dieser Codestand aktiviert
+keine Telefonie, ändert keine Placetel-Ziele und setzt keine Umgebungsvariablen.
+
+VOICE_LIVE_MEDIA_ENABLED=true wählt diesen Modus ausdrücklich aus. Ohne diesen
+Schalter bleibt der vorhandene SIP-Modus unverändert. Die vorhandenen serverseitigen
+OpenAI-Projekt-/API- und Twilio-Zugänge sowie VOICE_SIP_BINDING_SECRET werden
+weiterverwendet; ein OpenAI-SIP-Webhook ist im Medienmodus nicht erforderlich.
+VOICE_RUNTIME_PUBLIC_URL muss eine öffentliche HTTPS-Origin ohne Pfad sein.
+Neue Secrets, DB-Migrationen oder Änderungen am Ops-Login sind nicht Bestandteil.
+
+Der WSS-Endpunkt /media/twilio prüft Twilios Signatur anhand der fest konfigurierten
+Origin. Anschließend werden Account, Attempt-HMAC, gespeicherte Provider-Anruf-ID,
+GPT-Live-1-Modell und Testbindung geprüft. Ein dauerhafter Ereignisschlüssel lässt
+pro Attempt nur einen Stream zu. Der Ops-Attempt-Endpunkt liefert dafür zusätzlich
+die vorhandene providerCallId; Ops muss diesen Stand vor Aktivierung der Runtime
+bereitstellen.
+
+Twilio spricht vor dem Stream eine feste KI-/Testankündigung. Erst der nachfolgende
+signierte und gebundene Streamstart bestätigt diese Ansage. Die gespeicherten
+Live-Transkripte beginnen mit der anschließenden Live-Sitzung; die vorgeschaltete
+Telefonansage ist als Offenlegungsereignis dokumentiert, kein Modelltranskript.
+Transkriptpassagen behalten Sprecher und Live-Zeitangaben. Ein vollständiger Abschluss
+erfordert sowohl session.closed als auch die Wiedergabebestätigung aus Twilios
+Mark-Ereignissen und eine positive Speicherbestätigung.
+
+Beide Audiorichtungen übertragen rohes G.711 µ-law bei 8 kHz unabhängig von
+Datenbank- und Werkzeugabfragen. Start- und Wiedergabepuffer sind begrenzt.
+Paketlücken, falsche Zuordnung, Abbruch, Neustart oder unbestätigte Wiedergabe
+führen zu einem als unterbrochen markierten Verlauf. Eine nach Neustart verlorene
+primäre Audioverbindung wird beendet, nicht als SIP-Sitzung wiederhergestellt.
+Nur im Speicher verbliebene Daten sind bei einem Prozessabsturz weiterhin nicht
+verlustfrei wiederherstellbar.
+
+Isolierte Vorschau: node --import tsx --test tests/quotes/voice-media-*.test.ts.
+Der Integrationstest startet den tatsächlichen lokalen WebSocket-Upgrade-/Audiohandler
+und Live-Adapter mit simulierten OpenAI- und Ops-Gegenstellen. Er prüft die komplette
+Kette einschließlich gleichzeitigem Sprechen, Wiedergabebestätigung und gespeicherten
+Passagen. Nur Loopback, synthetische Daten und Testsignaturen; keine Provideranrufe,
+keine produktive Datenbank. Das ist kein Nachweis echter Telefonlatenz oder
+Verfügbarkeit des externen Audioanschlusses.
+
+Vor dem einzelnen genehmigten Telefonpilot bleiben erforderlich: exakter Release,
+kontrollierte Aktivierung des Medienmodus, passende Test-/Modell-/Speichergates,
+öffentlicher WSS-Erreichbarkeitstest und anschließend reale Audioprüfung an Rahims
+freigegebener Nummer. Automatische Kundenanrufe bleiben aus. Für einen Rückgang zum
+SIP-Modus wird der neue Schalter nach Ende aktiver Tests entfernt; seine vorhandene
+separate SIP-Freigabe wird dabei nicht automatisch gesetzt. Browser-/Handygespräche
+von Mitarbeitern und echte Weiterleitung sind weiterhin eigene, offene Integrationen.
+
+Quellen:
+- https://developers.openai.com/api/docs/guides/voice-websockets?api=live
+- https://www.twilio.com/docs/voice/media-streams/websocket-messages
+- https://www.twilio.com/docs/usage/security

@@ -4,13 +4,15 @@ import { OpsClient } from "./ops-client.js";
 import { OpenAiLiveAdapter } from "./live.js";
 import { liveIncoming } from "./live-protocol.js";
 import { bearerMatches, verifyAttemptBinding, verifyTwilioSignature } from "./security.js";
-import { TwilioSipAdapter } from "./telephony.js";
+import { installTwilioMedia } from "./media.js";
+import { TwilioMediaAdapter, TwilioSipAdapter } from "./telephony.js";
 import { noClearOutcome, notReachedOutcome, technicalOutcome } from "./outcomes.js";
 
 const config = loadRuntimeConfig();
 const ops = new OpsClient(config);
-const telephony = config.providerReadiness.telephony ? new TwilioSipAdapter(config) : null;
+const telephony = config.providerReadiness.telephony ? (config.transport === "media_streams" ? new TwilioMediaAdapter(config) : new TwilioSipAdapter(config)) : null;
 const realtime = config.providerReadiness.openAi ? new OpenAiLiveAdapter(config, ops) : null;
+let mediaStopping = false;
 
 async function recoverActiveCalls() {
   if (!telephony || !realtime) {
@@ -22,6 +24,18 @@ async function recoverActiveCalls() {
   let reconciled = 0;
   for (const session of sessions) {
     try {
+      if (config.transport === "media_streams") {
+        // Primary WebSocket audio cannot be reconstructed after a restart.
+        if (session.providerCallId) {
+          const status = await telephony.getCallStatus(session.providerCallId);
+          if (!["completed", "failed", "busy", "no-answer", "canceled"].includes(status))
+            await telephony.stopCall(session.providerCallId, ["queued", "ringing"].includes(status) ? "canceled" : "completed");
+        }
+        await ops.transcript(session.attemptId, [], "interrupted").catch(() => {});
+        await ops.finalize(session.attemptId, technicalOutcome("media_recovery_required", "Die Audioverbindung wurde beim Neustart unterbrochen und kann nicht fortgesetzt werden."));
+        reconciled++;
+        continue;
+      }
       if (session.providerCompleted) {
         await ops.finalize(session.attemptId, noClearOutcome("Provider completed event was recovered after runtime restart"));
         reconciled += 1;
@@ -81,6 +95,7 @@ async function rawBody(request: IncomingMessage, maxBytes = 128_000) {
 }
 
 async function dispatch(response: ServerResponse) {
+  if (mediaStopping) return json(response, 503, { ok: false, error: "runtime_stopping" });
   if (!telephony || !realtime) {
     return json(response, 503, { ok: false, error: "provider_not_ready", missing: config.providerReadiness.missing });
   }
@@ -97,18 +112,28 @@ async function dispatch(response: ServerResponse) {
     });
     throw error;
   }
+  let startedCallId: string | null = null;
   try {
+    if (mediaStopping) throw new Error("runtime_stopping");
     const call = await telephony.startOutboundCall(session);
+    startedCallId = call.providerCallId;
+    if (mediaStopping) throw new Error("runtime_stopping");
     await ops.updateAttempt(session.attemptId, { providerCallId: call.providerCallId, status: "dialing" });
     await ops.event(session.attemptId, "runtime", "dispatch.started", `dispatch:${session.attemptId}`, { status: "dialing" });
     return json(response, 202, { ok: true, claimed: true, attemptId: session.attemptId });
   } catch (error) {
+    if (config.transport === "media_streams" && startedCallId) {
+      const status = await telephony.getCallStatus(startedCallId);
+      if (!["completed", "failed", "busy", "no-answer", "canceled"].includes(status))
+        await telephony.stopCall(startedCallId, ["queued", "ringing"].includes(status) ? "canceled" : "completed");
+    }
     await ops.finalize(claimed.attemptId, technicalOutcome("telephony_start_uncertain", error instanceof Error ? error.message : "unknown error"));
     throw error;
   }
 }
 
 async function openAiWebhook(request: IncomingMessage, response: ServerResponse) {
+  if (config.transport === "media_streams") return json(response, 503, { ok: false, error: "sip_transport_disabled" });
   if (!realtime) return json(response, 503, { ok: false, error: "openai_not_ready", missing: config.providerReadiness.missing });
   const body = await rawBody(request);
   const event = await realtime.unwrapWebhook(body, request.headers);
@@ -244,11 +269,24 @@ const server = createServer(async (request, response) => {
   }
 });
 
+const stopMedia = config.transport === "media_streams" && realtime && telephony
+  ? installTwilioMedia(server, config, ops, realtime)
+  : null;
+
 server.listen(config.port, "0.0.0.0", () => {
   console.log(`voice runtime listening on :${config.port}`);
   void recoverActiveCalls().catch((error) => console.error("voice runtime recovery request failed", error instanceof Error ? error.message : "unknown error"));
 });
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
-  process.on(signal, () => server.close(() => process.exit(0)));
+  process.on(signal, () => {
+    if (!stopMedia || !realtime) return server.close(() => process.exit(0));
+    if (mediaStopping) return;
+    mediaStopping = true;
+    const httpClosed = new Promise<void>(resolve => server.close(() => resolve()));
+    void Promise.all([httpClosed, realtime.shutdownMedia()]).finally(() => {
+      stopMedia();
+      process.exit(0);
+    });
+  });
 }
