@@ -1,21 +1,16 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Search, Phone, Headphones, ChevronRight, Bot } from "lucide-react";
+import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
 import { OpsAppSwitcher } from "../ops-app-switcher";
 
-type CustomerResult = {
-  requestId: string;
-  displayName: string | null;
-  company: string | null;
-  email?: string | null;
-  phone?: string | null;
-  offerNumber?: string | null;
-  requestTitle: string | null;
-};
+import type { VoiceDirectoryContact } from "@/lib/ops/voice-directory";
+import { dialPhoneNumber, readPhoneCentralResponse } from "./phone-central-data";
+
+type DirectoryResponse = { results: VoiceDirectoryContact[]; nextOffset: number | null };
 type Props = {
   operatorName: string;
   onOperatorNameChange: (value: string) => void;
@@ -42,80 +37,99 @@ function initials(value: string) {
 export function PhoneCentral(props: Props) {
   const { selected, busy } = props;
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<CustomerResult[]>([]);
+  const [results, setResults] = useState<VoiceDirectoryContact[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [device, setDevice] = useState("app");
+  const [activeContact, setActiveContact] = useState<VoiceDirectoryContact | null>(null);
+  const [panel, setPanel] = useState<"contacts" | "dial">("contacts");
+  const [number, setNumber] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [retry, setRetry] = useState(0);
+  const [contextLoading, setContextLoading] = useState(false);
+  const [contextError, setContextError] = useState("");
   const [notice, setNotice] = useState("");
   const selection = useRef(0);
   const settingsRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     const controller = new AbortController();
-    if (query.trim().length < 2) {
-      setResults([]);
-      setLoading(false);
-      setError("");
+    if (query.trim().length === 1) {
+      setResults([]); setNextOffset(null); setLoading(false); setError("");
       return;
     }
-    setResults([]);
+    if (offset === 0) setResults([]);
     setError("");
     setLoading(true);
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch(
-          "/api/ops/voice-copilot/context?query=" +
-            encodeURIComponent(query.trim()),
-          { cache: "no-store", signal: controller.signal },
+          "/api/ops/voice-copilot/context?directory=1&query=" +
+            encodeURIComponent(query.trim()) + "&offset=" + offset,
+          { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) },
         );
-        const data = await response.json();
+        const data = await readPhoneCentralResponse<DirectoryResponse>(response,
+          "Kunden konnten nicht geladen werden. Bitte versuche es erneut.");
         if (controller.signal.aborted) return;
-        if (!response.ok)
-          throw new Error("Die Kundensuche ist gerade nicht erreichbar.");
-        setResults(data.results || []);
-        setError("");
-      } catch (e) {
+        if (!Array.isArray(data.results)) throw new Error("Kunden konnten nicht geladen werden.");
+        setResults(current => offset === 0 ? data.results :
+          [...new Map([...current, ...data.results].map(contact => [contact.customerId, contact])).values()]);
+        setNextOffset(data.nextOffset);
+      } catch {
         if (!controller.signal.aborted)
-          setError(e instanceof Error ? e.message : "Suche fehlgeschlagen.");
+          setError("Kunden konnten nicht geladen werden. Bitte versuche es erneut.");
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
-    }, 300);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [query]);
-  async function select(requestId: string) {
+    }, query.trim() ? 300 : 0);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [query, offset, retry]);
+
+  async function select(contact: VoiceDirectoryContact) {
     if (busy) return;
     const current = ++selection.current;
-    setLoading(true);
-    setError("");
+    setActiveContact(contact);
+    setNumber(contact.phone || "");
+    props.onSelect(null);
+    props.onWorkspaceChange("prepare");
+    setNotice("");
+    setContextError("");
+    setContextLoading(Boolean(contact.requestId));
+    if (!contact.requestId) return;
     try {
       const response = await fetch(
-        "/api/ops/voice-copilot/context?requestId=" +
-          encodeURIComponent(requestId),
-        { cache: "no-store" },
+        "/api/ops/voice-copilot/context?requestId=" + encodeURIComponent(contact.requestId),
+        { cache: "no-store", signal: AbortSignal.timeout(20000) },
       );
-      const data = await response.json();
+      const data = await readPhoneCentralResponse<{context: VoiceCustomerContext}>(response,
+        "Kontaktdaten sind da. Die Gesprächsübersicht ist gerade nicht erreichbar.");
       if (current !== selection.current) return;
-      if (!response.ok || !data.context)
-        throw new Error("Kundenübersicht konnte nicht geladen werden.");
+      if (!data.context || data.context.requestId !== contact.requestId)
+        throw new Error("Die Gesprächsübersicht konnte nicht zugeordnet werden.");
       props.onSelect(data.context);
-      setNotice("");
-    } catch (e) {
+    } catch {
       if (current === selection.current)
-        setError(e instanceof Error ? e.message : "Kunde nicht erreichbar.");
+        setContextError("Kontaktdaten sind da. Die Gesprächsübersicht ist gerade nicht erreichbar.");
     } finally {
-      if (current === selection.current) setLoading(false);
+      if (current === selection.current) setContextLoading(false);
     }
   }
-  const name =
-    selected?.customer.company ||
-    selected?.customer.displayName ||
-    "Kunden auswählen";
-  const phone = selected?.customer.phone || "";
-  const dialPhone = phone.replace(/[\s()/.-]/g, "");
-  const dialable = /^\+?\d{6,15}$/.test(dialPhone);
+  function changeNumber(value: string) {
+    if (busy) return;
+    ++selection.current;
+    setNumber(value);
+    setActiveContact(null);
+    props.onSelect(null);
+    props.onWorkspaceChange("prepare");
+    setContextLoading(false); setContextError(""); setNotice("");
+  }
+  const customer = activeContact || selected?.customer;
+  const name = customer?.company || customer?.displayName || "Dein nächstes Gespräch";
+  const phone = customer?.phone || "";
+  const dialPhone = dialPhoneNumber(phone);
+  const freeDialPhone = dialPhoneNumber(number);
+  function appNotice() {
+    setNotice("Die Standard-Telefon-App öffnet sich. Anrufe darüber werden derzeit nicht automatisch mitgeschrieben.");
+  }
   const lastCall = selected?.recentCalls?.[0];
   const lastMail = selected?.outlook[0];
   return (
@@ -150,13 +164,6 @@ export function PhoneCentral(props: Props) {
       <div className={styles.titlebar}>
         <h1>Telefonzentrale</h1>
         <span className={styles.spacer} />
-        <label
-          className={styles.tone}
-          title="Verfügbar, sobald eingehende Anrufe angebunden sind."
-        >
-          <input type="checkbox" disabled />
-          Klingelton
-        </label>
         <label>
           <span className="sr-only">Mitarbeiter</span>
           <input
@@ -167,103 +174,77 @@ export function PhoneCentral(props: Props) {
             onChange={(e) => props.onOperatorNameChange(e.target.value)}
           />
         </label>
-        <label>
-          <span className="sr-only">Telefonieren über</span>
-          <select
-            className={styles.device}
-            value={device}
-            disabled={busy}
-            onChange={(e) => setDevice(e.target.value)}
-          >
-            <option value="app">Telefon-App / Handy</option>
-            <option value="browser">Browser · in Einrichtung</option>
-          </select>
-        </label>
-      </div>
-      <div className={styles.connection} role="status">
-        <Headphones size={25} />
-        <div>
-          <strong>
-            {busy
-              ? "Gesprächsbegleitung aktiv"
-              : "Telefonanschluss wird eingerichtet"}
-          </strong>
-          <p>
-            {busy
-              ? props.status
-              : "Kunden finden und Gesprächsverlauf öffnen. Annehmen und Übernehmen werden mit dem Telefonanschluss verbunden."}
-          </p>
-        </div>
+        <span className={styles.connectionState}><span />{busy ? "Begleitung aktiv" : "Telefon-App"}</span>
       </div>
       <div className={styles.layout}>
         <aside className={styles.left} aria-label="Kundensuche und Team">
-          <div className={styles.sectionhead}>
-            <h2>Kunden finden</h2>
+          <div className={styles.panelTabs} aria-label="Telefonbereich">
+            <button type="button" aria-pressed={panel === "contacts"} onClick={() => setPanel("contacts")}><Users size={17} />Kunden</button>
+            <button type="button" aria-pressed={panel === "dial"} onClick={() => setPanel("dial")}><Grid2X2 size={17} />Wählen</button>
           </div>
-          <label className={styles.search}>
-            <Search size={21} />
-            <input
-              aria-label="Kunden suchen"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Name, E-Mail, Telefon …"
-            />
-          </label>
-          <p className={styles.small}>
-            Auch über eine Angebotsnummer auffindbar.
-          </p>
-          <p className={styles.small} role="status">
-            {loading
-              ? "Suche läuft …"
-              : query.trim().length >= 2
-                ? results.length + " Treffer"
-                : "Mindestens zwei Zeichen eingeben."}
-          </p>
-          {error ? (
-            <p className={styles.error} role="alert">
-              {error}
+          {panel === "contacts" ? <>
+            <h2 className={styles.leftTitle}>Kundenverzeichnis</h2>
+            <label className={styles.search}>
+              <Search size={18} />
+              <input aria-label="Kunden suchen" value={query} maxLength={160}
+                onChange={e => { setOffset(0); setQuery(e.target.value); }}
+                placeholder="Name, E-Mail, Telefon" />
+            </label>
+            <p className={styles.directoryStatus} role="status">
+              {loading ? "Kontakte werden geladen …" : error ? "Suche derzeit nicht verfügbar" :
+                query.trim().length === 1 ? "Bitte mindestens zwei Zeichen eingeben." :
+                query.trim() ? results.length + (nextOffset !== null ? "+ Treffer" : " Treffer") : "Euer Kundenverzeichnis · alphabetisch"}
             </p>
-          ) : null}
-          <div className={styles.results}>
-            {results.map((customer) => (
-              <button
-                key={customer.requestId}
-                className={
-                  styles.result +
-                  " " +
-                  (selected?.requestId === customer.requestId
-                    ? styles.selected
-                    : "")
-                }
-                disabled={busy}
-                aria-pressed={selected?.requestId === customer.requestId}
-                onClick={() => void select(customer.requestId)}
-              >
-                <strong>
-                  {customer.company || customer.displayName || "Kontakt"}
-                </strong>
-                <span>
-                  {customer.company && customer.displayName ? customer.displayName + " · " : ""}
-                  {customer.phone || "Keine Telefonnummer hinterlegt"}
+            {error ? <div className={styles.searchError} role="alert">
+              <p>{error}</p>
+              <button type="button" className={styles.retry} onClick={() => setRetry(value => value + 1)}><RefreshCw size={15} />Erneut versuchen</button>
+            </div> : null}
+            <div className={styles.results}>
+              {results.map(contact => <button type="button" key={contact.customerId}
+                className={styles.result + " " + (activeContact?.customerId === contact.customerId ? styles.selected : "")}
+                disabled={busy} aria-pressed={activeContact?.customerId === contact.customerId}
+                onClick={() => void select(contact)}>
+                <span className={styles.contactAvatar}>{initials(contact.company || contact.displayName || "Kontakt")}</span>
+                <span className={styles.resultContent}>
+                  <strong>{contact.company || contact.displayName || "Kontakt"}</strong>
+                  <span>{contact.company && contact.displayName ? contact.displayName + " · " : ""}{contact.phone || "Rufnummer fehlt"}</span>
+                  <span>{contact.email || contact.requestTitle || "Kontaktdaten öffnen"}</span>
                 </span>
-                <span>{customer.email}</span>
-                <div className={styles.meta}>
-                  {customer.offerNumber
-                    ? "Angebot " + customer.offerNumber
-                    : customer.requestTitle || "Kundenanfrage"}
-                </div>
-              </button>
-            ))}
+                <ChevronRight size={16} />
+              </button>)}
+            </div>
+            {!loading && !error && !results.length && query.trim().length !== 1 ? <p className={styles.empty}>
+              {nextOffset !== null ? "Auf dieser Seite kein passender Kontakt. Weitere Kontakte laden." :
+                query.trim() ? "Kein passender Kontakt. Du kannst die Nummer unter „Wählen“ direkt eingeben." : "Noch keine Kontakte vorhanden."}
+            </p> : null}
+            {nextOffset !== null && !error ? <button type="button" className={styles.loadMore} disabled={loading}
+              onClick={() => setOffset(nextOffset)}>Weitere Kontakte laden</button> : null}
+          </> : <section aria-label="Wahltasten" className={styles.dialer}>
+            <h2 className={styles.leftTitle}>Nummer wählen</h2>
+            <label className={styles.dialInput}>
+              <span className="sr-only">Telefonnummer</span>
+              <input type="tel" inputMode="tel" autoComplete="off" maxLength={40} value={number} disabled={busy}
+                onChange={e => changeNumber(e.target.value)} placeholder="+49 …" />
+            </label>
+            <p className={styles.directoryStatus}>{activeContact ? "Nummer des ausgewählten Kontakts" : "Freie Nummer · ohne Kundenzuordnung"}</p>
+            <div className={styles.keypad}>
+              {["1","2","3","4","5","6","7","8","9","+","0"].map(key =>
+                <button type="button" key={key} aria-label={key === "+" ? "Plus" : "Ziffer " + key} disabled={busy || number.length >= 40}
+                  onClick={() => changeNumber(number + key)}>{key}</button>)}
+              <button type="button" aria-label="Letzte Ziffer löschen" disabled={busy || !number}
+                onClick={() => changeNumber(number.slice(0,-1))}><Delete size={21}/></button>
+            </div>
+            {freeDialPhone && !busy ? <a className={styles.button + " " + styles.primary + " " + styles.dialAction}
+              href={"tel:" + freeDialPhone} onClick={appNotice}><Phone size={17}/>In Telefon-App anrufen</a> :
+              <button className={styles.button + " " + styles.primary + " " + styles.dialAction} disabled><Phone size={17}/>Nummer eingeben</button>}
+            {number && !freeDialPhone ? <p className={styles.small}>Bitte eine vollständige Telefonnummer eingeben.</p> : null}
+          </section>}
+          <div className={styles.providerNote}>
+            <Phone size={16}/><p><strong>Telefon-App auf diesem Gerät</strong>Placetel ist noch nicht mit dem CRM verbunden. Annehmen und Übernehmen folgen mit dem Anschluss.</p>
           </div>
-          {!loading && query.trim().length >= 2 && !results.length && !error ? (
-            <p className={styles.empty}>
-              Kein Treffer. Versuche einen Namen, eine E-Mail-Adresse oder die
-              vollständige Telefonnummer.
-            </p>
-          ) : null}
           <section className={styles.team}>
             <div className={styles.sectionhead}>
-              <h3>Live im Team</h3>
+              <h3>Im Gespräch</h3>
             </div>
             {busy ? (
               <div className={styles.livecall}>
@@ -280,7 +261,7 @@ export function PhoneCentral(props: Props) {
               </div>
             ) : (
               <p className={styles.small}>
-                Die Team-Anrufanzeige wird mit dem Telefonanschluss verbunden.
+                Keine aktive Gesprächsbegleitung.
               </p>
             )}
           </section>
@@ -289,60 +270,41 @@ export function PhoneCentral(props: Props) {
           <section className={styles.callhead}>
             <div className={styles.calltitle}>
               <span className={styles.avatar}>
-                {selected ? initials(name) : <Phone size={23} />}
+                {customer ? initials(name) : <Phone size={23} />}
               </span>
               <div>
                 <h2>{name}</h2>
                 <p>
-                  {selected
+                  {customer
                     ? [
-                        selected.customer.displayName,
+                        customer.displayName,
                         phone || "Rufnummer fehlt",
                       ]
                         .filter(Boolean)
                         .join(" · ")
-                    : "Suche links nach einem Kunden."}
+                    : "Kontakt auswählen oder links eine Nummer wählen."}
                 </p>
               </div>
             </div>
-            {selected ? (
+            {activeContact || selected ? (
               <span className={styles.badge}>
-                Kunde ausgewählt
-                {selected.offer
-                  ? " · Angebot " +
-                    (selected.offer.offerNumber || selected.offer.label)
-                  : ""}
+                {contextLoading ? "Gesprächsübersicht wird geladen …" : activeContact && !activeContact.requestId ? "Kontakt ohne verknüpften Vorgang" : "Kunde ausgewählt"}
+                {selected?.offer ? " · Angebot " + (selected.offer.offerNumber || selected.offer.label) : ""}
               </span>
             ) : null}
             <div className={styles.actions}>
-              {selected && dialable && device === "app" && !busy ? (
-                <a
-                  className={styles.button + " " + styles.primary}
-                  href={"tel:" + dialPhone}
-                  onClick={() =>
-                    setNotice(
-                      "Die Telefon-App öffnet sich. Ein Anruf außerhalb des Browsers wird erst nach Anschluss der Telefonanlage automatisch mitgeschrieben.",
-                    )
-                  }
-                >
-                  <Phone size={17} />
-                  Anrufen
+              {customer && dialPhone && !busy ? (
+                <a className={styles.button + " " + styles.primary} href={"tel:" + dialPhone} onClick={appNotice}>
+                  <Phone size={17} />In Telefon-App anrufen
                 </a>
-              ) : (
-                <button
-                  className={styles.button + " " + styles.primary}
-                  disabled
-                >
-                  {!selected
-                    ? "Kunden auswählen"
-                    : !dialable
-                      ? "Rufnummer fehlt"
-                      : "Browser-Anruf noch nicht verbunden"}
+              ) : customer ? (
+                <button className={styles.button + " " + styles.primary} disabled>
+                  {busy ? "Gespräch aktiv" : "Rufnummer fehlt"}
                 </button>
-              )}
+              ) : null}
               <button
                 className={styles.button}
-                disabled={busy}
+                disabled={busy || contextLoading || Boolean(activeContact && !selected)}
                 onClick={() => props.onWorkspaceChange("assist")}
               >
                 <Headphones size={17} />
@@ -350,7 +312,7 @@ export function PhoneCentral(props: Props) {
               </button>
               <button
                 className={styles.button}
-                disabled={busy}
+                disabled={busy || contextLoading || Boolean(activeContact && !selected)}
                 onClick={() => props.onWorkspaceChange("live")}
               >
                 <Bot size={18} />
@@ -365,6 +327,10 @@ export function PhoneCentral(props: Props) {
                   {notice}
                 </p>
               ) : null}
+              {contextError ? <div className={styles.searchError} role="alert">
+                <p>{contextError}</p>
+                {activeContact ? <button type="button" className={styles.retry} onClick={() => void select(activeContact)}>Übersicht erneut laden</button> : null}
+              </div> : null}
               {selected?.historyStatus === "unavailable" ? (
                 <div className={styles.hint}>
                   <strong>Gesprächshistorie gerade nicht erreichbar</strong>
@@ -382,13 +348,14 @@ export function PhoneCentral(props: Props) {
                 <>
                   <div className={styles.prep}>
                     <p>
-                      {selected
-                        ? "Die Kundenübersicht ist bereit."
-                        : "Wähle einen Kunden aus der Suche."}
+                      {contextLoading ? "Die Gesprächsübersicht wird geladen." : selected ? "Bereit für dein Gespräch." :
+                        activeContact ? "Die Kontaktdaten sind bereit." : "Alles für dein Gespräch an einem Ort."}
                     </p>
                     <p className={styles.small}>
-                      Angebot, letzte Nachrichten und Telefontranskripte stehen
-                      direkt daneben.
+                      {activeContact && !activeContact.requestId
+                        ? "Für diesen Kontakt ist noch kein Vorgang verknüpft. Du kannst ihn trotzdem über die Telefon-App anrufen."
+                        : selected ? "Letzte Absprachen, Nachrichten und verknüpfte Vorgänge findest du rechts."
+                          : "Wähle links einen Kontakt. Hier findest du seine letzten Absprachen, Nachrichten und Vorgänge."}
                     </p>
                   </div>
                   <p className={styles.small}>
@@ -399,7 +366,7 @@ export function PhoneCentral(props: Props) {
               {props.children}
             </section>
             <aside className={styles.context} aria-label="Kundenübersicht">
-              {props.hints.length ? (
+              {selected && props.hints.length ? (
                 <div aria-live="polite">
                   {props.hints.map((hint, index) => (
                     <article key={index} className={styles.hint}>
@@ -418,11 +385,8 @@ export function PhoneCentral(props: Props) {
               ) : (
                 <div className={styles.hint}>
                   <div className={styles.label}>Wissen · nur für dich</div>
-                  <strong>Hinweise während des Gesprächs</strong>
-                  <p>
-                    Der Copilot gleicht Kundenwünsche mit eurem freigegebenen
-                    Wissen ab. Hinweise und Quellen erscheinen hier.
-                  </p>
+                  <strong>Dein Wissenscheck</strong>
+                  <p>Kurze Hinweise zu Kundenwünschen und euren Regeln – sobald die Gesprächsbegleitung läuft.</p>
                 </div>
               )}
               <div className={styles.contextgrid}>

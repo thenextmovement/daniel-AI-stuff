@@ -41,3 +41,32 @@ Die monatliche Modellprüfung wurde im Codex-Task bereits separat eingerichtet. 
 - OpenAI: https://developers.openai.com/api/docs/guides/voice-sip?api=live
 - OpenAI: https://developers.openai.com/api/docs/guides/live-delegation
 - Twilio: https://www.twilio.com/docs/voice/api/secure-media — secure=true aktiviert SRTP zusätzlich zur verschlüsselten Signalisierung.
+
+## Kundensuche und Wählbereich – TICKET-292
+
+Die Telefonzentrale liest ihr paginiertes Kundenverzeichnis direkt aus Supabase
+(master_customers mit dem neuesten über customer_id verknüpften master_requests-Vorgang).
+Die Trefferliste lädt keine Trello-, Outlook- oder Angebotsakten. Erst eine bewusste
+Kontaktauswahl lädt die bisherige ausführliche Vorgangsübersicht. Kontakte ohne Vorgang
+bleiben sichtbar und über die Telefon-App anwählbar; Gesprächsbegleitung benötigt
+weiterhin eine gültige Vorgangsbindung. Gleiche Telefonnummern führen nicht zum
+Zusammenführen verschiedener Kunden.
+
+Deutsche Rufnummern werden für die Suche unabhängig von 0, +49, 0049 und Formatierung
+verglichen. Name, Firma und E-Mail werden als literale Suchwerte behandelt. Fehler,
+einschließlich HTML-Antworten eines vorgeschalteten Gateways, erscheinen als Fehler
+mit Wiederholen-Schaltfläche und niemals als erfolgreicher Leerbefund.
+
+„Wählen“ öffnet ein lokales Nummernfeld und Tastenfeld. Der Anrufen-Link übergibt an
+die Standard-Telefon-App. Er garantiert keine Placetel-Auswahl, keine CRM-Audioverbindung
+und keine automatische Transkription. Die vorhandene Anmeldung, Session-Cookies,
+Provider-Konfiguration und gemeinsamen Ops-Bereiche sind unverändert.
+
+Placetel unterstützt im PROFI-Tarif REST POST /calls mit sipuid und target sowie
+Notify-Abonnements. Im aktuellen Produktcode ist kein Placetel-Call-Adapter
+angeschlossen. Zur Aktivierung sind die serverseitige Nutzung eines vorhandenen
+passenden API-Zugangs, eine verifizierte Mitarbeiter-/SIP-Zuordnung und ein separater
+Test des Anruf- und Audiowegs erforderlich. Ein REST-Anrufnachweis allein belegt
+keine Live-Transkription oder Mitarbeiterübernahme.
+Quellen: https://api.placetel.de/ und
+https://www.placetel.de/hilfe/telefonanlage/smartphone-app

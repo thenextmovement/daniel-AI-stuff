@@ -360,7 +360,7 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled, liveCopilotE
 
   const busy = status === "connecting" || status === "live" || humanBusy || Boolean(voiceSessionIdRef.current);
   return <PhoneCentral operatorName={operatorName} onOperatorNameChange={setOperatorName}
-    selected={selectedContext} onSelect={setSelectedContext} busy={busy} status={statusLabel(status)}
+    selected={selectedContext} onSelect={context => { setSelectedContext(context); setCopilotHints([]); }} busy={busy} status={statusLabel(status)}
     workspace={workspace} onWorkspaceChange={setWorkspace} hints={copilotHints} linkedTranscript={linkedTranscript}
     settings={<div className="grid gap-8"><VoicePlatformPanel operatorName={operatorName}/><KnowledgePanel operatorName={operatorName}/></div>}>
     <div hidden={workspace !== "assist"}>
