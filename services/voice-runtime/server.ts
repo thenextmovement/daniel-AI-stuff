@@ -1,3 +1,4 @@
+import {MobilePhoneLinks,TwilioMobileProvider,mobilePhoneReady} from "./phone-mobile.js";
 import {BrowserPhoneCalls,TwilioPhoneProvider,browserCallingReady,browserPhoneControlReady,phoneWebhookParameters} from "./phone-calls.js";
 import {PhoneCaptures,TwilioCaptureProvider,installPhoneCapture,phoneCaptureReady} from "./phone-capture.js";
 import {IncomingPhoneCalls,inboundPhoneReady} from "./phone-incoming.js";
@@ -16,6 +17,7 @@ import { noClearOutcome, notReachedOutcome, technicalOutcome } from "./outcomes.
 const config = loadRuntimeConfig();
 const ops = new OpsClient(config);
 const browserCalls = browserPhoneControlReady(config) ? new BrowserPhoneCalls(config,ops,new TwilioPhoneProvider(config)) : null;
+const mobileLinks=browserPhoneControlReady(config)?new MobilePhoneLinks(config,ops,new TwilioMobileProvider(config)):null;
 const phoneTransfers=browserCalls?new RuntimePhoneTransfers(config,ops,call=>browserCalls.closeRecorded(call)):null;
 const phoneCaptures=browserCalls?new PhoneCaptures(ops,new TwilioCaptureProvider(config),()=>phoneCaptureReady(config)):null;
 const incomingCalls=browserCalls&&phoneTransfers?new IncomingPhoneCalls(config,ops,browserCalls,phoneTransfers):null;
@@ -222,13 +224,31 @@ const server = createServer(async (request, response) => {
         service: "neontrip-voice-runtime",
         commit: config.commitSha,
         ready: config.providerReadiness.dispatch,
-        browserPhone: {tokens:browserPhoneReady(config),calls:browserCallingReady(config),transcription:phoneCaptureReady(config),incoming:inboundPhoneReady(config)},
+        browserPhone: {mobileVerification:mobilePhoneReady(config),tokens:browserPhoneReady(config),calls:browserCallingReady(config),transcription:phoneCaptureReady(config),incoming:inboundPhoneReady(config)},
         providers: {
           openAi: config.providerReadiness.openAi,
           telephony: config.providerReadiness.telephony,
           missing: config.providerReadiness.missing,
         },
       });
+    }
+    if(request.method==="POST"&&["/phone/twilio/mobile/prompt","/phone/twilio/mobile/verify","/phone/twilio/mobile/status"].includes(url.pathname)) {
+      if(!mobileLinks)return json(response,503,{ok:false,error:"mobile_not_configured"});
+      let params:URLSearchParams;
+      try{params=phoneWebhookParameters(config,url,request.headers["x-twilio-signature"] as string|undefined,await rawBody(request,16000));}
+      catch{return json(response,401,{ok:false,error:"invalid_mobile_signature"});}
+      const id=url.searchParams.get("id")||"";
+      if(url.searchParams.getAll("id").length!==1||!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(id))return json(response,422,{ok:false,error:"invalid_mobile_id"});
+      const xml=await mobileLinks.webhook(id,url.pathname.split("/").at(-1) as "prompt"|"verify"|"status",params);
+      response.writeHead(200,{"content-type":"text/xml","cache-control":"no-store"});response.end(xml);return;
+    }
+    if(request.method==="POST"&&["/phone/mobile/start","/phone/mobile/cancel"].includes(url.pathname)) {
+      if(!bearerMatches(request.headers.authorization,config.dispatchToken))return json(response,401,{ok:false,error:"unauthorized"});
+      if(!mobileLinks||mediaStopping)return json(response,503,{ok:false,error:"mobile_unavailable"});
+      const input=JSON.parse(await rawBody(request,2000)) as Record<string,unknown>;
+      if(!input||typeof input!=="object"||Object.keys(input).some(k=>k!=="id")||typeof input.id!=="string"||!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(input.id))return json(response,422,{ok:false,error:"invalid_mobile_id"});
+      if(url.pathname.endsWith("/start"))await mobileLinks.start(input.id);else await mobileLinks.cancel(input.id);
+      return json(response,202,{ok:true});
     }
     if(request.method==="POST"&&["/phone/twilio/incoming","/phone/twilio/incoming/conference","/phone/twilio/incoming/end"].includes(url.pathname)){
       if(!incomingCalls)return json(response,503,{ok:false,error:"incoming_not_configured"});
@@ -351,7 +371,7 @@ const reconcilePhone=async()=>{
   if(!browserCalls || reconcilingPhone)return;
   reconcilingPhone=true;
   try{
-    const results=await Promise.allSettled([browserCalls.reconcile(),phoneTransfers!.reconcile(),phoneCaptures!.reconcile(),incomingCalls!.reconcile()]);
+    const results=await Promise.allSettled([browserCalls.reconcile(),phoneTransfers!.reconcile(),phoneCaptures!.reconcile(),incomingCalls!.reconcile(),mobileLinks!.reconcile()]);
     if(results.some(result=>result.status==="rejected"))console.warn("browser phone recovery unavailable");
   }finally{reconcilingPhone=false;}
 };

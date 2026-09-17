@@ -715,3 +715,9 @@
 .phoneAdminDevice p{margin:5px 0 0}.phoneAdminCode{margin-top:16px;padding:16px;border:1px solid #e9dfc3;border-radius:10px;background:#fffbef;overflow-wrap:anywhere}
 .phoneAdminNotice{color:#237453;font-size:14px}.phoneAdminCode input{font-family:monospace}
 @media(max-width:760px){.phoneAdmin{padding:16px}.phoneAdminGrid{grid-template-columns:1fr;gap:16px}.phoneAdminDevice{align-items:flex-start;flex-direction:column}.phoneAdminGrid .actions{gap:8px}}
+
+.mobileSetup { border-top:1px solid #e0e4e9; padding-top:16px; display:grid; gap:12px; }
+.mobileSetup > strong { display:flex; align-items:center; gap:8px; }
+.mobileSetup p { margin:0; }
+.mobileCode { display:grid; gap:8px; padding:14px; border:1px solid #bdddcf; border-radius:12px; background:#f0faf5; }
+.mobileCode output { font-size:26px; font-weight:650; letter-spacing:5px; font-variant-numeric:tabular-nums; color:#246749; }

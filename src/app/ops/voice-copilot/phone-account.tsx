@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { KeyRound, LogOut, UserRound } from "lucide-react";
 import type { PhoneIdentity, PhoneTeamMember } from "@/lib/ops/voice-phone-contract";
 import { readPhoneCentralResponse } from "./phone-central-data";
+import {PhoneMobileSetup} from "./phone-mobile-setup";
 import styles from "./phone-central.module.css";
 
 type Props = {
@@ -15,6 +16,7 @@ export function PhoneAccount({value,onChange,busy,onTeam,onIdentity,onManage}:Pr
   const [code,setCode]=useState("");
   const [label,setLabel]=useState("Mein Browser");
   const [working,setWorking]=useState(false);
+  const [opened,setOpened]=useState(false);
   const [error,setError]=useState("");
   const refresh=useCallback(async(signal?:AbortSignal)=>{
     const response=await fetch("/api/ops/voice-phone",{cache:"no-store",signal:signal || AbortSignal.timeout(10000)});
@@ -57,7 +59,7 @@ export function PhoneAccount({value,onChange,busy,onTeam,onIdentity,onManage}:Pr
     </label>
     {error?<span className={styles.small} role="status">{error}</span>:null}
   </div>;
-  return <details className={styles.phoneAccount}>
+  return <details className={styles.phoneAccount} onToggle={e=>{if(e.target===e.currentTarget)setOpened(e.currentTarget.open);}}>
     <summary className={styles.phoneAccountSummary}><UserRound size={18}/>{identity.profile?.displayName || "Telefon anmelden"}
       {identity.profile?.extension?<span>· {identity.profile.extension}</span>:null}
     </summary>
@@ -66,6 +68,7 @@ export function PhoneAccount({value,onChange,busy,onTeam,onIdentity,onManage}:Pr
         <strong>{identity.profile.displayName}</strong>
         <p className={styles.small}>Dieses Gerät: {identity.device.label}</p>
         <p className={styles.small}>Die Telefonanmeldung gilt für diese Person auf diesem Gerät.</p>
+        {opened?<PhoneMobileSetup key={identity.device.id} deviceId={identity.device.id} busy={busy||working}/>:null}
         {identity.canManagePhone?<button type="button" className={styles.button} disabled={busy} onClick={onManage}>Telefonteam verwalten</button>:null}
         <button type="button" className={styles.button} disabled={busy||working} onClick={()=>void change("logout")}><LogOut size={16}/>Telefon abmelden</button>
       </>:<>
