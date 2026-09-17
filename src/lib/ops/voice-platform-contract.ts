@@ -306,7 +306,7 @@ function customerContextLines(context: VoiceCustomerContext) {
     context.offer ? `Angebot: ${context.offer.offerNumber || context.offer.label} (${context.offer.status})` : null,
     ...(context.recentCalls || []).map(call => "Auszug aus Telefontranskript " + call.startedAt + (call.incomplete ? " (unvollständig)" : "") + ": " + call.excerpt),
     ...(context.offer?.items || []).slice(0, 12).map((item) =>
-      `Angebotsposition: ${item.title}${item.description ? ` - ${item.description}` : ""}; Menge ${item.quantity}`),
+      ` ${item.selected === false ? "Nicht gewählte Option (nicht als enthalten zusagen)" : "Angebotsposition"}: ${item.title}${item.description ? ` - ${item.description}` : ""}; Menge ${item.quantity}`),
   ].filter(Boolean);
 }
 

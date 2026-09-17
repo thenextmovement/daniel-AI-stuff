@@ -98,7 +98,7 @@ export type VoiceCustomerContext = {
     acceptedAt: string | null;
     projectTitle: string | null;
     price?: { amount: number; currency: string; taxBasis: "gross" | "net" | "unspecified"; asOf: string | null } | null;
-    items: Array<{ title: string; description: string | null; quantity: number }>;
+    items: Array<{ title: string; description: string | null; quantity: number; selected?: boolean }>;
   } | null;
   outlook: Array<{
     direction: string | null;
@@ -600,6 +600,7 @@ function mapOfferForVoice(offer: OpsOfferSnapshot | null): VoiceCustomerContext[
       title: cleanText(item.title, 180),
       description: cleanText(item.description, 500) || null,
       quantity: Number(item.quantity || 0),
+      selected: !item.selectable || (item.selectedFinal ?? item.selectedByDefault),
     })),
   };
 }

@@ -346,10 +346,14 @@ test("post-call analysis does not store model output or auto-publish knowledge",
 
 test("bound offer exposes only documented gross price, currency and source date", async () => {
   const record = { requestId: "REQ-1", request: { title: "Schild", trelloCardId: "card-1" }, offerTracking: { offerId: "offer-1" }, quote: null };
-  const offer = voiceOfferSnapshot({ totals: { totalGross: "119.00", subtotalNet: 100, internalMargin: 80 } });
+  const offer = voiceOfferSnapshot({ totals: { totalGross: "119.00", subtotalNet: 100, internalMargin: 80 }, items: [
+    { title: "Option", quantity: 1, selectable: true, selectedByDefault: false, selectedFinal: null } as never,
+    { title: "Gewählt", quantity: 1, selectable: true, selectedByDefault: false, selectedFinal: true } as never,
+  ] });
   const load = async (value: OpsOfferSnapshot) => (await resolveVoiceOffer(record, { byId: async () => value, byTrelloCardId: async () => value })).offer;
   assert.deepEqual((await load(offer))?.price, { amount: 119, currency: "EUR", taxBasis: "gross", asOf: offer.updatedAt });
   assert.doesNotMatch(JSON.stringify(await load(offer)), /internalMargin|subtotalNet/);
+  assert.deepEqual((await load(offer))?.items.map(x => x.selected), [false, true]);
   for (const total of [undefined, null, "", "119 EUR", -1, Infinity]) {
     assert.equal((await load({ ...offer, totals: { totalGross: total } }))?.price, null);
   }
