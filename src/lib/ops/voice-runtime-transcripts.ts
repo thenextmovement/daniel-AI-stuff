@@ -7,13 +7,17 @@ import { QuoteValidationError } from "@/lib/quotes/validation";
 
 type Row = {
   id: string;
-  transcript_write_token_hash: string;
-  status: string;
-  ended_at: string | null;
 };
 export async function saveRuntimeTranscript(input: Record<string, unknown>) {
   const attemptId = requireVoiceUuid(input.attemptId, "Attempt-ID");
   const segments = validateTranscriptBatch(input.segments);
+  if (segments.some(segment => segment.speaker === "operator" ||
+    /^[0-9a-fA-F-]{36}:(inbound|outbound):/.test(segment.id)))
+    throw new QuoteValidationError(
+      "Ungültige Sprecherzuordnung für die KI-Mitschrift.",
+      ["runtime_transcript_speaker_binding"],
+      422,
+    );
   if (
     input.finish !== undefined &&
     !["complete", "interrupted"].includes(String(input.finish))
@@ -25,7 +29,7 @@ export async function saveRuntimeTranscript(input: Record<string, unknown>) {
     );
   const lookup = () =>
     supabaseRequest<Row[]>("voice_call_sessions", undefined, {
-      select: "id,transcript_write_token_hash,status,ended_at",
+      select: "id",
       attempt_id: "eq." + attemptId,
       limit: 1,
     });
@@ -71,23 +75,11 @@ export async function saveRuntimeTranscript(input: Record<string, unknown>) {
   }
   const row = rows[0];
   if (!row) throw new Error("transcript_session_missing");
-  const result = await supabaseRpc("persist_voice_transcript", {
-    p_session_id: row.id,
-    p_token_hash: row.transcript_write_token_hash,
+  // The RPC locks the shared session. Finishing the AI portion cannot end
+  // a human continuation or overwrite its capture coverage.
+  return supabaseRpc("persist_voice_runtime_transcript", {
+    p_attempt_id: attemptId,
     p_segments: segments,
     p_finish: input.finish || null,
   });
-  if (input.finish && !row.ended_at)
-    await supabaseRequest(
-      "voice_call_sessions",
-      {
-        method: "PATCH",
-        body: JSON.stringify({
-          status: input.finish === "complete" ? "completed" : "cancelled",
-          ended_at: new Date().toISOString(),
-        }),
-      },
-      { id: "eq." + row.id, ended_at: "is.null" },
-    );
-  return result;
 }

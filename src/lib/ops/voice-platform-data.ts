@@ -498,13 +498,7 @@ export async function finalizeVoiceCall(attemptIdInput: unknown, rawOutcome: unk
     p_failure_code: outcome.failureCode,
     p_failure_detail: outcome.failureDetail,
   });
-  const saved = await supabaseRequest<Array<{summary_for_human:string}>>("voice_call_outcomes",undefined,{select:"summary_for_human",attempt_id:"eq."+attemptId,limit:1});
-  if (saved[0]) await supabaseRequest("voice_call_sessions",{method:"PATCH",body:JSON.stringify({summary:saved[0].summary_for_human,summary_source:"ai_call_outcome",summary_updated_at:new Date().toISOString()})},{attempt_id:"eq."+attemptId});
-  // A provider callback may finish a call after the sideband process has vanished.
-  await supabaseRequest("voice_call_sessions", { method:"PATCH",body:JSON.stringify({
-    status: outcome.terminalStatus === "failed" ? "failed" : outcome.terminalStatus === "cancelled" ? "cancelled" : "completed",
-    ended_at:new Date().toISOString(),capture_status:"interrupted",
-  }) },{attempt_id:"eq."+attemptId,ended_at:"is.null"});
+  // The finalization RPC also updates the AI portion of the shared transcript.
   return rows[0];
 }
 

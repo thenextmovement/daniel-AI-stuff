@@ -590,3 +590,46 @@ gespeicherte Kunden-ID aus der SSOT. Sie zeigt den Namen und erfindet keine
 Vorgangszuordnung. Der bestehende authentifizierte Verzeichnisendpunkt prüft
 die ID und liest genau diesen Kontakt; Namens- oder Rufnummernähnlichkeit
 reicht für die Übernahme nicht.
+
+## T295: Gemeinsamer Verlauf bei KI-Übernahme – Speichergrundlage
+
+Die Migration 20260917070000 trennt `ai_capture_status` und `ai_ended_at`
+vom Status und Ende des gesamten Gesprächs. Die Runtime schreibt über
+`persist_voice_runtime_transcript`, gebunden an die vorhandene Attempt-ID.
+KI-Abschluss und verspätete Passagen bleiben auf den KI-Teil begrenzt,
+sobald ein menschlicher `voice_phone_calls`-Datensatz dieselbe Session
+fortführt. Beginn, Kunden-/Testbindung, Mitarbeiterstatus und Mitarbeiter-
+zusammenfassung bleiben erhalten. Späte KI-Schreibvorgänge sind auf fünf
+Minuten nach dem KI-Ende begrenzt; Wiederholungen verlängern diese Frist nicht.
+
+Der bestehende Finalisierungs-RPC aktualisiert das KI-Ergebnis und den
+Gesprächsverlauf in einer Transaktion. Es folgen keine separaten Session-
+PATCHes aus Ops mehr. Doppelte Abschlussmeldungen verwenden das gespeicherte
+Ergebnis. Der menschliche Mitschrift-RPC berücksichtigt zusätzlich den
+KI-Teil: Eine ausdrücklich unterbrochene Erfassung wird durch einen späteren
+erfolgreichen Abschluss des anderen Teils nicht als vollständig dargestellt.
+Reine Mitarbeitergespräche behalten ihren bisherigen Ablauf.
+
+Die SQL-Funktionen sind nur serverseitig aufrufbar. Der KI-Schreibpfad
+akzeptiert Kunden-/Assistentenpassagen und kann weder Mitarbeitersprache
+noch die ID-Namensräume menschlicher Audioströme übernehmen. Die Runtime
+liest dafür keinen Transkript-Schreibhash mehr aus Supabase zurück.
+Einwilligung, Revisionen, Ablauf und vorhandene Schreibgrenzen gelten weiter.
+
+Dies implementiert die Speicherung, noch nicht die Anrufübernahme.
+Der spätere Übergabeablauf muss die bestehende Session atomar sperren,
+ihren offenen Zustand und die konkrete Provider-/Personenbindung prüfen,
+bevor er sie als menschlichen Anruf übernimmt. Das bloße Vorhandensein
+eines menschlichen Datensatzes ist kein Nachweis einer tatsächlichen
+Verbindung. Mitarbeiterbereitschaft, Ankündigung, Umleitung derselben
+Kundenleitung und bestätigter Beitritt bleiben im Runtime-Ablauf umzusetzen.
+Die Migration muss vor dem zugehörigen Ops-Code ausgerollt werden; bestehende
+Anrufe sind vor einem freigegebenen Rollout wie bisher auslaufen zu lassen.
+
+Prüfungen: neue API-Vertragstests einschließlich Authentifizierung und
+fehlgeschlagener Speicherung; isolierter PostgreSQL-Test mit dem tatsächlichen
+AI- und Mitarbeiter-Schema, gemeinsamen Passagen, verspäteten/mehrfachen
+Abschlüssen, Vollständigkeit, Ablauf und Rechten. Drei echte konkurrierende
+SQL-Transaktionen bestätigen die Serialisierung in beiden Reihenfolgen und
+erhalten eine nachträglich erkannte KI-Lücke. Keine produktiven Daten,
+Anrufe, Provideränderungen oder Änderungen an der Ops-Anmeldung.
