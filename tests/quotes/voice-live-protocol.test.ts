@@ -297,6 +297,7 @@ test("SIP call setup requires encrypted signaling and encrypted audio without ch
   globalThis.fetch=(async(_url,init)=>{
    const body=new URLSearchParams(String(init?.body));
    assert.equal(body.get("To"),"+491110000001");
+   assert.deepEqual(body.getAll("StatusCallbackEvent"),["initiated","ringing","answered","completed"]);
    assert.match(body.get("Twiml")||"",/;transport=tls;secure=true\?/);
    assert.match(body.get("Twiml")||"",/x-neontrip-attempt-id=/);
    return Response.json({sid:"CA_TEST"});
