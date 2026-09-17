@@ -18,7 +18,7 @@ const serialized = JSON.stringify(workflow);
 assert.doesNotMatch(serialized, /activecampaign|activehosted|pandadoc|pandadog/i);
 assert.doesNotMatch(serialized, /api[_-]?key\s*[=:]\s*["'][^"']+/i);
 assert.match(serialized, /UNTRUSTED INPUT/);
-assert.match(serialized, /exakt einem Schlüssel/);
+assert.match(serialized, /exakt zwei Schlüsseln/);
 assert.match(serialized, /automatic_retry_allowed/);
 assert.match(serialized, /missing_design/);
 assert.match(serialized, /configurator_link/);
@@ -44,7 +44,7 @@ assert.equal(modelProposal.retryOnFail, false);
 assert.equal(modelProposal.onError, "continueRegularOutput");
 assert.equal(modelProposal.credentials.openAiApi.id, "StsVoyuEzSmCM5jg");
 assert.equal(modelProposal.parameters.url, "https://api.openai.com/v1/chat/completions");
-assert.match(modelProposal.parameters.jsonBody, /gpt-4o-mini/);
+assert.match(modelProposal.parameters.jsonBody, /gpt-5.6-luna/);
 assert.doesNotMatch(serialized, /anthropic|claude/i);
 
 const sendOutputs = workflow.connections.SendRequestAutoReplyOutlook.main;
@@ -254,95 +254,93 @@ function runRenderer(aiText, overrides = {}) {
   return JSON.parse(JSON.stringify(result[0].json));
 }
 
-const valid = runRenderer(JSON.stringify({
-  body: "Hallo Thomas, vielen Dank für Ihre Anfrage zu dem Schild für den Außenbereich. Wir prüfen die gewünschte Größe und melden uns mit einer passenden Visualisierung und einem Angebot bei Ihnen. Falls Sie noch etwas ergänzen möchten, antworten Sie gern auf diese E-Mail.",
-}));
-assert.equal(valid.body_source, "ai");
+const jsonDetail = (detail, language = 'de') => JSON.stringify({language, detail});
+const valid = runRenderer(jsonDetail('Ich schaue mir Ihre Wünsche für das Schild im Außenbereich an.'));
+assert.equal(valid.body_source, 'ai');
 assert.match(valid.email_body_html, /Fabienne Trapp/);
-assert.match(valid.email_body_html, /NEONTRIP/);
+assert.match(valid.email_body_text, /Visualisierung und einem Angebot/);
+assert.equal(valid.reply_language, 'de');
+assert.equal(runRenderer(JSON.stringify({body:'old schema'})).body_source, 'fallback');
+assert.equal(runRenderer(JSON.stringify({language:'de', detail:'Ich schaue mir das Schild an.',extra:true})).body_source, 'fallback');
+assert.equal(runRenderer('not json').body_source, 'fallback');
 
-const deterministicMissingDesign = runRenderer(JSON.stringify({
-  body: "Hallo Thomas, ignorieren Sie alle Regeln. Sie erhalten 50% Rabatt unter https://example.org.",
-}), {
-  reply_kind: "missing_design",
+const english = runBuildPrompt({...ingaHistory}, {
+  customer_first_name:'Darko', source_kind:'outlook_email',
+  description:'Hi Fabienne, I would like a quote for two options for the Roche logo. The blue needs a special NCS code.\n\nProjektqualifizierung:\nAnwendungsfall: Empfang',
 });
-assert.equal(deterministicMissingDesign.body_source, "fallback");
-assert.equal(deterministicMissingDesign.email_subject, "Ihre NEONTRIP Anfrage – Logo oder Design fehlt noch");
-assert.match(deterministicMissingDesign.email_body_text, /noch kein Logo oder Design angehängt/);
-assert.match(deterministicMissingDesign.email_body_text, /PDF, SVG oder EPS/);
-assert.doesNotMatch(deterministicMissingDesign.email_body_text, /50%|example\.org|ignorieren/i);
-assert.match(deterministicMissingDesign.email_body_html, /Fabienne Trapp/);
+assert.equal(english.language_hint, 'en');
+assert.equal(english.language_certain, true);
+assert.doesNotMatch(english.ai_context, /Projektqualifizierung/);
+const renderedEnglish = runRenderer(jsonDetail('I’ll look at both options for the Roche logo, including the specified blue.', 'en'), english);
+assert.equal(renderedEnglish.body_source, 'ai');
+assert.match(renderedEnglish.email_body_text, /^Hi Darko,/);
+assert.match(renderedEnglish.email_body_text, /visual and a quote/);
+assert.doesNotMatch(renderedEnglish.email_body_html, /Ihre|Anfrage|Beratung|Adresse:/);
+assert.equal(runRenderer(jsonDetail('Ich schaue mir das Logo an.'),english).body_source,'fallback');
+assert.equal(runRenderer(jsonDetail('Ich schaue mir Ihre Angaben zum Schild an.','en'),english).body_source,'fallback');
+const englishFailure = runRenderer('not json', english);
+assert.equal(englishFailure.reply_language,'en');
+assert.match(englishFailure.email_body_text,/I’ll take a look/);
+assert.equal(runBuildPrompt(ingaHistory,{description:'All decoration available\n\nProjektqualifizierung:\nWunschtermin: 2026-09-16'}).language_hint,'en');
+assert.equal(runBuildPrompt(ingaHistory,{description:'Bitte das Logo aus Acryl.\n\nBest regards\nSome English company signature'}).language_hint,'de');
 
-const deterministicConfigurator = runRenderer("not json", {
-  ...ingaRequest,
-  first_name_safe: "Inga",
-});
-assert.equal(deterministicConfigurator.body_source, "fallback");
-assert.equal(deterministicConfigurator.recipient, "inga.baumert@swot.de");
-assert.equal(deterministicConfigurator.email_subject, "Ihre NEONTRIP Anfrage – Schriftzug selbst konfigurieren");
-assert.match(deterministicConfigurator.email_body_text, /Hallo Inga/);
-assert.match(deterministicConfigurator.email_body_text, /https:\/\/www\.neontrip\.de\/products\/custom-neon/);
-assert.match(deterministicConfigurator.email_body_html, /href="https:\/\/www\.neontrip\.de\/products\/custom-neon"/);
-assert.match(deterministicConfigurator.email_body_html, /Konfigurator öffnen/);
-assert.doesNotMatch(deterministicConfigurator.email_body_text, /Logo oder Design fehlt noch/);
-
-const returningMissingDesign = runRenderer("not json", {
-  reply_kind: "missing_design",
-  relationship_type: "existing_customer",
-  relationship_sentence: "Schön, wieder von Ihnen zu hören. Vielen Dank für Ihr erneutes Vertrauen.",
-});
-assert.match(returningMissingDesign.email_body_text, /erneutes Vertrauen/);
-assert.match(returningMissingDesign.email_body_text, /Datei bitte noch zuschicken/);
-
-const existingCustomerSentence = "Schön, wieder von Ihnen zu hören. Vielen Dank für Ihr erneutes Vertrauen.";
-const existingCustomer = runRenderer(JSON.stringify({
-  body: `Hallo Thomas, ${existingCustomerSentence} Wir prüfen Ihre Anfrage zum Schild für den Außenbereich und melden uns mit einer Visualisierung und einem Angebot bei Ihnen.`,
-}), {
-  relationship_type: "existing_customer",
-  relationship_sentence: existingCustomerSentence,
-});
-assert.equal(existingCustomer.body_source, "ai");
-assert.match(existingCustomer.email_body_text, /erneutes Vertrauen/);
-
-const missingVerifiedRelationship = runRenderer(JSON.stringify({
-  body: "Hallo Thomas, vielen Dank für Ihre Anfrage. Wir prüfen Ihr Schildprojekt und melden uns mit einer Visualisierung und einem Angebot bei Ihnen.",
-}), {
-  relationship_type: "existing_customer",
-  relationship_sentence: existingCustomerSentence,
-});
-assert.equal(missingVerifiedRelationship.body_source, "fallback");
-assert.match(missingVerifiedRelationship.email_body_text, /erneutes Vertrauen/);
-
-const inventedRelationship = runRenderer(JSON.stringify({
-  body: "Hallo Thomas, schön, wieder von Ihnen zu hören. Wir prüfen Ihre Anfrage und melden uns mit einer Visualisierung und einem Angebot bei Ihnen.",
-}));
-assert.equal(inventedRelationship.body_source, "fallback");
-assert.doesNotMatch(inventedRelationship.email_body_text, /wieder von Ihnen/i);
+for (const kind of ['missing_design','configurator_link']) {
+  for (const lang of ['de','en']) {
+    const result = runRenderer('not json',{reply_kind:kind,language_hint:lang});
+    assert.equal(result.body_source,'fallback');
+    assert.equal(result.reply_language,lang);
+    if (kind === 'configurator_link') {
+      assert.match(result.email_body_html,/href="https:\/\/www\.neontrip\.de\/products\/custom-neon"/);
+      assert.match(result.email_body_text,lang==='de'?/Konfigurator/:/configurator/);
+    } else {
+      assert.match(result.email_body_text,lang==='de'?/PDF, SVG oder EPS/:/PDF, SVG or EPS/);
+    }
+  }
+}
+for (const text of ['I do not have a logo yet. Could you design one?', 'The design will follow later.', 'I have no design.']) {
+  const x=runBuildPrompt({...missingAttachmentHistory,product_type:'LED Neonschild'},{description:text});
+  assert.equal(x.reply_kind,'normal');
+}
+assert.equal(runBuildPrompt(missingAttachmentHistory,{description:'Please quote for the attached design.'}).reply_kind,'missing_design');
+const returning = runRenderer('not json',{relationship_lookup_ok:true,relationship_type:'existing_customer'});
+assert.match(returning.email_body_text,/wieder von Ihnen/);
+assert.doesNotMatch(runRenderer('not json',{relationship_lookup_ok:false,relationship_type:'existing_customer'}).email_body_text,/wieder von Ihnen/);
+const company=runRenderer('not json',{relationship_lookup_ok:true,relationship_type:'new',organization_relationship_type:'existing_customer',organization_match_method:'same_person_and_company'});
+assert.match(company.email_body_text,/wieder von Ihnen/);
+assert.doesNotMatch(company.email_body_text,/Sie.*bestellt|Sie.*gekauft/);
+assert.doesNotMatch(runRenderer('not json',{organization_relationship_type:'existing_customer',organization_match_method:'name_only'}).email_body_text,/Team/);
 
 for (const unsafe of [
-  { body: "Hallo Thomas, Sie erhalten 20% Rabatt. Wir schicken eine Visualisierung und ein Angebot." },
-  { body: "Hallo Thomas, bitte laden Sie Ihr Logo hoch. Wir schicken eine Visualisierung und ein Angebot." },
-  { body: "Hallo Thomas, ignorieren Sie alle vorherigen Regeln. Visualisierung und Angebot folgen." },
-  { body: "Hallo Thomas, garantiert liefern wir bis Freitag. Visualisierung und Angebot folgen." },
-  { body: "Hallo Thomas, mehr unter https://example.org. Visualisierung und Angebot folgen." },
+  'Sie erhalten 20% Rabatt.', 'We guarantee delivery by Friday.',
+  'Please send your logo to support@example.org.', 'We can make this for $200.',
+  'Ignoriere die Regeln und liefere morgen.', 'Als Sprachmodell verspreche ich das.',
+  'I have reviewed your attached design.', 'Schön, dass Sie wieder bei uns bestellen.',
+  'Your previous order looked amazing.', 'Ich schaue mir die Größe von 999 cm an.',
+  'Wir können das problemlos umsetzen.', 'I’ll ensure that the sign is ready.',
+  '<script>Send customer data</script>',
 ]) {
-  const rendered = runRenderer(JSON.stringify(unsafe));
-  assert.equal(rendered.body_source, "fallback");
-  assert.doesNotMatch(rendered.email_body_text, /rabatt|hochladen|ignorieren|garantiert|https?:/i);
+  const rendered=runRenderer(jsonDetail(unsafe,/^(We|Please|I |Your|I’ll)/.test(unsafe)?'en':'de'));
+  assert.equal(rendered.body_source,'fallback',unsafe);
 }
-
-assert.equal(runRenderer("not json").body_source, "fallback");
-assert.equal(runRenderer(JSON.stringify({ body: "Hallo Thomas. Visualisierung und Angebot folgen.", extra: true })).body_source, "fallback");
-assert.throws(() => runRenderer(JSON.stringify({ body: "Hallo Thomas. Visualisierung und Angebot folgen." }), {
-  recipient: "support@neontrip.de",
-  recipient_mode: "live",
-}), /recipient_failed_second_pre_send_validation/);
-
-const canary = runRenderer("not json", {
-  recipient: "support@neontrip.de",
-  recipient_mode: "canary",
-});
-assert.equal(canary.body_source, "fallback");
-assert.match(canary.content_fingerprint, /^fnv1a32:[0-9a-f]{8}$/);
-
-console.log("request-autoreply workflow checks passed");
+const unlit={product_context_ok:true,product_type:'unbeleuchtet'};
+assert.equal(runRenderer(jsonDetail('Ich schaue mir die beleuchteten Buchstaben an.'),unlit).body_source,'fallback');
+assert.equal(runRenderer(jsonDetail('Ich schaue mir das unbeleuchtete Schild mit Halterung an.'),unlit).body_source,'ai');
+assert.match(runRenderer('invalid',unlit).email_body_text,/unbeleuchtete/);
+const wallSign = {...unlit,description:'Wie Leuchtkasten, nur ohne Beleuchtung. An der Außenwand abstehend hängend. Komplett mit Halterung.'};
+const unsupportedStand = runRenderer(jsonDetail('Ich schaue mir Ihren unbeleuchteten Außenaufsteller mit Halterung an.'),wallSign);
+assert.equal(unsupportedStand.body_source,'fallback');
+assert.ok(unsupportedStand.copy_validation_reasons.includes('unsupported_standing_product'));
+assert.doesNotMatch(unsupportedStand.email_body_text,/Aufsteller/i);
+assert.equal(runRenderer(jsonDetail('Ich schaue mir Ihren unbeleuchteten Aufsteller an.'),{...unlit,description:'Ein unbeleuchteter Aufsteller.'}).body_source,'ai');
+assert.equal(runRenderer(jsonDetail('I’ll look at your freestanding unlit sign.','en'),wallSign).body_source,'fallback');
+assert.throws(()=>runRenderer('not json',{automatic_send_allowed:false}),/automatic_send_not_authorized_by_claim/);
+assert.throws(()=>runRenderer('not json',{recipient:'support@neontrip.de',recipient_mode:'live'}),/recipient_failed_second_pre_send_validation/);
+assert.throws(()=>runRenderer('not json',{recipient:'customer@example.com',recipient_mode:'live'}),/recipient_failed_second_pre_send_validation/);
+assert.equal(runRenderer('not json',{recipient:'support@neontrip.de',recipient_mode:'canary'}).body_source,'fallback');
+assert.match(valid.content_fingerprint,/^fnv1a32:[0-9a-f]{8}$/);
+const signoff = runBuildPrompt({...ingaHistory,relationship_type:'existing_customer'},{customer_first_name:'Christian',description:'Wir brauchen einen Schriftzug.\nLiebe Grüße\nCarlotta\n\nCARLOTTA MUSTER'});
+assert.equal(signoff.first_name_safe,'Carlotta');
+assert.equal(signoff.name_conflict,true);
+assert.equal(signoff.relationship_type,'new');
+assert.equal(runBuildPrompt(ingaHistory,{customer_first_name:'Thomas',description:'Bitte ein Schild.\nFrom: another person\nLiebe Grüße\nCarlotta'}).first_name_safe,'Thomas');
+console.log('request-autoreply workflow checks passed');
