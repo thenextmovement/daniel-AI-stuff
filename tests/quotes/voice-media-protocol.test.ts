@@ -90,3 +90,32 @@ test("malformed base64 cannot become silently altered audio",()=>{
 test("invalid public origin fails closed without throwing in the upgrade handler", () => {
   assert.equal(validateMediaUpgrade({method:"GET",path:"/media/twilio",publicUrl:"not a URL",authToken:"test",signature:"test"}), false);
 });
+
+
+test("timings separate startup backlog, incoming jitter, model gaps and playback acknowledgement", () => {
+ let now=0;const sent:Record<string,unknown>[]=[],received:string[]=[];
+ const p=new TwilioMediaProtocol(e=>sent.push(e),()=>now);
+ p.read(JSON.stringify({event:"connected",protocol:"Call",version:"1.0.0"}));
+ p.read(JSON.stringify({event:"start",sequenceNumber:"1",streamSid:stream,start}));
+ p.read(media());now=20;p.read(media(3,2));now=100;p.read(media(4,3));
+ now=200;p.activateInput(a=>received.push(a));
+ assert.deepEqual(received,[audio,audio,audio]);
+ now=250;p.output(audio);now=270;p.output(audio);
+ now=330;p.output(audio); // 40 ms without locally scheduled audio, possibly natural silence.
+ now=380;p.read(JSON.stringify({event:"mark",sequenceNumber:"5",streamSid:stream,mark:{name:"played-3"}}));
+ assert.deepEqual(p.timingMetrics,{input_startup_buffer:60,input_delivery_excess_peak:60,
+   output_schedule_gap_peak:40,playback_ack_peak:130,first_model_audio:50});
+ assert.equal(p.playbackComplete,true);
+ assert.deepEqual(sent.filter(e=>e.event==="media").map(e=>(e.media as {payload:string}).payload),[audio,audio,audio]);
+});
+
+test("normal incoming cadence and buffered output are not counted as timing gaps", () => {
+ let now=0;const p=new TwilioMediaProtocol(()=>{},()=>now);
+ p.read(JSON.stringify({event:"connected",protocol:"Call",version:"1.0.0"}));
+ p.read(JSON.stringify({event:"start",sequenceNumber:"1",streamSid:stream,start}));
+ p.activateInput(()=>{});p.read(media());now=20;p.read(media(3,2));
+ p.output(audio);now=25;p.output(audio);
+ assert.equal(p.timingMetrics.input_delivery_excess_peak,0);
+ assert.equal(p.timingMetrics.output_schedule_gap_peak,0);
+ assert.equal(p.timingMetrics.input_startup_buffer,0);
+});

@@ -43,6 +43,7 @@ export function installTwilioMedia(server: Server, config: RuntimeConfig, ops: O
         if (failed || stopped || ws.readyState !== WebSocket.OPEN) handler(stopped && !failed);
       },
       playbackBufferPeakMs: () => protocol.peakPlaybackBufferMs,
+      timingMetrics: () => protocol.timingMetrics,
       finishPlayback: async () => {
         if (protocol.playbackComplete) return true;
         if (stopped || failed || ws.readyState !== WebSocket.OPEN) return false;

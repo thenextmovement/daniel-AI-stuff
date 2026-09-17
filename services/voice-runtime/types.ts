@@ -18,7 +18,8 @@ export type RuntimeSession = {
   instructions: string;
   context?: {
     customer: { displayName: string | null; company: string | null; email?: string | null };
-    offer: { label: string; offerNumber: string | null; status: string; price?: { amount: number; currency: string; taxBasis: string; asOf: string | null } | null } | null;
+    request?: { title: string | null; size: string | null; application: string | null; colors: string[] };
+    offer: { label: string; offerNumber: string | null; status: string; projectTitle?: string | null; items?: Array<{ title: string; description: string | null; quantity: number; selected?: boolean }>; price?: { amount: number; currency: string; taxBasis: string; asOf: string | null } | null } | null;
     sourceStatus: { offer: string };
   };
   tools: VoiceTool[];

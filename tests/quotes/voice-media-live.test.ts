@@ -157,3 +157,18 @@ test("Live speaks disclosure itself; delegated reads then return actual bound va
  f.socket.receive({type:"session.closed",reason:"close_requested"});await waitFor(()=>f.outcomes.length===1);
  assert.equal(f.outcomes[0][1].failureCode,"missing_structured_outcome","late model audio after a normal hangup is not a media failure");
 });
+
+
+test("aggregate timing audit is written only after the media connection closes", async () => {
+ const f=fixture();f.media.timingMetrics=()=>({input_startup_buffer:2800,output_schedule_gap_peak:250});
+ await f.adapter.connectMedia(session,f.media);f.socket.open();
+ f.socket.receive({type:"session.started",session:{id:"live_timing",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
+ await waitFor(()=>f.events.length===1);
+ assert.ok(!f.events.some(e=>e[2].startsWith("media.timing.")));
+ f.socket.receive({type:"session.closed",reason:"close_requested"});await waitFor(()=>f.outcomes.length===1);
+ await waitFor(()=>f.events.filter(e=>e[2].startsWith("media.timing.")).length===2);
+ assert.deepEqual(f.events.filter(e=>e[2].startsWith("media.timing.")).map(e=>[e[2],e[4]]),[
+  ["media.timing.input_startup_buffer",{duration_ms:2800}],
+  ["media.timing.output_schedule_gap_peak",{duration_ms:250}],
+ ]);
+});

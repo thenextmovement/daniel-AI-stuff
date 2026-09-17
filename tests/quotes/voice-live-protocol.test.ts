@@ -78,7 +78,7 @@ test("Live session uses independent delegated reasoning and no audio storage", (
   const config = liveSessionConfig(session);
   assert.equal(config.type, "live");
   assert.notEqual(config.instructions, "Bound rules");
-  assert.ok(config.instructions.length < 3000);
+  assert.ok(config.instructions.length < 3400);
   assert.match(config.instructions, /Delegation policy:/);
   assert.match(config.instructions, /Interruption policy:/);
   assert.equal(config.delegation.responses.instructions, "Bound rules");
@@ -317,4 +317,21 @@ test("small bound facts answer routine questions without embedding long procedur
   assert.ok(config.instructions.length < 3600);
   assert.ok(config.delegation.responses.instructions.length > 10000);
   assert.doesNotMatch(config.instructions, /x{50}/);
+});
+
+
+test("Live preloads only selected product facts and keeps long or unselected data out", () => {
+  const config = liveSessionConfig({ modelId: "gpt-live-1", voice: "gleam", instructions: "backend", tools: [], sessionConfig: {}, allowlistOnly: true,
+    context: { customer: { displayName: "Test", company: null }, request: { title: "Old inquiry", size: "80 cm", application: "outside", colors: [] },
+      offer: { label: "A1", offerNumber: "A1", status: "sent", projectTitle: "Logo", items: [
+        { title: "Leuchtschild", description: "90x22 cm, Kaltweiß, Innenbereich", quantity: 1, selected: true },
+        { title: "Nicht ausgewähltes RGB", description: "Nicht enthalten", quantity: 1, selected: false },
+        { title: "Unknown selection", description: null, quantity: 1 },
+        { title: "Montage", description: "x".repeat(2000), quantity: 1, selected: true },
+      ] }, sourceStatus: { offer: "ok" } }
+  } as never);
+  assert.match(config.instructions, /90x22 cm, Kaltweiß, Innenbereich/);
+  assert.doesNotMatch(config.instructions, /Nicht ausgewähltes RGB|Unknown selection|Old inquiry|x{241}/);
+  assert.match(config.instructions, /Liste kann gekürzt sein/);
+  assert.ok(config.instructions.length < 4400);
 });

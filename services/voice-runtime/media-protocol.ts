@@ -67,10 +67,19 @@ export class TwilioMediaProtocol {
   private inputBytes = 0;
   private consumeInput: ((audio: string) => void) | null = null;
   private outputSequence = 0;
-  private pendingMarks = new Map<string, number>();
+  private pendingMarks = new Map<string, { bytes: number; sentAt: number }>();
   private pendingOutputBytes = 0;
   private peakOutputBytes = 0;
-  constructor(private readonly send: (event: Json) => void) {}
+  private lastInputAt: number | null = null;
+  private lastInputTimestamp = 0;
+  private inputDeliveryExcessMs = 0;
+  private startupBufferMs = 0;
+  private activatedAt: number | null = null;
+  private firstOutputMs: number | null = null;
+  private outputAvailableUntil: number | null = null;
+  private outputScheduleGapMs = 0;
+  private playbackAckMs = 0;
+  constructor(private readonly send: (event: Json) => void, private readonly now: () => number = () => performance.now()) {}
 
   read(raw: string): MediaEvent {
     if (Buffer.byteLength(raw) > 128000 || this.stopped) throw new Error("media_closed_or_oversized");
@@ -98,8 +107,13 @@ export class TwilioMediaProtocol {
     if (e.event === "media") {
       const m = object(e.media), bytes = pcmuByteLength(m.payload);
       if (m.track !== "inbound" || unsigned(m.chunk) !== this.inputChunk + 1 || unsigned(m.timestamp) < this.inputTime) throw new Error("media_input_gap");
+      const receivedAt = this.now(), timestamp = unsigned(m.timestamp);
+      if (this.lastInputAt !== null) this.inputDeliveryExcessMs = Math.max(this.inputDeliveryExcessMs,
+        receivedAt - this.lastInputAt - (timestamp - this.lastInputTimestamp));
+      this.lastInputAt = receivedAt;
+      this.lastInputTimestamp = timestamp;
       this.inputChunk++;
-      this.inputTime = unsigned(m.timestamp);
+      this.inputTime = timestamp;
       const audio = m.payload as string;
       if (this.consumeInput) this.consumeInput(audio);
       else {
@@ -113,8 +127,10 @@ export class TwilioMediaProtocol {
       const name = object(e.mark).name;
       if (typeof name !== "string" || !this.pendingMarks.has(name)) throw new Error("unknown_playback_mark");
       // Marks acknowledge audio actually played by Twilio, not model generation.
-      for (const [key, bytes] of this.pendingMarks) {
-        this.pendingOutputBytes -= bytes;
+      const acknowledgedAt = this.now();
+      for (const [key, pending] of this.pendingMarks) {
+        this.playbackAckMs = Math.max(this.playbackAckMs, acknowledgedAt - pending.sentAt);
+        this.pendingOutputBytes -= pending.bytes;
         this.pendingMarks.delete(key);
         if (key === name) break;
       }
@@ -136,6 +152,8 @@ export class TwilioMediaProtocol {
 
   activateInput(consume: (audio: string) => void) {
     if (!this.started || this.stopped || this.consumeInput) throw new Error("media_input_not_startable");
+    this.activatedAt = this.now();
+    this.startupBufferMs = this.inputBytes / 8;
     this.consumeInput = consume;
     for (const audio of this.inputQueue) consume(audio);
     this.inputQueue = [];
@@ -147,11 +165,27 @@ export class TwilioMediaProtocol {
     const bytes = pcmuByteLength(audio);
     if (this.pendingOutputBytes + bytes > 64000) throw new Error("media_playback_backlog");
     const name = "played-" + (++this.outputSequence);
-    this.pendingMarks.set(name, bytes);
+    const sentAt = this.now();
+    if (this.firstOutputMs === null && this.activatedAt !== null) this.firstOutputMs = sentAt - this.activatedAt;
+    // A schedule gap may be a natural model pause; it is not itself packet loss.
+    if (this.outputAvailableUntil !== null) this.outputScheduleGapMs = Math.max(this.outputScheduleGapMs, sentAt - this.outputAvailableUntil);
+    this.outputAvailableUntil = Math.max(sentAt, this.outputAvailableUntil ?? sentAt) + bytes / 8;
+    this.pendingMarks.set(name, { bytes, sentAt });
     this.pendingOutputBytes += bytes;
     this.peakOutputBytes = Math.max(this.peakOutputBytes, this.pendingOutputBytes);
     this.send({ event: "media", streamSid: this.started.streamSid, media: { payload: audio } });
     this.send({ event: "mark", streamSid: this.started.streamSid, mark: { name } });
+  }
+
+  get timingMetrics(): Record<string, number> {
+    const metrics: Record<string, number> = {
+      input_startup_buffer: this.startupBufferMs,
+      input_delivery_excess_peak: this.inputDeliveryExcessMs,
+      output_schedule_gap_peak: this.outputScheduleGapMs,
+      playback_ack_peak: this.playbackAckMs,
+    };
+    if (this.firstOutputMs !== null) metrics.first_model_audio = this.firstOutputMs;
+    return Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, Math.round(Math.max(0, value))]));
   }
 
   get peakPlaybackBufferMs() { return this.peakOutputBytes / 8; }

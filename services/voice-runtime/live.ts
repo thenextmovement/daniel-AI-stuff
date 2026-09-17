@@ -26,6 +26,7 @@ export interface LiveMediaTransport {
   watchClose(handler: (clean: boolean) => void): void;
   finishPlayback(): Promise<boolean>;
   playbackBufferPeakMs?(): number;
+  timingMetrics?(): Record<string, number>;
   close(): void;
 }
 
@@ -579,5 +580,11 @@ export class OpenAiLiveAdapter {
       .catch(() =>
         console.error("voice finalization pending", active.attemptId),
       );
+    // Diagnostics must not delay transcript storage or outcome finalization.
+    await Promise.all(Object.entries(active.media?.timingMetrics?.() || {}).map(async ([name, duration]) => {
+      if (!/^[a-z_]{1,50}$/.test(name) || !Number.isFinite(duration) || duration < 0) return;
+      await this.ops.event(active.attemptId, "runtime", "media.timing." + name, "media-timing:" + active.callId + ":" + name,
+        { duration_ms: duration }).catch(() => {});
+    }));
   }
 }
