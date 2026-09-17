@@ -48,6 +48,8 @@ test("Live media waits for started and forwards both directions while persistenc
  await f.adapter.connectMedia(session,f.media);
  assert.equal(f.ready,false);f.socket.open();
  assert.equal(f.socket.sent[0].type,"session.start");
+ // The real primary Live endpoint rejects this field with unknown_parameter.
+ assert.equal(Object.hasOwn(f.socket.sent[0].session,"type"),false);
  assert.deepEqual(f.socket.sent[0].session.audio.format,{type:"audio/pcmu",rate:8000});
  assert.equal(f.socket.sent[0].session.model,"gpt-live-1");
  assert.equal(f.socket.sent[0].session.store,false);

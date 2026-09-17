@@ -298,7 +298,8 @@ export class OpenAiLiveAdapter {
     }
     socket.on("open", () => {
       if (media) {
-        const initial = liveSessionConfig(session);
+        // Primary WebSocket sessions reject the SIP-only session.type field.
+        const { type: _transportType, ...initial } = liveSessionConfig(session);
         this.send(active, {
           type: "session.start",
           session: { ...initial, audio: { ...initial.audio, format: { type: "audio/pcmu", rate: 8000 } } },
