@@ -4,6 +4,7 @@ import {browserPhoneReady} from "./phone-token.js";
 import {verifyTwilioSignature} from "./security.js";
 
 export type PhoneCallRecord = {
+ agent_transport?:"browser"|"mobile";mobile_leg_id?:string|null;
  id:string;device_id:string;staff_id:string;phone:string;state:string;direction?:"inbound"|"outbound";customer_id?:string|null;request_id?:string|null;
  agent_call_sid:string|null;customer_call_sid:string|null;conference_sid:string|null;
  customer_dispatch:string;agent_joined:boolean;customer_joined:boolean;
@@ -31,6 +32,13 @@ export function browserPhoneControlReady(config:RuntimeConfig) {
 export function browserCallingReady(config:RuntimeConfig) {
  return browserPhoneReady(config) && config.browserCallsEnabled && !!config.twilioAuthToken &&
   /^[+][1-9][0-9]{6,14}$/.test(config.twilioFromNumber) && config.phoneAllowedNumbers.length>0;
+}
+export function mobileCallingReady(config:RuntimeConfig) {
+ return browserPhoneControlReady(config)&&config.mobileCallsEnabled&&
+  /^[+][1-9][0-9]{6,14}$/.test(config.twilioFromNumber)&&config.phoneAllowedNumbers.length>0&&config.mobilePhoneNumbers.length>0;
+}
+export function phoneCallReady(config:RuntimeConfig,call:PhoneCallRecord) {
+ return call.agent_transport==="mobile"?mobileCallingReady(config):browserCallingReady(config);
 }
 export function phoneWebhookParameters(config:RuntimeConfig,url:URL,signature:string|undefined,body:string) {
  const params=new URLSearchParams(body);
@@ -112,7 +120,7 @@ export class BrowserPhoneCalls {
   if(!UUID.test(id) || !/^client:ntd_[a-f0-9]{32}$/.test(from) || !SID.test(sid))throw Error("invalid_phone_identity");
   const hex=from.slice("client:ntd_".length),deviceId=hex.slice(0,8)+"-"+hex.slice(8,12)+"-"+hex.slice(12,16)+"-"+hex.slice(16,20)+"-"+hex.slice(20);
   const {call}=await this.ops.phoneCall("bind",{callId:id,deviceId,agentCallSid:sid});
-  if(call.id!==id || call.device_id!==deviceId || call.agent_call_sid!==sid || call.ended_at ||
+  if(call.agent_transport==="mobile" || call.id!==id || call.device_id!==deviceId || call.agent_call_sid!==sid || call.ended_at ||
    !this.config.phoneAllowedNumbers.includes(call.phone) || (call.direction==="inbound"&&!this.config.inboundPhoneEnabled))throw Error("phone_call_forbidden");
   return phoneAgentTwiml(this.config,call);
  }
@@ -143,9 +151,9 @@ export class BrowserPhoneCalls {
   // after an ambiguous response; a later callback/reconciler resolves it.
   let attempted=false;
   try {
-   this.requireReady();
    const fresh=(await this.ops.phoneCall("get",{callId:id})).call;
    if(fresh.ended_at){await this.closeRecorded(fresh);return;}
+   if(!phoneCallReady(this.config,fresh))throw Error("phone_calling_not_configured");
    await this.ops.getPhoneDevice(fresh.device_id,fresh.staff_id);
    if(!this.config.phoneAllowedNumbers.includes(fresh.phone))throw Error("phone_target_not_allowed");
    attempted=true;
@@ -172,13 +180,13 @@ export class BrowserPhoneCalls {
     if(call.ended_at){if(call.cleanup_pending)await this.closeRecorded(call);continue;}
     // Reservations have no provider side effect. All other abandoned setup
     // states close after 60s; an uncertain dispatch never triggers a second dial.
-    const abandoned=(!call.customer_joined||!call.agent_joined) && Date.now()-Date.parse(call.created_at)>60000;
+    const abandoned=(!call.customer_joined||!call.agent_joined) && Date.now()-Date.parse(call.created_at)>(call.agent_transport==="mobile"?90000:60000);
     const ended=await this.provider.ended(call);
     let revoked=false;
     try{await this.ops.getPhoneDevice(call.device_id,call.staff_id);}catch(error){
      if([401,403,404].includes((error as {status?:number}).status||0))revoked=true;else throw error;
     }
-    if(abandoned || ended || revoked || !this.config.browserCallsEnabled) {
+    if(abandoned || ended || revoked || !(call.agent_transport==="mobile"?this.config.mobileCallsEnabled:this.config.browserCallsEnabled)) {
      const result=await this.ops.phoneEvent(call.id,ended?"reconcile:ended":"reconcile:cancel",ended?"conference_end":"cancel",call.agent_call_sid);
      if(result.close)await this.closeRecorded(result.call);
     }

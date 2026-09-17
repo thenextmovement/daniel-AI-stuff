@@ -4,7 +4,7 @@ import type {Call,Device} from "@twilio/voice-sdk";
 import type {PhoneIdentity} from "@/lib/ops/voice-phone-contract";
 import {readPhoneCentralResponse} from "./phone-central-data";
 
-export type BrowserCall = {id:string;state:string;direction?:"inbound"|"outbound";phone:string;connected:boolean;endedAt:string|null;cleanupPending:boolean;isTest:boolean;customerId?:string|null;requestId?:string|null};
+export type BrowserCall = {transport?:"browser"|"mobile";id:string;state:string;direction?:"inbound"|"outbound";phone:string;connected:boolean;endedAt:string|null;cleanupPending:boolean;isTest:boolean;customerId?:string|null;requestId?:string|null};
 export type PhoneTransferView = {id:string;state:string;fromStaffId:string;toStaffId:string;call:BrowserCall;role:"source"|"recipient";fromName:string;toName:string;
  expiresAt:string;targetJoined:boolean;cancelRequested:boolean;ownerAdopted:boolean;endedAt:string|null;cleanupPending:boolean};
 export type IncomingPhoneView = {id:string;phone:string;displayName:string|null;customerId:string|null;requestId:string|null;expiresAt:string;state:string};
@@ -12,7 +12,7 @@ export type PhoneDialTarget = {customerId?:string;requestId?:string|null;phone?:
 const terminal=(call:BrowserCall)=>!!call.endedAt && !call.cleanupPending;
 async function phoneJson<T>(path:string,body?:Record<string,unknown>):Promise<T> {
  const response=await fetch("/api/ops/voice-phone"+path,{...(body?{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)}:{}),
-  cache:"no-store",signal:AbortSignal.timeout(body?.action==="cancel"?22000:15000)});
+  cache:"no-store",signal:AbortSignal.timeout(body?.action==="cancel"?22000:body?.transport==="mobile"?25000:15000)});
  return readPhoneCentralResponse<T>(response,"Der Telefonanschluss ist gerade nicht erreichbar.");
 }
 export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
@@ -27,6 +27,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  const request=useRef<{key:string;target:string}|null>(null),transferRequest=useRef<{key:string;callId:string;target:string}|null>(null);
  const profileId=identity?.device?.id||null;
  const allowed=!!identity?.browserCallingAvailable && !!profileId;
+ const mobileAllowed=!!identity?.mobileCallingAvailable && !!profileId;
  function updateCall(value:BrowserCall|null) {active.current=value;setCall(value);}
  function updateTransfer(value:PhoneTransferView|null) {activeTransfer.current=value;setTransfer(value);}
  function updateOffer(value:PhoneTransferView|null) {offer.current=value;setIncoming(value);}
@@ -121,6 +122,18 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   return ()=>{stopped=true;window.clearInterval(timer);};
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[registered,call?.id,transfer?.id,otherBusy,profileId]);
+ // A mobile connection belongs to the server and survives closing/reloading
+ // the browser. Restore only this device's currently owned mobile call.
+ useEffect(()=>{
+  if(!profileId||!mobileAllowed)return;
+  let stopped=false;const epoch=generation.current;
+  void phoneJson<{call:BrowserCall|null}>("/calls?active=mobile").then(data=>{
+   if(!stopped&&epoch===generation.current&&!starting.current&&!active.current&&!activeTransfer.current&&
+      data.call?.transport==="mobile"&&!terminal(data.call))updateCall(data.call);
+  }).catch(()=>{if(!stopped)setError("Laufende Handygespräche konnten noch nicht geprüft werden.");});
+  return ()=>{stopped=true;};
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[profileId,mobileAllowed]);
  async function transferAction(action:"commit"|"cancel",value=activeTransfer.current||offer.current) {
   if(!value||starting.current)return;
   starting.current=true;setWorking(true);setError("");const epoch=generation.current;
@@ -138,7 +151,8 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   if(t?.role==="source" && (t.ownerAdopted||t.state==="committing"))return;
   ending.current=true;setWorking(true);releaseAudio();const epoch=generation.current;
   try{await phoneJson("/calls",{action:"cancel",callId:current.id});if(epoch===generation.current)await refreshCall();}
-  catch{if(epoch===generation.current)setError("Die Audioverbindung ist getrennt. Das Beenden beim Anbieter wird noch geprüft.");}
+  catch{if(epoch===generation.current)setError(current.transport==="mobile"?
+    "Das Beenden wird noch geprüft. Bitte lege auch am Handy auf.":"Die Audioverbindung ist getrennt. Das Beenden beim Anbieter wird noch geprüft.");}
   finally{if(epoch===generation.current){ending.current=false;setWorking(false);}}
  }
  function attachAudio(sdkCall:Call,callId:string) {
@@ -185,21 +199,31 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
    if(epoch===generation.current){setRegistered(false);setError("Der Browser-Anschluss konnte noch nicht verbunden werden.");}
   }finally{if(epoch===generation.current){starting.current=false;setWorking(false);}}
  }
- async function dial(target:PhoneDialTarget) {
-  if(!allowed||!registered||!device.current||starting.current||active.current||activeTransfer.current||offer.current||externalOffer.current||otherBusy)return;
+ async function dial(target:PhoneDialTarget,transport:"browser"|"mobile"="browser") {
+  if((transport==="mobile"?!mobileAllowed:!allowed||!registered||!device.current)||starting.current||active.current||activeTransfer.current||offer.current||externalOffer.current||otherBusy)return;
   starting.current=true;setWorking(true);setError("");setNotice("");const epoch=generation.current;
-  const signature=JSON.stringify(target);
+  const signature=JSON.stringify({target,transport});
   if(request.current?.target!==signature)request.current={key:crypto.randomUUID(),target:signature};
   try {
-   const result=await phoneJson<{call:BrowserCall}>("/calls",{action:"reserve",requestKey:request.current.key,...target});
+   const result=await phoneJson<{call:BrowserCall}>("/calls",{action:"reserve",requestKey:request.current.key,transport,...target});
    if(epoch!==generation.current)return;
    if(terminal(result.call)){request.current=null;throw Error("reservation_expired");}
+   if((result.call.transport||"browser")!==transport)throw Error("phone_transport_mismatch");
    updateCall(result.call);
-   const sdkCall=await device.current.connect({params:{callId:result.call.id}});
+   if(transport==="mobile")return;
+   const sdkCall=await device.current!.connect({params:{callId:result.call.id}});
    if(epoch!==generation.current || (active.current as BrowserCall|null)?.id!==result.call.id){sdkCall.disconnect();return;}
    attachAudio(sdkCall,result.call.id);
   }catch{
-   if(epoch===generation.current){setError("Der Anruf konnte nicht gestartet werden. Im Pilot sind nur freigegebene Testnummern erreichbar.");if(active.current)void finish();}
+   if(epoch===generation.current){
+    setError("Der Anruf konnte noch nicht bestätigt werden. Im Pilot sind nur freigegebene Testnummern erreichbar.");
+    if(transport==="mobile"){
+     try{
+      const state=await phoneJson<{call:BrowserCall|null}>("/calls?active=mobile");
+      if(epoch===generation.current&&state.call?.transport==="mobile"&&!terminal(state.call)){updateCall(state.call);setError("Der Handy-Anruf wird weiter geprüft.");}
+     }catch{}
+    }else if(active.current)void finish();
+   }
   }finally{if(epoch===generation.current){starting.current=false;setWorking(false);}}
  }
  async function beginTransfer(targetStaffId:string) {
@@ -272,6 +296,6 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  }
  function mute() {if(!audioCall.current)return;const next=!audioCall.current.isMuted();audioCall.current.mute(next);setMuted(next);}
  function sendDigits(value:string) {if(audioCall.current && /^[0-9*#]{1,32}$/.test(value))audioCall.current.sendDigits(value);}
- return {allowed,registered,working,call,muted,error,notice,transfer,incoming,externalIncoming,acceptIncoming,declineIncoming,enable,dial,finish,mute,sendDigits,beginTransfer,acceptTransfer,transferAction,
+ return {allowed,mobileAllowed,registered,working,call,muted,error,notice,transfer,incoming,externalIncoming,acceptIncoming,declineIncoming,enable,dial,finish,mute,sendDigits,beginTransfer,acceptTransfer,transferAction,
   busy:!!call||!!transfer||!!incoming||!!externalIncoming||working};
 }

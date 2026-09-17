@@ -419,3 +419,49 @@ Primaerquellen fuer den Verifikationsweg:
 https://www.twilio.com/docs/voice/api/call-resource
 https://www.twilio.com/docs/voice/twiml/gather
 https://www.placetel.de/hilfe/sip-trunking/anbindung-mit-sip
+
+
+## Ausgehende Gespräche über das bestätigte Handy (T295)
+
+Die Migration 20260917040000 ergänzt einen eigenen Handy-Verbindungsdatensatz
+am bestehenden Gespräch. Mit VOICE_PHONE_MOBILE_CALLS_ENABLED=true in Ops und
+Runtime lässt sich beim Anrufen „Mein Handy“ wählen. Persönliche Telefonie,
+bestätigte Handyzuordnung, beide freigegebenen Nummernlisten und der bestehende
+Twilio-Anschluss sind erforderlich. Browser-SDK-Schlüssel und eine verbundene
+Browser-Audioverbindung braucht dieser Weg nicht. Alle neuen Freigaben bleiben
+standardmäßig aus.
+
+Zuerst klingelt nur das eigene bestätigte Handy. Die Ansage enthält keine
+Kundendaten. Erst „1“ und der danach bestätigte Konferenzbeitritt erlauben den
+einmaligen Kundenanruf. Mailbox, falsche Eingabe, fehlende Bestätigung oder eine
+inzwischen widerrufene persönliche Zuordnung verbinden keinen Kunden. Ein
+unklares Anbieterergebnis wird nicht durch einen weiteren Wählversuch ersetzt.
+Reservierung, Call-SID und Gerät bleiben serverseitig gebunden; mobile Zielnummern
+aus dem Browser sind keine Autorität.
+
+Handy und Browser verwenden anschließend dieselbe Gesprächs-ID, Kundenbindung,
+Mitschrift nach Absprache, Auflege- und Übergabesteuerung. Das Handy übernimmt
+Mikrofon, Lautsprecher und Wahltasten. Nach Neuladen der Telefonzentrale wird
+das eigene laufende Handygespräch wieder angezeigt, ohne neu zu wählen.
+Eine Weitergabe vom Handy an einen persönlich angemeldeten Browserkollegen
+erhält den Kundenanruf und die gespeicherte Mitschrift. Der bisherige Mitarbeiter
+verliert die Steuerung; spätere Rückmeldungen seines Handys beenden das
+übernommene Gespräch nicht.
+
+Frühere Handyseiten behalten einen eigenen Bereinigungszustand, auch nach
+Besitzerwechsel. Ein Gespräch wird erst als bereinigt quittiert, wenn seine
+Handyseiten bestätigt beendet sind. Spät eintreffende Anbieterkennungen können
+nur die Bereinigung erneut anfordern, kein beendetes Gespräch öffnen.
+
+Geprüft mit isoliertem PostgreSQL einschließlich acht Telefonie-Integrationen,
+zwei gleichzeitig ausgeführten Startansprüchen und spätem Callback nach Abbruch;
+Runtime-Vertragstests; vier getrennten HTTPS-Browserprofilen mit echten
+Ops-Endpunkten und synthetischen Anbieter-/Datenbankgegenstellen. Verlorene
+Startantwort, Neuladen, Mitschrift, Handy-zu-Browser-Rücksprache/Übergabe,
+Zugriffsgrenzen, bestehende Ops-Cookies und 390-px-Umbruch wurden geprüft.
+Diese Vorschau telefoniert nicht über einen echten Anbieter.
+
+Noch offen: eingehende Annahme und Übergabe auf das Handy, Placetel-Audioweg,
+KI-Übernahme, produktive Erstzuordnung/Freischaltung, echte Audio- und
+Ausfallprüfung und Rahims kontrollierter Ende-zu-Ende-Anruf. Dieser Stand
+aktiviert keine produktiven Gespräche.
