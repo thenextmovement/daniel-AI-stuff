@@ -78,7 +78,7 @@ test("Live session uses independent delegated reasoning and no audio storage", (
   const config = liveSessionConfig(session);
   assert.equal(config.type, "live");
   assert.notEqual(config.instructions, "Bound rules");
-  assert.ok(config.instructions.length < 2300);
+  assert.ok(config.instructions.length < 3000);
   assert.match(config.instructions, /Delegation policy:/);
   assert.match(config.instructions, /Interruption policy:/);
   assert.equal(config.delegation.responses.instructions, "Bound rules");
@@ -304,4 +304,17 @@ test("SIP call setup requires encrypted signaling and encrypted audio without ch
   const adapter=new TwilioSipAdapter({twilioAccountSid:"fake",twilioAuthToken:"fake",twilioFromNumber:"+491110000002",openAiProjectId:"proj_test",sipBindingSecret:"fake",publicUrl:"https://voice.example.test"} as never);
   await adapter.startOutboundCall({attemptId:"11111111-1111-4111-8111-111111111111",phoneE164:"+491110000001"} as never);
  }finally{globalThis.fetch=original;}
+});
+
+
+test("small bound facts answer routine questions without embedding long procedures in Live", () => {
+  const config = liveSessionConfig({ modelId: "gpt-live-1", voice: "gleam", instructions: "Long backend record " + "x".repeat(10000), tools: [], sessionConfig: {}, allowlistOnly: true,
+    context: { customer: { displayName: "Test", company: null, email: "test@example.test" }, offer: { label: "A1", offerNumber: "A1", status: "sent", price: { amount: 583.1, currency: "EUR", taxBasis: "gross", asOf: "2026-09-17" } }, sourceStatus: { offer: "ok" } }
+  } as never);
+  assert.match(config.instructions, /test@example.test/);
+  assert.match(config.instructions, /583.1/);
+  assert.match(config.instructions, /direkt aus den gebundenen Fakten/);
+  assert.ok(config.instructions.length < 3600);
+  assert.ok(config.delegation.responses.instructions.length > 10000);
+  assert.doesNotMatch(config.instructions, /x{50}/);
 });

@@ -16,6 +16,11 @@ export type RuntimeSession = {
   voice: string;
   sessionConfig: Record<string, unknown>;
   instructions: string;
+  context?: {
+    customer: { displayName: string | null; company: string | null; email?: string | null };
+    offer: { label: string; offerNumber: string | null; status: string; price?: { amount: number; currency: string; taxBasis: string; asOf: string | null } | null } | null;
+    sourceStatus: { offer: string };
+  };
   tools: VoiceTool[];
 };
 
