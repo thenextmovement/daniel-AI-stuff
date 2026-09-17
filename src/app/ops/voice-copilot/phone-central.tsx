@@ -45,6 +45,14 @@ export function PhoneCentral(props: Props) {
   const [phoneAdminOpen,setPhoneAdminOpen]=useState(false);
   const [phoneIdentity,setPhoneIdentity]=useState<PhoneIdentity|null>(null);
   const browserPhone=useBrowserPhone(phoneIdentity,props.busy);
+  const [outgoingRoute,setOutgoingRoute]=useState<"browser"|"mobile">("browser");
+  const mobileAudio=browserPhone.call?.transport==="mobile"||(!browserPhone.call&&outgoingRoute==="mobile");
+  const canDial=outgoingRoute==="mobile"?browserPhone.mobileAllowed:browserPhone.allowed;
+  const endpointReady=outgoingRoute==="mobile"?browserPhone.mobileAllowed:browserPhone.registered;
+  useEffect(()=>{
+    if(phoneIdentity?.mobileCallingAvailable&&!phoneIdentity.browserCallingAvailable)setOutgoingRoute("mobile");
+    else if(phoneIdentity?.browserCallingAvailable&&!phoneIdentity.mobileCallingAvailable)setOutgoingRoute("browser");
+  },[phoneIdentity?.mobileCallingAvailable,phoneIdentity?.browserCallingAvailable]);
   const busy=props.busy||browserPhone.busy;
   const [query, setQuery] = useState("");
   const [phoneTeam,setPhoneTeam] = useState<PhoneTeamMember[]>([]);
@@ -97,7 +105,7 @@ export function PhoneCentral(props: Props) {
 
   // Adopt the persisted customer binding when joining another person's call.
   // Clear a previously selected customer before loading the incoming context.
-  const receivedCall = browserPhone.transfer?.role==="recipient" ? browserPhone.transfer.call : browserPhone.call?.direction==="inbound" ? browserPhone.call : null;
+  const receivedCall = browserPhone.transfer?.role==="recipient" ? browserPhone.transfer.call : (browserPhone.call?.direction==="inbound"||browserPhone.call?.transport==="mobile") ? browserPhone.call : null;
   const receivedId=useRef<string|null>(null);
   useEffect(()=>{
     if(!receivedCall || receivedId.current===receivedCall.id)return;
@@ -201,24 +209,29 @@ export function PhoneCentral(props: Props) {
         <h1>Telefonzentrale</h1>
         <span className={styles.spacer} />
         <PhoneAccount value={props.operatorName} onChange={props.onOperatorNameChange} busy={busy} onTeam={setPhoneTeam} onIdentity={setPhoneIdentity} onManage={()=>{setPhoneAdminOpen(true);if(settingsRef.current)settingsRef.current.open=true;window.setTimeout(()=>document.getElementById("voice-phone-team")?.scrollIntoView({block:"start"}),0);}}/>
-        <span className={styles.connectionState}><span />{browserPhone.registered ? "Browser verbunden" : props.busy ? "Begleitung aktiv" : "Telefon-App"}</span>
+        <span className={styles.connectionState}><span />{mobileAudio ? "Mein Handy" : browserPhone.registered ? "Browser verbunden" : props.busy ? "Begleitung aktiv" : "Telefon-App"}</span>
       </div>
-      {phoneIdentity?.browserCallingAvailable ? <section className={styles.browserPhoneBar} aria-label="Browser-Telefon">
+      {phoneIdentity?.browserCallingAvailable&&phoneIdentity.mobileCallingAvailable?<label className={styles.outgoingRoute}>Anrufen über
+        <select aria-label="Anrufen über" className={styles.device} value={browserPhone.call?.transport||outgoingRoute} disabled={busy} onChange={e=>setOutgoingRoute(e.target.value as "browser"|"mobile")}>
+          <option value="browser">Browser</option><option value="mobile">Mein Handy · {phoneIdentity.mobilePhone}</option>
+        </select>
+      </label>:null}
+      {phoneIdentity?.browserCallingAvailable||phoneIdentity?.mobileCallingAvailable ? <section className={styles.browserPhoneBar} aria-label={mobileAudio?"Handy-Telefon":"Browser-Telefon"}>
         <div><strong>{browserPhone.call ? (browserPhone.call.cleanupPending ? "Anruf wird beendet …" :
-          browserPhone.transfer ? "Gesprächsübergabe" : browserPhone.call.connected ? "Im Gespräch" : browserPhone.call.state==="ringing" ? "Es klingelt beim Angerufenen …" : "Anruf wird verbunden …") : "Browser-Telefon · Pilot"}</strong>
+          browserPhone.transfer ? "Gesprächsübergabe" : browserPhone.call.connected ? "Im Gespräch" : browserPhone.call.state==="ringing" ? "Es klingelt beim Angerufenen …" : browserPhone.call.state==="dialing" ? "Der Kunde wird angerufen …" : mobileAudio?"Nimm den Rückruf am Handy an und drücke 1.":"Anruf wird verbunden …") : mobileAudio?"Handy-Telefon · Pilot":"Browser-Telefon · Pilot"}</strong>
           <p className={styles.small}>{browserPhone.call ? browserPhone.call.phone : "Nur freigegebene Testnummern. Eine Mitschrift startest du nach bestätigter Absprache."}</p>
         </div>
         {browserPhone.call ? <div className={styles.actions}>
-          <button type="button" className={styles.button} aria-pressed={browserPhone.muted} onClick={browserPhone.mute}>{browserPhone.muted?"Mikrofon einschalten":"Stummschalten"}</button>
+          {!mobileAudio?<>          <button type="button" className={styles.button} aria-pressed={browserPhone.muted} onClick={browserPhone.mute}>{browserPhone.muted?"Mikrofon einschalten":"Stummschalten"}</button>
           <details className={styles.callDigits}><summary>Wahltasten im Gespräch</summary><div className={styles.keypad}>
             {["1","2","3","4","5","6","7","8","9","*","0","#"].map(digit=><button type="button" key={digit} onClick={()=>browserPhone.sendDigits(digit)}>{digit}</button>)}
-          </div></details>
+          </div></details></>:<p className={styles.small}>Stummschalten und Wahltasten direkt am Handy.</p>}
           <button type="button" className={styles.button} disabled={!!browserPhone.transfer && (browserPhone.transfer.state==="committing"||browserPhone.transfer.ownerAdopted)} onClick={()=>void browserPhone.finish()}>{browserPhone.transfer?.role==="recipient"?"Rücksprache verlassen":"Auflegen"}</button>
-        </div> : <button type="button" className={styles.button} disabled={!browserPhone.allowed||browserPhone.working||browserPhone.registered||props.busy}
+        </div> : mobileAudio?<p className={styles.small}>Wir rufen zuerst dein bestätigtes Handy an.</p>:<button type="button" className={styles.button} disabled={!browserPhone.allowed||browserPhone.working||browserPhone.registered||props.busy}
           onClick={()=>void browserPhone.enable()}>{browserPhone.registered?"Browser bereit":browserPhone.working?"Verbindet …":"Browser-Telefon verbinden"}</button>}
         {browserPhone.error?<p className={styles.searchError} role="alert">{browserPhone.error}</p>:null}
       </section>:null}
-      {phoneIdentity?.browserCallingAvailable?<PhoneTransferPanel phone={browserPhone}/>:null}
+      {phoneIdentity?.browserCallingAvailable||browserPhone.call?<PhoneTransferPanel phone={browserPhone}/>:null}
       <div className={styles.layout}>
         <aside className={styles.left} aria-label="Kundensuche und Team">
           <div className={styles.panelTabs} aria-label="Telefonbereich">
@@ -277,9 +290,9 @@ export function PhoneCentral(props: Props) {
               <button type="button" aria-label="Letzte Ziffer löschen" disabled={busy || !number}
                 onClick={() => changeNumber(number.slice(0,-1))}><Delete size={21}/></button>
             </div>
-            {browserPhone.allowed && freeDialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary+" "+styles.dialAction}
-              disabled={busy||!browserPhone.registered} onClick={()=>void browserPhone.dial(activeContact?
-                {customerId:activeContact.customerId,requestId:activeContact.requestId}:{phone:freeDialPhone})}>Im Browser anrufen</button>:null}
+            {canDial && freeDialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary+" "+styles.dialAction}
+              disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial(activeContact?
+                {customerId:activeContact.customerId,requestId:activeContact.requestId}:{phone:freeDialPhone},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
             {freeDialPhone && !busy ? <a className={styles.button + " " + styles.primary + " " + styles.dialAction}
               href={"tel:" + freeDialPhone} onClick={appNotice}><Phone size={17}/>In Telefon-App anrufen</a> :
               !browserPhone.call ? <button className={styles.button + " " + styles.primary + " " + styles.dialAction} disabled><Phone size={17}/>{browserPhone.externalIncoming?"Eingehender Anruf":browserPhone.incoming?"Eingehende Übergabe":busy?"Gespräch aktiv":"Nummer eingeben"}</button>:null}
@@ -352,8 +365,8 @@ export function PhoneCentral(props: Props) {
               </span>
             ) : null}
             <div className={styles.actions}>
-              {browserPhone.allowed && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
-                disabled={busy||!browserPhone.registered} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId})}>Im Browser anrufen</button>:null}
+              {canDial && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
+                disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
               {customer && dialPhone && !busy ? (
                 <a className={styles.button + " " + styles.primary} href={"tel:" + dialPhone} onClick={appNotice}>
                   <Phone size={17} />In Telefon-App anrufen

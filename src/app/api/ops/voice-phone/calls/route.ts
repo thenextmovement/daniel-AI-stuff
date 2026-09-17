@@ -1,12 +1,13 @@
 import {NextRequest,NextResponse} from "next/server";
 import {authorizeVoiceCopilotApi,readVoiceCopilotJson,voiceCopilotApiFailure} from "@/lib/ops/voice-copilot-api";
 import {phoneRequestIsSameOrigin} from "@/lib/ops/voice-phone-contract";
-import {reservePhoneCall,getPersonalPhoneCall,publicPhoneCall} from "@/lib/ops/voice-phone-calls";
+import {reservePhoneCall,getPersonalPhoneCall,publicPhoneCall,activePersonalMobileCall} from "@/lib/ops/voice-phone-calls";
 import {QuoteValidationError} from "@/lib/quotes/validation";
 export const dynamic="force-dynamic";
 export async function GET(request:NextRequest) {
  const denied=await authorizeVoiceCopilotApi(request);if(denied)return denied;
  try {
+  if(request.nextUrl.searchParams.get("active")==="mobile")return NextResponse.json({ok:true,call:await activePersonalMobileCall()},{headers:{"cache-control":"no-store"}});
   const {call}=await getPersonalPhoneCall(request.nextUrl.searchParams.get("id"));
   return NextResponse.json({ok:true,call:publicPhoneCall(call)},{headers:{"cache-control":"no-store"}});
  }catch(error){return voiceCopilotApiFailure(error,"phone_call_status");}

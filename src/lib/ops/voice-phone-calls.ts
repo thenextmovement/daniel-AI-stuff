@@ -1,11 +1,11 @@
 import {supabaseRequest,supabaseRpc,SupabaseRestError} from "@/lib/quotes/supabase-rest";
 import {QuoteValidationError} from "@/lib/quotes/validation";
-import {currentPhoneDevice,isPhoneEnabled} from "./voice-phone-identity";
+import {currentPhoneDevice,isPhoneEnabled,configuredMobileCalling,verifiedStaffMobile} from "./voice-phone-identity";
 import {requireVoiceUuid,normalizePhoneE164} from "./voice-platform-contract";
 import {loadVoiceContextRecord} from "./voice-context-record";
 import type {PhoneCallRecord,PhoneEventResult} from "../../../services/voice-runtime/phone-calls";
 
-const FIELDS="id,direction,device_id,staff_id,phone,state,customer_id,request_id,agent_call_sid,customer_call_sid,conference_sid,customer_dispatch,agent_joined,customer_joined,created_at,updated_at,ended_at,cleanup_pending";
+const FIELDS="id,agent_transport,mobile_leg_id,direction,device_id,staff_id,phone,state,customer_id,request_id,agent_call_sid,customer_call_sid,conference_sid,customer_dispatch,agent_joined,customer_joined,created_at,updated_at,ended_at,cleanup_pending";
 async function phoneRowRpc(name:string,args:Record<string,unknown>) {
  const row=await supabaseRequest<PhoneCallRecord>("rpc/"+name,{
   method:"POST",headers:{accept:"application/vnd.pgrst.object+json"},body:JSON.stringify(args),
@@ -19,7 +19,7 @@ export function phoneAllowedNumbers() {
 export function isBrowserCallingEnabled() {return isPhoneEnabled() && process.env.VOICE_BROWSER_CALLS_ENABLED==="true" && phoneAllowedNumbers().length>0;}
 function invalid(message:string,code:string,status=409):never {throw new QuoteValidationError(message,[code],status);}
 export async function requirePersonalPhone() {
- if(!isPhoneEnabled())invalid("Der Browser-Anschluss wird noch eingerichtet.","browser_calling_not_configured",503);
+ if(!isPhoneEnabled())invalid("Der Telefonanschluss wird noch eingerichtet.","browser_calling_not_configured",503);
  const current=await currentPhoneDevice();
  if(!current)invalid("Bitte melde dein Telefon persönlich an.","phone_identity_required",401);
  return current;
@@ -29,8 +29,12 @@ function phoneNumber(value:unknown) {
  return normalizePhoneE164(raw.startsWith("0")&&!raw.startsWith("00")?"+49"+raw.slice(1):raw);
 }
 export async function reservePhoneCall(input:Record<string,unknown>) {
- if(!isBrowserCallingEnabled())invalid("Der Browser-Anschluss wird noch eingerichtet.","browser_calling_not_configured",503);
+ const transport=input.transport??"browser";
+ if(transport!=="browser"&&transport!=="mobile")invalid("Ungültiger Telefonweg.","invalid_phone_transport",422);
+ if(!(transport==="mobile"?configuredMobileCalling():isBrowserCallingEnabled()))invalid("Der Telefonanschluss wird noch eingerichtet.","browser_calling_not_configured",503);
  const current=await requirePersonalPhone();
+ const mobile=transport==="mobile"?await verifiedStaffMobile(current.staff.id,current.staff.revision):null;
+ if(transport==="mobile"&&!mobile)invalid("Bitte bestätige zuerst dein Handy im persönlichen Telefonprofil.","mobile_link_required",409);
  const requestKey=requireVoiceUuid(input.requestKey,"Anrufkennung");
  let customerId:string|null=null,requestId:string|null=null,target:string;
  if(input.customerId!=null) {
@@ -50,10 +54,11 @@ export async function reservePhoneCall(input:Record<string,unknown>) {
  }
  if(!phoneAllowedNumbers().includes(target))invalid("Im Telefon-Pilot sind nur freigegebene Testnummern erreichbar.","phone_target_not_allowed",403);
  try {
-  const call=await phoneRowRpc("reserve_voice_phone_call",{
+  const call=await phoneRowRpc(transport==="mobile"?"reserve_voice_mobile_call":"reserve_voice_phone_call",{
    p_device_id:current.device.id,p_staff_id:current.staff.id,p_request_key:requestKey,
-   p_phone:target,p_customer_id:customerId,p_request_id:requestId,
+   p_phone:target,p_customer_id:customerId,p_request_id:requestId,...(mobile?{p_link_id:mobile.id}:{}),
   });
+  if(transport==="mobile"&&call.mobile_leg_id&&!call.ended_at)await startMobileCall(call.mobile_leg_id);
   return publicPhoneCall(call);
  } catch(error) {
   if(error instanceof SupabaseRestError && error.status===400)invalid("Es läuft bereits ein Anruf oder die Telefonzuordnung ist nicht mehr gültig.","phone_reservation_rejected");
@@ -61,7 +66,21 @@ export async function reservePhoneCall(input:Record<string,unknown>) {
  }
 }
 export function publicPhoneCall(call:PhoneCallRecord) {
- return {id:call.id,direction:call.direction||"outbound",state:call.state,phone:call.phone,customerId:call.customer_id||null,requestId:call.request_id||null,startedAt:call.created_at,endedAt:call.ended_at,connected:call.agent_joined && call.customer_joined && !call.ended_at,cleanupPending:call.cleanup_pending,isTest:true};
+ return {id:call.id,transport:call.agent_transport||"browser",direction:call.direction||"outbound",state:call.state,phone:call.phone,customerId:call.customer_id||null,requestId:call.request_id||null,startedAt:call.created_at,endedAt:call.ended_at,connected:call.agent_joined && call.customer_joined && !call.ended_at,cleanupPending:call.cleanup_pending,isTest:true};
+}
+async function startMobileCall(legId:string) {
+ const base=(process.env.VOICE_RUNTIME_BASE_URL||"").trim().replace(/\/+$/,""),token=(process.env.VOICE_DISPATCH_TOKEN||"").trim();
+ if(!base||!token)return;
+ // A saved reservation remains recoverable even if this notification fails.
+ try{await fetch(base+"/phone/mobile-call/start",{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json"},
+  body:JSON.stringify({legId}),signal:AbortSignal.timeout(20000),cache:"no-store"});}catch{}
+}
+export async function activePersonalMobileCall() {
+ const current=await requirePersonalPhone();
+ if(!configuredMobileCalling())return null;
+ const call=(await supabaseRequest<PhoneCallRecord[]>("voice_phone_calls",{},{select:FIELDS,device_id:"eq."+current.device.id,
+  staff_id:"eq."+current.staff.id,agent_transport:"eq.mobile",or:"(ended_at.is.null,cleanup_pending.eq.true)",order:"created_at.desc",limit:1}))[0];
+ return call?publicPhoneCall(call):null;
 }
 export async function getPersonalPhoneCall(id:unknown) {
  const current=await requirePersonalPhone();
@@ -94,10 +113,7 @@ export async function phoneRuntimeAction(input:Record<string,unknown>) {
   if(typeof input.updatedAt!=="string" || !Number.isFinite(Date.parse(input.updatedAt)))invalid("Ungültige Anrufmeldung.","invalid_phone_event",422);
   // Do not acknowledge a cleanup based on an older version if a late callback
   // has just revealed another provider leg that also needs closing.
-  await supabaseRequest("voice_phone_calls",{method:"PATCH",body:JSON.stringify({cleanup_pending:false})},{
-   id:"eq."+callId,ended_at:"not.is.null",updated_at:"eq."+input.updatedAt,
-  });
-  return {call:await getRuntimePhoneCall(callId)};
+  return {call:await phoneRowRpc("ack_voice_phone_cleanup",{p_call_id:callId,p_updated_at:input.updatedAt})};
  }
  invalid("Unbekannte Telefonaktion.","invalid_phone_action",422);
 }

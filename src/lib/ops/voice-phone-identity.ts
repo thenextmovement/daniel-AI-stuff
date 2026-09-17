@@ -37,8 +37,16 @@ export async function getPhoneRuntimeDevice(deviceId:unknown,staffId:unknown) {
   if(!current)throw new QuoteValidationError("Telefonanmeldung ist nicht mehr gültig.",["phone_identity_required"],401);
   return {deviceId:current.device.id,staffId:current.staff.id,expiresAt:current.device.expires_at};
 }
+export function configuredMobileCalling() {
+ return isPhoneEnabled()&&process.env.VOICE_PHONE_MOBILE_CALLS_ENABLED==="true"&&!!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim()&&!!process.env.VOICE_PHONE_MOBILE_NUMBERS?.trim();
+}
+export async function verifiedStaffMobile(staffId:string,revision:number) {
+ const link=(await supabaseRequest<Array<{id:string;phone:string}>>("voice_mobile_links",{},{select:"id,phone",staff_id:"eq."+staffId,staff_revision:"eq."+revision,state:"eq.verified",revoked_at:"is.null",limit:1}))[0];
+ const allowed=(process.env.VOICE_PHONE_MOBILE_NUMBERS||"").split(",").map(x=>x.trim());
+ return link&&allowed.includes(link.phone)?link:null;
+}
 export async function readPhoneIdentity(request: NextRequest): Promise<PhoneIdentity> {
-  const empty: PhoneIdentity = {enabled:isPhoneEnabled(),browserCallingAvailable:isPhoneEnabled() && process.env.VOICE_BROWSER_CALLS_ENABLED==="true" && !!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim(),profile:null,device:null,team:[],personalAccessAvailable:false,canManagePhone:false};
+  const empty: PhoneIdentity = {enabled:isPhoneEnabled(),browserCallingAvailable:isPhoneEnabled() && process.env.VOICE_BROWSER_CALLS_ENABLED==="true" && !!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim(),mobileCallingAvailable:false,mobilePhone:null,profile:null,device:null,team:[],personalAccessAvailable:false,canManagePhone:false};
   if (!empty.enabled) return empty;
   const [current,email,staff,devices,calls,transfers] = await Promise.all([
     currentPhoneDevice(),verifiedPhoneEmail(request),
@@ -47,10 +55,13 @@ export async function readPhoneIdentity(request: NextRequest): Promise<PhoneIden
     supabaseRequest<Array<{staff_id:string}>>("voice_phone_calls",{}, {select:"staff_id",or:"(ended_at.is.null,cleanup_pending.eq.true)",limit:100}),
     supabaseRequest<Array<{from_staff_id:string;to_staff_id:string}>>("voice_phone_transfers",{}, {select:"from_staff_id,to_staff_id",or:"(ended_at.is.null,cleanup_pending.eq.true)",limit:100}),
   ]);
+  const mobile=current&&configuredMobileCalling()?await verifiedStaffMobile(current.staff.id,current.staff.revision):null;
   const busy=new Set([...calls.map(call=>call.staff_id),...transfers.flatMap(t=>[t.from_staff_id,t.to_staff_id])]);
   return {
     ...empty,
     canManagePhone:!!current?.staff.can_manage_phone,
+    mobileCallingAvailable:!!mobile,
+    mobilePhone:mobile?.phone||null,
     profile:current ? {id:current.staff.id,displayName:current.staff.display_name,extension:current.staff.extension} : null,
     device:current ? {id:current.device.id,label:current.device.label,available:current.device.available,registered:current.device.registered,expiresAt:current.device.expires_at} : null,
     personalAccessAvailable:!!email && staff.some(member=>member.access_email===email),

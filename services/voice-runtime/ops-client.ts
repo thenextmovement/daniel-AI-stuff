@@ -37,6 +37,10 @@ export class OpsClient {
     }
   }
 
+  async mobileCallAction<T=unknown>(input:Record<string,unknown>) {
+    return this.request<T>("/api/internal/voice-phone/mobile-calls",{method:"POST",body:JSON.stringify(input)});
+  }
+
   async mobileAction<T=unknown>(input:Record<string,unknown>) {
     return this.request<T>("/api/internal/voice-phone/mobile",{method:"POST",body:JSON.stringify(input)});
   }

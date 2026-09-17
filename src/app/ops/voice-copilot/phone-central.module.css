@@ -721,3 +721,7 @@
 .mobileSetup p { margin:0; }
 .mobileCode { display:grid; gap:8px; padding:14px; border:1px solid #bdddcf; border-radius:12px; background:#f0faf5; }
 .mobileCode output { font-size:26px; font-weight:650; letter-spacing:5px; font-variant-numeric:tabular-nums; color:#246749; }
+
+.outgoingRoute {display:flex;align-items:center;gap:12px;padding:0 28px 14px;font-size:14px;color:#697586;}
+.outgoingRoute select {max-width:100%;min-width:0;}
+@media(max-width:600px){.outgoingRoute{padding:0 18px 14px;flex-wrap:wrap}}
