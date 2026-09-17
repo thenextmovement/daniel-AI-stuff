@@ -335,3 +335,76 @@ test("Live preloads only selected product facts and keeps long or unselected dat
   assert.match(config.instructions, /Liste kann gekürzt sein/);
   assert.ok(config.instructions.length < 4400);
 });
+
+test("SIP accept pins GPT-Live and project; sideband only observes negotiated audio", async () => {
+  const { EventEmitter } = await import("node:events");
+  const { setImmediate: tick } = await import("node:timers/promises");
+  const original = globalThis.fetch;
+  const events: unknown[][] = [], transcripts: unknown[][] = [], sent: Record<string, unknown>[] = [];
+  let finalized = false, connections = 0;
+  const socket = Object.assign(new EventEmitter(), {
+    readyState: 1,
+    send: (raw: string) => sent.push(JSON.parse(raw)),
+    close: () => socket.emit("close"),
+  });
+  try {
+    globalThis.fetch = (async (url, init) => {
+      assert.equal(String(url), "https://api.openai.com/v1/live/sessions/live_sip_fixture/accept");
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("OpenAI-Project"), "proj_fixture");
+      assert.equal(headers.get("OpenAI-Safety-Identifier"), "fixture");
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.session.type, "live");
+      assert.equal(body.session.model, "gpt-live-1");
+      assert.equal(body.session.audio.output.voice, "gleam");
+      assert.equal(Object.hasOwn(body.session.audio, "format"), false);
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+    const adapter = new OpenAiLiveAdapter({openAiApiKey:"fixture",openAiWebhookSecret:"fixture",openAiProjectId:"proj_fixture"} as never, {
+      updateAttempt: async () => {},
+      transcript: async (...args: unknown[]) => { transcripts.push(args); return {saved:true}; },
+      event: async (...args: unknown[]) => { events.push(args); },
+      finalize: async () => { finalized = true; },
+    } as never, (url, options) => {
+      connections++;
+      assert.equal(url, "wss://api.openai.com/v1/live/sessions/live_sip_fixture/attach");
+      assert.equal((options.headers as Record<string,string>)["OpenAI-Project"], "proj_fixture");
+      return socket as never;
+    });
+    await adapter.acceptIncomingCall("live_sip_fixture", "attempt_fixture", {
+      attemptId:"attempt_fixture", modelId:"gpt-live-1",voice:"gleam",sessionConfig:{},instructions:"fixture",tools:[],allowlistOnly:true,safetyIdentifier:"fixture",
+    } as never);
+    assert.equal(connections, 1);
+    assert.deepEqual(events[0].slice(2), ["live.session.accepted", "live-sip-accept:live_sip_fixture", {
+      call_id:"live_sip_fixture",model:"gpt-live-1",voice:"gleam",status:"accepted",
+    }]);
+    socket.emit("open");
+    const receive = (event: unknown) => socket.emit("message", Buffer.from(JSON.stringify(event)));
+    receive({type:"session.output_audio.delta",delta:"AQI=",start_ms:0,end_ms:1});
+    receive({type:"session.input_audio.append",audio:"AQI="});
+    receive({type:"session.input_transcript.delta",event_id:"sip_text",delta:"Hallo",start_ms:100,end_ms:300});
+    receive({type:"session.closed",reason:"remote_hangup"});
+    for (let n=0;n<1000 && !finalized;n++) await tick();
+    assert.equal(finalized,true);
+    assert.ok(sent.every(event => !["session.start", "session.input_audio.append"].includes(String(event.type))));
+    assert.ok(transcripts.some(args => JSON.stringify(args[1]).includes("Hallo")));
+    assert.equal(transcripts.at(-1)?.[2],"complete");
+  } finally { globalThis.fetch = original; }
+});
+
+test("SIP storage and provider failures never produce an accepted-model audit or sideband", async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const storageOk of [false, true]) {
+      let requested = 0, audit = 0, connections = 0;
+      globalThis.fetch = (async () => { requested++; return new Response(null, {status:403}); }) as typeof fetch;
+      const adapter = new OpenAiLiveAdapter({openAiApiKey:"fixture",openAiWebhookSecret:"fixture",openAiProjectId:"proj_fixture"} as never, {
+        updateAttempt: async () => {}, transcript: async () => ({saved:storageOk}), event: async () => {audit++;},
+      } as never, () => {connections++;throw new Error("must not connect");});
+      await assert.rejects(adapter.acceptIncomingCall("live_fixture","attempt_fixture", {
+        modelId:"gpt-live-1",voice:"gleam",sessionConfig:{},instructions:"fixture",tools:[],
+      } as never), storageOk ? /live_accept_http_403/ : /transcript_not_acknowledged/);
+      assert.equal(requested,storageOk?1:0);assert.equal(audit,0);assert.equal(connections,0);
+    }
+  } finally {globalThis.fetch=original;}
+});

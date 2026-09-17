@@ -93,6 +93,7 @@ export class OpenAiLiveAdapter {
         headers: {
           authorization: "Bearer " + this.config.openAiApiKey,
           "content-type": "application/json",
+          "OpenAI-Project": this.config.openAiProjectId,
           ...(safetyIdentifier
             ? { "OpenAI-Safety-Identifier": safetyIdentifier }
             : {}),
@@ -111,7 +112,8 @@ export class OpenAiLiveAdapter {
   ) {
     const config = liveSessionConfig(session);
     await this.ops.updateAttempt(attemptId, { openAiCallId: id });
-    await this.ops.transcript(attemptId, []);
+    const storage = await this.ops.transcript(attemptId, []);
+    if (!storage.saved) throw new Error("transcript_not_acknowledged");
     await this.command(
       id,
       "accept",
@@ -119,6 +121,11 @@ export class OpenAiLiveAdapter {
       session.safetyIdentifier,
     );
     try {
+      // SIP accept returns 200 with no session body. Record exactly the accepted
+      // model/voice request; never invent a provider echo or negotiated codec.
+      await this.ops.event(attemptId, "runtime", "live.session.accepted", "live-sip-accept:" + id, {
+        call_id: id, model: config.model, voice: config.audio.output.voice, status: "accepted",
+      });
       await this.ops.updateAttempt(attemptId, {
         openAiCallId: id,
         status: "live",
@@ -260,7 +267,7 @@ export class OpenAiLiveAdapter {
         headers: {
           authorization: "Bearer " + this.config.openAiApiKey,
           "OpenAI-Safety-Identifier": session.safetyIdentifier,
-          ...(media ? { "OpenAI-Project": this.config.openAiProjectId } : {}),
+          "OpenAI-Project": this.config.openAiProjectId,
         },
         ...(media ? { handshakeTimeout: 10000, maxPayload: 256000, perMessageDeflate: false } : {}),
       },
