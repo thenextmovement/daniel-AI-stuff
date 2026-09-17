@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeVoiceCopilotApi, readVoiceCopilotJson, voiceCopilotApiFailure } from "@/lib/ops/voice-copilot-api";
-import { isPhoneEnabled, readPhoneIdentity, enrollPhoneDevice, updatePhonePresence, revokeCurrentPhoneDevice } from "@/lib/ops/voice-phone-identity";
+import { setMobileReceiving,isPhoneEnabled, readPhoneIdentity, enrollPhoneDevice, updatePhonePresence, revokeCurrentPhoneDevice } from "@/lib/ops/voice-phone-identity";
 import { PHONE_DEVICE_COOKIE, PHONE_DEVICE_SECONDS, phoneRequestIsSameOrigin } from "@/lib/ops/voice-phone-contract";
 
 export const runtime = "nodejs";
@@ -33,6 +33,7 @@ export async function POST(request:NextRequest) {
       });
       return response;
     }
+    if(input.action==="mobile_receiving"){await setMobileReceiving(input);return result({ok:true});}
     if(input.action==="presence"){await updatePhonePresence(input);return result({ok:true});}
     if(input.action==="logout"){
       await revokeCurrentPhoneDevice();

@@ -46,7 +46,7 @@ export function PhoneCentral(props: Props) {
   const [phoneIdentity,setPhoneIdentity]=useState<PhoneIdentity|null>(null);
   const browserPhone=useBrowserPhone(phoneIdentity,props.busy);
   const [outgoingRoute,setOutgoingRoute]=useState<"browser"|"mobile">("browser");
-  const mobileAudio=browserPhone.call?.transport==="mobile"||(!browserPhone.call&&outgoingRoute==="mobile");
+  const mobileAudio=(browserPhone.transfer?.role==="recipient"&&browserPhone.transfer.transport==="mobile")||browserPhone.call?.transport==="mobile"||(!browserPhone.call&&outgoingRoute==="mobile");
   const canDial=outgoingRoute==="mobile"?browserPhone.mobileAllowed:browserPhone.allowed;
   const endpointReady=outgoingRoute==="mobile"?browserPhone.mobileAllowed:browserPhone.registered;
   useEffect(()=>{
@@ -212,7 +212,7 @@ export function PhoneCentral(props: Props) {
         <span className={styles.connectionState}><span />{mobileAudio ? "Mein Handy" : browserPhone.registered ? "Browser verbunden" : props.busy ? "Begleitung aktiv" : "Telefon-App"}</span>
       </div>
       {phoneIdentity?.browserCallingAvailable&&phoneIdentity.mobileCallingAvailable?<label className={styles.outgoingRoute}>Anrufen über
-        <select aria-label="Anrufen über" className={styles.device} value={browserPhone.call?.transport||outgoingRoute} disabled={busy} onChange={e=>setOutgoingRoute(e.target.value as "browser"|"mobile")}>
+        <select aria-label="Anrufen über" className={styles.device} value={browserPhone.transfer?.role==="recipient"?browserPhone.transfer.transport||"browser":browserPhone.call?.transport||outgoingRoute} disabled={busy} onChange={e=>setOutgoingRoute(e.target.value as "browser"|"mobile")}>
           <option value="browser">Browser</option><option value="mobile">Mein Handy · {phoneIdentity.mobilePhone}</option>
         </select>
       </label>:null}
@@ -307,7 +307,7 @@ export function PhoneCentral(props: Props) {
               <span className={styles.contactAvatar}>{initials(member.displayName)}</span>
               <div><strong>{member.displayName}</strong><p className={styles.small}>
                 {member.extension?"Nebenstelle "+member.extension+" · ":""}
-                {(browserPhone.call && member.id===phoneIdentity?.profile?.id)||[browserPhone.transfer?.fromStaffId,browserPhone.transfer?.toStaffId].includes(member.id)?"Im Gespräch":member.presence==="busy"?"Im Gespräch":member.presence==="available"?"Bereit":member.presence==="away"?"Abwesend":"Telefon offline"}
+                {(browserPhone.call && member.id===phoneIdentity?.profile?.id)||[browserPhone.transfer?.fromStaffId,browserPhone.transfer?.toStaffId].includes(member.id)?"Im Gespräch":member.presence==="busy"?"Im Gespräch":member.presence==="available"?(member.receiveVia==="mobile"?"Handy bereit":"Bereit"):member.presence==="away"?"Abwesend":"Telefon offline"}
               </p></div>
               {browserPhone.call?.connected && member.id!==phoneIdentity?.profile?.id && !browserPhone.transfer?
                <button type="button" className={styles.button} disabled={browserPhone.working||member.presence!=="available"}

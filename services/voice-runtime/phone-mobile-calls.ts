@@ -1,9 +1,10 @@
 import twilio from "twilio";
+import {phoneTransferTwiml,type PhoneTransfer} from "./phone-transfers.js";
 import type {RuntimeConfig} from "./config.js";
 import {phoneAgentTwiml,mobileCallingReady,type PhoneCallRecord} from "./phone-calls.js";
 import {TwilioMobileProvider} from "./phone-mobile.js";
-export type MobileCallLeg={id:string;call_id:string;staff_id:string;device_id:string;mobile_link_id:string;phone:string;state:string;provider_call_sid:string|null;claimed_at:string|null;confirmed_at:string|null;expires_at:string;ended_at:string|null;provider_ended_at:string|null;cleanup_pending:boolean;updated_at:string};
-export type MobileCallResult={leg:MobileCallLeg;call:PhoneCallRecord;dial:boolean;join:boolean;closeCall:boolean};
+export type MobileCallLeg={transfer_id?:string|null;id:string;call_id:string;staff_id:string;device_id:string;mobile_link_id:string;phone:string;state:string;provider_call_sid:string|null;claimed_at:string|null;confirmed_at:string|null;expires_at:string;ended_at:string|null;provider_ended_at:string|null;cleanup_pending:boolean;updated_at:string};
+export type MobileCallResult={transfer?:PhoneTransfer|null;leg:MobileCallLeg;call:PhoneCallRecord;dial:boolean;join:boolean;closeCall:boolean};
 export interface MobileCallOps{mobileCallAction<T=unknown>(input:Record<string,unknown>):Promise<T>}
 export interface MobileCallProvider{start(leg:MobileCallLeg):Promise<string>;close(sid:string):Promise<void>;ended(sid:string):Promise<boolean>}
 const SID=/^CA[a-f0-9]{32}$/i,TERMINAL=new Set(["completed","failed","busy","no-answer","canceled"]);
@@ -24,10 +25,10 @@ export class TwilioMobileCallProvider implements MobileCallProvider {
  ended(sid:string){return this.cleanup.ended(sid);}
 }
 export class MobilePhoneCalls{
- constructor(private readonly config:RuntimeConfig,private readonly ops:MobileCallOps,private readonly provider:MobileCallProvider,private readonly closeCall:(call:PhoneCallRecord)=>Promise<void>){}
+ constructor(private readonly config:RuntimeConfig,private readonly ops:MobileCallOps,private readonly provider:MobileCallProvider,private readonly closeCall:(call:PhoneCallRecord)=>Promise<void>,private readonly resumeTransfer?:(id:string)=>Promise<void>){}
  private get(id:string){return this.ops.mobileCallAction<MobileCallResult>({action:"get",id});}
  private event(id:string,kind:string,extra:Record<string,unknown>={}){return this.ops.mobileCallAction<MobileCallResult>({action:"event",id,kind,...extra});}
- private allowed(r:MobileCallResult){return mobileCallingReady(this.config)&&this.config.mobilePhoneNumbers.includes(r.leg.phone)&&this.config.phoneAllowedNumbers.includes(r.call.phone);}
+ private allowed(r:MobileCallResult){return mobileCallingReady(this.config)&&(!r.leg.transfer_id||this.config.mobileTransfersEnabled)&&this.config.mobilePhoneNumbers.includes(r.leg.phone)&&this.config.phoneAllowedNumbers.includes(r.call.phone);}
  private async cleanup(result:MobileCallResult){
   let r=result;
   if(r.leg.ended_at&&r.leg.cleanup_pending){
@@ -39,6 +40,7 @@ export class MobilePhoneCalls{
    }
   }
   if(r.closeCall)await this.closeCall(r.call);
+  if(r.transfer&&!r.transfer.owner_adopted&&(r.transfer.state==="cancelling"||r.transfer.cancel_requested))await this.resumeTransfer?.(r.transfer.id);
  }
  async start(id:string){
   const before=await this.get(id);if(!this.allowed(before))throw Error("mobile_call_not_configured");
@@ -68,11 +70,16 @@ export class MobilePhoneCalls{
    if(result.leg.ended_at||result.call.ended_at){await this.cleanup(result);response.hangup();return response.toString();}
    response.gather({input:["dtmf"],numDigits:1,timeout:15,actionOnEmptyResult:true,method:"POST",
     action:this.config.publicUrl+"/phone/twilio/mobile-call/confirm?id="+encodeURIComponent(id)})
-    .say({language:"de-DE"},"NEONTRIP Telefonzentrale. Drücke die Eins, um deinen angeforderten Anruf zu verbinden. Falls du keinen Anruf gestartet hast, lege bitte auf.");
+    .say({language:"de-DE"},before.leg.transfer_id?
+     "NEONTRIP Telefonzentrale. Ein Kollege möchte ein Gespräch an dich weitergeben. Drücke die Eins für die interne Rücksprache. Andernfalls lege bitte auf.":
+     "NEONTRIP Telefonzentrale. Drücke die Eins, um deinen angeforderten Anruf zu verbinden. Falls du keinen Anruf gestartet hast, lege bitte auf.");
    response.hangup();return response.toString();
   }
   const result=await this.event(id,params.get("Digits")==="1"?"confirm":"reject",{callSid:sid});
-  if(result.join&&result.call.agent_call_sid===sid&&result.call.mobile_leg_id===id)return phoneAgentTwiml(this.config,result.call);
+  if(result.join&&result.transfer&&result.transfer.mobile_leg_id===id&&result.transfer.to_call_sid===sid&&
+   result.leg.confirmed_at&&(result.transfer.owner_adopted||(!result.transfer.ended_at&&!result.transfer.cancel_requested)))
+   return phoneTransferTwiml(this.config,result.transfer,result.call);
+  if(result.join&&!result.leg.transfer_id&&result.call.agent_call_sid===sid&&result.call.mobile_leg_id===id)return phoneAgentTwiml(this.config,result.call);
   await this.cleanup(result);response.hangup();return response.toString();
  }
  async reconcile(){

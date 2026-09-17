@@ -2,9 +2,9 @@ import {supabaseRequest,supabaseRpc} from "@/lib/quotes/supabase-rest";
 import {QuoteValidationError} from "@/lib/quotes/validation";
 import {requireVoiceUuid} from "./voice-platform-contract";
 import {getRuntimePhoneCall,publicPhoneCall,requirePersonalPhone} from "./voice-phone-calls";
-import {isPhoneEnabled} from "./voice-phone-identity";
+import {isPhoneEnabled,configuredMobileTransfers,mobileReceivers} from "./voice-phone-identity";
 import type {PhoneTransfer,TransferEvent} from "../../../services/voice-runtime/phone-transfers";
-const FIELDS="id,call_id,request_key,from_staff_id,from_device_id,from_call_sid,to_staff_id,to_device_id,to_call_sid,state,cancel_requested,customer_held,dial_claimed,target_joined,target_guards_exit,source_releases_exit,owner_adopted,source_removed,target_removed,customer_resumed,cleanup_pending,created_at,expires_at,ended_at,updated_at";
+const FIELDS="id,to_transport,mobile_leg_id,call_id,request_key,from_staff_id,from_device_id,from_call_sid,to_staff_id,to_device_id,to_call_sid,state,cancel_requested,customer_held,dial_claimed,target_joined,target_guards_exit,source_releases_exit,owner_adopted,source_removed,target_removed,customer_resumed,cleanup_pending,created_at,expires_at,ended_at,updated_at";
 export async function getPhoneTransfer(id:unknown){
  const transferId=requireVoiceUuid(id,"Übergabe");
  const rows=await supabaseRequest<PhoneTransfer[]>("voice_phone_transfers",{}, {select:FIELDS,id:"eq."+transferId,limit:1});
@@ -16,7 +16,8 @@ export async function runtimePhoneTransfer(input:Record<string,unknown>){
  if(input.action==="pending")return {transfers:await supabaseRequest<PhoneTransfer[]>("voice_phone_transfers",{},{
   select:FIELDS,or:"(ended_at.is.null,cleanup_pending.eq.true)",order:"updated_at.asc,id.asc",limit:50,
  })};
- if(input.action==="begin")return {transfer:await supabaseRpc<PhoneTransfer>("begin_voice_phone_transfer",{
+ if(input.action==="begin")return {transfer:await supabaseRpc<PhoneTransfer>("begin_voice_phone_transfer_routed",{
+  p_mobile_enabled:configuredMobileTransfers()&&input.allowMobile===true&&(await mobileReceivers()).some(r=>r.staff_id===input.targetStaffId),p_browser_enabled:process.env.VOICE_BROWSER_CALLS_ENABLED==="true"&&input.allowBrowser===true,
   p_call_id:requireVoiceUuid(input.callId,"Anruf"),p_device_id:requireVoiceUuid(input.deviceId,"Telefon"),
   p_target_staff_id:requireVoiceUuid(input.targetStaffId,"Mitarbeiter"),p_request_key:requireVoiceUuid(input.requestKey,"Übergabekennung"),
  })};
@@ -34,8 +35,7 @@ export async function runtimePhoneTransfer(input:Record<string,unknown>){
  }
  if(input.action==="cleanup"){
   if(typeof input.updatedAt!=="string" || !Number.isFinite(Date.parse(input.updatedAt)))throw new QuoteValidationError("Ungültige Version.",["invalid_transfer_version"],422);
-  await supabaseRequest("voice_phone_transfers",{method:"PATCH",body:JSON.stringify({cleanup_pending:false})},
-   {id:"eq."+id,ended_at:"not.is.null",updated_at:"eq."+input.updatedAt});
+  await supabaseRpc("ack_voice_transfer_cleanup",{p_transfer_id:id,p_updated_at:input.updatedAt});
   return getPhoneTransfer(id);
  }
  throw new QuoteValidationError("Unbekannte Übergabeaktion.",["invalid_transfer_action"],422);
@@ -52,7 +52,7 @@ export async function publicPhoneTransfer(id:unknown){
  const staff=await supabaseRequest<Array<{id:string;display_name:string}>>("voice_staff",{},{
   select:"id,display_name",id:"in.("+t.from_staff_id+","+t.to_staff_id+")",limit:2,
  });
- return {id:t.id,state:t.state,fromStaffId:t.from_staff_id,toStaffId:t.to_staff_id,call:publicPhoneCall(call),expiresAt:t.expires_at,
+ return {id:t.id,transport:t.to_transport||"browser",state:t.state,fromStaffId:t.from_staff_id,toStaffId:t.to_staff_id,call:publicPhoneCall(call),expiresAt:t.expires_at,
   role:t.from_device_id===current.device.id?"source":"recipient",
   fromName:staff.find(x=>x.id===t.from_staff_id)?.display_name||"Mitarbeiter",
   toName:staff.find(x=>x.id===t.to_staff_id)?.display_name||"Mitarbeiter",
@@ -61,8 +61,16 @@ export async function publicPhoneTransfer(id:unknown){
 export async function incomingPhoneTransfers(){
  const current=await requirePersonalPhone();
  const rows=await supabaseRequest<Array<{id:string}>>("voice_phone_transfers",{},{
-  select:"id",to_device_id:"eq."+current.device.id,state:"eq.dialing",cancel_requested:"eq.false",ended_at:"is.null",expires_at:"gt."+new Date().toISOString(),
+  select:"id",to_transport:"eq.browser",to_device_id:"eq."+current.device.id,state:"eq.dialing",cancel_requested:"eq.false",ended_at:"is.null",expires_at:"gt."+new Date().toISOString(),
   order:"created_at.asc",limit:1,
  });
  return Promise.all(rows.map(x=>publicPhoneTransfer(x.id)));
+}
+
+export async function activeMobileTransfer(){
+ const current=await requirePersonalPhone();
+ const rows=await supabaseRequest<Array<{id:string}>>("voice_phone_transfers",{},{
+  select:"id",to_transport:"eq.mobile",to_device_id:"eq."+current.device.id,ended_at:"is.null",order:"created_at.desc",limit:1,
+ });
+ return rows[0]?publicPhoneTransfer(rows[0].id):null;
 }

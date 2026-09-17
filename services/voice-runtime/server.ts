@@ -18,9 +18,9 @@ import { noClearOutcome, notReachedOutcome, technicalOutcome } from "./outcomes.
 const config = loadRuntimeConfig();
 const ops = new OpsClient(config);
 const browserCalls = browserPhoneControlReady(config) ? new BrowserPhoneCalls(config,ops,new TwilioPhoneProvider(config)) : null;
-const mobileCalls=browserCalls?new MobilePhoneCalls(config,ops,new TwilioMobileCallProvider(config),call=>browserCalls.closeRecorded(call)):null;
+const mobileCalls:MobilePhoneCalls|null=browserCalls?new MobilePhoneCalls(config,ops,new TwilioMobileCallProvider(config),call=>browserCalls.closeRecorded(call),id=>phoneTransfers?.resume(id)||Promise.resolve()):null;
 const mobileLinks=browserPhoneControlReady(config)?new MobilePhoneLinks(config,ops,new TwilioMobileProvider(config)):null;
-const phoneTransfers=browserCalls?new RuntimePhoneTransfers(config,ops,call=>browserCalls.closeRecorded(call)):null;
+const phoneTransfers:RuntimePhoneTransfers|null=browserCalls?new RuntimePhoneTransfers(config,ops,call=>browserCalls.closeRecorded(call),undefined,id=>mobileCalls!.start(id)):null;
 const phoneCaptures=browserCalls?new PhoneCaptures(ops,new TwilioCaptureProvider(config),()=>phoneCaptureReady(config)):null;
 const incomingCalls=browserCalls&&phoneTransfers?new IncomingPhoneCalls(config,ops,browserCalls,phoneTransfers):null;
 const telephony = config.providerReadiness.telephony ? (config.transport === "media_streams" ? new TwilioMediaAdapter(config) : new TwilioSipAdapter(config)) : null;
@@ -226,7 +226,7 @@ const server = createServer(async (request, response) => {
         service: "neontrip-voice-runtime",
         commit: config.commitSha,
         ready: config.providerReadiness.dispatch,
-        browserPhone: {mobileCalls:mobileCallingReady(config),mobileVerification:mobilePhoneReady(config),tokens:browserPhoneReady(config),calls:browserCallingReady(config),transcription:phoneCaptureReady(config),incoming:inboundPhoneReady(config)},
+        browserPhone: {mobileTransfers:mobileCallingReady(config)&&config.mobileTransfersEnabled,mobileCalls:mobileCallingReady(config),mobileVerification:mobilePhoneReady(config),tokens:browserPhoneReady(config),calls:browserCallingReady(config),transcription:phoneCaptureReady(config),incoming:inboundPhoneReady(config)},
         providers: {
           openAi: config.providerReadiness.openAi,
           telephony: config.providerReadiness.telephony,

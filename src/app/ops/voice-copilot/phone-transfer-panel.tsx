@@ -48,7 +48,7 @@ export function PhoneTransferPanel({phone}:{phone:Phone}) {
   </section>:null}
   {t?<section className={styles.transferPanel} aria-label="Gespräch weitergeben">
    <div role="status"><strong>{t.cancelRequested?"Zurück zum bisherigen Gespräch …":t.state==="committing"?"Gespräch wird übergeben …":t.targetJoined?
-    "Rücksprache · "+(t.role==="source"?t.toName:t.fromName):t.role==="source"?"Einladung an "+t.toName:"Verbindung mit "+t.fromName}</strong>
+    "Rücksprache · "+(t.role==="source"?t.toName:t.fromName):t.role==="source"?(t.transport==="mobile"?"Handy-Anruf an ":"Einladung an ")+t.toName:t.transport==="mobile"?"Nimm am Handy an und drücke 1.":"Verbindung mit "+t.fromName}</strong>
     <p>{t.state==="preparing"?"Der Kunde wird kurz in die Warteschleife gelegt.":t.ownerAdopted?"Die Verbindung zum neuen Mitarbeiter wird bestätigt.":"Der Kunde wartet. Die Rücksprache bleibt intern."}</p>
    </div>
    <div className={styles.actions}>

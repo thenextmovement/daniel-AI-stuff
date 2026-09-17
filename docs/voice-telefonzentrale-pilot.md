@@ -465,3 +465,55 @@ Noch offen: eingehende Annahme und Übergabe auf das Handy, Placetel-Audioweg,
 KI-Übernahme, produktive Erstzuordnung/Freischaltung, echte Audio- und
 Ausfallprüfung und Rahims kontrollierter Ende-zu-Ende-Anruf. Dieser Stand
 aktiviert keine produktiven Gespräche.
+
+
+## Übergaben auf ein bestätigtes Handy (T295)
+
+Die Migration 20260917050000 und der zusätzliche Schalter
+VOICE_PHONE_MOBILE_TRANSFERS_ENABLED in Ops und Runtime ergänzen mobile
+Übergabeziele. Die Voraussetzungen für Handygespräche und die expliziten
+Nummernlisten gelten weiter. Die Funktion ist standardmäßig aus.
+
+Jeder Mitarbeiter schaltet „Übergaben am Handy annehmen“ in seinem eigenen
+Telefonprofil ein. Gespeichert werden das aktuell autorisierte Gerät und die
+genau bestätigte Handyzuordnung. Browser-Präsenz ist für dieses mobile Ziel
+nicht erforderlich; Schließen der Seite beendet die Erreichbarkeit nicht.
+Gerätewiderruf, Ablauf, Profilneuzuordnung oder eine entfernte/ersetzte
+Handybestätigung machen das Ziel unzulässig. Eine bestätigte Nummer allein
+schaltet diese Erreichbarkeit nicht ein. Ausschalten betrifft künftige
+Übergaben und lässt ein bereits übernommenes Gespräch bestehen.
+
+Der bisherige Mitarbeiter wählt weiterhin die Person aus der Teamliste.
+Der Server bestimmt deren gültigen Telefonweg. Erst nach bestätigtem Hold des
+Kunden darf genau ein Anruf auf das Mobilziel starten. Die neutrale Ansage
+enthält keine Kundendaten. Mit „1“ bestätigt der Empfänger die interne
+Rücksprache; die Browser-Annahme kann eine mobile Einladung nicht verbrauchen.
+Erst der tatsächliche Konferenzbeitritt erlaubt den Abschluss der Übergabe.
+Mitschrift, Kunden-Leg und Gesprächs-ID bleiben erhalten, auch bei einer
+weiteren Übergabe zurück in einen Browser.
+
+Abgelehnte, abgelaufene oder zurückgezogene Einladungen kehren zum bisherigen
+Mitarbeiter zurück. Eine noch unbestätigte Handybereinigung hält den
+Bereinigungsstatus der Übergabe offen. Späte Providerkennungen können den
+alten Versuch nicht wieder öffnen. Die Runtime setzt gespeicherte
+Übergabeschritte und Handybereinigung fort; ein unklarer Wählstart wird nicht
+wiederholt.
+
+Die Oberfläche des Empfängers zeigt die mobile Rücksprache auch ohne
+registriertes Browser-SDK. Nach Übernahme und Neuladen wird das zu diesem
+persönlichen Gerät gehörende Gespräch wieder angezeigt. Bei der Rücksprache
+bleibt die Mitschriftsteuerung beim bisherigen Gesprächsbesitzer.
+
+Prüfung: neun isolierte PostgreSQL-Integrationen und 184 Voice-Vertragstests.
+Die neuen Fälle prüfen Opt-in, persönliche Bindung, Hold vor Handyruf,
+Bestätigung vor Beitritt/Adoption, Browser-Ausschluss, Abbruch/Bereinigung,
+Ausschalten zukünftiger Erreichbarkeit während eines aktiven Gesprächs sowie
+Browser → Handy → Browser mit unverändertem Kunden-Leg und geschütztem
+ehemaligen Besitzer. Typecheck und beide Builds sind ebenfalls erforderlich.
+
+Direkte eingehende Kundenanrufe auf mobile Teamziele sind noch nicht
+implementiert. Die Checkbox beschreibt deshalb ausschließlich Übergaben.
+Produktive Aktivierung, Placetel-Anschluss, KI-Übernahme, Mehrinstanz-/Ausfalltest
+und der echte kontrollierte Telefonpilot bleiben weitere Schritte.
+
+Die isolierte HTTPS-Vorschau mit vier persönlichen Browserkontexten bestätigt zusätzlich die explizite Handy-Erreichbarkeit, Ablehnung fremder Akteursfelder/Origins, keine fremden Handynummern in der Teamansicht, mobile Rücksprache ohne SDK/Tokenanfrage, Übernahme mit gleicher Mitschrift, Neuladen und Ausschalten der Erreichbarkeit. Bestehende Browser-/Handyanrufe, Eingang, Verwaltung und Ops-Cookies bleiben erhalten. Keine Browserfehler und kein Überlauf bei 390 px; Desktop und Mobilansicht visuell geprüft. Zwei echte parallele SQL-Transaktionen erzeugen dieselbe Einladung und genau einen Startanspruch. Anbieter und Audio sind in diesen Prüfungen simuliert; es fand kein echter Anruf statt.

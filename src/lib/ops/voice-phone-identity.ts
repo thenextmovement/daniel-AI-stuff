@@ -5,12 +5,12 @@ import { supabaseRequest, supabaseRpc, SupabaseRestError } from "@/lib/quotes/su
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import { PHONE_DEVICE_COOKIE, newPhoneCredential, phoneCredentialHash, phoneDeviceLabel, phoneDeviceIsCurrent, phonePresence, type PhoneIdentity } from "./voice-phone-contract";
 
-type StaffRow = {id:string;display_name:string;extension:string|null;enabled:boolean;access_email:string|null;can_manage_phone:boolean;revision:number};
+type StaffRow = {id:string;display_name:string;extension:string|null;enabled:boolean;access_email:string|null;can_manage_phone:boolean;revision:number;mobile_receive_device_id?:string|null;mobile_receive_link_id?:string|null};
 type DeviceRow = {
   id:string;staff_id:string;label:string;available:boolean;registered:boolean;last_seen_at:string|null;
   expires_at:string;revoked_at:string|null;enrolled_via:string;access_email:string|null;
 };
-const STAFF_FIELDS = "id,display_name,extension,enabled,access_email,can_manage_phone,revision";
+const STAFF_FIELDS = "id,display_name,extension,enabled,access_email,can_manage_phone,revision,mobile_receive_device_id,mobile_receive_link_id";
 const DEVICE_FIELDS = "id,staff_id,label,available,registered,last_seen_at,expires_at,revoked_at,enrolled_via,access_email";
 export function isPhoneEnabled() { return process.env.VOICE_PHONE_ENABLED === "true"; }
 export async function verifiedPhoneEmail(request: NextRequest) {
@@ -40,6 +40,22 @@ export async function getPhoneRuntimeDevice(deviceId:unknown,staffId:unknown) {
 export function configuredMobileCalling() {
  return isPhoneEnabled()&&process.env.VOICE_PHONE_MOBILE_CALLS_ENABLED==="true"&&!!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim()&&!!process.env.VOICE_PHONE_MOBILE_NUMBERS?.trim();
 }
+export function configuredMobileTransfers(){return configuredMobileCalling()&&process.env.VOICE_PHONE_MOBILE_TRANSFERS_ENABLED==="true";}
+export async function mobileReceivers(){
+ if(!configuredMobileTransfers())return [];
+ const rows=await supabaseRpc<Array<{staff_id:string;device_id:string;link_id:string;phone:string}>>("voice_mobile_receivers",{});
+ const allowed=(process.env.VOICE_PHONE_MOBILE_NUMBERS||"").split(",").map(x=>x.trim());
+ return rows.filter(row=>allowed.includes(row.phone));
+}
+export async function setMobileReceiving(input:Record<string,unknown>){
+ if(Object.keys(input).some(key=>!["action","enabled"].includes(key))||typeof input.enabled!=="boolean")
+  throw new QuoteValidationError("Ungültige Handy-Einstellung.",["mobile_receiving_invalid"],422);
+ const current=await currentPhoneDevice();
+ if(!current)throw new QuoteValidationError("Bitte melde dein Telefon persönlich an.",["phone_identity_required"],401);
+ if(input.enabled&&(!configuredMobileTransfers()||!await verifiedStaffMobile(current.staff.id,current.staff.revision)))
+  throw new QuoteValidationError("Bestätige zuerst dein Handy.",["mobile_receiving_unavailable"],409);
+ await supabaseRpc("set_voice_mobile_receiving",{p_device_id:current.device.id,p_enabled:input.enabled});
+}
 export async function verifiedStaffMobile(staffId:string,revision:number) {
  const link=(await supabaseRequest<Array<{id:string;phone:string}>>("voice_mobile_links",{},{select:"id,phone",staff_id:"eq."+staffId,staff_revision:"eq."+revision,state:"eq.verified",revoked_at:"is.null",limit:1}))[0];
  const allowed=(process.env.VOICE_PHONE_MOBILE_NUMBERS||"").split(",").map(x=>x.trim());
@@ -48,12 +64,13 @@ export async function verifiedStaffMobile(staffId:string,revision:number) {
 export async function readPhoneIdentity(request: NextRequest): Promise<PhoneIdentity> {
   const empty: PhoneIdentity = {enabled:isPhoneEnabled(),browserCallingAvailable:isPhoneEnabled() && process.env.VOICE_BROWSER_CALLS_ENABLED==="true" && !!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim(),mobileCallingAvailable:false,mobilePhone:null,profile:null,device:null,team:[],personalAccessAvailable:false,canManagePhone:false};
   if (!empty.enabled) return empty;
-  const [current,email,staff,devices,calls,transfers] = await Promise.all([
+  const [current,email,staff,devices,calls,transfers,receivers] = await Promise.all([
     currentPhoneDevice(),verifiedPhoneEmail(request),
     supabaseRequest<StaffRow[]>("voice_staff", {}, {select:STAFF_FIELDS,enabled:"eq.true",order:"display_name.asc",limit:50}),
     supabaseRequest<DeviceRow[]>("voice_staff_devices", {}, {select:DEVICE_FIELDS,revoked_at:"is.null",expires_at:"gt."+new Date().toISOString(),order:"last_seen_at.desc.nullslast",limit:400}),
     supabaseRequest<Array<{staff_id:string}>>("voice_phone_calls",{}, {select:"staff_id",or:"(ended_at.is.null,cleanup_pending.eq.true)",limit:100}),
     supabaseRequest<Array<{from_staff_id:string;to_staff_id:string}>>("voice_phone_transfers",{}, {select:"from_staff_id,to_staff_id",or:"(ended_at.is.null,cleanup_pending.eq.true)",limit:100}),
+    mobileReceivers(),
   ]);
   const mobile=current&&configuredMobileCalling()?await verifiedStaffMobile(current.staff.id,current.staff.revision):null;
   const busy=new Set([...calls.map(call=>call.staff_id),...transfers.flatMap(t=>[t.from_staff_id,t.to_staff_id])]);
@@ -62,11 +79,15 @@ export async function readPhoneIdentity(request: NextRequest): Promise<PhoneIden
     canManagePhone:!!current?.staff.can_manage_phone,
     mobileCallingAvailable:!!mobile,
     mobilePhone:mobile?.phone||null,
+    mobileTransfersAvailable:configuredMobileTransfers()&&!!mobile,
+    mobileReceiving:!!current?.staff.mobile_receive_device_id,
     profile:current ? {id:current.staff.id,displayName:current.staff.display_name,extension:current.staff.extension} : null,
     device:current ? {id:current.device.id,label:current.device.label,available:current.device.available,registered:current.device.registered,expiresAt:current.device.expires_at} : null,
     personalAccessAvailable:!!email && staff.some(member=>member.access_email===email),
     team:staff.map(member=>({id:member.id,displayName:member.display_name,extension:member.extension,
-      presence:busy.has(member.id)?"busy":phonePresence(devices.filter(device=>device.staff_id===member.id))})),
+      receiveVia:member.mobile_receive_device_id?"mobile":"browser",
+      presence:busy.has(member.id)?"busy":member.mobile_receive_device_id?
+       (receivers.some(r=>r.staff_id===member.id)?"available":"offline"):phonePresence(devices.filter(device=>device.staff_id===member.id))})),
   };
 }
 export async function enrollPhoneDevice(request: NextRequest, input: Record<string,unknown>) {

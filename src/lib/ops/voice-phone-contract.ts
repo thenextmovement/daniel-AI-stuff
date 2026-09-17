@@ -8,12 +8,14 @@ export type PhoneStaff = {
 export type PhoneDevice = {
   id: string; label: string; available: boolean; registered: boolean; expiresAt: string;
 };
-export type PhoneTeamMember = PhoneStaff & { presence: "available" | "away" | "offline" | "busy" };
+export type PhoneTeamMember = PhoneStaff & { receiveVia?:"browser"|"mobile";presence: "available" | "away" | "offline" | "busy" };
 export type PhoneIdentity = {
   enabled: boolean;
   browserCallingAvailable: boolean;
   mobileCallingAvailable?: boolean;
   mobilePhone?: string|null;
+  mobileTransfersAvailable?:boolean;
+  mobileReceiving?:boolean;
   profile: PhoneStaff | null;
   device: PhoneDevice | null;
   team: PhoneTeamMember[];
