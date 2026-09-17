@@ -42,6 +42,12 @@ begin
     and lifecycle = 'available' and approved_at is null and eval_status = 'contract_passed') then
     raise exception 'sandbox approval implicitly enabled or promoted model';
   end if;
+  perform public.select_voice_model_candidate(v_id, 'sql-test', 'sql-live-candidate');
+  perform public.select_voice_model_candidate(v_id, 'sql-test', 'sql-live-candidate');
+  if not exists(select 1 from public.voice_model_releases where id = v_id and lifecycle = 'candidate' and enabled = false)
+    or (select count(*) from public.voice_platform_audit_log where idempotency_key = 'sql-live-candidate') <> 1 then
+    raise exception 'candidate selection failed or implicitly enabled model';
+  end if;
   begin
     update public.voice_model_releases set lifecycle = 'production' where id = v_id;
     raise exception 'sandbox contract became production';
