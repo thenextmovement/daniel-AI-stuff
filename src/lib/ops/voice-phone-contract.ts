@@ -14,7 +14,7 @@ export type PhoneIdentity = {
   browserCallingAvailable: boolean;
   mobileCallingAvailable?: boolean;
   mobilePhone?: string|null;
-  mobileTransfersAvailable?:boolean;
+  mobileIncomingAvailable?:boolean;mobileTransfersAvailable?:boolean;
   mobileReceiving?:boolean;
   profile: PhoneStaff | null;
   device: PhoneDevice | null;
