@@ -949,7 +949,7 @@ async function registerVoiceModelRelease(input: Record<string, unknown>) {
   const modelId = requireVoiceText(input.modelId, "Modell-ID", 160, 3);
   const apiVersion = requireVoiceText(input.apiVersion || "v1", "API-Version", 40, 1);
   const voice = requireVoiceText(input.voice || "marin", "Stimme", 80, 2);
-  const transport = voiceCleanText(input.transport, 30) || "sip";
+  const transport = voiceCleanText(input.transport, 30) || (modelId === "gpt-live-1" ? "websocket" : "sip");
   if (!new Set(["sip", "webrtc", "websocket"]).has(transport)) throw new QuoteValidationError("Modell-Transport ist ungueltig.", ["invalid_transport"], 422);
   const actor = actorName(input.actor);
   const releaseKey = requireVoiceText(input.releaseKey || `openai-${modelId}-${transport}-${apiVersion}`, "Release-Key", 200, 3);
@@ -957,8 +957,13 @@ async function registerVoiceModelRelease(input: Record<string, unknown>) {
     method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify({
       release_key: releaseKey, provider: "openai", model_id: modelId, api_version: apiVersion,
-      transport, voice, session_config: { turn_detection: { type: "server_vad" } },
-      capabilities: { speech_to_speech: true, function_tools: true, sip: transport === "sip", sideband: true, barge_in: true },
+      transport, voice,
+      session_config: modelId === "gpt-live-1" && transport === "websocket"
+        ? { protocol: "live", delegation_model: "gpt-5.6-terra" }
+        : { turn_detection: { type: "server_vad" } },
+      capabilities: modelId === "gpt-live-1" && transport === "websocket"
+        ? { speech_to_speech: true, function_tools: true, full_duplex: true, transcript_events: true }
+        : { speech_to_speech: true, function_tools: true, sip: transport === "sip", sideband: transport === "sip", barge_in: true },
       enabled: false, lifecycle: "available", eval_status: "pending",
       release_notes: voiceCleanText(input.releaseNotes, 1000) || `Registered by ${actor}; disabled until capability and safety evaluation.`,
     }),
