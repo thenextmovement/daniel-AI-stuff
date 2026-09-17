@@ -49,10 +49,12 @@ test("input preserves raw G711, buffers startup and continues while assistant pl
 });
 test("only Twilio playback acknowledgements drain outgoing audio",()=>{
  const {p}=setup();p.output(audio);p.output(audio);
+ assert.equal(p.peakPlaybackBufferMs,40);
  p.read(JSON.stringify({event:"mark",sequenceNumber:"2",streamSid:stream,mark:{name:"played-1"}}));
  assert.equal(p.playbackComplete,false);
  p.read(JSON.stringify({event:"mark",sequenceNumber:"3",streamSid:stream,mark:{name:"played-2"}}));
  assert.equal(p.playbackComplete,true);
+ assert.equal(p.peakPlaybackBufferMs,40);
  assert.throws(()=>p.read(JSON.stringify({event:"mark",sequenceNumber:"4",streamSid:stream,mark:{name:"unknown"}})));
 });
 test("cross-stream input, dropped/repeated packets and unsupported codecs fail explicitly",()=>{

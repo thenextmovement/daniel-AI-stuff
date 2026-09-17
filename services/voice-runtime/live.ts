@@ -25,6 +25,7 @@ export interface LiveMediaTransport {
   output(audio: string): void;
   watchClose(handler: (clean: boolean) => void): void;
   finishPlayback(): Promise<boolean>;
+  playbackBufferPeakMs?(): number;
   close(): void;
 }
 
@@ -544,6 +545,8 @@ export class OpenAiLiveAdapter {
     if (active.stopTimer) clearTimeout(active.stopTimer);
     this.calls.delete(active.callId);
     active.media?.close();
+    const playbackPeak = active.media?.playbackBufferPeakMs?.();
+    if (playbackPeak !== undefined) await this.ops.event(active.attemptId, "runtime", "media.playback_buffer_peak", "playback-peak:" + active.callId, { duration_ms: playbackPeak }).catch(() => {});
     let saved = false;
     for (let attempt = 0; attempt < 5 && !saved; attempt++) {
       try {

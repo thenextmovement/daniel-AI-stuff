@@ -69,6 +69,7 @@ export class TwilioMediaProtocol {
   private outputSequence = 0;
   private pendingMarks = new Map<string, number>();
   private pendingOutputBytes = 0;
+  private peakOutputBytes = 0;
   constructor(private readonly send: (event: Json) => void) {}
 
   read(raw: string): MediaEvent {
@@ -148,9 +149,12 @@ export class TwilioMediaProtocol {
     const name = "played-" + (++this.outputSequence);
     this.pendingMarks.set(name, bytes);
     this.pendingOutputBytes += bytes;
+    this.peakOutputBytes = Math.max(this.peakOutputBytes, this.pendingOutputBytes);
     this.send({ event: "media", streamSid: this.started.streamSid, media: { payload: audio } });
     this.send({ event: "mark", streamSid: this.started.streamSid, mark: { name } });
   }
+
+  get peakPlaybackBufferMs() { return this.peakOutputBytes / 8; }
 
   get playbackComplete() { return this.pendingMarks.size === 0; }
 }
