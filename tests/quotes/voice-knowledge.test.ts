@@ -342,3 +342,18 @@ test("post-call analysis does not store model output or auto-publish knowledge",
   assert.doesNotMatch(route, /createVoiceKnowledgeCandidate|createVoiceKnowledgeDraft/);
   assert.match(candidateRoute, /createVoiceKnowledgeCandidate/);
 });
+
+
+test("bound offer exposes only documented gross price, currency and source date", async () => {
+  const record = { requestId: "REQ-1", request: { title: "Schild", trelloCardId: "card-1" }, offerTracking: { offerId: "offer-1" }, quote: null };
+  const offer = voiceOfferSnapshot({ totals: { totalGross: "119.00", subtotalNet: 100, internalMargin: 80 } });
+  const load = async (value: OpsOfferSnapshot) => (await resolveVoiceOffer(record, { byId: async () => value, byTrelloCardId: async () => value })).offer;
+  assert.deepEqual((await load(offer))?.price, { amount: 119, currency: "EUR", taxBasis: "gross", asOf: offer.updatedAt });
+  assert.doesNotMatch(JSON.stringify(await load(offer)), /internalMargin|subtotalNet/);
+  for (const total of [undefined, null, "", "119 EUR", -1, Infinity]) {
+    assert.equal((await load({ ...offer, totals: { totalGross: total } }))?.price, null);
+  }
+  assert.equal((await load({ ...offer, totals: { totalGross: 0 } }))?.price?.amount, 0);
+  const foreign = await resolveVoiceOffer(record, { byId: async () => ({ ...offer, requestId: "OTHER", trelloCardId: "OTHER" }), byTrelloCardId: async () => { throw Error("unavailable"); } });
+  assert.equal(foreign.offer, null);
+});

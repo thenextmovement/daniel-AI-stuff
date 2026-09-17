@@ -19,7 +19,7 @@ async function waitFor(check:()=>boolean){
  assert(check(),"condition did not settle");
 }
 function fixture(options:{storage?:boolean,update?:Promise<void>,playback?:Promise<boolean>,storageWait?:Promise<void>,finishFailures?:number}={}){
- const socket=new Socket(),saved:any[]=[],outcomes:any[]=[],audioOut:string[]=[];
+ const socket=new Socket(),saved:any[]=[],outcomes:any[]=[],audioOut:string[]=[],events:any[]=[],tools:any[]=[];
  let audioIn:((value:string)=>void)|undefined,closeHandler:((clean:boolean)=>void)|undefined,closed=false,connections=0;
  const media:LiveMediaTransport={
   activateInput:handler=>{audioIn=handler;},
@@ -33,7 +33,8 @@ function fixture(options:{storage?:boolean,update?:Promise<void>,playback?:Promi
   {transcript:async(...args:any[])=>{saved.push(args);await options.storageWait;if(args[2] && options.finishFailures){options.finishFailures--;return {saved:false};}return {saved:options.storage!==false};},
    updateAttempt:async()=>{await options.update;},
    finalize:async(...args:any[])=>{outcomes.push(args);},
-   event:async()=>({ok:true,result:{duplicate:false}}),
+   event:async(...args:any[])=>{events.push(args);return {ok:true,result:{duplicate:false}};},
+   tool:async(...args:any[])=>{tools.push(args);return {result:{email:"test@example.test"}};},
   } as never,
   (url,options)=>{
    connections++;assert.equal(url,"wss://api.openai.com/v1/live/sessions");
@@ -41,7 +42,7 @@ function fixture(options:{storage?:boolean,update?:Promise<void>,playback?:Promi
    return socket as never;
   },
  );
- return {socket,saved,outcomes,audioOut,adapter,media,input:(audio:string)=>audioIn?.(audio),stop:(clean:boolean)=>closeHandler?.(clean),get ready(){return !!audioIn;},get closed(){return closed;},get connections(){return connections;}};
+ return {socket,saved,outcomes,audioOut,events,tools,adapter,media,input:(audio:string)=>audioIn?.(audio),stop:(clean:boolean)=>closeHandler?.(clean),get ready(){return !!audioIn;},get closed(){return closed;},get connections(){return connections;}};
 }
 test("Live media waits for started and forwards both directions while persistence is slow",async()=>{
  let release!:()=>void;const update=new Promise<void>(r=>{release=r;}),f=fixture({update});
@@ -53,7 +54,7 @@ test("Live media waits for started and forwards both directions while persistenc
  assert.deepEqual(f.socket.sent[0].session.audio.format,{type:"audio/pcmu",rate:8000});
  assert.equal(f.socket.sent[0].session.model,"gpt-live-1");
  assert.equal(f.socket.sent[0].session.store,false);
- f.socket.receive({type:"session.started",session:{id:"live_test"}});
+ f.socket.receive({type:"session.started",session:{id:"live_test",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
  assert.equal(f.ready,true);
  const audio=Buffer.alloc(160,0xff).toString("base64");
  f.socket.receive({type:"session.output_audio.delta",delta:audio});
@@ -73,7 +74,7 @@ test("Live media waits for started and forwards both directions while persistenc
 });
 test("session.closed waits for playback acknowledgement before declaring complete",async()=>{
  let played!:(v:boolean)=>void;const f=fixture({playback:new Promise(r=>{played=r;})});
- await f.adapter.connectMedia(session,f.media);f.socket.open();f.socket.receive({type:"session.started",session:{id:"live_test"}});
+ await f.adapter.connectMedia(session,f.media);f.socket.open();f.socket.receive({type:"session.started",session:{id:"live_test",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
  f.socket.receive({type:"session.closed",reason:"close_requested"});await tick();
  assert.equal(f.closed,false);assert.equal(f.outcomes.length,0);
  played(true);await waitFor(()=>f.outcomes.length===1);
@@ -82,7 +83,7 @@ test("session.closed waits for playback acknowledgement before declaring complet
 test("unplayed output and transport loss cannot be recorded as a complete transcript",async()=>{
  for(const loss of ["playback","transport"]){
   const f=fixture({playback:Promise.resolve(false)});
-  await f.adapter.connectMedia(session,f.media);f.socket.open();f.socket.receive({type:"session.started",session:{id:"live_test"}});
+  await f.adapter.connectMedia(session,f.media);f.socket.open();f.socket.receive({type:"session.started",session:{id:"live_test",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
   if(loss==="playback")f.socket.receive({type:"session.closed",reason:"close_requested"});
   else {f.stop(false);assert.equal(f.socket.sent.at(-1)?.type,"session.close");f.socket.close();}
   await waitFor(()=>f.outcomes.length===1);
@@ -110,11 +111,49 @@ test("shutdown rejects a media connection still waiting for storage and later ne
 });
 test("finalization waits for a positively acknowledged transcript completion",async()=>{
  const f=fixture({finishFailures:1});
- await f.adapter.connectMedia(session,f.media);f.socket.open();f.socket.receive({type:"session.started",session:{id:"live_finish_ack"}});
+ await f.adapter.connectMedia(session,f.media);f.socket.open();f.socket.receive({type:"session.started",session:{id:"live_finish_ack",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
  f.socket.receive({type:"session.closed",reason:"close_requested"});
  await waitFor(()=>f.saved.some(x=>x[2]));
  assert.equal(f.outcomes.length,0);
  await new Promise(resolve=>setTimeout(resolve,600));
  assert.equal(f.saved.filter(x=>x[2]).length,2);
  assert.equal(f.outcomes.length,1);
+});
+
+
+test("provider model/codec confirmation is mandatory and preserved as a bounded audit event", async () => {
+ for (const change of [{ model: "gpt-realtime-2.1" }, { audio: { format: { type: "audio/pcm", rate: 24000 }, output: { voice: "marin" } } }, { model: undefined }]) {
+  const f=fixture();await f.adapter.connectMedia(session,f.media);f.socket.open();
+  f.socket.receive({type:"session.started",session:{id:"live_wrong",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}},...change}});
+  await waitFor(()=>f.outcomes.length===1);
+  assert.equal(f.ready,false);assert.equal(f.outcomes[0][1].failureCode,"live_session_contract_mismatch");
+ }
+ const f=fixture();await f.adapter.connectMedia(session,f.media);f.socket.open();
+ f.socket.receive({type:"session.started",session:{id:"live_verified",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
+ await waitFor(()=>f.events.length===1);
+ assert.equal(f.events[0][2],"live.session.confirmed");assert.equal(f.events[0][4].model,"gpt-live-1");
+ f.socket.receive({type:"session.closed",reason:"close_requested"});await waitFor(()=>f.outcomes.length===1);
+});
+
+test("Live speaks disclosure itself; delegated reads then return actual bound values", async () => {
+ const f=fixture();await f.adapter.connectMedia(session,f.media);f.socket.open();
+ f.socket.receive({type:"session.started",session:{id:"live_tools",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
+ assert.match(f.socket.sent.find(e=>e.type==="session.instructions.append")!.content,/KI-Telefonassistent/);
+ const tool=(id:string)=>{
+  const emit=(event:unknown)=>f.socket.receive({type:"response.event",delegation_id:id,event});
+  emit({type:"response.created",response:{id}});
+  emit({type:"response.output_item.done",item:{type:"function_call",call_id:id,name:"get_customer_context",arguments:"{}"}});
+  emit({type:"response.completed",response:{id,output:[]}});
+ };
+ tool("before");await waitFor(()=>f.socket.sent.some(e=>e.type==="response.create"));
+ assert.equal(f.tools.length,0);
+ f.socket.receive({type:"session.output_transcript.delta",event_id:"disclosure",delta:"Hier ist Nia, der KI-Telefonassistent von NEONTRIP.",start_ms:0,end_ms:1000});
+ tool("after");await waitFor(()=>f.tools.length===1);
+ await waitFor(()=>f.socket.sent.some(e=>e.item?.call_id==="after"));
+ assert.equal(JSON.parse(f.socket.sent.find(e=>e.item?.call_id==="after")!.item.output).email,"test@example.test");
+ assert.ok(f.events.some(e=>e[2]==="disclosure.confirmed"));
+ f.stop(true);
+ f.socket.receive({type:"session.output_audio.delta",delta:Buffer.alloc(160,0xff).toString("base64")});
+ f.socket.receive({type:"session.closed",reason:"close_requested"});await waitFor(()=>f.outcomes.length===1);
+ assert.equal(f.outcomes[0][1].failureCode,"missing_structured_outcome","late model audio after a normal hangup is not a media failure");
 });

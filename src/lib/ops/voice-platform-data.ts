@@ -586,7 +586,7 @@ export async function executeVoiceTool(input: {
     result = { requestId: context.requestId, customer: context.customer, request: context.request, recentCalls: context.recentCalls, historyStatus: context.historyStatus };
     resultAudit = { ok: true, request_id: context.requestId, source: "bound_customer_context" };
   } else if (toolName === "get_offer_summary") {
-    result = { requestId: context.requestId, offer: context.offer };
+    result = { requestId: context.requestId, offer: context.offer, sourceStatus: context.sourceStatus.offer };
     resultAudit = { ok: true, request_id: context.requestId, offer_id: context.offer?.offerId || null };
   } else if (toolName === "get_outlook_context") {
     result = { requestId: context.requestId, messages: context.outlook };

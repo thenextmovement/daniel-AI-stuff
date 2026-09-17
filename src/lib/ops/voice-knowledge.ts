@@ -97,6 +97,7 @@ export type VoiceCustomerContext = {
     viewedAt: string | null;
     acceptedAt: string | null;
     projectTitle: string | null;
+    price?: { amount: number; currency: string; taxBasis: "gross" | "net" | "unspecified"; asOf: string | null } | null;
     items: Array<{ title: string; description: string | null; quantity: number }>;
   } | null;
   outlook: Array<{
@@ -573,6 +574,11 @@ export async function searchVoiceCustomerContexts(query: unknown) {
   return [...new Map(boundRecords.map((record) => [record.requestId, record])).values()].slice(0, 8).map(mapCustomerSummary);
 }
 
+function voicePriceAmount(value: unknown): number | null {
+  if (typeof value !== "number" && (typeof value !== "string" || !/^\d+(?:\.\d+)?$/.test(value))) return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
 function mapOfferForVoice(offer: OpsOfferSnapshot | null): VoiceCustomerContext["offer"] {
   if (!offer) return null;
   return {
@@ -584,6 +590,12 @@ function mapOfferForVoice(offer: OpsOfferSnapshot | null): VoiceCustomerContext[
     viewedAt: offer.viewedAt,
     acceptedAt: offer.acceptedAt,
     projectTitle: offer.offer.projectTitle,
+    price: (() => {
+      const amount = voicePriceAmount(offer.totals.totalGross ?? offer.totals.total_gross);
+      const currency = cleanText(offer.offer.currency, 3).toUpperCase();
+      return amount !== null && /^[A-Z]{3}$/.test(currency)
+        ? { amount, currency, taxBasis: "gross" as const, asOf: offer.updatedAt || null } : null;
+    })(),
     items: offer.items.slice(0, 12).map((item) => ({
       title: cleanText(item.title, 180),
       description: cleanText(item.description, 500) || null,
@@ -661,6 +673,12 @@ export function mapArchivedOfferForVoice(record: Pick<VoiceOfferRecord, "request
     viewedAt: record.quote.viewedAt,
     acceptedAt: record.quote.signedAt,
     projectTitle: record.request?.title || null,
+    price: (() => {
+      const amount = voicePriceAmount(record.quote.totalValue);
+      const currency = cleanText(record.quote.currency, 3).toUpperCase();
+      return amount !== null && /^[A-Z]{3}$/.test(currency)
+        ? { amount, currency, taxBasis: "unspecified" as const, asOf: record.quote.sentAt || null } : null;
+    })(),
     items: [],
   };
 }

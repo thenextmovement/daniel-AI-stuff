@@ -87,8 +87,6 @@ export function installTwilioMedia(server: Server, config: RuntimeConfig, ops: O
       const registration = await ops.event(s.attemptId, "telephony", "media.connected", "media-attempt:" + s.attemptId, { call_id: s.callSid, status: "connected" });
       if (!registration.result || registration.result.duplicate) throw new Error("media_attempt_already_consumed");
       claimed = true;
-      const disclosure = await ops.event(s.attemptId, "runtime", "disclosure.confirmed", "media-disclosure:" + s.attemptId, { status: "confirmed" });
-      if (!disclosure.result) throw new Error("media_disclosure_not_acknowledged");
       if (failed || stopped || ws.readyState !== WebSocket.OPEN) throw new Error("media_stopped_during_binding");
       await live.connectMedia(session, transport);
       owned = true;

@@ -31,6 +31,7 @@ export interface LiveMediaTransport {
 type ActiveCall = {
   media?: LiveMediaTransport;
   started: boolean;
+  mediaEnded: boolean;
   attemptId: string;
   callId: string;
   socket: WebSocket;
@@ -135,7 +136,7 @@ export class OpenAiLiveAdapter {
     const storage = await this.ops.transcript(session.attemptId, []);
     if (!storage.saved) throw new Error("transcript_not_acknowledged");
     if (this.mediaStopping) throw new Error("media_runtime_stopping");
-    this.attach("pending-" + session.attemptId, session, true, false, media);
+    this.attach("pending-" + session.attemptId, session, false, false, media);
   }
   async shutdownMedia() {
     this.mediaStopping = true;
@@ -265,6 +266,7 @@ export class OpenAiLiveAdapter {
     const active: ActiveCall = {
       media,
       started: !media,
+      mediaEnded: false,
       attemptId: session.attemptId,
       callId: id,
       socket,
@@ -289,6 +291,7 @@ export class OpenAiLiveAdapter {
         active.socket.terminate();
       }, 12000);
       media.watchClose((clean) => {
+        active.mediaEnded = true;
         if (!clean) {
           active.gap = true;
           active.outcome ||= technicalOutcome("media_disconnected", "Die Audioverbindung wurde unterbrochen.");
@@ -326,6 +329,9 @@ export class OpenAiLiveAdapter {
           const started = event.session as Record<string, unknown>;
           if (typeof started?.id !== "string" || !/^[a-zA-Z0-9_-]{1,160}$/.test(started.id))
             throw new Error("invalid_live_session_id");
+          const audio = started.audio as { format?: { type?: string; rate?: number }; output?: { voice?: string } } | undefined;
+          if (started.model !== "gpt-live-1" || audio?.format?.type !== "audio/pcmu" || audio.format.rate !== 8000 || audio.output?.voice !== session.voice)
+            throw new Error("live_session_contract_mismatch");
           if (active.stopTimer) clearTimeout(active.stopTimer);
           active.stopTimer = null;
           this.calls.delete(active.callId);
@@ -333,6 +339,9 @@ export class OpenAiLiveAdapter {
           active.started = true;
           this.calls.set(active.callId, active);
           active.chain = active.chain.then(async () => {
+            await this.ops.event(active.attemptId, "runtime", "live.session.confirmed", "live-session:" + active.callId, {
+              call_id: active.callId, model: started.model, voice: audio.output!.voice!, audio_format: audio.format!.type!, sample_rate: audio.format!.rate!,
+            });
             await this.ops.updateAttempt(active.attemptId, { openAiCallId: active.callId, status: "live" });
           }).catch(async () => {
             active.gap = true;
@@ -347,19 +356,21 @@ export class OpenAiLiveAdapter {
           this.send(active, {
             type: "session.instructions.append",
             delegation_id: null,
-            content: "Die Telefonansage hat dich bereits als KI-Assistenten vorgestellt. Dies ist ein freigegebener interner Test. Frage jetzt kurz auf Deutsch, ob es gerade passt. Kundendaten dienen nur der Simulation; keine realen Folgeaktionen.",
+            content: "Sprich jetzt zuerst auf Deutsch: Hallo, hier ist Nia, der KI-Telefonassistent von NEONTRIP. Das ist unser vereinbarter Testanruf. Passt es gerade kurz? Höre danach zu. Die Kundendaten sind eine Simulation; keine echten Folgeaktionen.",
           });
           return;
         }
         // Audio must never wait for database writes or delegated tool work.
         if (media && event.type === "session.output_audio.delta") {
           if (!active.started || typeof event.delta !== "string") throw new Error("live_audio_before_start");
-          media.output(event.delta);
+          // The caller may hang up before the final Live audio arrives.
+          if (!active.mediaEnded) media.output(event.delta);
           return;
         }
-      } catch {
+      } catch (error) {
         active.gap = true;
-        active.outcome = technicalOutcome("live_media_failed", "Der Audiostrom wurde unterbrochen.");
+        const code = error instanceof Error && /^[a-z_]{1,80}$/.test(error.message) ? error.message : "live_media_failed";
+        active.outcome = technicalOutcome(code, "Der Audiostrom wurde unterbrochen.");
         void this.hangup(active.callId).catch(() => active.socket.terminate());
         return;
       }

@@ -35,7 +35,7 @@ test("outbound prompt discloses digital assistant after permission and blocks co
   });
   assert.ok(instructions.indexOf("Passt es gerade kurz") < instructions.indexOf("KI-gestuetzter digitaler Telefonassistent"));
   assert.match(instructions, /KI-gestuetzter digitaler Telefonassistent[\s\S]+erst dann mit inhaltlicher Qualifikation/);
-  assert.match(instructions, /Keine Preise, Rabatte, Liefertermine/);
+  assert.match(instructions, /Keine neuen Preise, Rabatte, Liefertermine/);
   assert.match(instructions, /untrusted customer data/);
   assert.match(instructions, /scope=organization/);
 });
@@ -306,4 +306,21 @@ test("runtime recovery uses immutable attempt snapshots and admin audit actors a
   assert.match(route, /\{ \.\.\.input, actor \}/);
   assert.match(panel, /option value="internal_test_authorization">Interne Testfreigabe/);
   assert.doesNotMatch(panel, /!allowPhone \|\| operatorName\.length/);
+});
+
+
+test("voice backend receives bound email, price, messages and availability without granting new commitments", () => {
+  const context = buildInternalVoiceSandboxContext({ requestId: "internal-test:00000000-0000-4000-8000-000000000042", contactName: "Test", companyName: null });
+  context.customer.email = "test@example.test";
+  context.outlook = [{ direction: "inbound", subject: "Montage", preview: "Bitte weiße Platte", occurredAt: null }];
+  context.offer = { source: "offers", offerId: "offer1", offerNumber: "A1", label: "A1", status: "sent", viewedAt: null, acceptedAt: null, projectTitle: "Schild", items: [], price: { amount: 119, currency: "EUR", taxBasis: "gross", asOf: null } };
+  const prompt = buildOutboundVoiceInstructions({ mode: "follow_up", instructionsTemplate: "Kläre Rückfragen", context, knowledgeMatches: [] });
+  assert.match(prompt, /test@example.test/);
+  assert.match(prompt, /119/);
+  assert.match(prompt, /weiße Platte/);
+  assert.match(prompt, /Quellenstatus/);
+  assert.match(prompt, /netto\/brutto niemals raten/);
+  assert.match(prompt, /Keine Bestellung/);
+  assert.match(buildRealtimeVoiceTools().find(x => x.name === "get_offer_summary")!.description, /documented total/);
+  assert.deepEqual(sanitizeVoiceEventPayload({ model: "gpt-live-1", voice: "marin", sample_rate: 8000, api_key: "secret", instructions: "private" }), { model: "gpt-live-1", voice: "marin", sample_rate: 8000 });
 });

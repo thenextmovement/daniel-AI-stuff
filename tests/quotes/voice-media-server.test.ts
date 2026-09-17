@@ -49,10 +49,10 @@ test("unsigned media upgrade is rejected before any customer or attempt lookup",
   assert.equal(response,401);assert.equal(f.lookups,0);assert.equal(f.connections,0);
  });
 });
-test("signed stream binds a stored call once and records disclosure before connecting Live",async()=>{
+test("signed stream binds a stored call once without falsely claiming spoken disclosure",async()=>{
  await fixture(async f=>{
   const first=await startClient(f);await f.connected;
-  assert.deepEqual(f.events,["media.connected","disclosure.confirmed"]);
+  assert.deepEqual(f.events,["media.connected"]);
   assert.equal(f.connections,1);assert.equal(f.lookups,1);
   const second=await startClient(f);await once(second,"close");
   assert.equal(f.connections,1);assert.equal(first.readyState,WebSocket.OPEN);
@@ -69,14 +69,14 @@ test("wrong provider call and non-test attempts fail before disclosure or model 
   await fixture(async f=>{const ws=await startClient(f);await once(ws,"close");assert.equal(f.lookups,1);assert.equal(f.connections,0);assert.deepEqual(f.events,[]);},options);
  }
 });
-test("media telephony sends the disclosure before an attempt-bound stream and preserves the approved recipient",async()=>{
+test("media telephony leaves the greeting to Live and preserves the approved recipient",async()=>{
  const original=globalThis.fetch;let calls=0;
  try{
   globalThis.fetch=(async(_url,init)=>{
    calls++;const body=new URLSearchParams(String(init?.body)),xml=body.get("Twiml")!;
    assert.equal(body.get("To"),session.phoneE164);
-   assert.ok(xml.indexOf("<Say")<xml.indexOf("<Connect>"));
-   assert.match(xml,/KI-Telefonassistent/);assert.match(xml,/wss:\/\/voice.example.test\/media\/twilio/);
+   assert.doesNotMatch(xml,/<Say/);
+   assert.match(xml,/wss:\/\/voice.example.test\/media\/twilio/);
    assert.match(xml,/name="attemptId"/);assert.match(xml,/name="binding"/);assert.match(xml,/<Hangup\/>/);
    return Response.json({sid:call});
   }) as typeof fetch;
@@ -134,10 +134,10 @@ test("isolated audio chain preserves duplex speech, waits for played audio and s
   const audio=Buffer.alloc(160,0xff).toString("base64");
   twilio.send(JSON.stringify({event:"media",sequenceNumber:"2",streamSid:stream,media:{track:"inbound",chunk:"1",timestamp:"0",payload:audio}}));
   await waitFor(()=>constructed);
-  assert.deepEqual(events,["media.connected","disclosure.confirmed"]);
+  assert.deepEqual(events,["media.connected"]);
   openai.open();assert.equal(openai.sent[0].type,"session.start");
   assert.deepEqual(openai.sent[0].session.audio.format,{type:"audio/pcmu",rate:8000});
-  openai.receive({type:"session.started",session:{id:"live_integration"}});
+  openai.receive({type:"session.started",session:{id:"live_integration",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
   await waitFor(()=>openai.sent.some(e=>e.type==="session.input_audio.append"));
   assert.equal(openai.sent.find(e=>e.type==="session.input_audio.append")?.audio,audio);
   openai.receive({type:"session.output_audio.delta",delta:audio});

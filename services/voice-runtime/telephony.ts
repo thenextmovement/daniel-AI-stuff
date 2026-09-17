@@ -79,8 +79,7 @@ export class TwilioMediaAdapter extends TwilioSipAdapter {
     url.protocol = "wss:";
     url.pathname = TWILIO_MEDIA_PATH;
     const binding = signAttemptBinding(session.attemptId, this.config.sipBindingSecret);
-    // Twilio executes Say before opening the stream. A signed, attempt-bound
-    // start is therefore the disclosure signal, not a generated AI transcript.
-    return `<Response><Say language="de-DE">Hier ist Nia, der KI-Telefonassistent von NEONTRIP. Dies ist der vereinbarte interne Test.</Say><Connect><Stream url="${xmlEscape(url.toString())}"><Parameter name="attemptId" value="${xmlEscape(session.attemptId)}"/><Parameter name="binding" value="${xmlEscape(binding)}"/></Stream></Connect><Hangup/></Response>`;
+    // GPT-Live delivers the greeting too; the transcript confirms disclosure.
+    return `<Response><Connect><Stream url="${xmlEscape(url.toString())}"><Parameter name="attemptId" value="${xmlEscape(session.attemptId)}"/><Parameter name="binding" value="${xmlEscape(binding)}"/></Stream></Connect><Hangup/></Response>`;
   }
 }
