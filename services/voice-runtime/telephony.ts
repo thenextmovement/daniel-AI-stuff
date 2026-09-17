@@ -35,8 +35,10 @@ export class TwilioSipAdapter implements TelephonyAdapter {
       Twiml: twiml,
       StatusCallback: `${this.config.publicUrl}/webhooks/twilio?attemptId=${encodeURIComponent(session.attemptId)}`,
       StatusCallbackMethod: "POST",
-      StatusCallbackEvent: "initiated ringing answered completed",
     });
+    // REST encodes each array value separately; space-separated lists are TwiML-only.
+    for (const event of ["initiated", "ringing", "answered", "completed"])
+      body.append("StatusCallbackEvent", event);
     const response = await fetch(this.callUrl(), {
       method: "POST",
       headers: { authorization: this.authorization(), "content-type": "application/x-www-form-urlencoded" },
