@@ -49,6 +49,7 @@ export function loadRuntimeConfig() {
     openAiWebhookSecret: optional("OPENAI_WEBHOOK_SECRET"),
     openAiProjectId: optional("OPENAI_PROJECT_ID"),
     sipBindingSecret: optional("VOICE_SIP_BINDING_SECRET"),
+    aiHandoffEnabled: optional("VOICE_PHONE_AI_HANDOFF_ENABLED")==="true",
     mobileIncomingEnabled: optional("VOICE_PHONE_MOBILE_INCOMING_ENABLED")==="true",
     mobileTransfersEnabled: optional("VOICE_PHONE_MOBILE_TRANSFERS_ENABLED")==="true",
     mobileCallsEnabled: optional("VOICE_PHONE_MOBILE_CALLS_ENABLED")==="true",

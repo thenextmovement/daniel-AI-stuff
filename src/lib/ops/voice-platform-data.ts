@@ -355,6 +355,7 @@ export async function listRecoverableVoiceRuntimeSessions(workerIdInput: unknown
     select: ATTEMPT_SELECT,
     target_id: `in.(${targetIds.join(",")})`,
     status: "in.(reserved,dialing,ringing,live)",
+    control_owner: "in.(ai,stopping)",
     limit: 100,
   });
   if (!attempts.length) return [];

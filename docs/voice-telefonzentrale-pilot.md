@@ -633,3 +633,54 @@ Abschlüssen, Vollständigkeit, Ablauf und Rechten. Drei echte konkurrierende
 SQL-Transaktionen bestätigen die Serialisierung in beiden Reihenfolgen und
 erhalten eine nachträglich erkannte KI-Lücke. Keine produktiven Daten,
 Anrufe, Provideränderungen oder Änderungen an der Ops-Anmeldung.
+
+## KI-Anruf im Browser übernehmen (TICKET-295)
+
+Der optionale Schalter `VOICE_PHONE_AI_HANDOFF_ENABLED=true` in Ops und Runtime
+ergänzt die bestehenden Browser-/Mitschrift-Schalter. Standard bleibt aus.
+Die Migration `20260917080000_voice_ai_handoffs.sql` ist vor dieser Codeversion
+erforderlich, auch für die neue Prüfung bestehender AI-Stop-/Recovery-Befehle.
+Alle Änderungen sind bislang ausschließlich auf der getrennten Entwicklung
+geprüft, nicht produktiv angewendet.
+
+Ein persönlich angemeldeter, registrierter Browser kann einen laufenden
+GPT-Live-1-Media-Streams-Testanruf übernehmen. Zugelassen sind nur gespeicherte,
+freigegebene Testnummern und bestätigte Transkriptfreigaben. Die Oberfläche
+zeigt aktive Testgespräche, deren letzte 100 gespeicherte Beiträge und einen
+Übernahme-Button. Telefonnummer, Session, Kundenleitung und Bediener kommen
+aus dem gespeicherten Zustand, nicht aus frei übergebenen Provider-IDs.
+
+Vor dem tatsächlichen Mitarbeiterbeitritt existiert nur eine Übernahme-
+Reservierung. Ein Abbruch beendet nur dessen wartende Leitung. Nach dem
+Beitritt gewinnt genau ein Datenbankzugriff die Umschaltung. Er übernimmt
+denselben Kunden-SID und dieselbe Session in die menschliche Telefonie und
+bereitet deren Mitschrift vor. Ein einziges Update der bestehenden Leitung
+startet den gebundenen Both-Tracks-Stream, spielt die deutsche Übergabeansage
+und verbindet in die vorhandene Konferenz. Die Ansage kommt derzeit aus
+Twilio Say. Erst der signierte Kundenbeitritt bestätigt die Übernahme.
+
+Eine unklare Antwort auf dieses Provider-Update löst keinen weiteren
+Umschaltversuch und keinen neuen Kundenanruf aus. Nach Ablauf der Wartezeit
+erfolgt nachvollziehbare Bereinigung. Nach beanspruchter Umschaltung behauptet
+„Abbrechen“ keine sichere Rückkehr zur KI. AI-Stop, Wiederanlauf und späte
+Abschlussmeldungen dürfen die übernommene Leitung nicht beenden oder deren
+Gesprächsakte abschließen. Spätere Mitarbeiterwechsel nutzen die bestehende
+Telefonie; der ursprüngliche Mitarbeiter verliert deren Kontrolle.
+
+Prüfung: 207 Voice-Tests, Typecheck und beide Builds; frische isolierte
+Migration und 15 SQL-Integrationen. Vier tatsächlich konkurrierende
+PostgreSQL-Zugriffe prüfen doppelte Runtime-Umschaltung, Stop-vor-Übernahme,
+Übernahme-vor-Stop sowie Abbruch-vor-Umschaltung. HTTPS-Browservorschau mit
+synthetischen Daten prüft persönliche Zuordnung, Abbruch, bestätigten Beitritt,
+gemeinsame KI-/Mitarbeitermitschrift, Zugriffsgrenzen, Mobilbreite und die
+bisherigen Browser-/Handy-/Transfer-/Verwaltungsabläufe. Eigene Vorschau:
+`/tmp/t295-handoff-preview.mjs`; Prüfprotokolle `/tmp/t295-handoff-*.log`.
+
+Noch nicht nachgewiesen: echte Provider-Umschaltung und hörbare Übergangszeit,
+realer OpenAI-Transkriptionszugriff, direkte KI-Übernahme am Handy, Placetel-
+Audioweg und produktive persönliche Einrichtung. Die Mitschrift beginnt im
+neuen TwiML vor der Ansage, doch Twilio Stream startet asynchron; ein garantiert
+lückenloser Audiowechsel wird nicht behauptet. Bereits erfasste Lücken bleiben
+in der gemeinsamen Mitschrift sichtbar. Keine Produktionskonfiguration,
+Anmeldung, Zugangswerte oder Provider-Routen wurden für diese Entwicklung
+geändert; kein echter Anruf wurde ausgelöst.

@@ -51,7 +51,7 @@ export function PhoneTranscriptPanel({call,recipientConsultation}:{call:BrowserC
   {view&&!view.enabled&&!latest?<p className={styles.small}>Die Mitschrift wird für diesen Anschluss noch eingerichtet.</p>:null}
   {error?<p className={styles.searchError} role="alert">{error}</p>:null}
   {view?.segments.length?<ol className={styles.phoneTranscriptLines} aria-label="Gespeicherte Gesprächsbeiträge">
-   {view.segments.map(segment=><li key={segment.source_item_id}><div><strong>{segment.speaker==="customer"?"Kunde":"Gegenseite · beim Kunden hörbar"}</strong><time>{Math.floor(segment.start_ms/60000)}:{String(Math.floor(segment.start_ms/1000)%60).padStart(2,"0")}</time>{!segment.is_final?<span>Vorläufig</span>:null}</div><p>{segment.text}</p></li>)}
+   {view.segments.map(segment=><li key={segment.source_item_id}><div><strong>{segment.speaker==="customer"?"Kunde":segment.speaker==="assistant"?"KI":"Gegenseite · beim Kunden hörbar"}</strong><time>{Math.floor(segment.start_ms/60000)}:{String(Math.floor(segment.start_ms/1000)%60).padStart(2,"0")}</time>{!segment.is_final?<span>Vorläufig</span>:null}</div><p>{segment.text}</p></li>)}
   </ol>:null}
   <p className={styles.small}>Mitschrift ab Freigabe. Testgespräch · getrennt von der Kundenhistorie gespeichert. Angezeigt werden die letzten 100 Beiträge. Zeitangaben beziehen sich auf Audioabschnitte.</p>
  </section>;

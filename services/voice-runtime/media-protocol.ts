@@ -154,4 +154,3 @@ export class TwilioMediaProtocol {
 
   get playbackComplete() { return this.pendingMarks.size === 0; }
 }
-

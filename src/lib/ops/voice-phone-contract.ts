@@ -12,6 +12,7 @@ export type PhoneTeamMember = PhoneStaff & { receiveVia?:"browser"|"mobile";pres
 export type PhoneIdentity = {
   enabled: boolean;
   browserCallingAvailable: boolean;
+  aiHandoffAvailable?:boolean;
   mobileCallingAvailable?: boolean;
   mobilePhone?: string|null;
   mobileIncomingAvailable?:boolean;mobileTransfersAvailable?:boolean;

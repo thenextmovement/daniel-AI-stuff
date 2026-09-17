@@ -5,6 +5,7 @@ import type {PhoneIdentity} from "@/lib/ops/voice-phone-contract";
 import {readPhoneCentralResponse} from "./phone-central-data";
 
 export type BrowserCall = {transport?:"browser"|"mobile";id:string;state:string;direction?:"inbound"|"outbound";phone:string;connected:boolean;endedAt:string|null;cleanupPending:boolean;isTest:boolean;customerId?:string|null;requestId?:string|null};
+export type AiHandoffView={id:string;attemptId:string;callId:string;phone:string;state:"preparing"|"ready"|"redirecting"|"connected"|"cancelled"|"failed";connected:boolean;cleanupPending:boolean};
 export type PhoneTransferView = {transport?:"browser"|"mobile";id:string;state:string;fromStaffId:string;toStaffId:string;call:BrowserCall;role:"source"|"recipient";fromName:string;toName:string;
  expiresAt:string;targetJoined:boolean;cancelRequested:boolean;ownerAdopted:boolean;endedAt:string|null;cleanupPending:boolean};
 export type IncomingPhoneView = {id:string;phone:string;displayName:string|null;customerId:string|null;requestId:string|null;expiresAt:string;state:string};
@@ -20,6 +21,8 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  const [call,setCall]=useState<BrowserCall|null>(null),[muted,setMuted]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [transfer,setTransfer]=useState<PhoneTransferView|null>(null),[incoming,setIncoming]=useState<PhoneTransferView|null>(null);
  const [externalIncoming,setExternalIncoming]=useState<IncomingPhoneView|null>(null);
+ const [aiHandoff,setAiHandoff]=useState<AiHandoffView|null>(null);
+ const activeAi=useRef<AiHandoffView|null>(null),aiRequest=useRef<{key:string;attemptId:string}|null>(null);
  const externalOffer=useRef<IncomingPhoneView|null>(null);
  const device=useRef<Device|null>(null),audioCall=useRef<Call|null>(null),active=useRef<BrowserCall|null>(null);
  const activeTransfer=useRef<PhoneTransferView|null>(null),offer=useRef<PhoneTransferView|null>(null);
@@ -28,6 +31,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  const profileId=identity?.device?.id||null;
  const allowed=!!identity?.browserCallingAvailable && !!profileId;
  const mobileAllowed=!!identity?.mobileCallingAvailable && !!profileId;
+ function updateAi(value:AiHandoffView|null){activeAi.current=value;setAiHandoff(value);}
  function updateCall(value:BrowserCall|null) {active.current=value;setCall(value);}
  function updateTransfer(value:PhoneTransferView|null) {activeTransfer.current=value;setTransfer(value);}
  function updateOffer(value:PhoneTransferView|null) {offer.current=value;setIncoming(value);}
@@ -38,7 +42,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  function releaseAudio() {const old=audioCall.current;audioCall.current=null;old?.disconnect();setMuted(false);}
  function releaseCall() {releaseAudio();updateCall(null);request.current=null;ending.current=false;setWorking(false);}
  async function presence(online:boolean) {
-  try{await phoneJson("",{action:"presence",registered:online,available:online&&!active.current&&!activeTransfer.current&&!offer.current&&!otherBusy});}
+  try{await phoneJson("",{action:"presence",registered:online,available:online&&!active.current&&!activeAi.current&&!activeTransfer.current&&!offer.current&&!otherBusy});}
   catch{setError("Dein Telefonstatus konnte nicht bestätigt werden.");}
  }
  // The device credential is independent of the general Ops login.
@@ -47,11 +51,11 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   return ()=>{
    if(generation.current===currentGeneration)generation.current++;
    const old=device.current;device.current=null;audioCall.current=null;active.current=null;
-   activeTransfer.current=null;offer.current=null;externalOffer.current=null;old?.destroy();
+   activeAi.current=null;activeTransfer.current=null;offer.current=null;externalOffer.current=null;old?.destroy();
   };
  },[profileId]);
  useEffect(()=>{
-  setRegistered(false);setWorking(false);setCall(null);setTransfer(null);setIncoming(null);setExternalIncoming(null);setMuted(false);setError("");setNotice("");
+  setRegistered(false);setWorking(false);setCall(null);setAiHandoff(null);aiRequest.current=null;setTransfer(null);setIncoming(null);setExternalIncoming(null);setMuted(false);setError("");setNotice("");
   starting.current=false;ending.current=false;request.current=null;transferRequest.current=null;
  },[profileId]);
  useEffect(()=>{
@@ -59,7 +63,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   const timer=window.setInterval(()=>{void presence(true);},15000);
   void presence(true);return ()=>window.clearInterval(timer);
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[registered,!!call,!!transfer,!!incoming,otherBusy,profileId]);
+ },[registered,!!call,!!aiHandoff,!!transfer,!!incoming,otherBusy,profileId]);
  async function refreshTransfer() {
   const current=activeTransfer.current;if(!current)return;
   const epoch=generation.current;
@@ -79,11 +83,30 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   }else if(terminal(t.call))releaseAudio();
   else updateCall(t.call);
  }
+ async function refreshAiHandoff(){
+  const h=activeAi.current;if(!h)return;const epoch=generation.current;
+  const {handoff:next}=await phoneJson<{handoff:AiHandoffView}>("/ai-handoffs?id="+encodeURIComponent(h.id));
+  if(epoch!==generation.current||activeAi.current?.id!==h.id)return;
+  if(next.id!==h.id||next.callId!==h.callId)throw Error("ai_handoff_mismatch");
+  updateAi(next);
+  if(next.connected){
+   const data=await phoneJson<{call:BrowserCall}>("/calls?id="+encodeURIComponent(next.callId));
+   if(epoch!==generation.current||activeAi.current?.id!==h.id)return;
+   if(data.call.id!==h.callId)throw Error("ai_handoff_call_mismatch");
+   updateCall(data.call);updateAi(null);aiRequest.current=null;
+   setNotice("Gespräch übernommen. Die bisherige Mitschrift bleibt erhalten.");
+   if(terminal(data.call))releaseCall();
+  }else if(["failed","cancelled"].includes(next.state)&&!next.cleanupPending){
+   releaseAudio();updateAi(null);aiRequest.current=null;
+   setNotice(next.state==="cancelled"?"Übernahme abgebrochen.":"Die Übernahme konnte nicht bestätigt werden.");
+  }
+ }
  async function refreshCall() {
   if(polling.current)return;
-  const current=active.current;if(!current && !activeTransfer.current)return;
+  const current=active.current;if(!current && !activeTransfer.current && !activeAi.current)return;
   polling.current=true;const epoch=generation.current;
   try {
+   if(activeAi.current){await refreshAiHandoff();return;}
    if(activeTransfer.current){await refreshTransfer();return;}
    if(!current)return;
    const data=await phoneJson<{call:BrowserCall}>("/calls?id="+encodeURIComponent(current.id));
@@ -94,22 +117,22 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   finally{polling.current=false;}
  }
  useEffect(()=>{
-  if(!call && !transfer)return;
+  if(!call && !transfer && !aiHandoff)return;
   const timer=window.setInterval(()=>{void refreshCall();},1500);
   return ()=>window.clearInterval(timer);
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[call?.id,transfer?.id]);
+ },[call?.id,transfer?.id,aiHandoff?.id]);
  useEffect(()=>{
-  if(!registered || call || transfer || otherBusy){updateOffer(null);updateExternalOffer(null);return;}
+  if(!registered || call || transfer || aiHandoff || otherBusy){updateOffer(null);updateExternalOffer(null);return;}
   let stopped=false,running=false;const epoch=generation.current;
   const poll=async()=>{
-   if(running||starting.current||active.current||activeTransfer.current)return;running=true;
+   if(running||starting.current||active.current||activeAi.current||activeTransfer.current)return;running=true;
    try{
     const [team,external]=await Promise.allSettled([
      phoneJson<{incoming:PhoneTransferView[]}>("/transfers"),
      phoneJson<{incoming:IncomingPhoneView[]}>("/incoming"),
     ]);
-    if(!stopped && epoch===generation.current && !starting.current && !active.current && !activeTransfer.current){
+    if(!stopped && epoch===generation.current && !starting.current && !active.current && !activeAi.current && !activeTransfer.current){
      if(team.status==="fulfilled")updateOffer(team.value.incoming[0]||null);
      if(offer.current)updateExternalOffer(null);
      else if(external.status==="fulfilled")updateExternalOffer(external.value.incoming[0]||null);
@@ -121,20 +144,20 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   void poll();const timer=window.setInterval(()=>void poll(),1500);
   return ()=>{stopped=true;window.clearInterval(timer);};
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[registered,call?.id,transfer?.id,otherBusy,profileId]);
+ },[registered,call?.id,transfer?.id,aiHandoff?.id,otherBusy,profileId]);
  // Mobile audio stays at the provider when a page is closed. Recover only
  // this personal device's call or mobile invitation; never create a browser leg.
  useEffect(()=>{
-  if(!profileId||!mobileAllowed||call||transfer||otherBusy)return;
+  if(!profileId||!mobileAllowed||call||transfer||aiHandoff||otherBusy)return;
   let stopped=false,running=false;const epoch=generation.current;
   const restore=async()=>{
-   if(running||starting.current||active.current||activeTransfer.current)return;running=true;
+   if(running||starting.current||active.current||activeAi.current||activeTransfer.current)return;running=true;
    try{
     const [data,invitation]=await Promise.all([
      phoneJson<{call:BrowserCall|null}>("/calls?active=mobile"),
      identity?.mobileTransfersAvailable?phoneJson<{transfer:PhoneTransferView|null}>("/transfers?active=mobile"):Promise.resolve({transfer:null}),
     ]);
-    if(stopped||epoch!==generation.current||starting.current||active.current||activeTransfer.current)return;
+    if(stopped||epoch!==generation.current||starting.current||active.current||activeAi.current||activeTransfer.current)return;
     if(invitation.transfer?.transport==="mobile"&&!invitation.transfer.endedAt){
      updateTransfer(invitation.transfer);updateCall(invitation.transfer.call);updateOffer(null);updateExternalOffer(null);
     }else if(data.call?.transport==="mobile"&&!terminal(data.call))updateCall(data.call);
@@ -144,7 +167,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   void restore();const timer=window.setInterval(()=>void restore(),3000);
   return ()=>{stopped=true;window.clearInterval(timer);};
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[profileId,mobileAllowed,identity?.mobileTransfersAvailable,call?.id,transfer?.id,otherBusy]);
+ },[profileId,mobileAllowed,identity?.mobileTransfersAvailable,call?.id,transfer?.id,aiHandoff?.id,otherBusy]);
  async function transferAction(action:"commit"|"cancel",value=activeTransfer.current||offer.current) {
   if(!value||starting.current)return;
   starting.current=true;setWorking(true);setError("");const epoch=generation.current;
@@ -156,6 +179,20 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   finally{if(epoch===generation.current){starting.current=false;setWorking(false);}}
  }
  async function finish() {
+  if(activeAi.current){
+   if(ending.current)return;
+   const h=activeAi.current,epoch=generation.current;ending.current=true;setWorking(true);
+   try{
+    const {handoff:next}=await phoneJson<{handoff:AiHandoffView}>("/ai-handoffs",{action:"cancel",id:h.id});
+    if(epoch!==generation.current||activeAi.current?.id!==h.id)return;
+    // A redirect claim can already be at the provider. Do not represent it
+    // as a safe return to AI or release the waiting employee prematurely.
+    if(next.state!=="redirecting"&&!next.connected)releaseAudio();
+    updateAi(next);await refreshAiHandoff();
+   }catch{if(epoch===generation.current)setError("Der Übernahmestatus wird weiter geprüft.");}
+   finally{if(epoch===generation.current){ending.current=false;setWorking(false);}}
+   return;
+  }
   const current=active.current;if(!current||ending.current)return;
   const t=activeTransfer.current;
   if(t?.role==="recipient" && !t.ownerAdopted) {await transferAction("cancel",t);return;}
@@ -168,7 +205,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  }
  function attachAudio(sdkCall:Call,callId:string) {
   audioCall.current=sdkCall;
-  const isCurrent=()=>audioCall.current===sdkCall && active.current?.id===callId;
+  const isCurrent=()=>audioCall.current===sdkCall && (active.current?.id===callId||activeAi.current?.callId===callId);
   const disconnected=()=>{
    if(!isCurrent())return;
    const t=activeTransfer.current;
@@ -185,7 +222,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   if(sdkCall.status()==="closed")disconnected();else void refreshCall();
  }
  async function enable() {
-  if(!allowed||starting.current||active.current||registered)return;
+  if(!allowed||starting.current||active.current||activeAi.current||registered)return;
   device.current?.destroy();device.current=null;
   starting.current=true;setWorking(true);setError("");const epoch=generation.current;
   let created:Device|null=null;
@@ -211,7 +248,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   }finally{if(epoch===generation.current){starting.current=false;setWorking(false);}}
  }
  async function dial(target:PhoneDialTarget,transport:"browser"|"mobile"="browser") {
-  if((transport==="mobile"?!mobileAllowed:!allowed||!registered||!device.current)||starting.current||active.current||activeTransfer.current||offer.current||externalOffer.current||otherBusy)return;
+  if((transport==="mobile"?!mobileAllowed:!allowed||!registered||!device.current)||starting.current||active.current||activeAi.current||activeTransfer.current||offer.current||externalOffer.current||otherBusy)return;
   starting.current=true;setWorking(true);setError("");setNotice("");const epoch=generation.current;
   const signature=JSON.stringify({target,transport});
   if(request.current?.target!==signature)request.current={key:crypto.randomUUID(),target:signature};
@@ -237,6 +274,28 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
    }
   }finally{if(epoch===generation.current){starting.current=false;setWorking(false);}}
  }
+ async function beginAiHandoff(attemptId:string){
+  const own=device.current;
+  if(!identity?.aiHandoffAvailable||!allowed||!registered||!own||starting.current||active.current||activeAi.current||activeTransfer.current||offer.current||externalOffer.current||otherBusy)return;
+  starting.current=true;setWorking(true);setError("");setNotice("");const epoch=generation.current;
+  if(aiRequest.current?.attemptId!==attemptId)aiRequest.current={key:crypto.randomUUID(),attemptId};
+  try{
+   const {handoff:h}=await phoneJson<{handoff:AiHandoffView}>("/ai-handoffs",{action:"begin",attemptId,requestKey:aiRequest.current.key});
+   if(epoch!==generation.current)return;
+   if(h.attemptId!==attemptId)throw Error("ai_handoff_mismatch");
+   if(["cancelled","failed"].includes(h.state)&&!h.cleanupPending)aiRequest.current=null;
+   if(!["preparing","ready"].includes(h.state)||h.cleanupPending)throw Error("ai_handoff_not_ready");
+   updateAi(h);
+   const sdkCall=await own.connect({params:{aiHandoffId:h.id}});
+   if(epoch!==generation.current||(activeAi.current as AiHandoffView|null)?.id!==h.id){sdkCall.disconnect();return;}
+   attachAudio(sdkCall,h.callId);
+  }catch{
+   if(epoch===generation.current){
+    setError("Die Übernahme konnte noch nicht bestätigt werden. Der Anruf wird erneut geprüft.");
+    if(activeAi.current)await finish();
+   }
+  }finally{if(epoch===generation.current){starting.current=false;setWorking(false);}}
+ }
  async function beginTransfer(targetStaffId:string) {
   const current=active.current;
   if(!current?.connected||activeTransfer.current||starting.current)return;
@@ -254,7 +313,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  }
  async function acceptTransfer() {
   const current=offer.current,own=device.current;
-  if(!current||!own||!registered||starting.current||active.current||activeTransfer.current||otherBusy)return;
+  if(!current||!own||!registered||starting.current||active.current||activeAi.current||activeTransfer.current||otherBusy)return;
   starting.current=true;setWorking(true);setError("");setNotice("");const epoch=generation.current;
   try {
    const {transfer:t}=await phoneJson<{transfer:PhoneTransferView}>("/transfers?id="+encodeURIComponent(current.id));
@@ -277,7 +336,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  }
  async function acceptIncoming() {
   const current=externalOffer.current,own=device.current;
-  if(!current||!own||!registered||starting.current||active.current||activeTransfer.current||offer.current||otherBusy)return;
+  if(!current||!own||!registered||starting.current||active.current||activeAi.current||activeTransfer.current||offer.current||otherBusy)return;
   starting.current=true;setWorking(true);setError("");setNotice("");const epoch=generation.current;
   try{
    const result=await phoneJson<{call:BrowserCall}>("/incoming",{action:"accept",incomingId:current.id});
@@ -307,6 +366,6 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  }
  function mute() {if(!audioCall.current)return;const next=!audioCall.current.isMuted();audioCall.current.mute(next);setMuted(next);}
  function sendDigits(value:string) {if(audioCall.current && /^[0-9*#]{1,32}$/.test(value))audioCall.current.sendDigits(value);}
- return {allowed,mobileAllowed,registered,working,call,muted,error,notice,transfer,incoming,externalIncoming,acceptIncoming,declineIncoming,enable,dial,finish,mute,sendDigits,beginTransfer,acceptTransfer,transferAction,
-  busy:!!call||!!transfer||!!incoming||!!externalIncoming||working};
+ return {allowed,mobileAllowed,registered,working,call,aiHandoff,beginAiHandoff,muted,error,notice,transfer,incoming,externalIncoming,acceptIncoming,declineIncoming,enable,dial,finish,mute,sendDigits,beginTransfer,acceptTransfer,transferAction,
+  busy:!!call||!!aiHandoff||!!transfer||!!incoming||!!externalIncoming||working};
 }

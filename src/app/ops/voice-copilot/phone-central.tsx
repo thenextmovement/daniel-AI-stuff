@@ -7,6 +7,7 @@ import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
 import { OpsAppSwitcher } from "../ops-app-switcher";
 import { useBrowserPhone } from "./use-browser-phone";
+import {PhoneAiCallsPanel} from "./phone-ai-calls-panel";
 import { PhoneTranscriptPanel } from "./phone-transcript-panel";
 import { PhoneTransferPanel } from "./phone-transfer-panel";
 import {PhoneStaffAdmin} from "./phone-staff-admin";
@@ -241,9 +242,14 @@ export function PhoneCentral(props: Props) {
             {["1","2","3","4","5","6","7","8","9","*","0","#"].map(digit=><button type="button" key={digit} onClick={()=>browserPhone.sendDigits(digit)}>{digit}</button>)}
           </div></details></>:<p className={styles.small}>Stummschalten und Wahltasten direkt am Handy.</p>}
           <button type="button" className={styles.button} disabled={!!browserPhone.transfer && (browserPhone.transfer.state==="committing"||browserPhone.transfer.ownerAdopted)} onClick={()=>void browserPhone.finish()}>{browserPhone.transfer?.role==="recipient"?"Rücksprache verlassen":"Auflegen"}</button>
-        </div> : mobileAudio?<p className={styles.small}>Wir rufen zuerst dein bestätigtes Handy an.</p>:<button type="button" className={styles.button} disabled={!browserPhone.allowed||browserPhone.working||browserPhone.registered||props.busy}
+        </div> : mobileAudio?<p className={styles.small}>Wir rufen zuerst dein bestätigtes Handy an.</p>:<button type="button" className={styles.button} disabled={!browserPhone.allowed||browserPhone.busy||browserPhone.registered||props.busy}
           onClick={()=>void browserPhone.enable()}>{browserPhone.registered?"Browser bereit":browserPhone.working?"Verbindet …":"Browser-Telefon verbinden"}</button>}
         {browserPhone.error?<p className={styles.searchError} role="alert">{browserPhone.error}</p>:null}
+      </section>:null}
+      {browserPhone.aiHandoff?<section className={styles.browserPhoneBar} aria-label="KI-Übernahme">
+        <div role="status"><strong>{browserPhone.aiHandoff.state==="redirecting"?"Kundenleitung wird übergeben …":browserPhone.aiHandoff.cleanupPending?"Übernahme wird beendet …":"Deine Verbindung wird vorbereitet …"}</strong>
+          <p className={styles.small}>{browserPhone.aiHandoff.phone} · Erst nach bestätigtem Beitritt gilt das Gespräch als übernommen.</p></div>
+        <button type="button" className={styles.button} disabled={browserPhone.working||browserPhone.aiHandoff.state==="redirecting"||browserPhone.aiHandoff.connected||browserPhone.aiHandoff.cleanupPending} onClick={()=>void browserPhone.finish()}>Übernahme abbrechen</button>
       </section>:null}
       {phoneIdentity?.browserCallingAvailable||browserPhone.call?<PhoneTransferPanel phone={browserPhone}/>:null}
       <div className={styles.layout}>
@@ -410,6 +416,10 @@ export function PhoneCentral(props: Props) {
           </section>
           <div className={styles.detailgrid}>
             <section className={styles.conversation} aria-label="Gespräch">
+              {phoneIdentity?.aiHandoffAvailable&&phoneIdentity.profile&&!browserPhone.call?<PhoneAiCallsPanel phone={browserPhone} onTakeover={id=>{
+                ++selection.current;setActiveContact(null);props.onSelect(null);setContextError("");setContextLoading(false);props.onWorkspaceChange("prepare");
+                void browserPhone.beginAiHandoff(id);
+              }}/>:null}
               <PhoneTranscriptPanel call={browserPhone.call} recipientConsultation={browserPhone.transfer?.role==="recipient"&&!browserPhone.transfer.ownerAdopted}/>
               {notice ? (
                 <p className={styles.notice} role="status">
