@@ -37,6 +37,10 @@ export class OpsClient {
     }
   }
 
+  async aiHandoffAction<T=unknown>(input:Record<string,unknown>) {
+    return this.request<T>("/api/internal/voice-phone/ai-handoffs",{method:"POST",body:JSON.stringify(input)});
+  }
+
   async mobileCallAction<T=unknown>(input:Record<string,unknown>) {
     return this.request<T>("/api/internal/voice-phone/mobile-calls",{method:"POST",body:JSON.stringify(input)});
   }

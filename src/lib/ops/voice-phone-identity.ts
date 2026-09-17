@@ -64,17 +64,19 @@ export async function verifiedStaffMobile(staffId:string,revision:number) {
 }
 export async function readPhoneIdentity(request: NextRequest): Promise<PhoneIdentity> {
   const empty: PhoneIdentity = {enabled:isPhoneEnabled(),browserCallingAvailable:isPhoneEnabled() && process.env.VOICE_BROWSER_CALLS_ENABLED==="true" && !!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim(),mobileCallingAvailable:false,mobilePhone:null,profile:null,device:null,team:[],personalAccessAvailable:false,canManagePhone:false};
+  empty.aiHandoffAvailable=empty.browserCallingAvailable&&process.env.VOICE_PHONE_TRANSCRIPTION_ENABLED==="true"&&process.env.VOICE_PHONE_AI_HANDOFF_ENABLED==="true";
   if (!empty.enabled) return empty;
-  const [current,email,staff,devices,calls,transfers,receivers] = await Promise.all([
+  const [current,email,staff,devices,calls,transfers,receivers,handoffs] = await Promise.all([
     currentPhoneDevice(),verifiedPhoneEmail(request),
     supabaseRequest<StaffRow[]>("voice_staff", {}, {select:STAFF_FIELDS,enabled:"eq.true",order:"display_name.asc",limit:50}),
     supabaseRequest<DeviceRow[]>("voice_staff_devices", {}, {select:DEVICE_FIELDS,revoked_at:"is.null",expires_at:"gt."+new Date().toISOString(),order:"last_seen_at.desc.nullslast",limit:400}),
     supabaseRequest<Array<{staff_id:string}>>("voice_phone_calls",{}, {select:"staff_id",or:"(ended_at.is.null,cleanup_pending.eq.true)",limit:100}),
     supabaseRequest<Array<{from_staff_id:string;to_staff_id:string}>>("voice_phone_transfers",{}, {select:"from_staff_id,to_staff_id",or:"(ended_at.is.null,cleanup_pending.eq.true)",limit:100}),
     mobileReceivers(),
+    empty.aiHandoffAvailable?supabaseRequest<Array<{staff_id:string}>>("voice_ai_handoffs",{}, {select:"staff_id",or:"(ended_at.is.null,cleanup_pending.eq.true)",limit:100}):Promise.resolve([]),
   ]);
   const mobile=current&&configuredMobileCalling()?await verifiedStaffMobile(current.staff.id,current.staff.revision):null;
-  const busy=new Set([...calls.map(call=>call.staff_id),...transfers.flatMap(t=>[t.from_staff_id,t.to_staff_id])]);
+  const busy=new Set([...calls.map(call=>call.staff_id),...handoffs.map(h=>h.staff_id),...transfers.flatMap(t=>[t.from_staff_id,t.to_staff_id])]);
   return {
     ...empty,
     canManagePhone:!!current?.staff.can_manage_phone,

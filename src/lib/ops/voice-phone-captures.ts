@@ -28,10 +28,11 @@ export async function personalPhoneCapture(input:Record<string,unknown>){
   return {capture:stopped,deviceId:current.device.id};
  }
  if(input.action!=="status")invalid("invalid_capture_action");
+ const session=(await supabaseRequest<Array<{capture_status:string}>>("voice_call_sessions",{}, {select:"capture_status",id:"eq."+call.id,limit:1}))[0];
  const segments=await supabaseRequest<Array<{source_item_id:string;speaker:string;text:string;is_final:boolean;start_ms:number;end_ms:number|null}>>("voice_transcript_segments",{},{
   select:"source_item_id,speaker,text,is_final,start_ms,end_ms",session_id:"eq."+call.id,order:"start_ms.desc,source_item_id.desc",limit:100,
  });
- return {enabled:phoneCaptureEnabled(),coverageInterrupted:rows.some(row=>row.state==="interrupted"),captures:rows.map(row=>({id:row.id,state:row.state,startedAt:row.stream_started_at,endedAt:row.ended_at,cleanupPending:row.cleanup_pending})),segments:segments.reverse()};
+ return {enabled:phoneCaptureEnabled(),coverageInterrupted:session?.capture_status==="interrupted"||rows.some(row=>row.state==="interrupted"),captures:rows.map(row=>({id:row.id,state:row.state,startedAt:row.stream_started_at,endedAt:row.ended_at,cleanupPending:row.cleanup_pending})),segments:segments.reverse()};
 }
 export async function runtimePhoneCapture(input:Record<string,unknown>){
  // Keep persistence and cleanup working if new capture admission is switched off.

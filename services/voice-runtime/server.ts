@@ -1,3 +1,4 @@
+import {AiHandoffs,TwilioAiHandoffProvider,aiHandoffReady} from "./phone-ai-handoff.js";
 import {IncomingMobileCalls,TwilioMobileIncomingProvider,mobileIncomingReady} from "./phone-mobile-incoming.js";
 import {MobilePhoneCalls,TwilioMobileCallProvider} from "./phone-mobile-calls.js";
 import {MobilePhoneLinks,TwilioMobileProvider,mobilePhoneReady} from "./phone-mobile.js";
@@ -25,6 +26,7 @@ const phoneTransfers:RuntimePhoneTransfers|null=browserCalls?new RuntimePhoneTra
 const phoneCaptures=browserCalls?new PhoneCaptures(ops,new TwilioCaptureProvider(config),()=>phoneCaptureReady(config)):null;
 const incomingMobileCalls=mobileCalls?new IncomingMobileCalls(config,ops,new TwilioMobileIncomingProvider(config),mobileCalls):null;
 const incomingCalls=browserCalls&&phoneTransfers?new IncomingPhoneCalls(config,ops,browserCalls,phoneTransfers,undefined,row=>incomingMobileCalls!.sync(row)):null;
+const aiHandoffs=browserCalls&&phoneTransfers?new AiHandoffs(config,ops,new TwilioAiHandoffProvider(config),browserCalls,phoneTransfers,ops):null;
 const telephony = config.providerReadiness.telephony ? (config.transport === "media_streams" ? new TwilioMediaAdapter(config) : new TwilioSipAdapter(config)) : null;
 const realtime = config.providerReadiness.openAi ? new OpenAiLiveAdapter(config, ops) : null;
 let mediaStopping = false;
@@ -40,6 +42,9 @@ async function recoverActiveCalls() {
   for (const session of sessions) {
     try {
       if (config.transport === "media_streams") {
+        const authority=await ops.aiHandoffAction<{allowed:boolean;providerCallId:string|null}>({action:"claim_stop",attemptId:session.attemptId});
+        if(!authority.allowed)continue;
+        if(authority.providerCallId!==session.providerCallId)throw Error("recovery_provider_binding_changed");
         // Primary WebSocket audio cannot be reconstructed after a restart.
         if (session.providerCallId) {
           const status = await telephony.getCallStatus(session.providerCallId);
@@ -72,11 +77,16 @@ async function recoverActiveCalls() {
             reconciled += 1;
             continue;
           }
+          const authority=await ops.aiHandoffAction<{allowed:boolean;providerCallId:string|null}>({action:"claim_stop",attemptId:session.attemptId});
+          if(!authority.allowed)continue;
+          if(authority.providerCallId!==session.providerCallId)throw Error("recovery_provider_binding_changed");
           await telephony.stopCall(session.providerCallId, ["queued", "ringing"].includes(status) ? "canceled" : "completed");
         }
         await ops.finalize(session.attemptId, technicalOutcome("provider_recovery_required", session.blockedReason));
         reconciled += 1;
       } else if (session.recoveryAction === "terminate") {
+        const authority=await ops.aiHandoffAction<{allowed:boolean}>({action:"claim_stop",attemptId:session.attemptId});
+        if(!authority.allowed)continue;
         await realtime.hangup(session.openAiCallId!);
         await ops.finalize(session.attemptId, {
           ...technicalOutcome("recovery_call_ineligible", session.blockedReason),
@@ -228,13 +238,24 @@ const server = createServer(async (request, response) => {
         service: "neontrip-voice-runtime",
         commit: config.commitSha,
         ready: config.providerReadiness.dispatch,
-        browserPhone: {mobileIncoming:mobileIncomingReady(config),mobileTransfers:mobileCallingReady(config)&&config.mobileTransfersEnabled,mobileCalls:mobileCallingReady(config),mobileVerification:mobilePhoneReady(config),tokens:browserPhoneReady(config),calls:browserCallingReady(config),transcription:phoneCaptureReady(config),incoming:inboundPhoneReady(config)},
+        browserPhone: {aiHandoff:aiHandoffReady(config),mobileIncoming:mobileIncomingReady(config),mobileTransfers:mobileCallingReady(config)&&config.mobileTransfersEnabled,mobileCalls:mobileCallingReady(config),mobileVerification:mobilePhoneReady(config),tokens:browserPhoneReady(config),calls:browserCallingReady(config),transcription:phoneCaptureReady(config),incoming:inboundPhoneReady(config)},
         providers: {
           openAi: config.providerReadiness.openAi,
           telephony: config.providerReadiness.telephony,
           missing: config.providerReadiness.missing,
         },
       });
+    }
+    if(request.method==="POST"&&["/phone/twilio/ai-handoff/conference","/phone/twilio/ai-handoff/end"].includes(url.pathname)){
+      if(!aiHandoffs)return json(response,503,{ok:false,error:"ai_handoff_unavailable"});
+      let params:URLSearchParams;
+      try{params=phoneWebhookParameters(config,url,request.headers["x-twilio-signature"] as string|undefined,await rawBody(request,16000));}
+      catch{return json(response,401,{ok:false,error:"invalid_phone_signature"});}
+      if(url.searchParams.getAll("id").length!==1)return json(response,422,{ok:false,error:"invalid_handoff_id"});
+      const id=url.searchParams.get("id")||"";
+      if(url.pathname.endsWith("/conference")){await aiHandoffs.conference(id,params);return json(response,200,{ok:true});}
+      const xml=await aiHandoffs.end(id,params);
+      response.writeHead(200,{"content-type":"text/xml","cache-control":"no-store"});response.end(xml);return;
     }
     if(request.method==="POST"&&["/phone/twilio/mobile-incoming/prompt","/phone/twilio/mobile-incoming/confirm","/phone/twilio/mobile-incoming/status"].includes(url.pathname)){
       if(!incomingMobileCalls)return json(response,503,{ok:false,error:"incoming_mobile_unavailable"});
@@ -297,8 +318,8 @@ const server = createServer(async (request, response) => {
       try{params=phoneWebhookParameters(config,url,request.headers["x-twilio-signature"] as string|undefined,await rawBody(request,16000));}
       catch{return json(response,401,{ok:false,error:"invalid_phone_signature"});}
       if(url.pathname==="/phone/twilio/client") {
-        if(params.has("callId") && params.has("transferId"))return json(response,422,{ok:false,error:"ambiguous_phone_target"});
-        const twiml=params.has("transferId")?await phoneTransfers!.client(params):await browserCalls.client(params);
+        if(["callId","transferId","aiHandoffId"].filter(key=>params.has(key)).length!==1)return json(response,422,{ok:false,error:"ambiguous_phone_target"});
+        const twiml=params.has("aiHandoffId")?await aiHandoffs!.client(params):params.has("transferId")?await phoneTransfers!.client(params):await browserCalls.client(params);
         response.writeHead(200,{"content-type":"text/xml","cache-control":"no-store"});response.end(twiml);return;
       }
       const callId=url.searchParams.get("id")||"";
@@ -358,8 +379,10 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname.startsWith("/attempts/") && url.pathname.endsWith("/stop")) {
       if (!bearerMatches(request.headers.authorization, config.dispatchToken)) return json(response, 401, { ok: false, error: "unauthorized" });
       const attemptId = url.pathname.split("/")[2] || "";
-      const controlBody = JSON.parse((await rawBody(request)) || "{}") as { providerCallId?: unknown };
-      const providerCallId = typeof controlBody.providerCallId === "string" ? controlBody.providerCallId.trim() : "";
+      JSON.parse((await rawBody(request)) || "{}");
+      const authority=await ops.aiHandoffAction<{allowed:boolean;providerCallId:string|null}>({action:"claim_stop",attemptId});
+      if(!authority.allowed)return json(response,409,{ok:false,error:"call_control_transferred"});
+      const providerCallId=authority.providerCallId||"";
       let stopped = false;
       const stopErrors: string[] = [];
       try {
@@ -403,7 +426,7 @@ const reconcilePhone=async()=>{
   if(!browserCalls || reconcilingPhone)return;
   reconcilingPhone=true;
   try{
-    const results=await Promise.allSettled([browserCalls.reconcile(),phoneTransfers!.reconcile(),phoneCaptures!.reconcile(),incomingCalls!.reconcile(),mobileLinks!.reconcile(),mobileCalls!.reconcile(),incomingMobileCalls!.reconcile()]);
+    const results=await Promise.allSettled([browserCalls.reconcile(),phoneTransfers!.reconcile(),phoneCaptures!.reconcile(),incomingCalls!.reconcile(),mobileLinks!.reconcile(),mobileCalls!.reconcile(),incomingMobileCalls!.reconcile(),aiHandoffs!.reconcile()]);
     if(results.some(result=>result.status==="rejected"))console.warn("browser phone recovery unavailable");
   }finally{reconcilingPhone=false;}
 };
