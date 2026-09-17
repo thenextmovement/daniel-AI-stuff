@@ -9,6 +9,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json next.config.ts tsconfig.json postcss.config.mjs tailwind.config.js ./
 COPY src ./src
+COPY services/voice-runtime ./services/voice-runtime
 COPY public ./public
 COPY tests ./tests
 COPY scripts ./scripts
