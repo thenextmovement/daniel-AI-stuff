@@ -371,3 +371,51 @@ Enrollment und Verwaltung sperren Mitarbeiter vor Einladung und Gerät. So kann 
 Erstzuordnung bei der später freigegebenen Aktivierung: Über den bestätigten privilegierten Datenbankzugang wird das erste bestätigte persönliche Verwalterprofil explizit mit can_manage_phone=true provisioniert. Bei verfügbarer persönlicher Access-Identität kann dessen geprüfte E-Mail zur Geräteanmeldung verwendet werden. Bei gemeinsamem Ops-Zugang stellt der autorisierte Betreiber einmalig einen persönlichen Einrichtungscode aus und übergibt ihn geschützt an diese Person; der normale Ops-Zugang erhält dadurch keine generelle Verwaltungsberechtigung. Weitere Mitarbeiter und Geräte werden anschließend über die Telefonverwaltung eingerichtet. Diese produktive Erstzuordnung wurde noch nicht vorgenommen.
 
 Prüfungen: isolierte SQL-Rollen-/Profil-/Code-/Gerätefälle, bestehende Enrollment-/Telefonie-Regressionen und echte parallele Transaktionen für Codewiderruf sowie E-Mail-Neuzuordnung. Verwaltungszugriff durch normale oder widerrufene Geräte, Rollenfelder aus dem Browser, falsche Profil-/Gerätekombinationen und veraltete Profilrevisionen werden zurückgewiesen. Ein produktiver Rollout oder eine Anbieterfreischaltung ist damit nicht verbunden.
+
+
+## Persoenliche Handy-Bestaetigung (T295, standardmaessig aus)
+
+Die persoenliche Telefonanmeldung hat unter „Mein Handy“ eine gesonderte
+Bestaetigung. Die angemeldete Person gibt ihre Nummer ein, erhaelt im Browser
+einen sechsstelligen Einmalcode und tippt ihn am angerufenen Handy ein. Es gibt
+genau einen Versuch pro Anruf, drei Minuten Ablaufzeit, keine Audioaufzeichnung
+und keine Kundendaten in der Ansage. Der Code bleibt nur im UI-Speicher und
+verschwindet beim Schliessen; Supabase speichert den an die Versuch-ID
+gebundenen Hash. Wiederholung desselben Startauftrags erzeugt keinen zweiten
+Anruf. Mehr als ein Versuch pro Minute bzw. drei Versuche pro Stunde und
+Person/Nummer werden zurueckgewiesen.
+
+Voraussetzung: neue Migration20260917030000 plus
+VOICE_PHONE_MOBILE_ENABLED=true und ausdrueckliche
+VOICE_PHONE_MOBILE_NUMBERS-Liste in Ops und Runtime; persoenliche Telefonie
+muss ebenfalls aktiviert sein. Die Flags sind standardmaessig aus. Die
+Runtime verwendet den bestehenden Twilio-Account mit freigegebener
+Absenderrufnummer; Browser-SDK-Zugangswerte sind fuer diesen kurzen
+Bestaetigungsanruf nicht erforderlich. Keine produktiven Werte wurden gesetzt.
+
+Die fertige Bestaetigung gehoert zur aktuellen Profilrevision, nicht zur
+Lebensdauer der urspruenglichen Browseranmeldung. Browser-Abmeldung laesst
+die fertige Handyzuordnung bestehen. Aenderung des Profils macht die bisherige
+Bestaetigung ungueltig; ein laufender Versuch darf nach Geraetewiderruf oder
+Profilwechsel nicht mehr abgeschlossen werden. Ein bereits bestaetigtes Handy
+bleibt bei einem fehlgeschlagenen Austausch erhalten. Entfernen nennt die
+exakte Link-ID, damit ein veraltetes Formular keine neuere Zuordnung loescht.
+
+Signierte Providercallbacks pruefen Account, URL, Absender, Ziel und feste
+Call-SID. Der Datenbankanspruch vor der Anbieteranfrage erlaubt hoechstens
+einen Start; unklare Antworten werden nicht erneut gewaehlt. Abbruch ist vor
+dem Runtime-Aufruf gespeichert; spaete Legs werden geschlossen. Bereinigung
+wird erst nach bestaetigtem Providerende bzw. abgelaufener unbekannter
+Startphase quittiert. Ein danach noch eintreffender Callback darf den Versuch
+nicht oeffnen und wird erneut bereinigt.
+
+Dieser Schritt bestaetigt eine mobile Rufnummer. Kundengespraeche und
+Weiterleitungen auf dieses Handy sind der folgende Implementierungsschritt;
+eine Bestaetigung aktiviert sie noch nicht. Reine Anrufe ausserhalb des
+gemeinsamen Audiowegs liefern dadurch noch keine Mitschrift. Placetel-
+Anschluesse und Rufnummernrouting bleiben unveraendert.
+
+Primaerquellen fuer den Verifikationsweg:
+https://www.twilio.com/docs/voice/api/call-resource
+https://www.twilio.com/docs/voice/twiml/gather
+https://www.placetel.de/hilfe/sip-trunking/anbindung-mit-sip

@@ -5,12 +5,12 @@ import { supabaseRequest, supabaseRpc, SupabaseRestError } from "@/lib/quotes/su
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import { PHONE_DEVICE_COOKIE, newPhoneCredential, phoneCredentialHash, phoneDeviceLabel, phoneDeviceIsCurrent, phonePresence, type PhoneIdentity } from "./voice-phone-contract";
 
-type StaffRow = {id:string;display_name:string;extension:string|null;enabled:boolean;access_email:string|null;can_manage_phone:boolean};
+type StaffRow = {id:string;display_name:string;extension:string|null;enabled:boolean;access_email:string|null;can_manage_phone:boolean;revision:number};
 type DeviceRow = {
   id:string;staff_id:string;label:string;available:boolean;registered:boolean;last_seen_at:string|null;
   expires_at:string;revoked_at:string|null;enrolled_via:string;access_email:string|null;
 };
-const STAFF_FIELDS = "id,display_name,extension,enabled,access_email,can_manage_phone";
+const STAFF_FIELDS = "id,display_name,extension,enabled,access_email,can_manage_phone,revision";
 const DEVICE_FIELDS = "id,staff_id,label,available,registered,last_seen_at,expires_at,revoked_at,enrolled_via,access_email";
 export function isPhoneEnabled() { return process.env.VOICE_PHONE_ENABLED === "true"; }
 export async function verifiedPhoneEmail(request: NextRequest) {
