@@ -1,8 +1,9 @@
 import twilio from "twilio";
 import type {RuntimeConfig} from "./config.js";
-import type {PhoneCallRecord} from "./phone-calls.js";
+import {phoneRoom,type PhoneCallRecord} from "./phone-calls.js";
 
 export type PhoneTransfer = {
+ to_transport?:"browser"|"mobile";mobile_leg_id?:string|null;
  id:string;call_id:string;from_staff_id:string;from_device_id:string;from_call_sid:string;
  to_staff_id:string;to_device_id:string;to_call_sid:string|null;state:string;
  cancel_requested:boolean;customer_held:boolean;dial_claimed:boolean;target_joined:boolean;target_guards_exit:boolean;
@@ -53,6 +54,15 @@ export class TwilioTransferProvider implements TransferProvider {
    if(!TERMINAL.has((await endpoint.fetch()).status))throw Error("transfer_leg_removal_unconfirmed");
   }catch(error){if((error as {status?:number}).status!==404)throw error;}
  }
+}
+export function phoneTransferTwiml(config:RuntimeConfig,t:PhoneTransfer,call:PhoneCallRecord) {
+ const response=new twilio.twiml.VoiceResponse();
+ response.dial({timeLimit:900}).conference({
+  participantLabel:"xfer_"+t.id,startConferenceOnEnter:true,endConferenceOnExit:t.owner_adopted,beep:"false",jitterBufferSize:"small",region:"de1",maxParticipants:4,
+  statusCallback:config.publicUrl+"/phone/twilio/conference?id="+encodeURIComponent(call.id),
+  statusCallbackMethod:"POST",statusCallbackEvent:["start","end","join","leave"],
+ },phoneRoom(call.id));response.hangup();
+ return response.toString();
 }
 // Each provider change is acknowledged durably before a dependent change starts.
 // Repeating an idempotent step is safe. A recipient initiates their own browser

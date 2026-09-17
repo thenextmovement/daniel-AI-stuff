@@ -2,12 +2,14 @@ import {NextRequest,NextResponse} from "next/server";
 import {authorizeVoiceCopilotApi,readVoiceCopilotJson,voiceCopilotApiFailure} from "@/lib/ops/voice-copilot-api";
 import {phoneRequestIsSameOrigin} from "@/lib/ops/voice-phone-contract";
 import {getPersonalPhoneCall,requirePersonalPhone,isBrowserCallingEnabled} from "@/lib/ops/voice-phone-calls";
-import {incomingPhoneTransfers,personalPhoneTransfer,publicPhoneTransfer} from "@/lib/ops/voice-phone-transfers";
+import {configuredMobileTransfers} from "@/lib/ops/voice-phone-identity";
+import {activeMobileTransfer,incomingPhoneTransfers,personalPhoneTransfer,publicPhoneTransfer} from "@/lib/ops/voice-phone-transfers";
 import {QuoteValidationError} from "@/lib/quotes/validation";
 export const dynamic="force-dynamic";
 export async function GET(request:NextRequest){
  try{
   const denied=await authorizeVoiceCopilotApi(request);if(denied)return denied;
+  if(request.nextUrl.searchParams.get("active")==="mobile")return NextResponse.json({ok:true,transfer:await activeMobileTransfer()},{headers:{"cache-control":"no-store"}});
   const id=request.nextUrl.searchParams.get("id");
   return NextResponse.json({ok:true,...(id?{transfer:await publicPhoneTransfer(id)}:{incoming:await incomingPhoneTransfers()})},{headers:{"cache-control":"no-store"}});
  }catch(error){return voiceCopilotApiFailure(error,"phone_transfer");}
@@ -22,7 +24,7 @@ export async function POST(request:NextRequest){
    throw new QuoteValidationError("Ungültige Übergabeaktion.",["invalid_transfer_action"],422);
   const current=await requirePersonalPhone();
   if(input.action==="begin"){
-   if(!isBrowserCallingEnabled())throw new QuoteValidationError("Der Anschluss wird eingerichtet.",["phone_not_enabled"],503);
+   if(!isBrowserCallingEnabled()&&!configuredMobileTransfers())throw new QuoteValidationError("Der Anschluss wird eingerichtet.",["phone_not_enabled"],503);
    await getPersonalPhoneCall(input.callId);
   }else await personalPhoneTransfer(input.transferId);
   const base=(process.env.VOICE_RUNTIME_BASE_URL||"").trim().replace(/\/+$/,""),token=(process.env.VOICE_DISPATCH_TOKEN||"").trim();

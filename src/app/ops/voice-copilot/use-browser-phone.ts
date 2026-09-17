@@ -5,7 +5,7 @@ import type {PhoneIdentity} from "@/lib/ops/voice-phone-contract";
 import {readPhoneCentralResponse} from "./phone-central-data";
 
 export type BrowserCall = {transport?:"browser"|"mobile";id:string;state:string;direction?:"inbound"|"outbound";phone:string;connected:boolean;endedAt:string|null;cleanupPending:boolean;isTest:boolean;customerId?:string|null;requestId?:string|null};
-export type PhoneTransferView = {id:string;state:string;fromStaffId:string;toStaffId:string;call:BrowserCall;role:"source"|"recipient";fromName:string;toName:string;
+export type PhoneTransferView = {transport?:"browser"|"mobile";id:string;state:string;fromStaffId:string;toStaffId:string;call:BrowserCall;role:"source"|"recipient";fromName:string;toName:string;
  expiresAt:string;targetJoined:boolean;cancelRequested:boolean;ownerAdopted:boolean;endedAt:string|null;cleanupPending:boolean};
 export type IncomingPhoneView = {id:string;phone:string;displayName:string|null;customerId:string|null;requestId:string|null;expiresAt:string;state:string};
 export type PhoneDialTarget = {customerId?:string;requestId?:string|null;phone?:string};
@@ -122,18 +122,29 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
   return ()=>{stopped=true;window.clearInterval(timer);};
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[registered,call?.id,transfer?.id,otherBusy,profileId]);
- // A mobile connection belongs to the server and survives closing/reloading
- // the browser. Restore only this device's currently owned mobile call.
+ // Mobile audio stays at the provider when a page is closed. Recover only
+ // this personal device's call or mobile invitation; never create a browser leg.
  useEffect(()=>{
-  if(!profileId||!mobileAllowed)return;
-  let stopped=false;const epoch=generation.current;
-  void phoneJson<{call:BrowserCall|null}>("/calls?active=mobile").then(data=>{
-   if(!stopped&&epoch===generation.current&&!starting.current&&!active.current&&!activeTransfer.current&&
-      data.call?.transport==="mobile"&&!terminal(data.call))updateCall(data.call);
-  }).catch(()=>{if(!stopped)setError("Laufende Handygespräche konnten noch nicht geprüft werden.");});
-  return ()=>{stopped=true;};
+  if(!profileId||!mobileAllowed||call||transfer||otherBusy)return;
+  let stopped=false,running=false;const epoch=generation.current;
+  const restore=async()=>{
+   if(running||starting.current||active.current||activeTransfer.current)return;running=true;
+   try{
+    const [data,invitation]=await Promise.all([
+     phoneJson<{call:BrowserCall|null}>("/calls?active=mobile"),
+     identity?.mobileTransfersAvailable?phoneJson<{transfer:PhoneTransferView|null}>("/transfers?active=mobile"):Promise.resolve({transfer:null}),
+    ]);
+    if(stopped||epoch!==generation.current||starting.current||active.current||activeTransfer.current)return;
+    if(invitation.transfer?.transport==="mobile"&&!invitation.transfer.endedAt){
+     updateTransfer(invitation.transfer);updateCall(invitation.transfer.call);updateOffer(null);updateExternalOffer(null);
+    }else if(data.call?.transport==="mobile"&&!terminal(data.call))updateCall(data.call);
+   }catch{if(!stopped)setError("Laufende Handygespräche konnten noch nicht geprüft werden.");}
+   finally{running=false;}
+  };
+  void restore();const timer=window.setInterval(()=>void restore(),3000);
+  return ()=>{stopped=true;window.clearInterval(timer);};
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[profileId,mobileAllowed]);
+ },[profileId,mobileAllowed,identity?.mobileTransfersAvailable,call?.id,transfer?.id,otherBusy]);
  async function transferAction(action:"commit"|"cancel",value=activeTransfer.current||offer.current) {
   if(!value||starting.current)return;
   starting.current=true;setWorking(true);setError("");const epoch=generation.current;

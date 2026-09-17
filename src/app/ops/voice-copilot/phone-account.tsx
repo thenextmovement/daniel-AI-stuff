@@ -34,7 +34,17 @@ export function PhoneAccount({value,onChange,busy,onTeam,onIdentity,onManage}:Pr
     if(identity?.profile?.displayName && identity.profile.displayName!==value)onChange(identity.profile.displayName);
   },[identity?.profile?.displayName,value,onChange]);
   useEffect(()=>{
-    if(!identity?.enabled)return;
+    async function receiveOnMobile(enabled:boolean){
+    if(working||busy)return;setWorking(true);setError("");
+    try{
+      const response=await fetch("/api/ops/voice-phone",{method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({action:"mobile_receiving",enabled}),signal:AbortSignal.timeout(15000)});
+      await readPhoneCentralResponse(response,"Die Handy-Erreichbarkeit konnte nicht gespeichert werden.");
+      await refresh();
+    }catch{setError("Die Handy-Erreichbarkeit konnte nicht bestätigt werden. Bitte aktualisiere dein Telefonprofil.");}
+    finally{setWorking(false);}
+  }
+  if(!identity?.enabled)return;
     const timer=window.setInterval(()=>{void refresh().catch(()=>{onTeam([]);setError("Der Telefonstatus konnte nicht aktualisiert werden.");});},20000);
     return ()=>window.clearInterval(timer);
   },[identity?.enabled,refresh,onTeam]);
@@ -53,6 +63,16 @@ export function PhoneAccount({value,onChange,busy,onTeam,onIdentity,onManage}:Pr
     }catch{setError(action==="logout"?"Die Telefonabmeldung konnte nicht bestätigt werden.":"Die Telefonanmeldung hat nicht geklappt. Bitte prüfe deinen Einrichtungscode oder versuche es erneut.");}
     finally{setWorking(false);}
   }
+  async function receiveOnMobile(enabled:boolean){
+    if(working||busy)return;setWorking(true);setError("");
+    try{
+      const response=await fetch("/api/ops/voice-phone",{method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({action:"mobile_receiving",enabled}),signal:AbortSignal.timeout(15000)});
+      await readPhoneCentralResponse(response,"Die Handy-Erreichbarkeit konnte nicht gespeichert werden.");
+      await refresh();
+    }catch{setError("Die Handy-Erreichbarkeit konnte nicht bestätigt werden. Bitte aktualisiere dein Telefonprofil.");}
+    finally{setWorking(false);}
+  }
   if(!identity?.enabled)return <div className={styles.phoneAccount}>
     <label><span className="sr-only">Mitarbeiter für Gesprächsbegleitung</span>
       <input className={styles.device} value={value} disabled={busy} placeholder="Dein Name" onChange={e=>onChange(e.target.value)}/>
@@ -69,6 +89,10 @@ export function PhoneAccount({value,onChange,busy,onTeam,onIdentity,onManage}:Pr
         <p className={styles.small}>Dieses Gerät: {identity.device.label}</p>
         <p className={styles.small}>Die Telefonanmeldung gilt für diese Person auf diesem Gerät.</p>
         {opened?<PhoneMobileSetup key={identity.device.id} deviceId={identity.device.id} busy={busy||working}/>:null}
+        {identity.mobileTransfersAvailable||identity.mobileReceiving?<label className={styles.mobileReceiving}>
+          <span><input type="checkbox" aria-label="Übergaben am Handy annehmen" checked={!!identity.mobileReceiving} disabled={busy||working} onChange={e=>void receiveOnMobile(e.target.checked)}/> Übergaben am Handy annehmen</span>
+          <span className={styles.small}>Gilt auch bei geschlossenem Browser. Am Handy mit 1 bestätigen; danach erst Rücksprache mit dem Kollegen. Telefon abmelden beendet diese Erreichbarkeit.</span>
+        </label>:null}
         {identity.canManagePhone?<button type="button" className={styles.button} disabled={busy} onClick={onManage}>Telefonteam verwalten</button>:null}
         <button type="button" className={styles.button} disabled={busy||working} onClick={()=>void change("logout")}><LogOut size={16}/>Telefon abmelden</button>
       </>:<>
