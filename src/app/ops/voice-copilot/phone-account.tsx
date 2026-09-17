@@ -89,9 +89,9 @@ export function PhoneAccount({value,onChange,busy,onTeam,onIdentity,onManage}:Pr
         <p className={styles.small}>Dieses Gerät: {identity.device.label}</p>
         <p className={styles.small}>Die Telefonanmeldung gilt für diese Person auf diesem Gerät.</p>
         {opened?<PhoneMobileSetup key={identity.device.id} deviceId={identity.device.id} busy={busy||working}/>:null}
-        {identity.mobileTransfersAvailable||identity.mobileReceiving?<label className={styles.mobileReceiving}>
-          <span><input type="checkbox" aria-label="Übergaben am Handy annehmen" checked={!!identity.mobileReceiving} disabled={busy||working} onChange={e=>void receiveOnMobile(e.target.checked)}/> Übergaben am Handy annehmen</span>
-          <span className={styles.small}>Gilt auch bei geschlossenem Browser. Am Handy mit 1 bestätigen; danach erst Rücksprache mit dem Kollegen. Telefon abmelden beendet diese Erreichbarkeit.</span>
+        {identity.mobileIncomingAvailable||identity.mobileTransfersAvailable||identity.mobileReceiving?<label className={styles.mobileReceiving}>
+          <span><input type="checkbox" aria-label={identity.mobileIncomingAvailable?(identity.mobileTransfersAvailable?"Anrufe und Übergaben am Handy annehmen":"Anrufe am Handy annehmen"):"Übergaben am Handy annehmen"} checked={!!identity.mobileReceiving} disabled={busy||working} onChange={e=>void receiveOnMobile(e.target.checked)}/> {identity.mobileIncomingAvailable?(identity.mobileTransfersAvailable?"Anrufe und Übergaben am Handy annehmen":"Anrufe am Handy annehmen"):"Übergaben am Handy annehmen"}</span>
+          <span className={styles.small}>Gilt auch bei geschlossenem Browser. Am Handy mit 1 bestätigen. Bei Weitergaben beginnt zuerst die Rücksprache mit dem Kollegen. Telefon abmelden beendet diese Erreichbarkeit.</span>
         </label>:null}
         {identity.canManagePhone?<button type="button" className={styles.button} disabled={busy} onClick={onManage}>Telefonteam verwalten</button>:null}
         <button type="button" className={styles.button} disabled={busy||working} onClick={()=>void change("logout")}><LogOut size={16}/>Telefon abmelden</button>

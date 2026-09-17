@@ -113,7 +113,21 @@ export function PhoneCentral(props: Props) {
     const current=++selection.current;
     setActiveContact(null);setNumber(receivedCall.phone);props.onSelect(null);props.onWorkspaceChange("prepare");
     setContextError("");setNotice("");setContextLoading(false);
-    if(!receivedCall.customerId || !receivedCall.requestId)return;
+    if(!receivedCall.customerId)return;
+    if(!receivedCall.requestId){
+      setContextLoading(true);
+      void fetch("/api/ops/voice-copilot/context?directory=1&customerId="+encodeURIComponent(receivedCall.customerId),
+        {cache:"no-store",signal:AbortSignal.timeout(15000)})
+        .then(response=>readPhoneCentralResponse<DirectoryResponse>(response,"Die Kontaktdaten sind gerade nicht erreichbar."))
+        .then(data=>{
+          if(selection.current!==current)return;
+          const contact=data.results?.find(row=>row.customerId===receivedCall.customerId);
+          if(!contact)throw Error("incoming_contact_mismatch");
+          setActiveContact({...contact,requestId:null,requestTitle:null});
+        }).catch(()=>{if(selection.current===current)setContextError("Die Kontaktdaten sind gerade nicht erreichbar. Der Anruf bleibt verbunden.");})
+        .finally(()=>{if(selection.current===current)setContextLoading(false);});
+      return;
+    }
     setContextLoading(true);
     void fetch("/api/ops/voice-copilot/context?requestId="+encodeURIComponent(receivedCall.requestId)+"&customerId="+encodeURIComponent(receivedCall.customerId),
       {cache:"no-store",signal:AbortSignal.timeout(20000)})

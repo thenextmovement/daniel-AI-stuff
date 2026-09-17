@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
       const directory = await listVoiceDirectory(
         request.nextUrl.searchParams.get("query") || "",
         Number(request.nextUrl.searchParams.get("offset") || 0),
+        request.nextUrl.searchParams.get("customerId"),
       );
       return NextResponse.json({ ok: true, ...directory }, { headers: { "cache-control": "no-store" } });
     }

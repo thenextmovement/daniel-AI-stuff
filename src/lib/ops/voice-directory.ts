@@ -1,3 +1,4 @@
+import {requireVoiceUuid} from "./voice-platform-contract";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -32,7 +33,8 @@ function filterValue(value: string) {
   return '"' + value.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
 }
 
-export async function listVoiceDirectory(query: string, offset = 0) {
+export async function listVoiceDirectory(query: string, offset = 0, customerId: unknown = null) {
+  const boundCustomer=customerId==null?null:requireVoiceUuid(customerId,"Kunde");
   const term = query.trim();
   if (term.length > 160 || !Number.isSafeInteger(offset) || offset < 0 || offset > 100000) {
     throw new QuoteValidationError("Ungültige Kundensuche.", ["invalid_directory_query"], 400);
@@ -60,15 +62,16 @@ export async function listVoiceDirectory(query: string, offset = 0) {
     "requests.order": "updated_at.desc.nullslast,id.desc",
     "requests.request_id": "not.is.null",
     "requests.limit": 1,
+    ...(boundCustomer ? {id:"eq."+boundCustomer} : {}),
     ...(filter ? { or: filter } : {}),
     order: "name.asc.nullslast,id.asc",
-    offset,
-    limit: PAGE_SIZE + 1,
+    offset: boundCustomer?0:offset,
+    limit: boundCustomer?1:PAGE_SIZE + 1,
   });
   if (!Array.isArray(rows)) throw new Error("Invalid customer directory response");
   const page = rows.slice(0, PAGE_SIZE);
   return {
-    results: page.filter(row => !needle || [row.phone, row.original_phone].some(value => value && directoryPhoneDigits(value).includes(needle)))
+    results: page.filter(row => (!boundCustomer || row.id===boundCustomer) && (!needle || [row.phone, row.original_phone].some(value => value && directoryPhoneDigits(value).includes(needle))))
       .map(row => ({
         customerId: row.id,
         requestId: text(row.requests?.[0]?.request_id) || text(row.request_id),
@@ -78,6 +81,6 @@ export async function listVoiceDirectory(query: string, offset = 0) {
         phone: text(row.phone),
         requestTitle: text(row.requests?.[0]?.title),
       })),
-    nextOffset: rows.length > PAGE_SIZE ? offset + PAGE_SIZE : null,
+    nextOffset: !boundCustomer && rows.length > PAGE_SIZE ? offset + PAGE_SIZE : null,
   };
 }

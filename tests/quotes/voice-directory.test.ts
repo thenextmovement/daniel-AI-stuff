@@ -157,3 +157,22 @@ test("directory database failure stays an explicit JSON failure, not zero contac
     assert.deepEqual(await response.json(),{ok:false,error:"voice_data_unavailable"});
   });
 });
+
+test("bound customer lookup retrieves the exact SSOT contact without a request or telephone search",async()=>{
+ const id="29500000-0000-4000-8000-000000000301";
+ await fixture([contact(id,"+493055501234")],async requests=>{
+  (process.env as Record<string,string|undefined>).NODE_ENV="development";
+  const response=await GET(new NextRequest("http://localhost/api/ops/voice-copilot/context?directory=1&customerId="+id,{headers:{host:"localhost"}}));
+  assert.equal(response.status,200);assert.equal((await response.json()).results[0].customerId,id);
+  assert.equal(requests.length,1);assert.equal(requests[0].searchParams.get("id"),"eq."+id);
+  assert.equal(requests[0].searchParams.get("limit"),"1");assert.equal(requests[0].searchParams.has("or"),false);
+ });
+});
+test("bound customer lookup rejects filter injection and never returns another identity",async()=>{
+ const id="29500000-0000-4000-8000-000000000301";
+ await fixture([contact("29500000-0000-4000-8000-000000000302","+493055501234")],async requests=>{
+  await assert.rejects(()=>listVoiceDirectory("",0,"invalid),id.neq.0"));
+  assert.equal(requests.length,0);
+  assert.deepEqual((await listVoiceDirectory("",0,id)).results,[]);
+ });
+});

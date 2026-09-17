@@ -1,3 +1,4 @@
+import {runtimeMobileIncoming} from "./voice-phone-mobile-incoming";
 import {supabaseRequest,supabaseRpc} from "@/lib/quotes/supabase-rest";
 import {QuoteValidationError} from "@/lib/quotes/validation";
 import {requireVoiceUuid,normalizePhoneE164} from "./voice-platform-contract";
@@ -21,6 +22,7 @@ export async function getIncomingPhone(id:unknown){
 }
 export async function runtimeIncomingPhone(input:Record<string,unknown>){
  if(!isPhoneEnabled())invalid("phone_not_enabled",503);
+ if(typeof input.action==="string"&&input.action.startsWith("mobile_"))return runtimeMobileIncoming(input,getIncomingPhone);
  if(input.action==="receive"){
   const phone=normalizePhoneE164(input.phone),calledNumber=normalizePhoneE164(input.calledNumber);
   if(!incomingPhoneEnabled()||!targets().includes(calledNumber)||!phoneAllowedNumbers().includes(phone))invalid("incoming_pilot_not_allowed",403);
@@ -42,7 +44,7 @@ export async function runtimeIncomingPhone(input:Record<string,unknown>){
  }
  if(input.action==="cleanup"){
   if(typeof input.updatedAt!=="string"||!Number.isFinite(Date.parse(input.updatedAt)))invalid("invalid_incoming_version");
-  await supabaseRequest("voice_phone_incoming",{method:"PATCH",body:JSON.stringify({cleanup_pending:false})},{id:"eq."+id,ended_at:"not.is.null",updated_at:"eq."+input.updatedAt});
+  await supabaseRpc("ack_voice_incoming_cleanup",{p_incoming_id:id,p_updated_at:input.updatedAt});
   return {ok:true};
  }
  invalid("invalid_incoming_action");

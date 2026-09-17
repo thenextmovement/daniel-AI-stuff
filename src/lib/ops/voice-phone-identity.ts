@@ -41,8 +41,9 @@ export function configuredMobileCalling() {
  return isPhoneEnabled()&&process.env.VOICE_PHONE_MOBILE_CALLS_ENABLED==="true"&&!!process.env.VOICE_PHONE_ALLOWED_NUMBERS?.trim()&&!!process.env.VOICE_PHONE_MOBILE_NUMBERS?.trim();
 }
 export function configuredMobileTransfers(){return configuredMobileCalling()&&process.env.VOICE_PHONE_MOBILE_TRANSFERS_ENABLED==="true";}
+export function configuredMobileIncoming(){return configuredMobileCalling()&&process.env.VOICE_PHONE_INBOUND_ENABLED==="true"&&process.env.VOICE_PHONE_MOBILE_INCOMING_ENABLED==="true"&&!!process.env.VOICE_PHONE_INBOUND_NUMBERS?.trim();}
 export async function mobileReceivers(){
- if(!configuredMobileTransfers())return [];
+ if(!configuredMobileTransfers()&&!configuredMobileIncoming())return [];
  const rows=await supabaseRpc<Array<{staff_id:string;device_id:string;link_id:string;phone:string}>>("voice_mobile_receivers",{});
  const allowed=(process.env.VOICE_PHONE_MOBILE_NUMBERS||"").split(",").map(x=>x.trim());
  return rows.filter(row=>allowed.includes(row.phone));
@@ -52,7 +53,7 @@ export async function setMobileReceiving(input:Record<string,unknown>){
   throw new QuoteValidationError("Ungültige Handy-Einstellung.",["mobile_receiving_invalid"],422);
  const current=await currentPhoneDevice();
  if(!current)throw new QuoteValidationError("Bitte melde dein Telefon persönlich an.",["phone_identity_required"],401);
- if(input.enabled&&(!configuredMobileTransfers()||!await verifiedStaffMobile(current.staff.id,current.staff.revision)))
+ if(input.enabled&&((!configuredMobileTransfers()&&!configuredMobileIncoming())||!await verifiedStaffMobile(current.staff.id,current.staff.revision)))
   throw new QuoteValidationError("Bestätige zuerst dein Handy.",["mobile_receiving_unavailable"],409);
  await supabaseRpc("set_voice_mobile_receiving",{p_device_id:current.device.id,p_enabled:input.enabled});
 }
@@ -79,6 +80,7 @@ export async function readPhoneIdentity(request: NextRequest): Promise<PhoneIden
     canManagePhone:!!current?.staff.can_manage_phone,
     mobileCallingAvailable:!!mobile,
     mobilePhone:mobile?.phone||null,
+    mobileIncomingAvailable:configuredMobileIncoming()&&!!mobile,
     mobileTransfersAvailable:configuredMobileTransfers()&&!!mobile,
     mobileReceiving:!!current?.staff.mobile_receive_device_id,
     profile:current ? {id:current.staff.id,displayName:current.staff.display_name,extension:current.staff.extension} : null,

@@ -1,4 +1,5 @@
 import twilio from "twilio";
+import {mobileIncomingReady} from "./phone-mobile-incoming.js";
 import type {RuntimeConfig} from "./config.js";
 import type {OpsClient} from "./ops-client.js";
 import type {BrowserPhoneCalls,PhoneCallRecord} from "./phone-calls.js";
@@ -12,7 +13,7 @@ type IncomingOps=Pick<OpsClient,"incomingAction">;
 type Calls=Pick<BrowserPhoneCalls,"event"|"closeRecorded">;
 type Transfers=Pick<RuntimePhoneTransfers,"conference">;
 export function inboundPhoneReady(config:RuntimeConfig){
- return browserCallingReady(config)&&config.inboundPhoneEnabled&&config.inboundPhoneNumbers.length>0;
+ return (browserCallingReady(config)||mobileIncomingReady(config))&&config.inboundPhoneEnabled&&config.inboundPhoneNumbers.length>0;
 }
 export function incomingCustomerTwiml(config:RuntimeConfig,row:IncomingPhoneRecord){
  const response=new twilio.twiml.VoiceResponse();
@@ -27,7 +28,7 @@ export function incomingCustomerTwiml(config:RuntimeConfig,row:IncomingPhoneReco
 export class IncomingPhoneCalls{
  private readonly client:ReturnType<typeof twilio>;
  constructor(private config:RuntimeConfig,private ops:IncomingOps,private calls:Calls,private transfers:Transfers,
-  private stopPending?:(row:IncomingPhoneRecord)=>Promise<void>){
+  private stopPending?:(row:IncomingPhoneRecord)=>Promise<void>,private syncMobile?:(row:IncomingPhoneRecord)=>Promise<void>){
   this.client=twilio(config.twilioAccountSid,config.twilioAuthToken,{autoRetry:false,timeout:10000});
  }
  async receive(params:URLSearchParams){
@@ -41,6 +42,7 @@ export class IncomingPhoneCalls{
   return incomingCustomerTwiml(this.config,incoming);
  }
  private async effect(result:IncomingEvent){
+  if(this.syncMobile)try{await this.syncMobile(result.incoming);}catch{console.warn("incoming mobile sync pending",result.incoming.id);}
   if(result.closeCall&&result.call)await this.calls.closeRecorded(result.call);
   if(result.close){
    const row=result.incoming;

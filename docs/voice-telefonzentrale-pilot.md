@@ -461,7 +461,7 @@ Startantwort, Neuladen, Mitschrift, Handy-zu-Browser-Rücksprache/Übergabe,
 Zugriffsgrenzen, bestehende Ops-Cookies und 390-px-Umbruch wurden geprüft.
 Diese Vorschau telefoniert nicht über einen echten Anbieter.
 
-Noch offen: eingehende Annahme und Übergabe auf das Handy, Placetel-Audioweg,
+Noch offen: Placetel-Audioweg,
 KI-Übernahme, produktive Erstzuordnung/Freischaltung, echte Audio- und
 Ausfallprüfung und Rahims kontrollierter Ende-zu-Ende-Anruf. Dieser Stand
 aktiviert keine produktiven Gespräche.
@@ -511,9 +511,82 @@ Ausschalten zukünftiger Erreichbarkeit während eines aktiven Gesprächs sowie
 Browser → Handy → Browser mit unverändertem Kunden-Leg und geschütztem
 ehemaligen Besitzer. Typecheck und beide Builds sind ebenfalls erforderlich.
 
-Direkte eingehende Kundenanrufe auf mobile Teamziele sind noch nicht
-implementiert. Die Checkbox beschreibt deshalb ausschließlich Übergaben.
+Direkte eingehende Kundenanrufe auf mobile Teamziele sind im nachfolgenden
+Abschnitt beschrieben. Ohne deren separaten Schalter beschreibt die Checkbox
+weiter ausschließlich Übergaben.
 Produktive Aktivierung, Placetel-Anschluss, KI-Übernahme, Mehrinstanz-/Ausfalltest
 und der echte kontrollierte Telefonpilot bleiben weitere Schritte.
 
 Die isolierte HTTPS-Vorschau mit vier persönlichen Browserkontexten bestätigt zusätzlich die explizite Handy-Erreichbarkeit, Ablehnung fremder Akteursfelder/Origins, keine fremden Handynummern in der Teamansicht, mobile Rücksprache ohne SDK/Tokenanfrage, Übernahme mit gleicher Mitschrift, Neuladen und Ausschalten der Erreichbarkeit. Bestehende Browser-/Handyanrufe, Eingang, Verwaltung und Ops-Cookies bleiben erhalten. Keine Browserfehler und kein Überlauf bei 390 px; Desktop und Mobilansicht visuell geprüft. Zwei echte parallele SQL-Transaktionen erzeugen dieselbe Einladung und genau einen Startanspruch. Anbieter und Audio sind in diesen Prüfungen simuliert; es fand kein echter Anruf statt.
+
+
+## Eingehende Anrufe am bestätigten Handy (T295)
+
+Die Migration 20260917060000 und VOICE_PHONE_MOBILE_INCOMING_ENABLED in Ops und
+Runtime ergänzen die direkte mobile Annahme. Voraussetzung sind die
+Handygesprächsfunktion, VOICE_PHONE_INBOUND_ENABLED, freigegebene Eingangs-,
+Anrufer- und Handynummern sowie die persönliche Handybestätigung. Der Schalter
+bleibt standardmäßig aus. Die Runtime braucht für diesen Weg keine
+Browser-SDK-Zugangswerte.
+
+Die persönliche Erreichbarkeit gilt bei aktiviertem mobilen Eingang für
+Anrufe und Übergaben. Die Oberfläche benennt diese Auswahl entsprechend.
+Die Gültigkeit bleibt an das persönliche Gerät und die bestätigte
+Handyverknüpfung gebunden; Schließen des Browsers ist keine Abmeldung.
+Im Pilot werden ausschließlich ausdrücklich erlaubte Nummern verwendet.
+
+Der vorhandene Anrufer wartet zuerst in seiner Konferenz. Erst sein
+bestätigter Beitritt erzeugt mobile Einladungen an zulässige Teammitglieder.
+Das Klingeln reserviert den Kunden noch für niemanden. Die neutrale
+Handyansage nennt keine Kundendaten; „1“ nimmt an, Auflegen oder eine andere
+Eingabe lässt den Kunden für andere Mitarbeiter verfügbar.
+
+Die Annahme konkurriert atomar mit anderen Handy- und Browserantworten auf
+demselben Eingang. Genau eine Person gewinnt. Der Gewinner übernimmt die
+vorhandene Anrufer-SID, Kundenbindung und Session; sein bereits angerufenes
+Handy wird ohne erneute Wahl in den normalen Gesprächspfad übernommen.
+Erst der tatsächliche Beitritt gilt als verbunden. Verlierende Einladungen
+werden separat beendet. Späte Antworten nach Kundenauflegen, anderem
+Gewinner oder widerrufener Erreichbarkeit eröffnen keine neue Verbindung.
+
+Nach Übernahme gehören Handycallbacks zum bestehenden mobilen Call, auch
+nach weiteren Übergaben. Dadurch bleiben die vorhandene Mitschrift,
+Besitzerprüfung, Wiederherstellung nach Neuladen und Bereinigung früherer
+Telefonseiten zuständig. Offene Klingelversuche werden bei der Bereinigung
+eines beendeten Eingangs bzw. Gesprächs mitgezählt. Ein unklarer Wählstart
+wird nicht automatisch wiederholt. Gespeicherte Einladungen und spät
+bestätigte Providerkennungen bleiben durch Recovery bereinigbar.
+
+Neue signierte Providerpfade: /phone/twilio/mobile-incoming/prompt,
+/confirm und /status mit exakt gebundener offer-ID, Call-SID und From/To.
+Das interne Ops-Protokoll verwendet den bestehenden Runtime-Bearer und
+gibt diese Einladungsdaten nicht über die öffentliche Teamansicht aus.
+Anbieteraufzeichnungen bleiben aus.
+
+Geprüft: 191 Voice-Vertragstests, zehn isolierte SQL-Integrationen und
+Typecheck/beide Builds. Zwei tatsächlich gleichzeitig ausgeführte
+Datenbanktransaktionen wurden sowohl Handy gegen Handy als auch Browser
+gegen Handy geprüft: genau ein Call, unveränderte Kunden-SID und ein
+Gewinner; beide eigenen Race-Datenbanken wurden danach entfernt.
+Die SQL-Fälle prüfen außerdem explizite Erreichbarkeit, Nummernfreigaben,
+Kundenbeitritt vor Klingeln, DTMF vor Adoption, Replay, Browser-Ausschluss,
+Widerruf, späte Rückmeldungen und verfolgte Bereinigung.
+
+Produktive Erstzuordnung und Aktivierung, Placetel-Audioweg, KI-Übernahme,
+Mehrinstanz-/Ausfallnachweis sowie der echte kontrollierte Anruf mit
+geprüftem OpenAI-Transkriptionszugriff bleiben ausstehend. Die isolierten
+Nachweise ersetzen keinen Test mit tatsächlichem Telefon- und Audioweg.
+
+Die abschließende HTTPS-Vorschau verwendet zusätzlich die echte neue
+Runtimeklasse und reale interne Ops-Endpunkte mit synthetischer Datenbank
+und Telefonanbieter. Sie bestätigt einmaliges Klingeln ohne vorzeitige
+Kundenreservierung, DTMF-Annahme ohne Kundenneuwahl, persönliche Mitschrift
+und Wiederherstellung nach Neuladen ohne Browser-SDK. Bestehende Ops-Cookies,
+Browser-/Handy-/Übergabe- und Verwaltungsabläufe bleiben erhalten.
+
+Bei eingehenden oder übernommenen Gesprächen mit bekanntem Kunden, aber ohne
+gebundenen Vorgang, lädt die Oberfläche die Kontaktdaten direkt über die
+gespeicherte Kunden-ID aus der SSOT. Sie zeigt den Namen und erfindet keine
+Vorgangszuordnung. Der bestehende authentifizierte Verzeichnisendpunkt prüft
+die ID und liest genau diesen Kontakt; Namens- oder Rufnummernähnlichkeit
+reicht für die Übernahme nicht.
