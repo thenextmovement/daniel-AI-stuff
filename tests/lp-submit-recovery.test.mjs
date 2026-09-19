@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import test from 'node:test';
+import runTest from 'node:test';
 import vm from 'node:vm';
 
 const helperSource = await readFile(
@@ -9,10 +9,12 @@ const helperSource = await readFile(
 );
 const clientSubmitId = '44444444-4444-4444-8444-444444444444';
 
-function createContext(fetchImpl) {
+function createBaseContext(fetchImpl, source) {
   const context = {
     Blob,
     Error,
+    TypeError,
+    setTimeout,
     File,
     FormData,
     Headers,
@@ -22,7 +24,7 @@ function createContext(fetchImpl) {
     console,
     crypto,
     fetch: fetchImpl,
-    location: { href: 'https://anfrage.neontrip.de/anfrage.html?utm_source=test' },
+    location: { href: 'https://anfrage.neontrip.de/anfrage.html?utm_source=test', origin: 'https://anfrage.neontrip.de' },
     navigator: {
       userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Mobile/15E148 Safari/604.1',
       sendBeacon: () => true,
@@ -33,7 +35,10 @@ function createContext(fetchImpl) {
     },
   };
   context.window = context;
-  vm.runInNewContext(helperSource, context, { filename: 'nt-submit-recovery.js' });
+  vm.runInNewContext(source, context, { filename: 'submit-under-test.js' });
+  if (!context.ntSubmitStandaloneForm) {
+    context.ntSubmitStandaloneForm = (data, name) => context.ntSubmitForm({ getAttribute: () => '/api/c' }, data, name);
+  }
   return context;
 }
 
@@ -54,6 +59,29 @@ function assertQualificationScalars(formData) {
   assert.equal(formData.get('quantity_band'), 'Rollout 6–20 Stück');
   assert.equal(formData.get('desired_deadline'), '2026-10-15');
 }
+
+function receipt(extra = {}) {
+  return new Response(JSON.stringify({
+    ok: true, accepted: true, persisted: true, contact_saved: true,
+    lead_request_id: clientSubmitId,
+    request_row_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    customer_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    ...extra,
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
+
+const variants = [['standalone', helperSource]];
+for (const file of ['deploy/_source/layouts/base.html', 'deploy/neon-schilder/index.html']) {
+  const html = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
+  const start = html.indexOf('window.ntReportSubmitFailure =');
+  const end = html.indexOf("const form = document.getElementById('multi-step-form');", start);
+  assert.ok(start >= 0 && end > start, file);
+  variants.push([file, html.slice(start, end)]);
+}
+
+for (const [variant, source] of variants) {
+const createContext = (fetchImpl) => createBaseContext(fetchImpl, source);
+const test = (name, fn) => runTest(`${variant}: ${name}`, fn);
 
 test('rebuilds affected WebKit files before the only primary request', async () => {
   let calls = 0;
@@ -116,7 +144,7 @@ test('uses one contact-only recovery after definitive invalid_body', async () =>
   assert.equal(calls, 2);
 });
 
-test('does not retry ambiguous upstream or network failures', async () => {
+test('does not retry an upstream HTTP failure', async () => {
   let calls = 0;
   const context = createContext(async () => {
     calls += 1;
@@ -178,3 +206,112 @@ test('fires a conversion only once per submit id', () => {
   context.ntFireConversionOnce('same-submit-id', () => { conversions += 1; });
   assert.equal(conversions, 1);
 });
+
+
+test('retries a transport failure once with the same UUID, fields and file payload', async () => {
+  const requests = [];
+  const context = createContext(async (_url, options) => {
+    requests.push(options);
+    if (requests.length === 1) throw new TypeError('Load failed');
+    return receipt({ replay: true, created: false });
+  });
+  const result = await context.ntSubmitStandaloneForm(formWithFile(), 'hero_form_mobile');
+  assert.equal(requests.length, 2);
+  assert.equal(result.replay, true);
+  assert.equal(result.submit_id, clientSubmitId);
+  assert.equal(requests[0].body, requests[1].body);
+  for (const request of requests) {
+    assert.equal(request.headers['X-Client-Submit-Id'], clientSubmitId);
+    assert.equal(request.body.get('request_id'), clientSubmitId);
+    assert.equal(request.body.get('nt_client_submit_id'), clientSubmitId);
+    assert.equal(request.body.get('custom_6703e7e2e253b1_87194328'), clientSubmitId);
+    assert.equal(request.body.get('email'), 'internal@neontrip-test.de');
+    assert.equal(await request.body.get('datei').text(), 'design');
+    assert.equal(request.body.get('nt_recovery_contact'), null);
+  }
+});
+
+test('stops after two transport failures and reports the real phase and count', async () => {
+  let calls = 0;
+  const context = createContext(async () => { calls += 1; throw new TypeError('Load failed'); });
+  await assert.rejects(context.ntSubmitStandaloneForm(formWithFile(), 'hero_form_mobile'), (err) => {
+    assert.equal(err.attempts, 2);
+    assert.equal(err.phase, 'request');
+    assert.equal(err.networkRetryAttempted, true);
+    assert.equal(err.clientSubmitId, clientSubmitId);
+    assert.match(err.message, /attempts=2 \| phase=request \| network_retry=true/);
+    assert.ok(err.elapsedMs >= 0);
+    return true;
+  });
+  assert.equal(calls, 2);
+});
+
+test('does not resend after a file-read failure before the request', async () => {
+  let calls = 0;
+  const context = createContext(async () => { calls += 1; return receipt(); });
+  const form = formWithFile();
+  form.get('datei').arrayBuffer = async () => { throw new TypeError('Load failed'); };
+  await assert.rejects(context.ntSubmitStandaloneForm(form, 'test_form'), (err) => {
+    assert.equal(err.attempts, 0);
+    assert.equal(err.phase, 'prepare');
+    assert.equal(err.networkRetryAttempted, false);
+    return true;
+  });
+  assert.equal(calls, 0);
+});
+
+test('does not retry an explicit abort', async () => {
+  let calls = 0;
+  const context = createContext(async () => {
+    calls += 1;
+    const err = new Error('Aborted');
+    err.name = 'AbortError';
+    throw err;
+  });
+  await assert.rejects(context.ntSubmitStandaloneForm(formWithFile(), 'test_form'), /attempts=1/);
+  assert.equal(calls, 1);
+});
+
+test('keeps definitive upload recovery available after the bounded network retry', async () => {
+  let calls = 0;
+  const context = createContext(async (_url, options) => {
+    calls += 1;
+    if (calls === 1) throw new TypeError('Load failed');
+    if (calls === 2) return new Response(JSON.stringify({ error: 'invalid_body' }), { status: 400 });
+    assert.equal(options.body.get('nt_recovery_contact'), '1');
+    assert.equal(options.body.get('datei'), null);
+    assert.equal(options.body.get('request_id'), clientSubmitId);
+    return receipt({ recovery: true });
+  });
+  const result = await context.ntSubmitStandaloneForm(formWithFile(), 'test_form');
+  assert.equal(result.recovery, true);
+  assert.equal(calls, 3);
+});
+
+test('does not add another network retry to contact-only recovery', async () => {
+  let calls = 0;
+  const context = createContext(async () => {
+    calls += 1;
+    if (calls === 1) return new Response(JSON.stringify({ error: 'invalid_body' }), { status: 400 });
+    throw new TypeError('Load failed');
+  });
+  await assert.rejects(context.ntSubmitStandaloneForm(formWithFile(), 'test_form'), (err) => {
+    assert.equal(err.attempts, 2);
+    assert.equal(err.recoveryAttempted, true);
+    assert.equal(err.networkRetryAttempted, false);
+    return true;
+  });
+  assert.equal(calls, 2);
+});
+
+if (variant !== 'standalone') {
+  test('never automatically retries a different endpoint or origin', async () => {
+    for (const action of ['/api/other', 'https://other.example/api/c']) {
+      let calls = 0;
+      const context = createContext(async () => { calls += 1; throw new TypeError('Load failed'); });
+      await assert.rejects(context.ntSubmitForm({ getAttribute: () => action }, formWithFile(), 'test_form'), /attempts=1/);
+      assert.equal(calls, 1, action);
+    }
+  });
+}
+}

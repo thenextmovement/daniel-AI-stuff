@@ -1525,6 +1525,10 @@
           request_id: error && error.requestId ? error.requestId : null,
           client_submit_id: error && error.clientSubmitId ? error.clientSubmitId : null,
           recovery_attempted: Boolean(error && error.recoveryAttempted),
+          network_retry_attempted: Boolean(error && error.networkRetryAttempted),
+          attempts: error && typeof error.attempts === 'number' ? error.attempts : null,
+          phase: error && error.phase ? error.phase : null,
+          elapsed_ms: error && typeof error.elapsedMs === 'number' ? error.elapsedMs : null,
           url: window.location.href,
           referrer: document.referrer || '',
           ua: navigator.userAgent,
@@ -1686,17 +1690,38 @@
       if (url.origin === window.location.origin) {
         headers['X-Client-Submit-Id'] = submitId;
       }
-      function send(body) {
+      var attempts = 0;
+      var phase = 'prepare';
+      var networkRetryAttempted = false;
+      var startedAt = Date.now();
+      var canRetryNetwork = url.origin === window.location.origin && url.pathname === '/api/c';
+      function request(body, allowNetworkRetry) {
+        attempts += 1;
+        phase = 'request';
         return fetch(url.href, {
           method: 'POST',
           body: body,
           headers: headers,
           credentials: url.origin === window.location.origin ? 'same-origin' : 'omit'
         })
-          .then(window.ntCheckSubmitResponse)
-          .then(function(result) { return window.ntRequirePersistedReceipt(result, submitId); });
+          .catch(function(err) {
+            if (!allowNetworkRetry || !canRetryNetwork || !err || err.name !== 'TypeError') throw err;
+            // Retry only the canonical, idempotent intake with the same UUID and files.
+            networkRetryAttempted = true;
+            return new Promise(function(resolve) { setTimeout(resolve, 500); })
+              .then(function() { return request(body, false); });
+          });
       }
-      return window.ntPrepareSubmitFormData(formData).then(send).catch(function(err) {
+      function send(body, allowNetworkRetry) {
+        return request(body, allowNetworkRetry).then(function(response) {
+          phase = 'response';
+          return window.ntCheckSubmitResponse(response);
+        }).then(function(result) {
+          phase = 'receipt';
+          return window.ntRequirePersistedReceipt(result, submitId);
+        });
+      }
+      return window.ntPrepareSubmitFormData(formData).then(function(body) { return send(body, true); }).catch(function(err) {
         var canRecover = err && err.status === 400 && err.code === 'invalid_body' && window.ntHasSubmitFiles(formData);
         if (!canRecover) throw err;
         var recoveryBody = window.ntBuildContactRecoveryFormData(formData, submitId, err.requestId);
@@ -1723,7 +1748,11 @@
       }).catch(function(err) {
         var message = (err && err.message) || String(err || 'unknown');
         if (!(err instanceof Error)) err = new Error(message);
-        err.message = message + ' | form=' + formName + ' | submit_id=' + submitId + ' | attempts=1';
+        err.attempts = attempts;
+        err.phase = phase;
+        err.networkRetryAttempted = networkRetryAttempted;
+        err.elapsedMs = Date.now() - startedAt;
+        err.message = message + ' | form=' + formName + ' | submit_id=' + submitId + ' | attempts=' + attempts + ' | phase=' + phase + ' | network_retry=' + networkRetryAttempted + ' | elapsed_ms=' + err.elapsedMs;
         err.clientSubmitId = err.clientSubmitId || submitId;
         throw err;
       });
