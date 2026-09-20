@@ -1,3 +1,4 @@
+import { buildLiveSpeechInstructions, LIVE_COMPARISON_VOICE } from "../../../services/voice-runtime/live-protocol";
 import { createHash } from "node:crypto";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import type { VoiceCustomerContext, VoiceKnowledgeMatch } from "@/lib/ops/voice-knowledge";
@@ -58,7 +59,7 @@ const VALID_MODES = new Set<VoiceCopilotMode>(["internal_test", "lead_qualificat
 const VALID_SPEAKERS = new Set<VoiceCopilotSpeaker>(["customer", "operator"]);
 
 export const VOICE_COPILOT_MODEL = "gpt-live-1";
-export const VOICE_COPILOT_VOICE = "marin";
+export const VOICE_COPILOT_VOICE = LIVE_COMPARISON_VOICE;
 
 export const NEONTRIP_VOICE_KNOWLEDGE = {
   company:
@@ -537,9 +538,13 @@ export function buildVoiceCopilotRealtimeSession(context: VoiceCopilotContext) {
     model: VOICE_COPILOT_MODEL,
     store: false,
     audio: { output: { voice: VOICE_COPILOT_VOICE } },
-    instructions: buildVoiceCopilotInstructions(context),
+    instructions: buildLiveSpeechInstructions({
+      context: context.boundContext || undefined,
+      allowlistOnly: context.mode === "internal_test",
+    }, false),
     delegation: { type: "responses", responses: {
       model: process.env.VOICE_LIVE_DELEGATION_MODEL || "gpt-5.6-terra",
+      reasoning: { effort: "low" },
       instructions: buildVoiceCopilotInstructions(context),
       tools: [], tool_choice: "none", parallel_tool_calls: false, max_output_tokens: 700,
     } },

@@ -78,12 +78,13 @@ test("Live session uses independent delegated reasoning and no audio storage", (
   const config = liveSessionConfig(session);
   assert.equal(config.type, "live");
   assert.notEqual(config.instructions, "Bound rules");
-  assert.ok(config.instructions.length < 3400);
+  assert.ok(config.instructions.length < 4000);
   assert.match(config.instructions, /Delegation policy:/);
   assert.match(config.instructions, /Interruption policy:/);
   assert.equal(config.delegation.responses.instructions, "Bound rules");
   assert.equal(config.store, false);
   assert.equal(config.delegation.responses.model, "gpt-5.6-terra");
+  assert.deepEqual(config.delegation.responses.reasoning, { effort: "low" });
   assert.throws(() =>
     liveSessionConfig({
       ...(session as object),

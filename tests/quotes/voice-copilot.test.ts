@@ -204,11 +204,17 @@ test("transcription session is text-only and uses manual turn commits", () => {
   assert.equal("output" in session.audio, false);
 });
 
-test("voice copilot realtime session uses the direct realtime model", () => {
+test("browser speech uses the same bounded Live profile as phone calls", () => {
   const session = buildVoiceCopilotRealtimeSession({ mode: "internal_test" });
   assert.equal(session.model, VOICE_COPILOT_MODEL);
-  assert.equal(session.audio.output.voice, "marin");
-  assert.match(session.instructions, /Keine Preise/);
+  assert.equal(session.audio.output.voice, "gleam");
+  assert.deepEqual(session.delegation.responses.reasoning, { effort: "low" });
+  assert.notEqual(session.instructions, session.delegation.responses.instructions);
+  assert.match(session.instructions, /Do not delegate.*Smalltalk, Humor/);
+  assert.match(session.instructions, /keine externen Aktionen oder Weiterleitung/);
+  assert.match(session.delegation.responses.instructions, /Keine Preise/);
+  assert.doesNotMatch(session.instructions, /Wissensbasis:|Erlaubte Klaerungsfragen:/);
+  assert.equal(session.delegation.responses.tools.length, 0);
 });
 
 test("voice OpenAI configuration accepts the existing Ops aliases", () => {
