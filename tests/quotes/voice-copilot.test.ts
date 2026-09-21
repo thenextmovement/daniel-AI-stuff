@@ -210,8 +210,9 @@ test("browser speech uses the same bounded Live profile as phone calls", () => {
   assert.equal(session.audio.output.voice, "gleam");
   assert.deepEqual(session.delegation.responses.reasoning, { effort: "low" });
   assert.notEqual(session.instructions, session.delegation.responses.instructions);
-  assert.match(session.instructions, /Do not delegate.*Smalltalk, Humor/);
-  assert.match(session.instructions, /keine externen Aktionen oder Weiterleitung/);
+  assert.match(session.instructions, /Do not delegate.*gesperrte Anfrage/);
+  assert.match(session.instructions, /keine Witze/);
+  assert.match(session.instructions, /keine externen Aktionen oder Weiterleitung/i);
   assert.match(session.delegation.responses.instructions, /Keine Preise/);
   assert.doesNotMatch(session.instructions, /Wissensbasis:|Erlaubte Klaerungsfragen:/);
   assert.equal(session.delegation.responses.tools.length, 0);

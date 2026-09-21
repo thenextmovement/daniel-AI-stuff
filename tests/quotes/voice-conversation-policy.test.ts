@@ -99,3 +99,15 @@ test("outbound context excludes organization-only mail and quotes untrusted inst
   assert.match(instructions,/OWN_OFFER/);
   assert.match(instructions,/keine Witze/);assert.match(instructions,/ohne Nachschlagen, Werkzeug oder Delegation/);
 });
+
+
+test("initial knowledge search uses approved product topics without customer names or injected operators", async () => {
+ const { buildVoiceKnowledgeQuery }=await import("../../src/lib/ops/voice-knowledge");
+ const context=buildInternalVoiceSandboxContext({requestId:"internal-test:11111111-1111-4111-8111-111111111111",contactName:"Fixture",companyName:null});
+ context.request.title='LED-Neonschild 80x60 Musterkunde OR Umsatz';
+ context.request.application='Wandmontage';
+ const query=buildVoiceKnowledgeQuery(context,"follow_up");
+ assert.match(query,/"LED"/);assert.match(query,/"Montage"/);
+ assert.doesNotMatch(query,/Musterkunde|Umsatz|80x60|Follow-up|Einwand/);
+ assert.equal(buildVoiceKnowledgeQuery(null,"internal_test"),'"Produktgruppen"');
+});

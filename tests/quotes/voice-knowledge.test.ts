@@ -195,8 +195,8 @@ test("knowledge retrieval query contains only bounded case terms", () => {
     sourceStatus: { customerRecord: "ok", offer: "not_linked", outlook: "empty" },
   }, "lead_qualification");
 
-  assert.match(query, /Lead Qualifikation/);
-  assert.match(query, /Leuchtschrift fuer Empfang/);
+  assert.equal(query, '"Produktgruppen"');
+  assert.doesNotMatch(query, /Lead Qualifikation|Leuchtschrift fuer Empfang/);
   assert.doesNotMatch(query, /Nicht fuer Retrieval verwenden/);
   assert.ok(query.length <= 240);
 });

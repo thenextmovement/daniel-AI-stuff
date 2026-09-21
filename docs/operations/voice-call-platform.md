@@ -217,7 +217,9 @@ would add latency. See the official [Live server controls](https://developers.op
 
 Knowledge lives in the existing versioned voice knowledge tables. Retrieval requires
 approved status, an allowed call mode, a valid date interval and non-restricted risk.
-Email-only approval does not authorize phone use. Each technical rule needs its
+Email-only approval does not authorize phone use. Initial retrieval uses controlled
+product topics joined by OR; customer names, dimensions and campaign filler cannot
+exclude all articles or inject search operators. Each technical rule needs its
 applicable product/mounting condition, short answer, reason, exceptions/alternative,
 source and reviewer. Missing or conflicting knowledge goes to a human; a different
 voice/persona is not a permission boundary. A future technical specialist can reuse

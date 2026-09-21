@@ -828,15 +828,19 @@ export async function getVoiceCustomerContext(requestIdInput: unknown, options?:
   };
 }
 
-export function buildVoiceKnowledgeQuery(context: VoiceCustomerContext | null, mode: VoiceCopilotMode) {
-  return [
-    mode === "lead_qualification" ? "Lead Qualifikation Produkt Einsatz Montage" : null,
-    mode === "follow_up" ? "Angebot Follow-up Einwand naechster Schritt" : null,
-    context?.request.title,
-    context?.request.application,
-    context?.request.size,
-    context?.offer?.items.map((item) => item.title).join(" "),
-  ].filter(Boolean).join(" ").slice(0, 240) || "NEONTRIP Produkt Beratung";
+export function buildVoiceKnowledgeQuery(context: VoiceCustomerContext | null, _mode: VoiceCopilotMode) {
+  // Initial retrieval uses controlled product topics. Combining a customer's name,
+  // dimensions and campaign wording with AND previously excluded every article.
+  const text = [context?.request.title, context?.request.application,
+    ...(context?.offer?.items || []).map(item => item.title)].filter(Boolean).join(" ").toLowerCase();
+  const topics = new Set(["Produktgruppen"]);
+  if (/\bled\b|\bneon(?:schild|flex|design)/.test(text)) topics.add("LED");
+  if (/montage|aufhäng|aufhaeng|befestig/.test(text)) {
+    topics.add("Montage"); topics.add("Befestigung"); topics.add("Aufhängung");
+  }
+  if (/zuschnitt|acryl|rückseite|rueckseite/.test(text)) topics.add("Zuschnitt");
+  if (/lieferumfang|netzteil|dimmer/.test(text)) topics.add("Lieferumfang");
+  return [...topics].map(topic => `"${topic}"`).join(" OR ");
 }
 
 export async function createVoiceCallSession(input: {
