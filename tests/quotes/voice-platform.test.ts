@@ -13,6 +13,7 @@ import { OpsClient } from "../../services/voice-runtime/ops-client";
 import { TwilioSipAdapter } from "../../services/voice-runtime/telephony";
 import { assertActiveVoiceInquiry } from "../../src/lib/ops/voice-platform-data";
 import { getProviderReadiness } from "../../services/voice-runtime/config";
+import { buildLiveSpeechInstructions } from "../../services/voice-runtime/live-protocol";
 
 test("voice eval suite covers at least 50 unique German safety scenarios", () => {
   const result = validateVoiceEvalSuite();
@@ -52,8 +53,8 @@ test("internal sandbox context is explicit and cannot masquerade as a customer i
     context,
     knowledgeMatches: [],
   });
-  assert.match(instructions, /internen Testanruf freigegeben/);
-  assert.match(instructions, /Behaupte nicht, dass eine Kundenanfrage oder ein Angebot vorliegt/);
+  assert.match(instructions, /vereinbarten Test und seinem konkreten Anrufauftrag/);
+  assert.match(instructions, /Simulation, nie als echte Kundenanfrage oder echtes Angebot/);
   assert.doesNotMatch(instructions, /Sie hatten bei uns wegen \[Anfrage\] angefragt/);
 });
 
@@ -285,7 +286,11 @@ test("OpenAI ingress is replay-gated and receives a privacy-preserving safety id
   assert.match(data, /safetyIdentifier: voiceStableHash\(\{ requestId: call\.requestId \}\)/);
   assert.match(realtime, /customerRequestedStop/);
   assert.match(realtime, /humanHandoffCompleted:\s*false/);
-  assert.match(realtime, /interner Test mit Kundendaten als Simulation/);
+  assert.match(realtime, /content: LIVE_GREETING_INSTRUCTION/);
+  const testSpeech = buildLiveSpeechInstructions({ allowlistOnly: true });
+  assert.match(testSpeech, /Interner Test:.*Simulation/);
+  assert.match(testSpeech, /keine echten Folgeaktionen/);
+  assert.doesNotMatch(buildLiveSpeechInstructions({ allowlistOnly: false }), /Interner Test:/);
   assert.match(realtime, /session.closed/);
   assert.doesNotMatch(server, /catch\(\(\) => undefined\)/);
 });
