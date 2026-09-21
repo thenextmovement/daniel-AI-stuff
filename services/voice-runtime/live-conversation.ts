@@ -70,7 +70,7 @@ export class LiveConversation {
   }
 
   transcript(speaker: "customer" | "assistant", text: string, startMs: number, endMs: number, now: number): VoiceScopeBlock | null {
-    if (this.stopped || !text.trim()) return null;
+    if (this.stopped || !text.length) return null;
     this.lastActivity = Math.max(this.lastActivity, now);
     if (speaker === "assistant") {
       this.hasAssistantText = true;
@@ -89,7 +89,9 @@ export class LiveConversation {
     this.asked = false;
     this.lastSpeaker = speaker;
     this.holding = /\b(moment|augenblick|uberlege|überlege|nachdenken|warten|warte|hold on|one moment)\b/i.test(this.inputText);
-    const reason = voiceScopeBlock(this.inputText);
+    // Wait for a word delimiter: a fragment ending in Umsatz may continue
+    // with steuer. Preserve whitespace-only fragments as actual delimiters.
+    const reason = voiceScopeBlock(this.inputText.replace(/[\p{L}\p{N}_-]+$/u, ""));
     if (!reason || this.reason) return null;
     this.reason = reason;
     this.blockRevision++;

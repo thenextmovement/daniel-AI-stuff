@@ -111,3 +111,14 @@ test("initial knowledge search uses approved product topics without customer nam
  assert.doesNotMatch(query,/Musterkunde|Umsatz|80x60|Follow-up|Einwand/);
  assert.equal(buildVoiceKnowledgeQuery(null,"internal_test"),'"Produktgruppen"');
 });
+
+
+test("partial words and whitespace deltas do not confuse Umsatzsteuer with company revenue", () => {
+ const c=new LiveConversation();
+ assert.equal(c.transcript("customer","Ist Umsatz",0,300,0),null);
+ assert.equal(c.transcript("customer","steuer",300,600,20),null);
+ assert.equal(c.transcript("customer"," enthalten?",600,900,40),null);
+ c.transcript("assistant","Ja.",1000,1200,100);
+ assert.equal(c.transcript("customer","Wie hoch ist euer Umsatz",1300,1600,200),null);
+ assert.equal(c.transcript("customer"," ",1600,1700,220),"internal_information");
+});
