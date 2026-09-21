@@ -317,13 +317,13 @@ test("runtime recovery uses immutable attempt snapshots and admin audit actors a
 test("voice backend receives bound email, price, messages and availability without granting new commitments", () => {
   const context = buildInternalVoiceSandboxContext({ requestId: "internal-test:00000000-0000-4000-8000-000000000042", contactName: "Test", companyName: null });
   context.customer.email = "test@example.test";
-  context.outlook = [{ direction: "inbound", subject: "Montage", preview: "Bitte weiße Platte", occurredAt: null }];
+  context.outlook = [{ direction: "inbound", subject: "Montage", preview: "Bitte weiße Platte", occurredAt: null, scope: "contact" }];
   context.offer = { source: "offers", offerId: "offer1", offerNumber: "A1", label: "A1", status: "sent", viewedAt: null, acceptedAt: null, projectTitle: "Schild", items: [], price: { amount: 119, currency: "EUR", taxBasis: "gross", asOf: null } };
   const prompt = buildOutboundVoiceInstructions({ mode: "follow_up", instructionsTemplate: "Kläre Rückfragen", context, knowledgeMatches: [] });
   assert.match(prompt, /test@example.test/);
   assert.match(prompt, /119/);
   assert.match(prompt, /weiße Platte/);
-  assert.match(prompt, /Quellenstatus/);
+  assert.match(prompt, /"sourceStatus":/);
   assert.match(prompt, /netto\/brutto niemals raten/);
   assert.match(prompt, /Keine Bestellung/);
   assert.match(buildRealtimeVoiceTools().find(x => x.name === "get_offer_summary")!.description, /documented total/);

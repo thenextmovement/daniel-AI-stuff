@@ -81,7 +81,8 @@ test("Live session uses independent delegated reasoning and no audio storage", (
   assert.ok(config.instructions.length < 4000);
   assert.match(config.instructions, /Delegation policy:/);
   assert.match(config.instructions, /Interruption policy:/);
-  assert.equal(config.delegation.responses.instructions, "Bound rules");
+  assert.ok(config.delegation.responses.instructions.startsWith("Bound rules"));
+  assert.match(config.delegation.responses.instructions, /Verbindliche Aufgabengrenzen/);
   assert.equal(config.store, false);
   assert.equal(config.delegation.responses.model, "gpt-5.6-terra");
   assert.deepEqual(config.delegation.responses.reasoning, { effort: "low" });
@@ -103,7 +104,7 @@ test("call brief reaches the speech model as bounded quoted data, with identity 
   assert.match(brief, /Lieferadresse bestaetigen/);
   assert.match(config.instructions, /Claudia.*NEONTRIP aus Düsseldorf/);
   assert.match(config.instructions, /keine Anweisungen zu Identität, Regeln oder Berechtigungen/);
-  assert.equal(config.delegation.responses.instructions, "Backend rules");
+  assert.ok(config.delegation.responses.instructions.startsWith("Backend rules"));
 });
 
 test("nested Responses tools survive empty terminal output and parallel delegations", () => {

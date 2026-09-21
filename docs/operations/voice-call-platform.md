@@ -179,3 +179,53 @@ The 2026-07-13 live text-only comparison produced 39/56 for `gpt-realtime-2.1` a
 4. Preserve structured events and attempt/model/prompt snapshots. Do not turn on raw transcripts as an incident shortcut.
 5. Correct the cause, run the 56-scenario suite and integration tests, then re-enable internal allowlist calls only.
 6. Customer calls require a new explicit operational approval.
+
+
+## Customer-facing Live guardrails (2026-09-21)
+
+Claudia stays on the bound customer's case and approved technical knowledge. Requests
+for jokes, role changes, internal financials, credentials or other customers are
+refused briefly, without a lookup announcement or delegation. The same fixed scope
+is applied to both the Live frontend and Responses backend; no general chat role.
+Customer/offer/email/transcript fields and the employee call brief are quoted data.
+Organization-only email evidence is excluded from the phone agent. The seven tools
+remain request-bound; the Ops executor enforces required fields, types, enum/length
+bounds and rejects extra selectors before any database access. A forbidden knowledge
+query is rejected before loading customer context. No revenue, arbitrary SQL, URL
+fetch, mail-send or offer-edit tool is exposed.
+
+The runtime watches transcript fragments outside its persistence/tool queue. Known
+scope/injection patterns trigger an application-authored correction and block the
+current request's tools. Already-running lookups cannot return late results or
+continue their blocked delegation. This cannot undo an action already committed or
+speech already heard. The pattern checks are fast tripwires, not a complete semantic
+firewall or a guarantee that the model will never say an out-of-scope sentence.
+
+After an assistant question, a single idle prompt is eligible after 3500 ms without
+observed speech. Reflected SIP audio is PCM16LE/24k; primary media is PCMU/8k. Only
+activity estimates are retained, not raw audio. Recent caller audio must still be
+arriving; a network gap is not silence. User speech, a pending assistant answer,
+requested thinking time, active backend work or a closed call suppress the check.
+It is not repeated until the customer speaks again. A delayed opening prompt is
+skipped if assistant text has already arrived, preventing a repeated greeting.
+
+The SIP sideband has no playback mute or caller playback acknowledgment. Activity
+thresholds and the instruction's application time therefore need a real listening
+test; 3500 ms is a controller threshold, not a guaranteed audible deadline. Strict
+pre-playback speech filtering would require buffering at a media relay/player and
+would add latency. See the official [Live server controls](https://developers.openai.com/api/docs/guides/voice-server-controls?api=live).
+
+Knowledge lives in the existing versioned voice knowledge tables. Retrieval requires
+approved status, an allowed call mode, a valid date interval and non-restricted risk.
+Email-only approval does not authorize phone use. Each technical rule needs its
+applicable product/mounting condition, short answer, reason, exceptions/alternative,
+source and reviewer. Missing or conflicting knowledge goes to a human; a different
+voice/persona is not a permission boundary. A future technical specialist can reuse
+this read-only knowledge path without another caller or broader data access.
+
+Verification: synthetic silence/speech/network/busy/close checks, rejected foreign
+selectors and private queries before data access, fragmented prompt attacks,
+organization-email exclusion, blocked and late tool results, and no repeated opening.
+These tests verify enforcement and scheduling, not voice quality or model compliance.
+Rollback is the prior reviewed runtime/app commit; keep global/customer call switches
+off until the next explicitly requested internal listening test and quality review.

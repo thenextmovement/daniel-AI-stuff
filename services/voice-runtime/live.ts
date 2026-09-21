@@ -1,4 +1,6 @@
 import OpenAI from "openai";
+import { LiveConversation, LIVE_SILENCE_INSTRUCTION } from "./live-conversation.js";
+import { voiceScopeCorrection } from "./conversation-policy.js";
 import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
 import type { RuntimeConfig } from "./config.js";
@@ -50,6 +52,8 @@ type ActiveCall = {
   timer: ReturnType<typeof setInterval> | null;
   stopTimer: ReturnType<typeof setTimeout> | null;
   greetingTimer: ReturnType<typeof setTimeout> | null;
+  conversation: LiveConversation;
+  conversationTimer: ReturnType<typeof setInterval> | null;
   collector: LiveToolCollector;
   finalizing: boolean;
 };
@@ -293,6 +297,8 @@ export class OpenAiLiveAdapter {
       timer: null,
       stopTimer: null,
       greetingTimer: null,
+      conversation: new LiveConversation(),
+      conversationTimer: null,
       collector: new LiveToolCollector(),
       finalizing: false,
     };
@@ -304,6 +310,7 @@ export class OpenAiLiveAdapter {
       }, 12000);
       media.watchClose((clean) => {
         active.mediaEnded = true;
+        active.conversation.stop();
         if (!clean) {
           active.gap = true;
           active.outcome ||= technicalOutcome("media_disconnected", "Die Audioverbindung wurde unterbrochen.");
@@ -320,6 +327,13 @@ export class OpenAiLiveAdapter {
           session: { ...initial, audio: { ...initial.audio, format: { type: "audio/pcmu", rate: 8000 } } },
         });
       } else if (!disclosed) this.scheduleGreeting(active);
+      active.conversationTimer = setInterval(() => {
+        if (active.closed || active.mediaEnded || socket.readyState !== WebSocket.OPEN) return;
+        if (active.conversation.poll(Date.now())) {
+          this.send(active, { type: "session.instructions.append", delegation_id: null, content: LIVE_SILENCE_INSTRUCTION });
+          void this.ops.event(active.attemptId, "runtime", "conversation.silence_check", randomUUID(), { duration_ms: 3500 }).catch(() => {});
+        }
+      }, 100);
       active.timer = setInterval(
         () => void this.flush(active).catch(() => {}),
         1000,
@@ -329,6 +343,28 @@ export class OpenAiLiveAdapter {
       let event: Record<string, unknown>;
       try {
         event = JSON.parse(String(raw));
+        // Observe before the serialized persistence/tool queue, so a slow lookup
+        // cannot hide speech, a hangup or a guardrail from the live controller.
+        const segment = liveTranscript(event);
+        if (segment) {
+          const reason = active.conversation.transcript(segment.speaker, segment.text, segment.startMs, segment.endMs || segment.startMs, Date.now());
+          if (reason) {
+            this.send(active, { type: "session.instructions.append", delegation_id: null, content: voiceScopeCorrection(reason) });
+            void this.ops.event(active.attemptId, "runtime", "guardrail.blocked", randomUUID(), { reason }).catch(() => {});
+          }
+        }
+        if (event.type === "session.closed") active.conversation.stop();
+        if (event.type === "response.event" && typeof event.delegation_id === "string"
+          && (event.event as Record<string, unknown>)?.type === "response.created")
+          active.conversation.beginDelegation(event.delegation_id);
+        if (event.type === "session.input_audio.append" && !media) {
+          if (typeof event.audio === "string") active.conversation.audio("customer", event.audio, "pcm16", Date.now());
+          return; // Reflected audio is observed, never forwarded or persisted.
+        }
+        if (event.type === "session.output_audio.delta") {
+          if (typeof event.delta === "string") active.conversation.audio("assistant", event.delta, media ? "pcmu" : "pcm16", Date.now());
+          if (!media) return;
+        }
         if (media && event.type === "session.started") {
           if (active.started) throw new Error("duplicate_live_start");
           const started = event.session as Record<string, unknown>;
@@ -356,6 +392,7 @@ export class OpenAiLiveAdapter {
           media.activateInput((audio) => {
             if (!active.started || active.closed || socket.readyState !== WebSocket.OPEN) return;
             if (socket.bufferedAmount > 128000) throw new Error("live_input_backlog");
+            active.conversation.audio("customer", audio, "pcmu", Date.now());
             this.send(active, { type: "session.input_audio.append", audio });
           });
           this.scheduleGreeting(active);
@@ -391,6 +428,9 @@ export class OpenAiLiveAdapter {
       active.gap = true;
     });
     socket.on("close", () => {
+      active.conversation.stop();
+      if (active.conversationTimer) clearInterval(active.conversationTimer);
+      active.conversationTimer = null;
       if (active.greetingTimer) clearTimeout(active.greetingTimer);
       active.greetingTimer = null;
       const completion = active.chain.then(() => this.finish(active)).catch(() => {
@@ -407,7 +447,7 @@ export class OpenAiLiveAdapter {
     // Keep caller audio flowing during the opening pause.
     active.greetingTimer = setTimeout(() => {
       active.greetingTimer = null;
-      if (active.closed || active.mediaEnded || active.socket.readyState !== WebSocket.OPEN) return;
+      if (active.closed || active.mediaEnded || active.conversation.hasAssistantText || active.socket.readyState !== WebSocket.OPEN) return;
       this.send(active, {
         type: "session.instructions.append",
         delegation_id: null,
@@ -476,8 +516,22 @@ export class OpenAiLiveAdapter {
     }
     if (event.type === "error") throw new Error("live_protocol_error");
     const calls = active.collector.collect(event);
+    const delegationId = typeof event.delegation_id === "string" ? event.delegation_id : "";
+    const nestedType = (event.event as Record<string, unknown> | undefined)?.type;
+    if (event.type === "response.event" && ["response.failed", "response.incomplete", "response.cancelled"].includes(String(nestedType)))
+      active.conversation.finishDelegation(delegationId, false);
+    if (calls) active.conversation.finishDelegation(delegationId, calls.length > 0);
     if (calls?.length) {
+      const revision = active.conversation.revision;
+      if (!active.conversation.canUseResult(revision, delegationId)) {
+        active.conversation.finishDelegation(delegationId, false);
+        return; // Block tools and do not continue a blocked hosted response.
+      }
       for (const call of calls) {
+        if (!active.conversation.canUseResult(revision, delegationId)) {
+          active.conversation.finishDelegation(delegationId, false);
+          return;
+        }
         let result: Record<string, unknown>;
         if (!active.disclosed)
           result = { ok: false, error: "disclosure_required" };
@@ -489,6 +543,10 @@ export class OpenAiLiveAdapter {
               call.name,
               call.arguments,
             );
+            if (!active.conversation.canUseResult(revision, delegationId)) {
+              active.conversation.finishDelegation(delegationId, false);
+              return; // Discard late results; never feed them into Live.
+            }
             result = { ok: true, ...response.result };
             if (call.name === "record_qualification") {
               const x = response.result;
@@ -521,6 +579,10 @@ export class OpenAiLiveAdapter {
           } catch {
             result = { ok: false, error: "tool_failed" };
           }
+        if (!active.conversation.canUseResult(revision, delegationId)) {
+          active.conversation.finishDelegation(delegationId, false);
+          return;
+        }
         this.send(active, {
           type: "response.item.create",
           item: {
@@ -553,6 +615,9 @@ export class OpenAiLiveAdapter {
   private async finish(active: ActiveCall) {
     if (active.finalizing) return;
     active.finalizing = true;
+    active.conversation.stop();
+    if (active.conversationTimer) clearInterval(active.conversationTimer);
+    active.conversationTimer = null;
     if (!active.closed)
       await this.hangup(active.callId).catch(() =>
         console.error("voice disconnect hangup unconfirmed", active.attemptId),

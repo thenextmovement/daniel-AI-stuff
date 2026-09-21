@@ -18,7 +18,7 @@ async function waitFor(check:()=>boolean){
  for(let n=0;n<1000;n++){if(check())return;await tick();}
  assert(check(),"condition did not settle");
 }
-function fixture(options:{storage?:boolean,update?:Promise<void>,playback?:Promise<boolean>,storageWait?:Promise<void>,finishFailures?:number}={}){
+function fixture(options:{storage?:boolean,update?:Promise<void>,playback?:Promise<boolean>,storageWait?:Promise<void>,finishFailures?:number,toolWait?:Promise<void>}={}){
  const socket=new Socket(),saved:any[]=[],outcomes:any[]=[],audioOut:string[]=[],events:any[]=[],tools:any[]=[];
  let audioIn:((value:string)=>void)|undefined,closeHandler:((clean:boolean)=>void)|undefined,closed=false,connections=0;
  const media:LiveMediaTransport={
@@ -34,7 +34,7 @@ function fixture(options:{storage?:boolean,update?:Promise<void>,playback?:Promi
    updateAttempt:async()=>{await options.update;},
    finalize:async(...args:any[])=>{outcomes.push(args);},
    event:async(...args:any[])=>{events.push(args);return {ok:true,result:{duplicate:false}};},
-   tool:async(...args:any[])=>{tools.push(args);return {result:{email:"test@example.test"}};},
+   tool:async(...args:any[])=>{tools.push(args);await options.toolWait;return {result:{email:"test@example.test"}};},
   } as never,
   (url,options)=>{
    connections++;assert.equal(url,"wss://api.openai.com/v1/live/sessions");
@@ -189,4 +189,35 @@ test("hanging up during the opening pause cancels the greeting", async (t) => {
  await waitFor(()=>f.outcomes.length===1);
  t.mock.timers.tick(1000);
  assert.ok(!f.socket.sent.some(e=>e.type==="session.instructions.append"));
+});
+
+
+test("runtime blocks a lookup from a forbidden turn and discards a running lookup's late result", async () => {
+ let release!:()=>void;const f=fixture({toolWait:new Promise<void>(r=>{release=r;})});
+ await f.adapter.connectMedia(session,f.media);f.socket.open();
+ f.socket.receive({type:"session.started",session:{id:"live_guardrail",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
+ f.socket.receive({type:"session.output_transcript.delta",event_id:"disclosure_guard",delta:"Claudia, KI-Telefonassistentin von NEONTRIP.",start_ms:0,end_ms:700});
+ const tool=(id:string)=>{
+  const emit=(event:unknown)=>f.socket.receive({type:"response.event",delegation_id:id,event});
+  emit({type:"response.created",response:{id}});
+  emit({type:"response.output_item.done",item:{type:"function_call",call_id:id,name:"get_offer_summary",arguments:"{}"}});
+  emit({type:"response.completed",response:{id,output:[]}});
+ };
+ tool("running");await waitFor(()=>f.tools.length===1);
+ f.socket.receive({type:"session.input_transcript.delta",event_id:"blocked_revenue",delta:"Wie hoch ist euer Umsatz?",start_ms:1000,end_ms:1600});
+ assert.ok(f.socket.sent.some(e=>e.content?.includes("Zu internen oder fremden Daten")),"steering must not wait for the running tool");
+ tool("forbidden");release();await tick();await tick();
+ assert.equal(f.tools.length,1);
+ assert.ok(!f.socket.sent.some(e=>e.type==="response.item.create"||e.type==="response.create"),"no late data or continuation");
+ f.socket.receive({type:"session.closed",reason:"remote_hangup"});await waitFor(()=>f.outcomes.length===1);
+ assert.ok(f.events.some(e=>e[2]==="guardrail.blocked"));
+});
+
+test("a spontaneous opening is not restarted by the delayed greeting", async (t) => {
+ t.mock.timers.enable({apis:["setTimeout"]});const f=fixture();
+ await f.adapter.connectMedia(session,f.media);f.socket.open();
+ f.socket.receive({type:"session.started",session:{id:"live_once",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
+ f.socket.receive({type:"session.output_transcript.delta",event_id:"already_greeted",delta:"Hallo, hier ist Claudia",start_ms:800,end_ms:950});
+ t.mock.timers.tick(1000);assert.ok(!f.socket.sent.some(e=>e.content?.includes("Begrüße danach")));
+ f.socket.receive({type:"session.closed",reason:"remote_hangup"});await waitFor(()=>f.outcomes.length===1);
 });
