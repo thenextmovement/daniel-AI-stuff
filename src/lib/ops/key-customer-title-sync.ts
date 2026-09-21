@@ -9,7 +9,7 @@ import { buildKeyCustomerTrelloTitle } from "@/lib/ops/trello-card-title";
 
 export const KEY_CUSTOMER_MIN_PAID_ORDERS = 2;
 export const KEY_CUSTOMER_PAID_VALUE_THRESHOLD_EUR = 1200;
-export const KEY_CUSTOMER_RULE_VERSION = "key_customer_v1_20260827";
+export const KEY_CUSTOMER_RULE_VERSION = "key_customer_v2_20260921";
 
 type RequestLookupRow = {
   id: string;
@@ -36,6 +36,8 @@ export type KeyCustomerOrderRow = {
   cancelled_at?: string | null;
   shopify_created_at?: string | null;
   created_at?: string | null;
+  // Read from Shopify for partially refunded orders; never inferred from the original total.
+  net_payment_value?: number;
 };
 
 type DomainFacts = {
@@ -151,14 +153,17 @@ export function qualifyKeyCustomerOrders(
   let paidOrderValueEur = 0;
 
   for (const row of rows) {
-    if (cleanText(row.status)?.toLowerCase() !== "paid") continue;
+    const status = cleanText(row.status)?.toLowerCase();
+    if (status !== "paid" && status !== "partially_refunded") continue;
     if (cleanText(row.cancelled_at)) continue;
     if ((cleanText(row.currency) || "").toUpperCase() !== "EUR") continue;
     const createdMs = orderTimestamp(row);
     if (createdMs === null || createdMs >= requestMs) continue;
 
-    const value = numericValue(row.order_value);
-    if (value === null || value < 0) continue;
+    const value = status === "partially_refunded"
+      ? (typeof row.net_payment_value === "number" ? row.net_payment_value : null)
+      : numericValue(row.order_value);
+    if (value === null || !Number.isFinite(value) || value < 0 || (status === "partially_refunded" && value === 0)) continue;
     const identityKeys = orderIdentityKeys(row);
     const fallbackKey = `row:${row.id}`;
     if (identityKeys.some((key) => seen.has(key)) || (!identityKeys.length && seen.has(fallbackKey))) continue;
@@ -276,6 +281,81 @@ async function skippedResponse(
   };
 }
 
+async function readRetainedPayments(rows: KeyCustomerOrderRow[]) {
+  const partial = rows.filter((row) => row.status?.toLowerCase() === "partially_refunded");
+  if (!partial.length) return rows;
+
+  const domain = (process.env.SHOPIFY_SHOP_DOMAIN || process.env.SHOPIFY_STORE_DOMAIN || process.env.SHOPIFY_SHOP || "")
+    .replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const token = process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN || process.env.SHOPIFY_ADMIN_TOKEN
+    || process.env.SHOPIFY_ADMIN_API_TOKEN || process.env.SHOPIFY_ACCESS_TOKEN;
+  const version = process.env.SHOPIFY_ADMIN_API_VERSION || "2026-01";
+  if (!token || !/^[a-z0-9-]+\.myshopify\.com$/i.test(domain)) {
+    throw new QuoteValidationError("Shopify-Zahlungsnachweis fuer Teil-Erstattungen nicht konfiguriert.", [], 503);
+  }
+
+  const orderGid = (row: KeyCustomerOrderRow) => {
+    const id = cleanText(row.shopify_order_id) || "";
+    if (/^gid:\/\/shopify\/Order\/\d+$/.test(id)) return id;
+    if (/^\d+$/.test(id)) return `gid://shopify/Order/${id}`;
+    throw new QuoteValidationError("Shopify-Bestellreferenz fuer Teil-Erstattung fehlt.", [], 422);
+  };
+  const ids = [...new Set(partial.map(orderGid))];
+  type Payment = {
+    id: string;
+    displayFinancialStatus: string;
+    cancelledAt: string | null;
+    netPaymentSet: { shopMoney: { amount: string; currencyCode: string } };
+  };
+  const payments = new Map<string, Payment>();
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const batch = ids.slice(offset, offset + 100);
+    const response = await fetch(`https://${domain}/admin/api/${version}/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+      body: JSON.stringify({
+        query: `query KeyCustomerRetainedPayments($ids: [ID!]!) {
+          nodes(ids: $ids) { ... on Order {
+            id displayFinancialStatus cancelledAt
+            netPaymentSet { shopMoney { amount currencyCode } }
+          } }
+        }`,
+        variables: { ids: batch },
+      }),
+      signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
+    });
+    const body = await response.json().catch(() => null) as { data?: { nodes?: Array<Payment | null> }; errors?: unknown[] } | null;
+    if (!response.ok || body?.errors?.length || !Array.isArray(body?.data?.nodes)) {
+      throw new QuoteValidationError("Shopify-Zahlungsnachweis fuer Teil-Erstattungen nicht verfuegbar.", [], 503);
+    }
+    for (const payment of body.data.nodes) {
+      const amount = cleanText(payment?.netPaymentSet?.shopMoney?.amount);
+      if (!payment || !batch.includes(payment.id) || !amount || !Number.isFinite(Number(amount))
+        || Number(amount) < 0 || !payment.displayFinancialStatus || !payment.netPaymentSet?.shopMoney?.currencyCode) {
+        throw new QuoteValidationError("Shopify-Zahlungsnachweis fuer Teil-Erstattung unvollstaendig.", [], 503);
+      }
+      payments.set(payment.id, payment);
+    }
+    if (batch.some((id) => !payments.has(id))) {
+      throw new QuoteValidationError("Shopify-Zahlungsnachweis fuer Teil-Erstattung fehlt.", [], 503);
+    }
+  }
+  return rows.map((row) => {
+    if (row.status?.toLowerCase() !== "partially_refunded") return row;
+    const payment = payments.get(orderGid(row))!;
+    return {
+      ...row,
+      // Keep the net-value requirement even if the live status has returned to PAID.
+      status: ["PAID", "PARTIALLY_REFUNDED"].includes(payment.displayFinancialStatus)
+        ? "partially_refunded" : payment.displayFinancialStatus.toLowerCase(),
+      cancelled_at: row.cancelled_at || payment.cancelledAt,
+      currency: payment.netPaymentSet.shopMoney.currencyCode,
+      net_payment_value: Number(payment.netPaymentSet.shopMoney.amount),
+    };
+  });
+}
+
 export const defaultKeyCustomerTitleSyncDeps: KeyCustomerTitleSyncDeps = {
   async findRequest(requestId, trelloCardId) {
     const baseQuery = {
@@ -331,14 +411,14 @@ export const defaultKeyCustomerTitleSyncDeps: KeyCustomerTitleSyncDeps = {
       rows.push(...await supabaseRequest<KeyCustomerOrderRow[]>("master_orders", undefined, {
         select: "id,shopify_order_id,shopify_order_number,order_value,currency,status,cancelled_at,shopify_created_at,created_at",
         customer_id: `in.(${batch.join(",")})`,
-        status: "eq.paid",
+        status: "in.(paid,partially_refunded)",
         cancelled_at: "is.null",
         currency: "eq.EUR",
         order: "shopify_created_at.asc,created_at.asc",
         limit: 1000,
       }));
     }
-    return rows;
+    return readRetainedPayments(rows);
   },
   getCard: getTrelloCard,
   updateCard: updateTrelloCard,

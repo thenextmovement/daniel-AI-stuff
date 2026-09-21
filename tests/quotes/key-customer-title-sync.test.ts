@@ -3,6 +3,7 @@ import test from "node:test";
 import { NextRequest } from "next/server";
 import {
   qualifyKeyCustomerOrders,
+  defaultKeyCustomerTitleSyncDeps,
   syncKeyCustomerTrelloTitle,
   type KeyCustomerOrderRow,
   type KeyCustomerTitleSyncDeps,
@@ -122,11 +123,100 @@ test("requires a strict paid value above 1,200 EUR", () => {
   );
 });
 
+test("counts retained payments after partial refunds without counting the refunded amount", () => {
+  const rows = [
+    paidOrder("1001", 3511.69, { status: "partially_refunded", net_payment_value: 3406.34 }),
+    paidOrder("1002", 254.66, { status: "partially_refunded", net_payment_value: 247.02 }),
+  ];
+  assert.deepEqual(qualifyKeyCustomerOrders(rows, requestCreatedAt), {
+    paidOrderCount: 2, paidOrderValueEur: 3653.36, eligible: true,
+  });
+  assert.deepEqual(qualifyKeyCustomerOrders(rows.map((row) => ({ ...row, net_payment_value: 600 })), requestCreatedAt), {
+    paidOrderCount: 2, paidOrderValueEur: 1200, eligible: false,
+  });
+  for (const row of [
+    paidOrder("1001", 3511.69, { status: "partially_refunded" }),
+    paidOrder("1001", 3511.69, { status: "partially_refunded", net_payment_value: 0 }),
+    paidOrder("1001", 3511.69, { status: "refunded", net_payment_value: 3406.34 }),
+    paidOrder("1001", 3511.69, { status: "pending", net_payment_value: 3406.34 }),
+    paidOrder("1001", 3511.69, { status: "partially_refunded", net_payment_value: 3406.34, cancelled_at: requestCreatedAt }),
+  ]) {
+    assert.equal(qualifyKeyCustomerOrders([row], requestCreatedAt).paidOrderCount, 0);
+  }
+});
+
+test("reads partial-refund payment evidence and blocks title writes when it is unavailable", async () => {
+  const envKeys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "SHOPIFY_SHOP_DOMAIN", "SHOPIFY_ADMIN_API_ACCESS_TOKEN"] as const;
+  const before = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const originalFetch = globalThis.fetch;
+  Object.assign(process.env, {
+    SUPABASE_URL: "https://db.test", SUPABASE_SERVICE_ROLE_KEY: "test-only",
+    SHOPIFY_SHOP_DOMAIN: "neontrip-test.myshopify.com", SHOPIFY_ADMIN_API_ACCESS_TOKEN: "test-only",
+  });
+  let shopifyReads = 0;
+  let providerMode = "valid";
+  let sourceStatus = "partially_refunded";
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.hostname === "db.test") {
+      assert.equal(url.pathname, "/rest/v1/master_orders");
+      assert.equal(url.searchParams.get("status"), "in.(paid,partially_refunded)");
+      return Response.json([
+        paidOrder("1001", 3511.69, { status: sourceStatus }),
+        paidOrder("1002", 254.66, { status: sourceStatus }),
+      ]);
+    }
+    assert.equal(url.hostname, "neontrip-test.myshopify.com");
+    shopifyReads++;
+    const request = JSON.parse(String(init?.body));
+    assert.match(request.query, /query KeyCustomerRetainedPayments/);
+    assert.deepEqual(request.variables.ids, ["gid://shopify/Order/1001", "gid://shopify/Order/1002"]);
+    if (providerMode === "failed") return Response.json({ errors: [{ message: "unavailable" }] }, { status: 503 });
+    if (providerMode === "missing") return Response.json({ data: { nodes: [null] } });
+    return Response.json({ data: { nodes: request.variables.ids.map((id: string, index: number) => ({
+      id, displayFinancialStatus: providerMode === "refunded" ? "REFUNDED" : "PARTIALLY_REFUNDED",
+      cancelledAt: providerMode === "cancelled" ? "2026-08-20T12:00:00Z" : null,
+      netPaymentSet: { shopMoney: { amount: index ? "247.02" : "3406.34", currencyCode: "EUR" } },
+    })) } });
+  };
+  try {
+    const testDeps = deps({ listPaidOrders: defaultKeyCustomerTitleSyncDeps.listPaidOrders });
+    const result = await syncKeyCustomerTrelloTitle({ requestId: "NF-KEY-1" }, testDeps);
+    assert.equal(result.status, "updated");
+    assert.equal(result.qualification.paidOrderValueEur, 3653.36);
+    assert.equal(shopifyReads, 1);
+    for (const mode of ["failed", "missing"]) {
+      providerMode = mode;
+      const blocked = deps({ listPaidOrders: defaultKeyCustomerTitleSyncDeps.listPaidOrders });
+      await assert.rejects(syncKeyCustomerTrelloTitle({ requestId: "NF-KEY-1" }, blocked), /Shopify-Zahlungsnachweis/);
+      assert.deepEqual(blocked.updates, []);
+    }
+    for (const mode of ["refunded", "cancelled"]) {
+      providerMode = mode;
+      const blocked = deps({ listPaidOrders: defaultKeyCustomerTitleSyncDeps.listPaidOrders });
+      assert.equal((await syncKeyCustomerTrelloTitle({ requestId: "NF-KEY-1" }, blocked)).status, "skipped");
+      assert.deepEqual(blocked.updates, []);
+    }
+    sourceStatus = "paid";
+    const readsBefore = shopifyReads;
+    await defaultKeyCustomerTitleSyncDeps.listPaidOrders(["customer-1"]);
+    assert.equal(shopifyReads, readsBefore, "unchanged paid-only history needs no additional Shopify call");
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of envKeys) {
+      if (before[key] === undefined) delete process.env[key]; else process.env[key] = before[key];
+    }
+  }
+});
+
 test("preserves the complete Trello title and adds the canonical prefix once", () => {
   const title = "#NEONT5000 | Bestehender vollständiger Titel  mit  Abständen";
   assert.equal(buildKeyCustomerTrelloTitle(title), `KEY KUNDE | ${title}`);
   assert.equal(buildKeyCustomerTrelloTitle(`KEY KUNDE | ${title}`), `KEY KUNDE | ${title}`);
   assert.equal(buildKeyCustomerTrelloTitle(`key kunde|${title}`), `KEY KUNDE | ${title}`);
+  assert.equal(buildKeyCustomerTrelloTitle(`LED Neon Flex | KEY KUNDE | ${title}`), `KEY KUNDE | LED Neon Flex | ${title}`);
+  assert.equal(buildKeyCustomerTrelloTitle(`KEY KUNDE | LED Neon Flex | KEY KUNDE | ${title}`), `KEY KUNDE | LED Neon Flex | ${title}`);
+  assert.equal(buildKeyCustomerTrelloTitle(`⚠️ MOCKUP PRÜFEN · KEY KUNDE | ${title}`), `KEY KUNDE | ⚠️ MOCKUP PRÜFEN · ${title}`);
 });
 
 test("updates only the Trello card name for an eligible business domain", async () => {

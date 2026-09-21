@@ -7,27 +7,31 @@ export type KeyCustomerTitleParts = {
 
 export function splitKeyCustomerTrelloTitle(value: unknown): KeyCustomerTitleParts {
   const title = typeof value === "string" ? value : String(value ?? "");
-  const match = title.match(/^KEY\s+KUNDE(?:\s*\|\s*|\s*$)/i);
-  if (!match) {
-    return {
-      hasKeyCustomerPrefix: false,
-      titleWithoutKeyCustomerPrefix: title,
-    };
+  let remaining = title.replace(
+    /^((?:⚠️ MOCKUP PRÜFEN|🎨 DESIGN ABWEICHUNG) ·\s*)KEY\s+KUNDE\s*\|\s*/u,
+    "KEY KUNDE | $1",
+  );
+  let hasKeyCustomerPrefix = false;
+  // Other title writers can move the marker behind a product/order prefix.
+  // Remove only whole pipe-delimited markers; preserve every other title part.
+  const marker = /(^|\s*\|\s*)KEY\s+KUNDE(?=\s*(?:\||$))/i;
+  let match: RegExpMatchArray | null;
+  while ((match = remaining.match(marker))) {
+    hasKeyCustomerPrefix = true;
+    const index = match.index!;
+    remaining = remaining.slice(0, index) + remaining.slice(index + match[0].length);
+    if (index === 0) remaining = remaining.replace(/^\s*\|\s*/, "");
   }
 
   return {
-    hasKeyCustomerPrefix: true,
-    titleWithoutKeyCustomerPrefix: title.slice(match[0].length),
+    hasKeyCustomerPrefix,
+    titleWithoutKeyCustomerPrefix: remaining,
   };
 }
 
 export function buildKeyCustomerTrelloTitle(currentTitle: unknown) {
   const title = typeof currentTitle === "string" ? currentTitle : String(currentTitle ?? "");
   if (!title.trim()) return null;
-  if (title === KEY_CUSTOMER_TRELLO_PREFIX || title.startsWith(`${KEY_CUSTOMER_TRELLO_PREFIX} | `)) {
-    return title;
-  }
-
   const parts = splitKeyCustomerTrelloTitle(title);
   if (parts.hasKeyCustomerPrefix) {
     return parts.titleWithoutKeyCustomerPrefix

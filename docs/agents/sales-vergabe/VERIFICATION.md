@@ -1,5 +1,16 @@
 # Sales-Vergabe Verification
 
+## 2026-09-21: KEY KUNDE nach Teil-Erstattungen
+
+- Ausgangsbasis und laufender Ops-Container: `82f04aa56398ba666ed415f13814eaaa66c4a495`, frisch gelesen. Request-Segmenter `ELpwCfdWOCRZ22gy`, aktive Version `a36ef95d-e30c-4783-9435-35c4d8f46287`, besitzt bereits den bestehenden Titel-Sync; dieser Workflow wurde nicht umgebaut.
+- Belegter Fehler: Der Audit-Sync vom 21.09.2026 um 07:30:49 UTC meldete für eine wiederkehrende Firmendomain null Käufe. Beide älteren Shopify-Bestellungen hatten jeweils eine Teil-Erstattung von rund 3 Prozent. Shopify bestätigt verbliebene Zahlungen von 3.406,34 EUR und 247,02 EUR, zusammen 3.653,36 EUR. Der alte reine `paid`-Filter verwarf beide vollständig.
+- Korrektur: Bestehende Auswahl um `partially_refunded` ergänzen, für diese Orders den verbleibenden Zahlbetrag per begrenzter Shopify-Abfrage lesen; keine neuen Tabellen, Credentials, Warteschlangen oder Schwellenwerte. Normale `paid`-Historie benötigt keinen zusätzlichen Provider-Aufruf. Fehler oder fehlende Zahlungsevidenz führen zu keiner Titeländerung.
+- Ziel/Nachbar/Wirkung: Teil-Erstattung erhält belegte Kaufhistorie; Freemail, Storno, vollständige Erstattung, unbezahlte/zu neue Orders und 1.200-EUR-Grenze bleiben gesperrt. Einzige Geschäftsänderung ist der Trello-Name. Keine Mail, Bestellung oder Zahlung ausgelöst.
+- Titel-Helper verschiebt vorhandene vollständige `KEY KUNDE`-Segmente nach vorne und entfernt nur doppelte Marker. Produkt-, Order- und Warntext bleiben erhalten. Separate n8n-Titelkorrekturen wurden anhand der aktiven Graphen gesichert, isoliert geprüft und mit vollständigem Readback veröffentlicht; Trigger, Verbindungen, Credential-Referenzen und Fachentscheidungen unverändert.
+- Lokale Prüfungen: 103 fokussierte Tests inklusive Supplier-Nachbarfällen, vollständige Quote-Suite 1.258/1.258, TypeScript und Produktionsbuild erfolgreich. 101 isolierte n8n-Titel-/Graphprüfungen bestanden, ohne Netz oder Workflow-Ausführung. Kein UI-Verhalten geändert; instabiler allgemeiner UI-Smoke ist für diese Titel-/Historienänderung kein zusätzlicher Nachweis.
+- Provider-Voraussetzung: Dieselbe begrenzte GraphQL-Leseabfrage wurde zusätzlich aus dem laufenden Ops-Container mit dessen vorhandener Shopify-Konfiguration ausgeführt. HTTP 200, beide historischen Orders als `PARTIALLY_REFUNDED`, nicht storniert, verbliebene Zahlungen 3.406,34 EUR und 247,02 EUR bestätigt. Keine Credentials ausgegeben oder verändert.
+- Veröffentlichung des Ops-Codes: offen bis zur Freigabe des exakten sauberen Commits. Keine Aussage über einen natürlichen neuen End-to-End-Kundenlauf mit Teil-Erstattungen. Die konkret beauftragten heutigen Karten wurden ausschließlich am Namen korrigiert und separat zurückgelesen; das ersetzt nicht den späteren Betriebsnachweis der automatischen Qualifikation.
+
 ## NEONTRIP Quote-ready: gemischte Produktquellen, 2026-09-09
 
 - `[lokal verifiziert; nicht veröffentlicht]` Aufgabenworktree `neontrip-ops-mixed-design-size-ladder-20260909-135648`, Basis `fbf50b73ce92cd03284c42d244c9504e50713905`; derselbe Commit wurde lesend am laufenden Ops-App-Container bestätigt.
