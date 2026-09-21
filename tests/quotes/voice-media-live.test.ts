@@ -135,9 +135,16 @@ test("provider model/codec confirmation is mandatory and preserved as a bounded 
  f.socket.receive({type:"session.closed",reason:"close_requested"});await waitFor(()=>f.outcomes.length===1);
 });
 
-test("Live speaks disclosure itself; delegated reads then return actual bound values", async () => {
+test("Live speaks disclosure itself; delegated reads then return actual bound values", async (t) => {
+ t.mock.timers.enable({ apis: ["setTimeout"] });
  const f=fixture();await f.adapter.connectMedia(session,f.media);f.socket.open();
  f.socket.receive({type:"session.started",session:{id:"live_tools",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
+ assert.ok(!f.socket.sent.some(e=>e.type==="session.instructions.append"));
+ t.mock.timers.tick(999);
+ assert.ok(!f.socket.sent.some(e=>e.type==="session.instructions.append"));
+ const greetingAudio=Buffer.alloc(160,0xff).toString("base64");f.input(greetingAudio);
+ assert.equal(f.socket.sent.at(-1)?.type,"session.input_audio.append");
+ t.mock.timers.tick(1);
  assert.match(f.socket.sent.find(e=>e.type==="session.instructions.append")!.content,/KI-Telefonassistent/);
  const tool=(id:string)=>{
   const emit=(event:unknown)=>f.socket.receive({type:"response.event",delegation_id:id,event});
@@ -171,4 +178,15 @@ test("aggregate timing audit is written only after the media connection closes",
   ["media.timing.input_startup_buffer",{duration_ms:2800}],
   ["media.timing.output_schedule_gap_peak",{duration_ms:250}],
  ]);
+});
+
+
+test("hanging up during the opening pause cancels the greeting", async (t) => {
+ t.mock.timers.enable({apis:["setTimeout"]});
+ const f=fixture();await f.adapter.connectMedia(session,f.media);f.socket.open();
+ f.socket.receive({type:"session.started",session:{id:"live_early_close",model:"gpt-live-1",audio:{format:{type:"audio/pcmu",rate:8000},output:{voice:"marin"}}}});
+ f.socket.receive({type:"session.closed",reason:"remote_hangup"});
+ await waitFor(()=>f.outcomes.length===1);
+ t.mock.timers.tick(1000);
+ assert.ok(!f.socket.sent.some(e=>e.type==="session.instructions.append"));
 });

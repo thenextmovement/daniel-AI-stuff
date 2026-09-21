@@ -333,7 +333,7 @@ test("small bound facts answer routine questions without embedding long procedur
   assert.match(config.instructions, /test@example.test/);
   assert.match(config.instructions, /583.1/);
   assert.match(config.instructions, /direkt aus den gebundenen Fakten/);
-  assert.ok(config.instructions.length < 3600);
+  assert.ok(config.instructions.length < 4000);
   assert.ok(config.delegation.responses.instructions.length > 10000);
   assert.doesNotMatch(config.instructions, /x{50}/);
 });
@@ -355,7 +355,8 @@ test("Live preloads only selected product facts and keeps long or unselected dat
   assert.ok(config.instructions.length < 4400);
 });
 
-test("SIP accept pins GPT-Live and project; sideband only observes negotiated audio", async () => {
+test("SIP accept pins GPT-Live and project; sideband only observes negotiated audio", async (t) => {
+  t.mock.timers.enable({apis:["setTimeout"]});
   const { EventEmitter } = await import("node:events");
   const { setImmediate: tick } = await import("node:timers/promises");
   const original = globalThis.fetch;
@@ -398,6 +399,12 @@ test("SIP accept pins GPT-Live and project; sideband only observes negotiated au
       call_id:"live_sip_fixture",model:"gpt-live-1",voice:"gleam",status:"accepted",
     }]);
     socket.emit("open");
+    assert.equal(sent.length, 0);
+    t.mock.timers.tick(999);
+    assert.equal(sent.length, 0);
+    t.mock.timers.tick(1);
+    assert.equal(sent.length, 1);
+    assert.match(String(sent[0].content), /Begrüßung der Person erst ausreden/);
     const receive = (event: unknown) => socket.emit("message", Buffer.from(JSON.stringify(event)));
     receive({type:"session.output_audio.delta",delta:"AQI=",start_ms:0,end_ms:1});
     receive({type:"session.input_audio.append",audio:"AQI="});

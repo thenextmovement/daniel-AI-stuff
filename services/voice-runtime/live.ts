@@ -49,6 +49,7 @@ type ActiveCall = {
   flush: Promise<void> | null;
   timer: ReturnType<typeof setInterval> | null;
   stopTimer: ReturnType<typeof setTimeout> | null;
+  greetingTimer: ReturnType<typeof setTimeout> | null;
   collector: LiveToolCollector;
   finalizing: boolean;
 };
@@ -291,6 +292,7 @@ export class OpenAiLiveAdapter {
       flush: null,
       timer: null,
       stopTimer: null,
+      greetingTimer: null,
       collector: new LiveToolCollector(),
       finalizing: false,
     };
@@ -317,12 +319,7 @@ export class OpenAiLiveAdapter {
           type: "session.start",
           session: { ...initial, audio: { ...initial.audio, format: { type: "audio/pcmu", rate: 8000 } } },
         });
-      } else if (!disclosed)
-        this.send(active, {
-          type: "session.instructions.append",
-          delegation_id: null,
-          content: LIVE_GREETING_INSTRUCTION,
-        });
+      } else if (!disclosed) this.scheduleGreeting(active);
       active.timer = setInterval(
         () => void this.flush(active).catch(() => {}),
         1000,
@@ -361,11 +358,7 @@ export class OpenAiLiveAdapter {
             if (socket.bufferedAmount > 128000) throw new Error("live_input_backlog");
             this.send(active, { type: "session.input_audio.append", audio });
           });
-          this.send(active, {
-            type: "session.instructions.append",
-            delegation_id: null,
-            content: LIVE_GREETING_INSTRUCTION,
-          });
+          this.scheduleGreeting(active);
           return;
         }
         // Audio must never wait for database writes or delegated tool work.
@@ -398,6 +391,8 @@ export class OpenAiLiveAdapter {
       active.gap = true;
     });
     socket.on("close", () => {
+      if (active.greetingTimer) clearTimeout(active.greetingTimer);
+      active.greetingTimer = null;
       const completion = active.chain.then(() => this.finish(active)).catch(() => {
         active.gap = true;
         console.error("voice disconnect finalization failed", active.attemptId);
@@ -407,6 +402,18 @@ export class OpenAiLiveAdapter {
         void completion.finally(() => this.mediaFinalizations.delete(completion));
       }
     });
+  }
+  private scheduleGreeting(active: ActiveCall) {
+    // Keep caller audio flowing during the opening pause.
+    active.greetingTimer = setTimeout(() => {
+      active.greetingTimer = null;
+      if (active.closed || active.mediaEnded || active.socket.readyState !== WebSocket.OPEN) return;
+      this.send(active, {
+        type: "session.instructions.append",
+        delegation_id: null,
+        content: LIVE_GREETING_INSTRUCTION,
+      });
+    }, 1000);
   }
   private flush(active: ActiveCall): Promise<void> {
     if (active.flush) return active.flush;
@@ -457,6 +464,8 @@ export class OpenAiLiveAdapter {
     }
     if (event.type === "session.closed") {
       active.closed = true;
+      if (active.greetingTimer) clearTimeout(active.greetingTimer);
+      active.greetingTimer = null;
       if (active.stopTimer) clearTimeout(active.stopTimer);
       active.stopTimer = null;
       if (!["close_requested", "remote_hangup"].includes(String(event.reason)))
@@ -548,6 +557,8 @@ export class OpenAiLiveAdapter {
       await this.hangup(active.callId).catch(() =>
         console.error("voice disconnect hangup unconfirmed", active.attemptId),
       );
+    if (active.greetingTimer) clearTimeout(active.greetingTimer);
+    active.greetingTimer = null;
     if (active.timer) clearInterval(active.timer);
     if (active.stopTimer) clearTimeout(active.stopTimer);
     this.calls.delete(active.callId);
