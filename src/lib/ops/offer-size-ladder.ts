@@ -14,6 +14,8 @@ import { QuoteValidationError } from "@/lib/quotes/validation";
 import {
   getOfferById,
   getOfferByTrelloCardId,
+  getOfferSourceDimensions,
+  type OfferSourceDimensions,
   OpsOfferApiError,
   patchOfferById,
   patchOfferByTrelloCardId,
@@ -82,6 +84,7 @@ export type OfferSizeLadderAnchorInput = {
 };
 
 export type OfferSizeLadderGenerateInput = {
+  sourcePdf?: { attachmentId: string; sha256: string };
   trelloCardId: string;
   trelloCardUrl?: string | null;
   offerId?: string | null;
@@ -137,6 +140,7 @@ export type OfferSizeLadderOption = {
 };
 
 export type OfferSizeLadderResult = {
+  sourcePdf?: { attachmentId: string; sha256: string };
   setKey: string;
   trelloCardId: string;
   trelloCardUrl: string | null;
@@ -1080,8 +1084,9 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function roundDimension(value: number) {
-  return Math.round(value * 10) / 10;
+function roundDimension(value: number, decimals = 1) {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
 }
 
 function roundConfidence(value: number) {
@@ -1130,8 +1135,8 @@ function stringArrayFromRow(value: unknown) {
 }
 
 function defaultSizeLabel(widthCm: number, heightCm: number) {
-  const width = Number.isInteger(widthCm) ? String(widthCm) : widthCm.toFixed(1);
-  const height = Number.isInteger(heightCm) ? String(heightCm) : heightCm.toFixed(1);
+  const width = String(round2(widthCm));
+  const height = String(round2(heightCm));
   return `${width} x ${height}cm`;
 }
 
@@ -1950,6 +1955,35 @@ export function formatQuoteReadySizeLadderPreflightComment(result: QuoteReadySiz
   return lines.filter((line): line is string => line !== null).join("\n");
 }
 
+export function bindSourceDimensionsToAnchors(
+  groups: OfferSizeLadderIndexedAnchorInput[][],
+  source: OfferSourceDimensions,
+) {
+  const owners = new Map<number, number>();
+  return groups.map((group, designIndex) => group.map(anchor => {
+    const current = parseSizeText(source.sizeFields[`size_${anchor.fieldIndex}`] || source.sizeFields[`size${anchor.fieldIndex}`]);
+    if (!current || current.widthCm !== anchor.widthCm || current.heightCm !== anchor.heightCm) {
+      throw new QuoteValidationError("Size-Feld hat sich während der PDF-Prüfung geändert.", ["pdf_size_source_changed"], 409);
+    }
+    const matches = source.drawings.flatMap((drawing, index) => {
+      const direct = Math.max(Math.abs(anchor.widthCm - drawing.drawingWidthCm), Math.abs(anchor.heightCm - drawing.drawingHeightCm));
+      const swapped = Math.max(Math.abs(anchor.heightCm - drawing.drawingWidthCm), Math.abs(anchor.widthCm - drawing.drawingHeightCm));
+      return Math.min(direct, swapped) <= 1 + 1e-9 ? [{ drawing, index }] : [];
+    });
+    if (matches.length !== 1) {
+      throw new QuoteValidationError("PDF-Zeichnung nicht eindeutig innerhalb von 1 cm zugeordnet.", ["pdf_size_assignment_ambiguous"], 422);
+    }
+    const { drawing, index } = matches[0]!;
+    if (owners.has(index) && owners.get(index) !== designIndex) {
+      throw new QuoteValidationError("Dieselbe PDF-Zeichnung passt zu mehreren Designs.", ["pdf_size_assignment_ambiguous"], 422);
+    }
+    owners.set(index, designIndex);
+    // Width is always horizontal in the drawing. Keep the supplier price with
+    // its original field/design and retain precision before growing the ladder.
+    return { ...anchor, widthCm: drawing.drawingWidthCm, heightCm: drawing.drawingHeightCm };
+  }));
+}
+
 export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   card: TrelloCardData,
   input: Omit<QuoteReadySizeLadderPreflightInput, "trelloCard"> & { trelloCard?: string | null } = {},
@@ -2104,9 +2138,33 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
   }
 
   const designs: QuoteReadySizeLadderPreflightDesign[] = [];
-  const anchorGroups = expectedDesignCount && indexedInputs.length >= expectedDesignCount
+  let anchorGroups = expectedDesignCount && indexedInputs.length >= expectedDesignCount
     ? distributeAnchorGroups(indexedInputs, expectedDesignCount)
     : [];
+
+  let sourcePdf: OfferSizeLadderGenerateInput["sourcePdf"];
+  const pdfs = (card.attachments || []).filter(a => /\.pdf$/i.test(a.name || ""));
+  if (card.idBoard === "63d10c34105771f01ccf4296" && structure.productType === "neon"
+    && !productStructures && anchorGroups.length && pdfs.length) {
+    // Reuse Offers' authenticated, read-only PDF parser. The usual preflight
+    // and customer send path remain unchanged. Unsupported PDFs retain review.
+    let source: OfferSourceDimensions | undefined;
+    try { source = await getOfferSourceDimensions(canonicalTrelloCardId); }
+    catch(error) {
+      if(error instanceof OpsOfferApiError && error.code === "SOURCE_DIMENSIONS_REVIEW_REQUIRED") {
+        warnings.push("pdf_dimensions_require_review");
+      } else throw error;
+    }
+    if (source) {
+      const sorted = [...pdfs].sort((a, b) => Date.parse(b.date || "") - Date.parse(a.date || ""));
+      if (source.sourceAttachmentId !== sorted[0]?.id || (sorted.length > 1
+        && (sorted.some(a => !Number.isFinite(Date.parse(a.date || ""))) || Date.parse(sorted[0]!.date!) === Date.parse(sorted[1]!.date!)))) {
+        throw new QuoteValidationError("Aktuelle PDF hat sich während der Maßprüfung geändert.", ["pdf_size_source_changed"], 409);
+      }
+      anchorGroups = bindSourceDimensionsToAnchors(anchorGroups as OfferSizeLadderIndexedAnchorInput[][], source);
+      sourcePdf = { attachmentId: source.sourceAttachmentId, sha256: source.sourceSHA256 };
+    }
+  }
 
   for (let index = 0; index < anchorGroups.length; index += 1) {
     const group = anchorGroups[index] || [];
@@ -2145,6 +2203,7 @@ export async function buildQuoteReadySizeLadderPreflightFromTrelloCard(
       || productModelForQuoteReadyStructure(designStructure, productSourceText);
     const designId = `design_${index + 1}`;
     const sizeLadder = await generateOfferSizeLadder({
+      sourcePdf,
       trelloCardId: canonicalTrelloCardId,
       trelloCardUrl: input.trelloCard && String(input.trelloCard).includes("trello.com/c/") ? String(input.trelloCard) : null,
       offerId: input.offerId,
@@ -2478,9 +2537,9 @@ export function detectOfferSizeLadderProductModel(text: string): OfferSizeLadder
   return "unknown";
 }
 
-function normalizeAnchor(input: OfferSizeLadderAnchorInput): OfferSizeLadderAnchor {
-  const widthCm = roundDimension(requiredPositiveNumber(`${input.role} Breite`, input.widthCm));
-  const heightCm = roundDimension(requiredPositiveNumber(`${input.role} Hoehe`, input.heightCm));
+function normalizeAnchor(input: OfferSizeLadderAnchorInput, decimals = 1): OfferSizeLadderAnchor {
+  const widthCm = roundDimension(requiredPositiveNumber(`${input.role} Breite`, input.widthCm), decimals);
+  const heightCm = roundDimension(requiredPositiveNumber(`${input.role} Hoehe`, input.heightCm), decimals);
   const productionPrice = round2(nonNegativeNumber(`${input.role} Production`, input.productionPrice));
   const shippingPrice = round2(nonNegativeNumber(`${input.role} Shipping`, input.shippingPrice));
   if (productionPrice + shippingPrice <= 0) {
@@ -2490,7 +2549,7 @@ function normalizeAnchor(input: OfferSizeLadderAnchorInput): OfferSizeLadderAnch
     role: input.role,
     widthCm,
     heightCm,
-    longSideCm: roundDimension(Math.max(widthCm, heightCm)),
+    longSideCm: roundDimension(Math.max(widthCm, heightCm), decimals),
     areaCm2: round2(widthCm * heightCm),
     productionPrice,
     shippingPrice,
@@ -2502,8 +2561,8 @@ function normalizeAnchor(input: OfferSizeLadderAnchorInput): OfferSizeLadderAnch
   };
 }
 
-function normalizeAnchorList(inputs: OfferSizeLadderAnchorInput[]) {
-  const normalized = inputs.map(normalizeAnchor).sort((left, right) => {
+function normalizeAnchorList(inputs: OfferSizeLadderAnchorInput[], decimals = 1) {
+  const normalized = inputs.map(input => normalizeAnchor(input, decimals)).sort((left, right) => {
     if (Math.abs(left.longSideCm - right.longSideCm) > 0.001) return left.longSideCm - right.longSideCm;
     return left.areaCm2 - right.areaCm2;
   });
@@ -2637,8 +2696,8 @@ function addAnchorConsistencyIssue(params: {
   }
 }
 
-function ladderLongSides(minLongSide: number, maxLongSide: number, stepCm: number, anchorLongSides: number[]) {
-  const values = new Set<number>(anchorLongSides.map(roundDimension));
+function ladderLongSides(minLongSide: number, maxLongSide: number, stepCm: number, anchorLongSides: number[], decimals = 1) {
+  const values = new Set<number>(anchorLongSides.map(value => roundDimension(value, decimals)));
   const firstStep = Math.ceil(minLongSide / stepCm) * stepCm;
   for (let value = firstStep; value <= maxLongSide + 0.001; value += stepCm) {
     if (value >= minLongSide - 0.001) values.add(roundDimension(value));
@@ -2646,11 +2705,11 @@ function ladderLongSides(minLongSide: number, maxLongSide: number, stepCm: numbe
   return Array.from(values).sort((a, b) => a - b);
 }
 
-function optionDimensionsForLongSide(anchor: OfferSizeLadderAnchor, longSideCm: number) {
+function optionDimensionsForLongSide(anchor: OfferSizeLadderAnchor, longSideCm: number, decimals = 1) {
   const scale = longSideCm / anchor.longSideCm;
   return {
-    widthCm: roundDimension(anchor.widthCm * scale),
-    heightCm: roundDimension(anchor.heightCm * scale),
+    widthCm: roundDimension(anchor.widthCm * scale, decimals),
+    heightCm: roundDimension(anchor.heightCm * scale, decimals),
   };
 }
 
@@ -2715,6 +2774,7 @@ async function persistOfferSizeLadder(input: OfferSizeLadderGenerateInput, resul
       option_count: result.options.length,
       supplier_anchor_count: result.anchorList.length,
       supplier_anchor_roles: result.anchorList.map((anchor) => anchor.role),
+      ...(result.sourcePdf ? { source_pdf: result.sourcePdf } : {}),
     },
     created_by: trimNullable(input.createdBy),
     updated_at: new Date().toISOString(),
@@ -2889,7 +2949,8 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   if (!trelloCardId) throw new QuoteValidationError("Trello Card ID fehlt.");
 
   const isConfiguredUltraThin = input.pricingProfile === ULTRA_THIN_ACRYLIC_LIGHTBOX_STANDARD_PROFILE;
-  const allAnchors = normalizeAnchorList(input.anchors);
+  const decimals = input.sourcePdf && !isConfiguredUltraThin ? 2 : 1;
+  const allAnchors = normalizeAnchorList(input.anchors, decimals);
   const anchors = anchorsByRole(allAnchors);
   const sortedByArea = [...allAnchors].sort((a, b) => a.areaCm2 - b.areaCm2);
   const sourceText = [input.sourceText, ...allAnchors.map((anchor) => anchor.rawText)].filter(Boolean).join("\n");
@@ -2945,7 +3006,7 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
     return roundConfidence(score);
   })();
   const largestSupplierAnchorLongSide = anchors.max_250.longSideCm;
-  const longSides = ladderLongSides(anchors.minimum.longSideCm, maxLongSideCm, stepCm, allAnchors.map((anchor) => anchor.longSideCm));
+  const longSides = ladderLongSides(anchors.minimum.longSideCm, maxLongSideCm, stepCm, allAnchors.map((anchor) => anchor.longSideCm), decimals);
   let options = longSides.map<OfferSizeLadderOption>((longSideCm, index) => {
     // Nearby entered sizes must not replace an exact configured price (149.9/150).
     const exactTolerance = isConfiguredUltraThin ? 0.001 : 0.5;
@@ -2953,9 +3014,9 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
     const configuredTier = isConfiguredUltraThin
       ? ULTRA_THIN_ACRYLIC_LIGHTBOX_PRICE_TIERS.find((tier) => Math.abs(tier.longSideCm - longSideCm) < 0.001) || null
       : null;
-    const dimensions = exactAnchor || optionDimensionsForLongSide(anchors.minimum, longSideCm);
-    const widthCm = roundDimension(dimensions.widthCm);
-    const heightCm = roundDimension(dimensions.heightCm);
+    const dimensions = exactAnchor || optionDimensionsForLongSide(anchors.minimum, longSideCm, decimals);
+    const widthCm = roundDimension(dimensions.widthCm, decimals);
+    const heightCm = roundDimension(dimensions.heightCm, decimals);
     const areaCm2 = round2(widthCm * heightCm);
     const production = exactAnchor?.productionPrice ?? interpolatePrice(areaCm2, sortedByArea, "productionPrice");
     const shipping = exactAnchor?.shippingPrice ?? interpolatePrice(areaCm2, sortedByArea, "shippingPrice");
@@ -2994,6 +3055,7 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
       sortOrder: index,
       metadata: {
         exact_anchor_role: exactAnchor?.role || null,
+        ...(input.sourcePdf ? { source_pdf: input.sourcePdf } : {}),
         supplier_anchor_count: allAnchors.length,
         single_anchor_estimate: allAnchors.length === 1 && !exactAnchor && !isConfiguredUltraThin,
         extrapolated_beyond_largest_anchor: longSideCm > largestSupplierAnchorLongSide + 0.5,
@@ -3026,6 +3088,7 @@ export async function generateOfferSizeLadder(input: OfferSizeLadderGenerateInpu
   const setStatus: OfferSizeLadderSetStatus = issues.length ? "blocked" : warnings.length ? "needs_review" : "draft";
 
   const result: OfferSizeLadderResult = {
+    ...(input.sourcePdf ? { sourcePdf: input.sourcePdf } : {}),
     setKey: stableSetKey({ trelloCardId, offerId: input.offerId, offerItemId: input.offerItemId, anchors: allAnchors }),
     trelloCardId,
     trelloCardUrl: trimNullable(input.trelloCardUrl),

@@ -10,6 +10,7 @@ import {
   assertTrelloCustomFieldTextFits,
   buildOfferSizeLadderOfferPatch,
   buildQuoteReadySizeLadderPreflightFromTrelloCard,
+  bindSourceDimensionsToAnchors,
   classifyManualReleaseSizeLadderPreflight,
   ensureManualReleaseSizeLadder,
   extractOfferSizeLadderAnchorsFromTrelloFields,
@@ -3772,4 +3773,80 @@ test("price review prepares a Trello draft when the size ladder offer does not e
   assert.match(source, /generateSizeLadderFromTrello\(true, \{ missingOfferFallback: true \}\)/);
   assert.match(source, /Noch kein Angebot gefunden\. Draft gespeichert/);
   assert.match(source, /Wenn das Angebot noch nicht existiert/);
+});
+
+
+test("PDF orientation and decimal dimensions feed the existing ladder before projection", async () => {
+  const oldFetch=globalThis.fetch;
+  const oldBase=process.env.NEONTRIP_OFFERS_BASE_URL,oldKey=process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+  process.env.NEONTRIP_OFFERS_BASE_URL="https://offers.test";
+  process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY="test-only";
+  const nativeWidth=40.225599881944454,nativeHeight=59.99640161111112;
+  const sourceSHA256="a".repeat(64);
+  const source={status:"checked",cardId:"cardPortrait",sourceAttachmentId:"pdf-new",sourceSHA256,
+    sizeFields:{size_1:"60x40cm"},drawings:[{drawingWidthCm:nativeWidth,drawingHeightCm:nativeHeight,aspectRatio:nativeHeight/nativeWidth,sourceSHA256}]};
+  let reads=0;
+  globalThis.fetch=async (url,init)=>{
+    assert.equal(String(url),"https://offers.test/api/internal/trello-offer/preflight");
+    assert.deepEqual(JSON.parse(String(init?.body)),{cardIdOrUrl:"cardPortrait",purpose:"source_dimensions"});
+    reads++;return Response.json({sourceDimensions:source});
+  };
+  try {
+    const card:TrelloCardData={id:"cardPortrait",idBoard:"63d10c34105771f01ccf4296",name:"LED NEON FLEX Portrait",
+      customFields:{Size_1:"60x40cm",Price_1:"200",Color_1:"Kaltweiß",Backboard_1:"Formzuschnitt"},
+      attachments:[{id:"source",name:"Mockup5486.jpg"},{id:"ai",name:"Mockup5486_ai_1.jpg"},
+        {id:"pdf-old",name:"KEY KUNDE.pdf",date:"2026-09-19T00:00:00Z"},
+        {id:"pdf-new",name:"KEY KUNDE2.pdf",date:"2026-09-20T00:00:00Z"}]};
+    const before=structuredClone(card);
+    const result=await buildQuoteReadySizeLadderPreflightFromTrelloCard(card,{persist:false,projectToTrello:false,commentToTrello:false});
+    assert.equal(reads,1);assert.deepEqual(card,before,"No custom fields or source data written by read-only preparation");
+    const ladder=result.designs[0]!.sizeLadder;
+    assert.equal(ladder.anchorList[0]!.supplierTotal,200,"Supplier anchor price unchanged");
+    assert.equal(ladder.anchorList[0]!.widthCm,40.23);assert.equal(ladder.anchorList[0]!.heightCm,60);
+    assert.equal(ladder.options.length,20);
+    assert.deepEqual(ladder.sourcePdf,{attachmentId:"pdf-new",sha256:sourceSHA256});
+    assert.ok(result.offerItemsJson?.includes("40.23 x 60cm"));
+    for(const option of ladder.options) {
+      const physicalHeight=option.widthCm*nativeHeight/nativeWidth;
+      assert.ok(Math.abs(physicalHeight-option.heightCm)<0.1,"Every option agrees with the unmodified PDF geometry");
+      assert.ok(Math.abs((option.heightCm/option.widthCm)/(nativeHeight/nativeWidth)-1)<.005,"Existing AR ratio check accepts every size");
+      assert.ok(option.widthCm<option.heightCm);
+    }
+    source.sizeFields.size_1="61x40cm";
+    await assert.rejects(buildQuoteReadySizeLadderPreflightFromTrelloCard(card,{persist:false,projectToTrello:false,commentToTrello:false}),/während der PDF-Prüfung geändert/);
+    source.sizeFields.size_1="60x40cm";source.sourceAttachmentId="pdf-old";
+    await assert.rejects(buildQuoteReadySizeLadderPreflightFromTrelloCard(card,{persist:false,projectToTrello:false,commentToTrello:false}),/Aktuelle PDF/);
+  } finally {
+    globalThis.fetch=oldFetch;
+    if(oldBase===undefined)delete process.env.NEONTRIP_OFFERS_BASE_URL;else process.env.NEONTRIP_OFFERS_BASE_URL=oldBase;
+    if(oldKey===undefined)delete process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;else process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY=oldKey;
+  }
+});
+
+test("PDF anchors match by dimensions, not drawing order; ambiguous design ownership is refused", () => {
+  const sourceSHA256="b".repeat(64);
+  const drawing=(w:number,h:number)=>({sourceSHA256,drawingWidthCm:w,drawingHeightCm:h,aspectRatio:h/w});
+  const source={status:"checked" as const,cardId:"multi",sourceAttachmentId:"pdf",sourceSHA256,
+    sizeFields:{size_1:"50x33cm",size_2:"190x9cm"},
+    drawings:[drawing(190,9.25),drawing(150,99.24),drawing(50,33.77)]};
+  const anchor=(fieldIndex:number,widthCm:number,heightCm:number)=>({role:"minimum" as const,fieldIndex,widthCm,heightCm,productionPrice:100,shippingPrice:20});
+  const groups=[[anchor(1,50,33)],[anchor(2,190,9)]];
+  const result=bindSourceDimensionsToAnchors(groups,source);
+  assert.deepEqual(result.map(g=>[g[0]!.widthCm,g[0]!.heightCm]),[[50,33.77],[190,9.25]]);
+  assert.deepEqual(groups[0]![0],anchor(1,50,33));
+  assert.throws(()=>bindSourceDimensionsToAnchors(groups,{...source,drawings:[...source.drawings,drawing(50,33.5)]}),/nicht eindeutig/);
+  assert.throws(()=>bindSourceDimensionsToAnchors([[anchor(1,50,33)],[anchor(2,50,33)]],{...source,sizeFields:{size_1:"50x33cm",size_2:"50x33cm"}}),/mehreren Designs/);
+  assert.throws(()=>bindSourceDimensionsToAnchors(groups,{...source,drawings:[drawing(50,34.01),drawing(190,9.25)]}),/nicht eindeutig/);
+  assert.doesNotThrow(()=>bindSourceDimensionsToAnchors(groups,{...source,drawings:[drawing(50,34),drawing(190,9.25)]}));
+});
+
+test("PDF base precision prevents source rounding from growing into centimetres at 250 cm", async () => {
+  const sourceSHA256="c".repeat(64),nativeHeight=20.947348;
+  const source={status:"checked" as const,cardId:"rounding",sourceAttachmentId:"pdf",sourceSHA256,
+    sizeFields:{size_1:"50x20cm"},drawings:[{sourceSHA256,drawingWidthCm:50,drawingHeightCm:nativeHeight,aspectRatio:nativeHeight/50}]};
+  const [anchors]=bindSourceDimensionsToAnchors([[{role:"minimum",fieldIndex:1,widthCm:50,heightCm:20,productionPrice:100,shippingPrice:20}]],source);
+  const ladder=await generateOfferSizeLadder({trelloCardId:"rounding",anchors:anchors!,productModel:"neonflex",persist:false,sourcePdf:{attachmentId:"pdf",sha256:sourceSHA256}});
+  assert.equal(ladder.options.at(-1)?.widthCm,250);
+  assert.equal(ladder.options.at(-1)?.heightCm,104.75);
+  for(const option of ladder.options)assert.ok(Math.abs(option.heightCm-option.widthCm*nativeHeight/50)<0.02);
 });

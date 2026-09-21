@@ -206,6 +206,7 @@ async function parseOfferResponse(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
     ok?: boolean;
     offer?: OpsOfferSnapshot;
+    sourceDimensions?: OfferSourceDimensions;
     error?: unknown;
     message?: unknown;
     code?: unknown;
@@ -254,6 +255,34 @@ export async function getOfferByTrelloCardId(trelloCardId: string) {
   });
   if (!payload.offer) throw new OpsOfferApiError("Angebot nicht gefunden.", 404, "offer_not_found");
   return payload.offer;
+}
+
+export type OfferSourceDimensions = {
+  status: "checked";
+  cardId: string;
+  sourceAttachmentId: string;
+  sourceSHA256: string;
+  sizeFields: Record<string, string>;
+  drawings: Array<{ sourceSHA256: string; drawingWidthCm: number; drawingHeightCm: number; aspectRatio: number }>;
+};
+
+export async function getOfferSourceDimensions(trelloCardId: string): Promise<OfferSourceDimensions> {
+  const payload = await offerFetch("/api/internal/trello-offer/preflight", {
+    method: "POST",
+    body: JSON.stringify({ cardIdOrUrl: trelloCardId, purpose: "source_dimensions" }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const source = payload.sourceDimensions as OfferSourceDimensions | undefined;
+  if (!source || source.status !== "checked" || source.cardId !== trelloCardId
+    || typeof source.sourceAttachmentId !== "string" || !/^[a-f0-9]{64}$/.test(source.sourceSHA256)
+    || !source.sizeFields || Array.isArray(source.sizeFields) || typeof source.sizeFields !== "object"
+    || !Array.isArray(source.drawings) || !source.drawings.length || source.drawings.length > 20
+    || source.drawings.some(d => d.sourceSHA256 !== source.sourceSHA256
+      || ![d.drawingWidthCm, d.drawingHeightCm, d.aspectRatio].every(n => Number.isFinite(n) && n > 0)
+      || Math.abs(d.drawingHeightCm / d.drawingWidthCm - d.aspectRatio) > 1e-8)) {
+    throw new OpsOfferApiError("PDF-Maßprüfung liefert keine gültigen Quelldaten.", 502, "source_dimensions_invalid");
+  }
+  return source;
 }
 
 export async function getOfferById(offerId: string) {
