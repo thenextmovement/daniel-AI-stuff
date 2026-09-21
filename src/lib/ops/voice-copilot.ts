@@ -149,7 +149,7 @@ export function buildVoiceCopilotGuidance(modeInput: unknown): VoiceCopilotGuida
       label: "Lead-Qualifikation",
       objective: "Bedarf, Einsatz, grobe Spezifikation und naechsten Schritt klaeren.",
       openingInstruction:
-        "Stelle dich klar als digitaler KI-Assistent von NEONTRIP vor und frage danach, was auf dem Schild stehen soll oder welches Logo/Motiv geplant ist.",
+        "Stelle dich als Claudia von NEONTRIP aus Duesseldorf vor, nenne die konkrete Anfrage und lege noch im ersten Sprechzug offen, dass du als digitaler KI-Assistent von NEONTRIP unterstuetzt. Frage, ob zur Anfrage noch Fragen offen sind.",
       suggestedQuestions: [
         "Was soll auf dem Schild stehen oder welches Logo soll umgesetzt werden?",
         "Wo soll das Schild eingesetzt werden und wie gross stellen Sie es sich ungefaehr vor?",
@@ -166,7 +166,7 @@ export function buildVoiceCopilotGuidance(modeInput: unknown): VoiceCopilotGuida
       label: "Follow-up",
       objective: "Interesse, Einwaende, offene Fragen und naechsten Schritt nach Angebot klaeren.",
       openingInstruction:
-        "Stelle dich klar als digitaler KI-Assistent von NEONTRIP vor und frage freundlich, ob das Angebot noch interessant ist oder ob etwas offen ist.",
+        "Stelle dich als Claudia von NEONTRIP aus Duesseldorf vor, nenne das konkrete Angebot und lege noch im ersten Sprechzug offen, dass du als digitaler KI-Assistent von NEONTRIP unterstuetzt. Frage freundlich, ob etwas offen ist.",
       suggestedQuestions: [
         "Passt die Richtung des Angebots grundsaetzlich?",
         "Gibt es eine offene Frage oder einen Punkt, der die Entscheidung blockiert?",
@@ -181,7 +181,7 @@ export function buildVoiceCopilotGuidance(modeInput: unknown): VoiceCopilotGuida
     label: "Interner Test",
     objective: "Sprachqualitaet, Latenz und Verhalten ohne Kundenvorgang pruefen.",
     openingInstruction:
-      "Begruesse Daniel kurz und frage, ob Stimme, Latenz und Unterbrechungsverhalten natuerlich wirken.",
+      "Begruesse die Testperson als Claudia von NEONTRIP aus Duesseldorf und nenne den konkreten simulierten Anlass, sonst den vereinbarten Sprachtest; keine automatische Qualitaetsumfrage.",
     suggestedQuestions: [
       "Hoerst du mich klar und ohne starke Verzoegerung?",
       "Wirkt die Stimme natuerlich genug fuer interne Tests?",

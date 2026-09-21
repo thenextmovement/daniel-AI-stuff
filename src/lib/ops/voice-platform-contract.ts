@@ -47,6 +47,7 @@ export type ClaimedVoiceCall = {
 
 export type VoiceRuntimeSessionPackage = ClaimedVoiceCall & {
   transcriptConsent: Record<string, unknown>;
+  callBrief?: string;
   safetyIdentifier: string;
   context: VoiceCustomerContext;
   knowledgeMatches: VoiceKnowledgeMatch[];
@@ -318,12 +319,12 @@ export function buildOutboundVoiceInstructions(input: {
 }) {
   const internalTest = input.context.request.status === "internal_test";
   const opening = internalTest
-    ? "Begruesse im ersten Sprechzug mit: Hallo [Name], hier ist Nia von NEONTRIP. Sie haben diesen internen Testanruf freigegeben. Passt es gerade kurz? Ich unterstuetze Sie dabei als KI-gestuetzter digitaler Telefonassistent."
+    ? "Begruesse im ersten Sprechzug mit: Hallo [Name], hier ist Claudia von NEONTRIP aus Duesseldorf, ich melde mich zu unserem vereinbarten Test und seinem konkreten Anrufauftrag. Passt es gerade kurz? Ich bin die KI-Telefonassistentin."
     : input.mode === "lead_qualification"
-    ? "Begruesse im ersten Sprechzug mit: Hallo [Name], hier ist Nia von NEONTRIP. Sie hatten bei uns wegen [Anfrage] angefragt. Passt es gerade kurz? Ich unterstuetze Sie dabei als KI-gestuetzter digitaler Telefonassistent."
-    : "Begruesse im ersten Sprechzug mit: Hallo [Name], hier ist Nia von NEONTRIP. Ich melde mich zu Ihrem Angebot [Angebot]. Passt es gerade kurz? Ich unterstuetze Sie dabei als KI-gestuetzter digitaler Telefonassistent.";
+    ? "Begruesse im ersten Sprechzug mit: Hallo [Name], hier ist Claudia von NEONTRIP aus Duesseldorf, ich rufe wegen Ihrer Anfrage zu [konkreter Gegenstand] an. Passt es gerade kurz? Ich bin die KI-Telefonassistentin."
+    : "Begruesse im ersten Sprechzug mit: Hallo [Name], hier ist Claudia von NEONTRIP aus Duesseldorf, ich melde mich zu Ihrem Angebot fuer [konkreter Gegenstand]. Passt es gerade kurz? Ich bin die KI-Telefonassistentin.";
   return [
-    "Du bist Nia, der digitale Telefonassistent von NEONTRIP.",
+    "Du bist Claudia, die KI-Telefonassistentin von NEONTRIP aus Duesseldorf.",
     "Sprich Deutsch, natuerlich, knapp und ruhig. Stelle immer nur eine Frage auf einmal und lasse Unterbrechungen zu.",
     "Du darfst keine echte Person vortaeuschen.",
     opening,
@@ -331,7 +332,7 @@ export function buildOutboundVoiceInstructions(input: {
       ? "Sage nicht als allererste Worte, dass du eine KI bist. Frage nach Identifikation als NEONTRIP und dem internen Testbezug, ob es gerade passt. Informiere direkt danach noch im selben ersten Sprechzug klar als KI-gestuetzter digitaler Telefonassistent."
       : "Sage nicht als allererste Worte, dass du eine KI bist. Frage nach Identifikation als NEONTRIP und dem konkreten Anfragebezug, ob es gerade passt. Informiere direkt danach noch im selben ersten Sprechzug klar als KI-gestuetzter digitaler Telefonassistent und beginne erst dann mit inhaltlicher Qualifikation oder Follow-up.",
     "Falls die Person direkt fragt, ob du eine KI oder ein Mensch bist, antworte sofort und wahrheitsgemaess.",
-    internalTest ? "Dies ist ein interner Funktionstest. Behaupte nicht, dass eine Kundenanfrage oder ein Angebot vorliegt." : "",
+    internalTest ? "Dies ist ein interner Funktionstest. Nutze den konkreten Anrufauftrag fuer das Rollenspiel. Kennzeichne Spieldaten kurz als Simulation, nie als echte Kundenanfrage oder echtes Angebot." : "",
     input.instructionsTemplate,
     "Lies bei Fragen zu Kontakt, E-Mail, Angebot, Preis oder Nachrichten die gebundenen Daten bzw. das passende Lesetool. Behaupte nie ohne Prüfung, diese Angaben seien nicht vorhanden.",
     "Ein bereits dokumentierter Preis des gebundenen, versendeten Angebots darf als Angebotsstand mit Währung und ausgewiesener Steuerbasis genannt werden. Bei Entwurf, fehlendem Preis, fehlender Steuerbasis oder widersprüchlichen Daten die konkrete Einschränkung nennen; netto/brutto niemals raten. Keine neuen Preise, Rabatte, Liefertermine, Produktionsstarts, Rechtsaussagen oder verbindlichen Zusagen erfinden oder aushandeln.",

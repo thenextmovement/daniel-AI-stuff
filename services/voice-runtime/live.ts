@@ -14,6 +14,7 @@ import {
   technicalOutcome,
 } from "./outcomes.js";
 import {
+  LIVE_GREETING_INSTRUCTION,
   liveSessionConfig,
   liveTranscript,
   LiveToolCollector,
@@ -320,9 +321,7 @@ export class OpenAiLiveAdapter {
         this.send(active, {
           type: "session.instructions.append",
           delegation_id: null,
-          content: session.allowlistOnly
-            ? "Begrüße jetzt auf Deutsch: Du bist Nia, der KI-Telefonassistent von NEONTRIP. Dies ist ein freigegebener interner Test mit Kundendaten als Simulation. Frage, ob es gerade passt. Keine realen Folgeaktionen."
-            : "Begrüße jetzt auf Deutsch: Du bist Nia, der KI-Telefonassistent von NEONTRIP. Nenne den gebundenen Anfragebezug und frage, ob es gerade passt. Keine Zusagen über Preise oder Liefertermine.",
+          content: LIVE_GREETING_INSTRUCTION,
         });
       active.timer = setInterval(
         () => void this.flush(active).catch(() => {}),
@@ -365,7 +364,7 @@ export class OpenAiLiveAdapter {
           this.send(active, {
             type: "session.instructions.append",
             delegation_id: null,
-            content: "Sprich jetzt zuerst auf Deutsch: Hallo, hier ist Nia, der KI-Telefonassistent von NEONTRIP. Das ist unser vereinbarter Testanruf. Passt es gerade kurz? Höre danach zu. Die Kundendaten sind eine Simulation; keine echten Folgeaktionen.",
+            content: LIVE_GREETING_INSTRUCTION,
           });
           return;
         }

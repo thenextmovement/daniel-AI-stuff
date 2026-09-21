@@ -209,6 +209,7 @@ export async function prepareVoiceRuntimeSession(call: ClaimedVoiceCall): Promis
   return {
     ...call,
     transcriptConsent,
+    callBrief: voiceCleanText(snapshot.call_brief, 1200),
     safetyIdentifier: voiceStableHash({ requestId: call.requestId }),
     context,
     knowledgeMatches,

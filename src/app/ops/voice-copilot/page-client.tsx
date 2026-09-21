@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Mic, Square } from "lucide-react";
+import { LIVE_GREETING_INSTRUCTION } from "../../../../services/voice-runtime/live-protocol";
 import type { VoiceCopilotMode, VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import { OpsLoginCard } from "../ops-login-card";
@@ -32,7 +33,7 @@ const modeOptions: Array<{
     mode: "internal_test",
     label: "Interner Test",
     objective: "Stimme, Latenz und Unterbrechungsverhalten pruefen.",
-    firstInstruction: "Begruesse die Testperson kurz und frage, ob Stimme, Latenz und Unterbrechungsverhalten natuerlich wirken.",
+    firstInstruction: "Wenn ein gebundener Kundenkontext vorliegt, simuliere dessen konkreten Anlass; sonst nenne den vereinbarten Sprachtest. Frage nicht direkt nach einer Qualitaetsbewertung.",
     suggestions: [
       "Antworten kuerzer machen, wenn der Kunde schnell spricht.",
       "Nachfragen, ob die Stimme natuerlich genug wirkt.",
@@ -44,7 +45,7 @@ const modeOptions: Array<{
     label: "Lead-Qualifikation",
     objective: "Bedarf, Einsatz, grobe Spezifikation und naechsten Schritt klaeren.",
     firstInstruction:
-      "Begruesse als Nia von NEONTRIP mit Bezug zur Anfrage, nenne im ersten Sprechzug natuerlich, dass du als digitaler Telefonassistent unterstuetzt, und frage dann, ob es gerade passt.",
+      "Nenne die konkrete gebundene Anfrage als Anlass; frage anschliessend, ob dazu noch Fragen offen sind.",
     suggestions: [
       "Klaere Text, Logo oder Motiv.",
       "Klaere Einsatzort, grobe Groesse und Innen/Aussen.",
@@ -56,7 +57,7 @@ const modeOptions: Array<{
     label: "Follow-up",
     objective: "Interesse, Einwaende und naechsten Schritt nach Angebot klaeren.",
     firstInstruction:
-      "Begruesse als Nia von NEONTRIP mit Bezug zum Angebot, nenne im ersten Sprechzug natuerlich, dass du als digitaler Telefonassistent unterstuetzt, und frage dann, ob es gerade passt.",
+      "Nenne das konkrete gebundene Angebot als Anlass; frage anschliessend, ob dazu noch Fragen offen sind.",
     suggestions: [
       "Frage, ob die Angebotsrichtung grundsaetzlich passt.",
       "Klaere den konkreten Blocker: Preis, Design, Timing oder interne Freigabe.",
@@ -258,7 +259,7 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled, liveCopilotE
             setStatus("live");
             dataChannel.send(JSON.stringify({
               type: "session.instructions.append", event_id: crypto.randomUUID(), delegation_id: null,
-              content: selectedMode.firstInstruction + " Begrüße jetzt auf Deutsch, ohne auf die erste Äußerung zu warten. Danach zuhören.",
+              content: LIVE_GREETING_INSTRUCTION + " " + selectedMode.firstInstruction,
             }));
           }
           if (payload.type === "session.closed") { closedRef.current = ["close_requested", "remote_hangup"].includes(String(payload.reason)); dataChannelRef.current = null; void stopSession(); }

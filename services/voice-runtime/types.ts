@@ -16,6 +16,7 @@ export type RuntimeSession = {
   voice: string;
   sessionConfig: Record<string, unknown>;
   instructions: string;
+  callBrief?: string;
   context?: {
     customer: { displayName: string | null; company: string | null; email?: string | null };
     request?: { title: string | null; size: string | null; application: string | null; colors: string[] };
