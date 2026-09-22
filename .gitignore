@@ -6,6 +6,12 @@
 # Screenshots (for documentation, not needed in repo)
 *.png
 
+# NEONTRIP landing page images referenced by the published HTML
+!/deploy/assets/logo_weiss_neontrip.png
+!/deploy/assets/images/fabienne-trapp.png
+!/deploy/assets/images/fabienne-trapp-small.png
+!/deploy/assets/images/team/fabienne-trapp.png
+
 # Temporary files
 *.tmp
 *.log
