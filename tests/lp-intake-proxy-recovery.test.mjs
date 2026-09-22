@@ -3,6 +3,67 @@ import test from 'node:test';
 
 import { onRequestPost } from '../functions/api/c.js';
 
+test('honeypot notice requires a correlated persistence receipt', async (t) => {
+  for (const outcome of ['missing-id', 'accepted', 'unconfirmed']) {
+    await t.test(outcome, async () => {
+      const originalFetch = globalThis.fetch;
+      const notices = [];
+      let upstreamCalls = 0;
+      let release;
+      globalThis.fetch = (url, options) => {
+        if (typeof options.body === 'string') {
+          notices.push(JSON.parse(options.body));
+          return Promise.resolve(new Response('{}'));
+        }
+        upstreamCalls += 1;
+        assert.equal(options.body.get('website'), null);
+        assert.equal(options.body.get('request_id'), clientSubmitId);
+        return new Promise(resolve => { release = resolve; });
+      };
+      try {
+        const formData = new FormData();
+        formData.set('name', 'Internal Test');
+        formData.set('email', 'internal@neontrip-test.de');
+        formData.set('website', 'autofilled.example');
+        if (outcome !== 'missing-id') formData.set('request_id', clientSubmitId);
+        const pending = onRequestPost(context(new Request('https://anfrage.neontrip.de/api/c', {
+          method: 'POST', body: formData,
+        })));
+        if (outcome === 'missing-id') {
+          assert.equal((await pending).status, 400);
+          assert.equal(upstreamCalls, 0);
+          assert.deepEqual(notices, []);
+          return;
+        }
+        while (!release) await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(notices, [], 'must not claim forwarding before persistence');
+        release(new Response(JSON.stringify({
+          ok: true, accepted: true, persisted: outcome === 'accepted',
+          contact_saved: true, request_id: clientSubmitId,
+          request_row_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          customer_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        }), { status: 200 }));
+        const response = await pending;
+        assert.equal(upstreamCalls, 1);
+        if (outcome === 'accepted') {
+          assert.equal(response.status, 200);
+          assert.equal(notices.length, 1);
+          assert.equal(notices[0].error, 'honeypot_prefilled_forwarded');
+          assert.equal(notices[0].client_submit_id, clientSubmitId);
+          assert.equal(notices[0].persisted, true);
+        } else {
+          assert.equal(response.status, 502);
+          assert.equal(notices.length, 1);
+          assert.equal(notices[0].error, 'persistence_unconfirmed');
+        }
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  }
+});
+
+
 const clientSubmitId = '44444444-4444-4444-8444-444444444444';
 
 function context(request) {

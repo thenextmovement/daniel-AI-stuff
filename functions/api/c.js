@@ -406,15 +406,6 @@ async function handlePost(request, ctx) {
   formData.set("email", businessEmail.normalized);
   applyB2bQualificationProjection(formData);
 
-  if (honeypot) {
-    console.warn(`[c ${requestId}] honeypot prefilled with contact fields; forwarding`);
-    reportFailure(ctx, origin, {
-      request_id: requestId,
-      error: "honeypot_prefilled_forwarded",
-      cf_country: cf.country,
-      referer: request.headers.get("Referer"),
-    });
-  }
   // Remove the honeypot field from the forwarded payload so n8n never
   // sees it — keeps the data clean even for legitimate submissions.
   formData.delete("website");
@@ -559,6 +550,20 @@ async function handlePost(request, ctx) {
     receipt.request_id === clientSubmitId &&
     Boolean(receipt.request_row_id) &&
     Boolean(receipt.customer_id);
+
+  // Only describe an autofilled honeypot as forwarded once the matching
+  // database receipt exists. Invalid submissions must not emit this notice.
+  if (honeypot && persisted) {
+    reportFailure(ctx, origin, {
+      request_id: requestId,
+      client_submit_id: clientSubmitId,
+      error: "honeypot_prefilled_forwarded",
+      persisted: true,
+      request_row_id: receipt.request_row_id,
+      cf_country: cf.country,
+      referer: request.headers.get("Referer"),
+    });
+  }
 
   // A contact-only recovery follows a definitive multipart parse failure.
   // It additionally waits for the Trello projection so the existing recovery
