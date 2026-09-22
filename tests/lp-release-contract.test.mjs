@@ -61,9 +61,10 @@ function assertTrackingContract(html, path, lang) {
   assert.doesNotMatch(html, /fuajob\.online\/webhook\/landing-anfrage/, path + ' has no direct upstream bypass');
   assert.equal(occurrences(html, 'https://bzrcdn.openai.com/sdk/oaiq.min.js'), 1, path + ' pixel loader');
   assert.equal(occurrences(html, '6GqgnrdSPjJSGdthY89B9Y'), 1, path + ' pixel id');
-  const consentDenied = Math.max(html.indexOf("oaiq('consent', false)"), html.indexOf('oaiq("consent",false)'));
+  const consentResolved = Math.max(html.indexOf("oaiq('consent', granted)"), html.indexOf('oaiq("consent",granted)'));
   const init = Math.max(html.indexOf("oaiq('init'"), html.indexOf('oaiq("init"'));
-  assert.ok(consentDenied >= 0 && consentDenied < init, path + ' denies consent before init');
+  assert.ok(consentResolved >= 0 && consentResolved < init, path + ' sets resolved consent before init');
+  assert.match(html, /hasResponse\s*===\s*true/, path + ' requires a Cookiebot response');
   assert.match(html, /CookiebotOnConsentReady/);
   assert.match(html, /CookiebotOnAccept/);
   assert.match(html, /CookiebotOnDecline/);

@@ -137,17 +137,26 @@ function generateOpenAiAdsPixelSetup(config) {
   return `  <!-- OpenAI Ads Measurement Pixel (explicit Cookiebot consent) -->
   <script>
   (function(){
-    !function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");
-    oaiq("consent",false);
-    oaiq("init",{pixelId:${JSON.stringify(pixelId)}});
+    var openAiAdsInitialized=false;
     function syncOpenAiAdsConsent(){
-      var granted=Boolean(window.Cookiebot&&window.Cookiebot.consent&&window.Cookiebot.consent.marketing===true);
+      var cb=window.Cookiebot;
+      if(!cb||!cb.consent)return;
+      var granted=cb.hasResponse===true&&cb.consent.marketing===true;
+      if(!openAiAdsInitialized){
+        // Wait for restored consent: a temporary false deletes the stored ad click ID.
+        if(cb.hasResponse!==true)return;
+        !function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");
+        oaiq("consent",granted);
+        oaiq("init",{pixelId:${JSON.stringify(pixelId)}});
+        openAiAdsInitialized=true;
+        return;
+      }
       oaiq("consent",granted);
     }
     window.addEventListener("CookiebotOnConsentReady",syncOpenAiAdsConsent);
     window.addEventListener("CookiebotOnAccept",syncOpenAiAdsConsent);
     window.addEventListener("CookiebotOnDecline",syncOpenAiAdsConsent);
-    if(window.Cookiebot&&window.Cookiebot.consent)syncOpenAiAdsConsent();
+    if(window.Cookiebot&&window.Cookiebot.hasResponse===true)syncOpenAiAdsConsent();
   })();
   </script>`;
 }

@@ -220,7 +220,7 @@ test('business-email mail fallback cannot emit a lead conversion', () => {
   );
   assert.match(
     pageSource,
-    /\.then\(function\(result\) \{ return window\.ntRequirePersistedReceipt\(result, submitId\); \}\)/,
+    /\.then\(function\(result\)\s*\{\s*(?:phase = 'receipt';\s*)?return window\.ntRequirePersistedReceipt\(result, submitId\);\s*\}\)/,
     'lead flow must require a persisted server receipt before resolving'
   );
 });
