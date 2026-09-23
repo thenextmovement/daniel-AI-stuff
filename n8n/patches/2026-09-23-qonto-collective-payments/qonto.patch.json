@@ -338,176 +338,226 @@
       "type": "removeConnection",
       "source": "Not Duplicate?",
       "target": "Shopify: Find Order",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Not Duplicate?",
       "target": "Collective: Route",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Route",
       "target": "Collective Payment?",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective Payment?",
       "target": "Collective: Read Bank",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective Payment?",
       "target": "Shopify: Find Order",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Bank",
       "target": "Collective: Verify Bank",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Bank",
       "target": "Collective: Review",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Verify Bank",
       "target": "Collective: Read Orders",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Verify Bank",
       "target": "Collective: Review",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Orders",
       "target": "Collective: Read Cases",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Orders",
       "target": "Collective: Review",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Cases",
       "target": "Collective: Plan",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Cases",
       "target": "Collective: Review",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Plan",
       "target": "Collective: Documents",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Plan",
       "target": "Collective: Review",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Documents",
       "target": "Collective: Read Easybill",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Documents",
       "target": "Collective: Review",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Easybill",
       "target": "Collective: Verify Easybill",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Easybill",
       "target": "Collective: Review",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Verify Easybill",
       "target": "Collective: Register Group",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Verify Easybill",
       "target": "Collective: Review",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Register Group",
       "target": "Collective: Verify Receipt",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Register Group",
       "target": "Collective: Review",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Review",
       "target": "Send Error Email?",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Verify Receipt",
       "target": "Collective: Review",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     }
   ]
 }

@@ -257,99 +257,127 @@
       "type": "removeConnection",
       "source": "Easybill Payment",
       "target": "Easybill Record Payment",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "removeConnection",
       "source": "Easybill Payment",
       "target": "Shopify Read Payment State",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Easybill Payment",
       "target": "Collective Easybill?",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Easybill Payment",
       "target": "Shopify Read Payment State",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective Easybill?",
       "target": "Collective: Read Invoice",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective Easybill?",
       "target": "Easybill Record Payment",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Invoice",
       "target": "Collective: Read Invoice Payments",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Invoice",
       "target": "Prepare Projection Failure",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Invoice Payments",
       "target": "Collective: Decide Easybill",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Read Invoice Payments",
       "target": "Prepare Projection Failure",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Decide Easybill",
       "target": "Collective Easybill Payment Needed?",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective: Decide Easybill",
       "target": "Prepare Projection Failure",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective Easybill Payment Needed?",
       "target": "Easybill Record Payment",
-      "sourceOutput": 0,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 0,
+      "targetInput": "main",
+      "targetIndex": 0
     },
     {
       "type": "addConnection",
       "source": "Collective Easybill Payment Needed?",
       "target": "Prepare Projection Success",
-      "sourceOutput": 1,
-      "targetInput": 0
+      "sourceOutput": "main",
+      "sourceIndex": 1,
+      "targetInput": "main",
+      "targetIndex": 0
     }
   ]
 }
