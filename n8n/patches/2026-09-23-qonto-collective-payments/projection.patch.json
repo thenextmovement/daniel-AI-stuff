@@ -1,0 +1,355 @@
+{
+  "id": "K9poQw3a1DOO16Vd",
+  "operations": [
+    {
+      "type": "updateNode",
+      "nodeId": "easybill-payment",
+      "updates": {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://api.easybill.de/rest/v1/document-payments' + ($json.job.payload.markPaid === true ? '?paid=true' : '') }}",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ {document_id:Number($json.job.payload.documentId),amount:Number($json.job.payload.amountCents),payment_at:String($json.job.payload.paidAt).slice(0,10),type:'BANK_TRANSFER',provider:'NEONTRIP Billing v2',reference:$json.billingCase.shopify_order_name,notice:$json.job.payload.collectiveAllocationId?('Qonto allocation '+$json.job.payload.collectiveAllocationId):$json.job.payload.markPaid===true?('Automatisch als Skonto abgeschlossen: '+Number($json.job.payload.skontoCents||0)/100+' '+String($json.billingCase.currency||'EUR')):'Automatisch über NEONTRIP Billing v2 verbucht'} }}",
+          "options": {
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            },
+            "timeout": 30000
+          }
+        }
+      }
+    },
+    {
+      "type": "updateNode",
+      "nodeId": "shopify-query",
+      "updates": {
+        "parameters": {
+          "method": "POST",
+          "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-07/graphql.json",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "shopifyAccessTokenApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ query: 'query BillingPaymentState($id: ID!) { order(id: $id) { id name canMarkAsPaid displayFinancialStatus cancelledAt totalPriceSet{shopMoney{amount currencyCode} } currentTotalPriceSet{shopMoney{amount currencyCode} } totalOutstandingSet{shopMoney{amount currencyCode} } } }', variables: { id: String($json.billingCase.shopify_order_id || '').startsWith('gid://shopify/Order/') ? String($json.billingCase.shopify_order_id) : 'gid://shopify/Order/' + String($json.billingCase.shopify_order_id || '').replace(/\\D/g, '') } }) }}",
+          "options": {
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            },
+            "timeout": 30000
+          }
+        }
+      }
+    },
+    {
+      "type": "updateNode",
+      "nodeId": "shopify-decision",
+      "updates": {
+        "parameters": {
+          "jsCode": "const fail=reason=>{throw new Error('COLLECTIVE_PAYMENT_'+reason);};\nconst norm=v=>String(v??'').toLowerCase().replace(/[^a-z0-9]/g,'');\nconst numericId=v=>String(v??'').replace(/^gid:\\/\\/shopify\\/Order\\//,'');\nconst money=m=>{if(!m||m.currencyCode!=='EUR'||!/^\\d+(?:\\.\\d{1,2})?$/.test(String(m.amount)))fail('MONEY');return Math.round(Number(m.amount)*100);};\nfunction shopifyDecision(ctx,body){\n const o=body.data?.order,id='gid://shopify/Order/'+numericId(ctx.billingCase.shopify_order_id), expected=Number(ctx.job.payload.amountCents);\n if(body.errors?.length||!o||o.id!==id||o.name!==ctx.billingCase.shopify_order_name||o.cancelledAt||expected!==Number(ctx.billingCase.total_gross_cents)||money(o.currentTotalPriceSet?.shopMoney)!==expected||money(o.totalPriceSet?.shopMoney)!==expected)fail('SHOPIFY_SNAPSHOT');\n const outstanding=money(o.totalOutstandingSet?.shopMoney);\n if(o.displayFinancialStatus==='PAID'&&outstanding===0)return {...ctx,alreadyDone:true,collectiveVerifiedPaid:true};\n if(o.displayFinancialStatus!=='PENDING'||outstanding!==expected||o.canMarkAsPaid!==true)fail('SHOPIFY_OUTSTANDING');\n return {...ctx,alreadyDone:false};\n}\nconst collectiveCtx=$('Normalize Projection Job').first().json;if(collectiveCtx.job.payload.collectivePaymentId)return [{json:shopifyDecision(collectiveCtx,$json.body??$json)}];\nconst ctx=$('Normalize Projection Job').first().json; const order=($json.body??$json).data?.order; if(!order) throw new Error('shopify_order_missing'); if(order.displayFinancialStatus==='PAID') return [{json:{...ctx,alreadyDone:true}}]; if(order.canMarkAsPaid!==true) throw new Error('shopify_order_cannot_mark_paid'); return [{json:{...ctx,alreadyDone:false}}];"
+        }
+      }
+    },
+    {
+      "type": "updateNode",
+      "nodeId": "shopify-paid",
+      "updates": {
+        "parameters": {
+          "method": "POST",
+          "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-07/graphql.json",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "shopifyAccessTokenApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ query: 'mutation BillingMarkPaid($input: OrderMarkAsPaidInput!) { orderMarkAsPaid(input: $input) { order { id displayFinancialStatus cancelledAt totalPriceSet { shopMoney { amount currencyCode } } currentTotalPriceSet { shopMoney { amount currencyCode } } totalOutstandingSet { shopMoney { amount currencyCode } } } userErrors { field message } } }', variables: { input: { id: String($json.billingCase.shopify_order_id || '').startsWith('gid://shopify/Order/') ? String($json.billingCase.shopify_order_id) : 'gid://shopify/Order/' + String($json.billingCase.shopify_order_id || '').replace(/\\D/g, '') } } }) }}",
+          "options": {
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            },
+            "timeout": 30000
+          }
+        }
+      }
+    },
+    {
+      "type": "updateNode",
+      "nodeId": "projection-success",
+      "updates": {
+        "parameters": {
+          "jsCode": "const fail=reason=>{throw new Error('COLLECTIVE_PAYMENT_'+reason);};\nconst norm=v=>String(v??'').toLowerCase().replace(/[^a-z0-9]/g,'');\nconst numericId=v=>String(v??'').replace(/^gid:\\/\\/shopify\\/Order\\//,'');\nconst money=m=>{if(!m||m.currencyCode!=='EUR'||!/^\\d+(?:\\.\\d{1,2})?$/.test(String(m.amount)))fail('MONEY');return Math.round(Number(m.amount)*100);};\nfunction projectionSuccess(ctx,body){\n const p=ctx.job.payload;\n if(body.collectiveVerifiedPaid===true&&body.alreadyDone===true)return {jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:true,result:{worker:'n8n-payment-projection-v2',collectivePaymentId:p.collectivePaymentId,reused:true}};\n if(ctx.job.job_type==='PROJECT_PAYMENT_SHOPIFY'){\n  const result=body.data?.orderMarkAsPaid;\n  if(body.errors?.length||!result||result.userErrors?.length||result.order?.id!=='gid://shopify/Order/'+numericId(ctx.billingCase.shopify_order_id)||result.order.displayFinancialStatus!=='PAID'||result.order.cancelledAt||money(result.order.currentTotalPriceSet?.shopMoney)!==Number(p.amountCents)||money(result.order.totalPriceSet?.shopMoney)!==Number(p.amountCents)||money(result.order.totalOutstandingSet?.shopMoney)!==0)fail('SHOPIFY_MUTATION_UNCONFIRMED');\n } else {\n  if(!body.id||String(body.document_id)!==String(p.documentId)||Number(body.amount)!==Number(p.amountCents)||body.notice!=='Qonto allocation '+p.collectiveAllocationId)fail('EASYBILL_MUTATION_UNCONFIRMED');\n }\n return {jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:true,result:{worker:'n8n-payment-projection-v2',projection:ctx.job.job_type,collectivePaymentId:p.collectivePaymentId}};\n}\nconst collectiveCtx=$('Normalize Projection Job').first().json;if(collectiveCtx.job.payload.collectivePaymentId)return [{json:projectionSuccess(collectiveCtx,$json.body??$json)}];\nconst ctx=$('Normalize Projection Job').first().json; const body=$json.body??$json; const errors=body.data?.orderMarkAsPaid?.userErrors||[]; if(errors.length) throw new Error('shopify_mark_paid:'+errors.map(x=>x.message).join(';')); return [{json:{jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:true,result:{worker:'n8n-payment-projection-v2',projection:ctx.job.job_type}}}];"
+        }
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "t300-collective-read-invoice",
+        "name": "Collective: Read Invoice",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2200,
+          890
+        ],
+        "parameters": {
+          "method": "GET",
+          "url": "={{ \"https://api.easybill.de/rest/v1/documents/\"+$(\"Normalize Projection Job\").first().json.job.payload.documentId }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "httpHeaderAuth",
+          "options": {
+            "timeout": 30000,
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "YF5qkE2gWbB3A6U2",
+            "name": "Header Auth account | Easybill"
+          }
+        },
+        "onError": "continueErrorOutput"
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "t300-collective-read-invoice-payments",
+        "name": "Collective: Read Invoice Payments",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2200,
+          925
+        ],
+        "parameters": {
+          "method": "GET",
+          "url": "={{ \"https://api.easybill.de/rest/v1/document-payments?limit=100&page=1&document_id=\"+$(\"Normalize Projection Job\").first().json.job.payload.documentId }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "httpHeaderAuth",
+          "options": {
+            "timeout": 30000,
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "YF5qkE2gWbB3A6U2",
+            "name": "Header Auth account | Easybill"
+          }
+        },
+        "onError": "continueErrorOutput"
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "t300-collective-decide-easybill",
+        "name": "Collective: Decide Easybill",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2200,
+          960
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "const fail=reason=>{throw new Error('COLLECTIVE_PAYMENT_'+reason);};\nconst norm=v=>String(v??'').toLowerCase().replace(/[^a-z0-9]/g,'');\nconst numericId=v=>String(v??'').replace(/^gid:\\/\\/shopify\\/Order\\//,'');\nconst money=m=>{if(!m||m.currencyCode!=='EUR'||!/^\\d+(?:\\.\\d{1,2})?$/.test(String(m.amount)))fail('MONEY');return Math.round(Number(m.amount)*100);};\nfunction easybillDecision(ctx,doc,list){\n const p=ctx.job.payload, marker='Qonto allocation '+p.collectiveAllocationId;\n if(String(doc.id)!==String(p.documentId)||doc.type!=='INVOICE'||doc.number!==ctx.billingCase.shopify_order_name||doc.cancel_id||doc.is_draft!==false||doc.currency!=='EUR'||Number(doc.amount)!==Number(p.amountCents))fail('EASYBILL_INVOICE');\n if(!Array.isArray(list.items)||Number(list.page)!==1||Number(list.pages)>1||Number(list.total)!==list.items.length)fail('EASYBILL_PAYMENT_HISTORY');\n if(list.items.some(x=>String(x.document_id)!==String(p.documentId)))fail('EASYBILL_HISTORY_FILTER');\n const own=list.items.filter(x=>x.notice===marker);\n if(own.length===1&&Number(own[0].amount)===Number(p.amountCents)&&String(own[0].payment_at).slice(0,10)===String(p.paidAt).slice(0,10)&&Number(doc.paid_amount)===Number(doc.amount)&&doc.paid_at)return {...ctx,alreadyDone:true,collectiveVerifiedPaid:true,easybillPaymentId:own[0].id};\n if(own.length||Number(doc.paid_amount)!==0||doc.paid_at||list.items.length)fail('EASYBILL_PAYMENT_CONFLICT');\n if(Number(ctx.job.attempt_count||1)>1)fail('EASYBILL_AMBIGUOUS_RETRY');\n return {...ctx,alreadyDone:false};\n}\nreturn [{json:easybillDecision($('Normalize Projection Job').first().json,$('Collective: Read Invoice').first().json.body,$input.first().json.body)}];"
+        },
+        "onError": "continueErrorOutput"
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "t300-collective-easybill-",
+        "name": "Collective Easybill?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          2200,
+          995
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "t300-condition",
+                "leftValue": "={{ !!$json.job.payload.collectivePaymentId }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "t300-collective-easybill-payment-needed-",
+        "name": "Collective Easybill Payment Needed?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          2200,
+          1030
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "t300-condition",
+                "leftValue": "={{ $json.alreadyDone === false }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      }
+    },
+    {
+      "type": "removeConnection",
+      "source": "Easybill Payment",
+      "target": "Easybill Record Payment",
+      "sourceOutput": 0,
+      "targetInput": 0
+    },
+    {
+      "type": "removeConnection",
+      "source": "Easybill Payment",
+      "target": "Shopify Read Payment State",
+      "sourceOutput": 1,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Easybill Payment",
+      "target": "Collective Easybill?",
+      "sourceOutput": 0,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Easybill Payment",
+      "target": "Shopify Read Payment State",
+      "sourceOutput": 1,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Collective Easybill?",
+      "target": "Collective: Read Invoice",
+      "sourceOutput": 0,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Collective Easybill?",
+      "target": "Easybill Record Payment",
+      "sourceOutput": 1,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Collective: Read Invoice",
+      "target": "Collective: Read Invoice Payments",
+      "sourceOutput": 0,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Collective: Read Invoice",
+      "target": "Prepare Projection Failure",
+      "sourceOutput": 1,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Collective: Read Invoice Payments",
+      "target": "Collective: Decide Easybill",
+      "sourceOutput": 0,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Collective: Read Invoice Payments",
+      "target": "Prepare Projection Failure",
+      "sourceOutput": 1,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Collective: Decide Easybill",
+      "target": "Collective Easybill Payment Needed?",
+      "sourceOutput": 0,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Collective: Decide Easybill",
+      "target": "Prepare Projection Failure",
+      "sourceOutput": 1,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Collective Easybill Payment Needed?",
+      "target": "Easybill Record Payment",
+      "sourceOutput": 0,
+      "targetInput": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Collective Easybill Payment Needed?",
+      "target": "Prepare Projection Success",
+      "sourceOutput": 1,
+      "targetInput": 0
+    }
+  ]
+}
