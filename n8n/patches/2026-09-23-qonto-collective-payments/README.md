@@ -36,3 +36,11 @@ Results: 39 unit tests, SQL rollback/idempotency/claim-gate checks, and four sim
 ## Limits
 
 Shopify `orderMarkAsPaid` has no compare-and-swap amount argument. We verify immediately before the mutation and check the returned totals afterward; a conflicting external order edit can stop subsequent invoicing but cannot be made atomic across Shopify and the database. No automatic refund is attempted. Ambiguous easybill writes stop rather than retry blindly.
+
+## Live application, 23 September 2026
+
+The user approved the existing invoice email delivery. The migration and the two prepared workflows were applied after unchanged-version checks; both intended orders became paid first, then one real invoice and one exact payment entry per order were verified directly in easybill. Each invoice has one EMAIL/OK delivery to the existing customer address. No app runtime deployment was performed.
+
+A live dependency became visible during that sequence: the manual-paid reconciliation worker can inspect the proforma while the collective invoice is still being created, then incorrectly compare the whole bank credit to one order. The additional patch for workflow `6NZnfGpyfUVikqpf` adds three nodes before its Qonto search. It only defers reconciliation when the existing matched collective allocation and its recent invoice/payment projection job agree. All existing node definitions remain unchanged. Failed, stale, incomplete, unrelated, cancelled and mismatched cases follow the original path; the defer result is the existing `BILLING_PAYMENTS_REGISTERED` outcome, never a claim that easybill is already paid. Seventeen additional tests and a read-only live execution passed.
+
+Release versions: Qonto `9bafe5f6-600e-47f8-adfd-84aec26ee172`; projection `63c8d136-01f9-4fb9-be37-24f7a190244e`; reconciliation `68d7cca8-4289-4db8-95e1-057748694533`. The n8n MCP validates the patch operations, but its write schema is incompatible with the server; application used the configured authenticated API and exact MCP readback. Connection operations explicitly distinguish main type from source/target indexes.
