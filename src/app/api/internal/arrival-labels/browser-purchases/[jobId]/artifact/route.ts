@@ -64,6 +64,9 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     stage = "extract_tracking";
     const dpdTrackingNumber = extractUniqueDpdTrackingNumber(await extractPdfText(bytes), job.incoming_dhl_tracking_number);
+    if (job.parcel_kind === "acrylic_table_device" && (!job.expected_primary_dpd_tracking || dpdTrackingNumber === job.expected_primary_dpd_tracking)) {
+      throw new PrintInputError("Zusatzpaket braucht eine eigene DPD-Sendungsnummer; Hauptlabel nicht erneut drucken.");
+    }
     if (job.dpd_tracking_number && job.dpd_tracking_number !== dpdTrackingNumber) throw new PrintInputError("Dieser Auftrag ist bereits mit einer anderen DPD-Sendungsnummer verknuepft.");
     stage = "persist_purchase";
     await updateArrivalBrowserPurchase({
@@ -79,7 +82,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!config?.enabled || !config.printerKey || !config.storageBucket) throw new PrintInputError("Aktive Druck- und Storage-Konfiguration fehlt.");
     const layout = validateDpdPdfLayout(config.pdfLayoutConfig);
     stage = "annotate_pdf";
-    const annotated = await annotateDpdLabelPdf(bytes, job.incoming_dhl_tracking_number, layout);
+    const annotated = await annotateDpdLabelPdf(bytes, job.incoming_dhl_tracking_number, layout, job.parcel_kind);
     stage = "render_preview";
     const preview = await renderPdfFirstPageToPng(annotated.pdf, 3);
     const previewSha256 = sha256(preview);
@@ -96,6 +99,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     stage = "insert_artifacts";
     const [originalArtifact, annotatedArtifact, previewArtifact] = await Promise.all(files.map((file) => insertArrivalBrowserArtifact({
       case_id: job.case_id,
+      parcel_kind: job.parcel_kind,
       artifact_kind: file.kind,
       storage_bucket: config.storageBucket as string,
       storage_key: file.key,

@@ -12,6 +12,7 @@ import type { ArrivalDataClients, ExistingArrivalCaseEvidence } from "./clients"
 import type { ArrivalReviewNotification } from "./review-notifications";
 import { readBoundedResponseBytes } from "./printing";
 import type { BrowserArtifactRecord } from "./browser-purchase";
+import { hasAcrylicTableDevice, type ArrivalParcelKind } from "./parcels";
 
 type ProductConfigRow = {
   version: string;
@@ -264,6 +265,9 @@ export async function loadTrelloSignShippedTriggerSettings(): Promise<TrelloSign
 
 export type ArrivalBrowserPurchaseJobRow = {
   id: string;
+  parcel_kind: ArrivalParcelKind;
+  parent_purchase_job_id: string | null;
+  expected_primary_dpd_tracking: string | null;
   case_id: string;
   idempotency_key: string;
   shop_domain: string;
@@ -297,17 +301,18 @@ export async function enqueueArrivalBrowserPurchase(caseId: string) {
   return rows[0];
 }
 
-export async function claimArrivalBrowserPurchase(input: { workerId: string; leaseSeconds?: number }) {
+export async function claimArrivalBrowserPurchase(input: { workerId: string; leaseSeconds?: number; acrylicCapable?: boolean }) {
   const rows = await supabaseRpc<ArrivalBrowserPurchaseJobRow[]>("arrival_labels_claim_browser_purchase", {
     p_worker_id: input.workerId,
     p_lease_seconds: input.leaseSeconds || 300,
+    p_acrylic_capable: input.acrylicCapable === true,
   });
   return rows[0] || null;
 }
 
 export async function loadOwnedArrivalBrowserPurchase(input: { jobId: string; workerId: string }) {
   const rows = await supabaseRequest<ArrivalBrowserPurchaseJobRow[]>("arrival_label_browser_purchase_jobs", undefined, {
-    select: "id,case_id,idempotency_key,shop_domain,shopify_order_id,shopify_order_numeric_id,shopify_order_name,order_url,selected_dpd_product,easydpd_product_label,label_format,package_weight_grams,maximum_purchase_cents,observed_purchase_cents,incoming_dhl_tracking_number,incoming_dhl_last_six,status,attempts,max_attempts,lease_owner,lease_expires_at,dpd_tracking_number,original_pdf_sha256,annotated_pdf_sha256,print_job_id,last_error",
+    select: "id,parcel_kind,parent_purchase_job_id,expected_primary_dpd_tracking,case_id,idempotency_key,shop_domain,shopify_order_id,shopify_order_numeric_id,shopify_order_name,order_url,selected_dpd_product,easydpd_product_label,label_format,package_weight_grams,maximum_purchase_cents,observed_purchase_cents,incoming_dhl_tracking_number,incoming_dhl_last_six,status,attempts,max_attempts,lease_owner,lease_expires_at,dpd_tracking_number,original_pdf_sha256,annotated_pdf_sha256,print_job_id,last_error",
     id: `eq.${input.jobId}`,
     lease_owner: `eq.${input.workerId}`,
     limit: 1,
@@ -404,12 +409,13 @@ export async function insertArrivalBrowserArtifact(input: Omit<BrowserArtifactRe
     method: "POST",
     headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify(input),
-  }, { on_conflict: "case_id,artifact_kind" });
+  }, { on_conflict: "case_id,artifact_kind,parcel_kind" });
   if (inserted[0]) return inserted[0];
   const rows = await supabaseRequest<BrowserArtifactRecord[]>("arrival_label_artifacts", undefined, {
     select: "id,case_id,artifact_kind,storage_bucket,storage_key,sha256,content_type,byte_size,page_width_points,page_height_points,qa_result",
     case_id: `eq.${input.case_id}`,
     artifact_kind: `eq.${input.artifact_kind}`,
+    parcel_kind: `eq.${input.parcel_kind || "main"}`,
     limit: 1,
   });
   const existing = rows[0];
@@ -419,11 +425,12 @@ export async function insertArrivalBrowserArtifact(input: Omit<BrowserArtifactRe
   return existing;
 }
 
-export async function loadArrivalArtifact(input: { caseId: string; artifactKind: BrowserArtifactRecord["artifact_kind"] }) {
+export async function loadArrivalArtifact(input: { caseId: string; artifactKind: BrowserArtifactRecord["artifact_kind"]; parcelKind?: ArrivalParcelKind }) {
   const rows = await supabaseRequest<BrowserArtifactRecord[]>("arrival_label_artifacts", undefined, {
     select: "id,case_id,artifact_kind,storage_bucket,storage_key,sha256,content_type,byte_size,page_width_points,page_height_points,qa_result",
     case_id: `eq.${input.caseId}`,
     artifact_kind: `eq.${input.artifactKind}`,
+    parcel_kind: `eq.${input.parcelKind || "main"}`,
     limit: 1,
   });
   return rows[0] || null;
@@ -670,6 +677,7 @@ export async function upsertArrivalCase(input: {
         shopifyCustomAttributes: order?.customAttributes || [],
         shopifyTags: order?.tags || [],
         lineItems: order?.lineItems || [],
+        acrylicTableDeviceRequired: hasAcrylicTableDevice(order?.lineItems || []),
         shippingLines: order?.shippingLines || [],
         fulfillmentCount: order?.fulfillments.length || 0,
       },

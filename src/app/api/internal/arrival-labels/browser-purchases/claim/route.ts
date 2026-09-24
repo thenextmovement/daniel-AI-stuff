@@ -12,18 +12,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401, headers: NO_STORE });
   }
   try {
-    const body = await readBoundedJson<{ workerId?: string; mode?: string }>(request);
+    const body = await readBoundedJson<{ workerId?: string; mode?: string; capability?: string }>(request);
     const workerId = validateBrowserWorkerId(String(body.workerId || ""));
     if (request.headers.get("x-neontrip-browser-worker") !== workerId) throw new PrintInputError("Browser-Worker-ID stimmt nicht ueberein.");
     if (!['dry_run', 'live'].includes(String(body.mode))) throw new PrintInputError("Browser-Worker-Modus ist ungueltig.");
     if (body.mode === "dry_run") return new NextResponse(null, { status: 204, headers: NO_STORE });
 
-    const job = await claimArrivalBrowserPurchase({ workerId });
+    const job = await claimArrivalBrowserPurchase({ workerId, acrylicCapable: body.capability === "acrylic-parcel-v1" });
     if (!job) return new NextResponse(null, { status: 204, headers: NO_STORE });
     return NextResponse.json({
       ok: true,
       job: {
         id: job.id,
+        parcelKind: job.parcel_kind,
+        parentPurchaseJobId: job.parent_purchase_job_id,
+        expectedPrimaryDpdTracking: job.expected_primary_dpd_tracking,
         orderName: job.shopify_order_name,
         orderUrl: job.order_url,
         productLabel: job.easydpd_product_label,

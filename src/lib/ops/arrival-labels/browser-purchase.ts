@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { DpdPdfLayout, PdfQaResult } from "./pdf";
 import { PrintInputError } from "./printing";
+import type { ArrivalParcelKind } from "./parcels";
 
 export const EASYDPD_PRODUCT_LABELS = [
   "B2C",
@@ -56,6 +57,7 @@ export function extractUniqueDpdTrackingNumber(text: string, incomingDhlTracking
 
 export type BrowserArtifactRecord = {
   id: string;
+  parcel_kind?: ArrivalParcelKind;
   case_id: string;
   artifact_kind: "original_pdf" | "annotated_pdf" | "rendered_preview" | "delivery_note_pdf";
   storage_bucket: string;

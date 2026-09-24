@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createCanvas, DOMMatrix, ImageData, Path2D } from "@napi-rs/canvas";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { lastSixOfTracking } from "./domain";
+import { labelOverlayText, type ArrivalParcelKind } from "./parcels";
 
 export type PdfRect = { x: number; y: number; width: number; height: number };
 
@@ -70,9 +70,9 @@ export function validateA6Layout(width: number, height: number, layout: DpdPdfLa
   return { ok: errors.length === 0, errors, intersections };
 }
 
-export async function annotateDpdLabelPdf(inputPdf: Uint8Array, trackingNumber: string, layout: DpdPdfLayout) {
+export async function annotateDpdLabelPdf(inputPdf: Uint8Array, trackingNumber: string, layout: DpdPdfLayout, parcelKind: ArrivalParcelKind = "main") {
   if (!layout.version.trim()) throw new Error("PDF-Layoutversion fehlt.");
-  const overlayText = lastSixOfTracking(trackingNumber);
+  const overlayText = labelOverlayText(trackingNumber, parcelKind);
   const document = await PDFDocument.load(inputPdf, { updateMetadata: false });
   if (document.getPageCount() !== 1) throw new Error("DPD-Etikett muss genau eine PDF-Seite enthalten.");
   const page = document.getPage(0);
@@ -83,18 +83,23 @@ export async function annotateDpdLabelPdf(inputPdf: Uint8Array, trackingNumber: 
   const font = await document.embedFont(StandardFonts.HelveticaBold);
   const requestedFontSize = Math.min(Math.max(layout.fontSize || 24, 12), 42);
   const maximumWidth = layout.safeArea.width * 0.9;
-  const measured = font.widthOfTextAtSize(overlayText, requestedFontSize);
-  const fontSize = measured <= maximumWidth ? requestedFontSize : requestedFontSize * (maximumWidth / measured);
-  if (fontSize < 12) throw new Error("Aufdruckflaeche ist fuer sechs gut sichtbare Ziffern zu klein.");
-  const textWidth = font.widthOfTextAtSize(overlayText, fontSize);
+  // The exact approved text may wrap, but never shrink below the existing 12pt minimum.
+  const singleLineSize = Math.min(requestedFontSize, maximumWidth / font.widthOfTextAtSize(overlayText, 1));
+  const lines = parcelKind === "acrylic_table_device" && singleLineSize < 12
+    ? ["Acryl LED-", "Tischgerät"] : [overlayText];
+  const fontSize = Math.min(requestedFontSize,
+    ...lines.map((line) => maximumWidth / font.widthOfTextAtSize(line, 1)),
+    layout.safeArea.height * 0.9 / (font.heightAtSize(1, { descender: false }) + (lines.length - 1) * 1.2));
+  if (fontSize < 12) throw new Error("Aufdruckflaeche ist fuer einen gut sichtbaren Aufdruck zu klein.");
   const textHeight = font.heightAtSize(fontSize, { descender: false });
-  page.drawText(overlayText, {
-    x: layout.safeArea.x + (layout.safeArea.width - textWidth) / 2,
-    y: layout.safeArea.y + (layout.safeArea.height - textHeight) / 2,
+  const blockHeight = textHeight + (lines.length - 1) * fontSize * 1.2;
+  lines.forEach((line, index) => page.drawText(line, {
+    x: layout.safeArea.x + (layout.safeArea.width - font.widthOfTextAtSize(line, fontSize)) / 2,
+    y: layout.safeArea.y + (layout.safeArea.height - blockHeight) / 2 + (lines.length - 1 - index) * fontSize * 1.2,
     size: fontSize,
     font,
     color: rgb(0, 0, 0),
-  });
+  }));
 
   const output = await document.save({ useObjectStreams: false, addDefaultPage: false });
   const verification = await PDFDocument.load(output);

@@ -54,7 +54,45 @@ export function validateBridgeJob(job) {
   if (typeof job.orderName !== "string" || job.orderName.length < 2 || /[\r\n]/.test(job.orderName)) {
     throw new Error("Shopify-Bestellname ist ungueltig.");
   }
+  validateParcelBinding(job);
   return job;
+}
+
+export function validateParcelBinding(job) {
+  const kind = job.parcelKind || "main";
+  if (!["main", "acrylic_table_device"].includes(kind)) throw new Error("Unbekannter Pakettyp.");
+  if (kind === "main" && (job.parentPurchaseJobId || job.expectedPrimaryDpdTracking)) throw new Error("Hauptpaket hat ungueltige Zusatzpaket-Bindung.");
+  if (kind === "acrylic_table_device" && (
+    !/^[0-9a-f-]{36}$/i.test(String(job.parentPurchaseJobId || ""))
+    || job.parentPurchaseJobId === job.id
+    || !/^\d{14}$/.test(String(job.expectedPrimaryDpdTracking || ""))
+  )) throw new Error("Zusatzpaket hat keinen eindeutigen Hauptlabel-Nachweis.");
+}
+
+// A post-dispatch recovery may download only the newly created label, never its primary.
+/** @param {string | null} [primaryLabelPath] */
+export function postDispatchDownloadUrl(observed, job, primaryLabelPath = null) {
+  if (job.parcelKind !== "acrylic_table_device") {
+    if (!observed?.found) return null;
+    if (observed.labelCount !== 1 || observed.trackingNumbers?.length > 1 || typeof observed.downloadUrl !== "string") {
+      throw new Error("EasyDPD-History ist nach dem Dispatch nicht eindeutig einem Label-Download zuzuordnen.");
+    }
+    return validateEasyDpdLabelDownloadUrl(observed.downloadUrl);
+  }
+  validateParcelBinding(job);
+  if (!primaryLabelPath) throw new Error("Hauptlabel-Baseline fehlt; kein Zusatzlabel-Download.");
+  if (!observed?.found) return null;
+  const urls = (observed?.downloadUrls || []).map(validateEasyDpdLabelDownloadUrl);
+  const paths = urls.map((url) => new URL(url).pathname);
+  const tracks = observed?.trackingNumbers || [];
+  if (!paths.includes(primaryLabelPath) || !tracks.includes(job.expectedPrimaryDpdTracking)
+    || paths.length > 2 || tracks.length > 2) throw new Error("Zusatzpaket-History stimmt nicht mit dem Hauptlabel ueberein.");
+  if (paths.length === 1 || tracks.length === 1) return null;
+  const fresh = urls.filter((url) => new URL(url).pathname !== primaryLabelPath);
+  if (fresh.length !== 1 || tracks.filter((number) => number !== job.expectedPrimaryDpdTracking).length !== 1) {
+    throw new Error("Neues Zusatzlabel ist nicht eindeutig; kein Download des Hauptlabels.");
+  }
+  return fresh[0];
 }
 
 export function existingLabelEvidence(hrefs) {

@@ -100,6 +100,7 @@
       labelCount: labelUrls.size,
       trackingNumbers: [...trackingNumbers],
       downloadUrl: labelUrls.size === 1 ? [...labelUrls][0] : null,
+      downloadUrls: [...labelUrls],
     };
   }
 
@@ -132,7 +133,14 @@
     const weight = weightInput();
     const button = createButton();
     const evidence = collectExistingLabelEvidence();
-    if (evidence.found) return { ready: false, existingLabel: safeExistingLabelEvidence(evidence) };
+    const primaryLabelVerified = job.parcelKind === "acrylic_table_device"
+      && /^[0-9a-f-]{36}$/i.test(String(job.parentPurchaseJobId || ""))
+      && /^\d{14}$/.test(String(job.expectedPrimaryDpdTracking || ""))
+      && evidence.labelCount === 1 && evidence.trackingNumbers.length === 1
+      && evidence.trackingNumbers[0] === job.expectedPrimaryDpdTracking;
+    if ((evidence.found && !primaryLabelVerified) || (job.parcelKind === "acrylic_table_device" && !primaryLabelVerified)) {
+      return { ready: false, existingLabel: safeExistingLabelEvidence(evidence) };
+    }
     const changed = [
       selectLabel(product, job.productLabel),
       selectLabel(format, job.labelFormat),
@@ -148,6 +156,8 @@
     return {
       ready: true,
       changed,
+      primaryLabelVerified,
+      primaryLabelPath: primaryLabelVerified ? new URL(evidence.downloadUrl).pathname : null,
       existingLabel: safeExistingLabelEvidence(evidence),
       observed: { orderName: normalized(orderLink(job).textContent), product: currentLabel(product), format: currentLabel(format), weightGrams: Number(weight.value) },
     };
@@ -194,9 +204,12 @@
     throw lastError || new Error("EasyDPD-History wurde nicht rechtzeitig geladen.");
   }
 
-  function purchaseOnce(job, dispatchNonce) {
+  function purchaseOnce(job, dispatchNonce, primaryLabelPath) {
     const prepared = validateAndPrepare(job);
-    if (!prepared.ready || prepared.existingLabel.found) throw new Error("Vor dem Kauf wurde ein vorhandenes EasyDPD-Label erkannt.");
+    if (!prepared.ready || (prepared.existingLabel.found && !prepared.primaryLabelVerified)) throw new Error("Vor dem Kauf wurde ein vorhandenes EasyDPD-Label erkannt.");
+    if (job.parcelKind === "acrylic_table_device" && (!primaryLabelPath || prepared.primaryLabelPath !== primaryLabelPath)) {
+      throw new Error("Hauptlabel-Baseline hat sich vor dem Zusatzkauf geaendert.");
+    }
     if (prepared.changed) throw new Error("EasyDPD-Felder waren an der Kaufgrenze noch nicht stabil; kein Klick.");
     const purchaseKey = `${PURCHASE_KEY_PREFIX}${job.id}`;
     const existing = sessionStorage.getItem(purchaseKey);
@@ -233,7 +246,7 @@
       return true;
     }
     try {
-      if (message.action === "purchase_once") sendResponse({ ok: true, result: purchaseOnce(message.job, message.dispatchNonce) });
+      if (message.action === "purchase_once") sendResponse({ ok: true, result: purchaseOnce(message.job, message.dispatchNonce, message.primaryLabelPath) });
       else if (message.action === "inspect_post_dispatch") sendResponse({ ok: true, result: inspectPostDispatch(message.job, message.baselineAlertTexts) });
       else sendResponse({ ok: false, error: "Unbekannte EasyDPD-Bridge-Aktion." });
     } catch (error) {

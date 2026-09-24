@@ -1,6 +1,6 @@
 # Betriebsstandard — DHL-Eingänge und DPD-Etiketten
 
-Version: 1.2, Triggergrenze aktualisiert am 08.09.2026.
+Version: 1.3, Acryl-Zusatzpaket als Release-Kandidat ergänzt am 24.09.2026; noch nicht produktiv aktiviert.
 
 Status: verbindliche Safety-Baseline. Produktive EasyDPD-Käufe und Drucke sind nur hinter den dokumentierten Schreib-, Audit-, Idempotenz- und Aktivierungsgates zulässig.
 
@@ -76,6 +76,18 @@ Der geschützte Referenzfall `#NEONT4498` / DHL `2619113486` / DPD `014768176780
 - Die vollständige DHL-Nummer bleibt Identität, Abgleichs- und Idempotenzschlüssel.
 - Vier Ziffern sind verboten, weil am 20.07.2026 bereits zwei verschiedene DHL-Nummern auf `5500` endeten.
 - Vor dem Druck werden A6-Format, Schutzflächen, SHA-256 und die unveränderte Lesbarkeit der vorhandenen Barcodes geprüft.
+
+## Freigegebene Funktionsänderung: Acryl-Zusatzpaket (Release-Kandidat)
+
+Nach gesonderter Freigabe und Veröffentlichung des geprüften Commits gilt diese eng begrenzte Ausnahme zur Ein-Label- und Sechs-Ziffern-Regel:
+
+- Enthält ein **neu geplanter** Shopify-Schildversand den Artikel `Acryl LED-Tischgerät` mit positiver Stückzahl, wird genau ein zusätzliches kostenpflichtiges DPD-Paket **pro Shopify-Bestellung** geplant. Bindestrich/Leerzeichen, Unicode-Dash und Groß-/Kleinschreibung werden normalisiert; Teiltreffer oder andere Artikel lösen nichts aus. Auch mehrere Stück erzeugen nur das eine angeforderte Zusatzpaket.
+- Das Zusatzpaket erbt Standard/Express-Produkt und die Preisgrenze von maximal 15 EUR je Label. Es hat eine eigene DPD-Sendungsnummer, eigene Artefakte und einen eigenen CUPS-Drucknachweis.
+- Auf seinem A6-Etikett steht anstelle der sechs DHL-Ziffern exakt `Acryl LED-Tischgerät`, nötigenfalls zweizeilig im bestehenden geschützten Aufdruckbereich. Das Hauptlabel bleibt unverändert.
+- Die Bridge darf es erst nach bestätigtem Hauptdruck und nur mit passender Build-/Paket-Unterstützung reservieren. Als History-Ausnahme ist ausschließlich genau das persistierte Hauptlabel zulässig. Eine fremde/weitere Sendung, fehlende Zuordnung oder Unsicherheit bleibt gesperrt. Eine Recovery lädt ausschließlich das neue Label herunter, niemals das Hauptlabel erneut.
+- Die bestehende Bestell-, Sign-SHIPPED-, EU-Lieferschein-, Notiz- und Versandsperre gilt weiterhin. Alte Bestellungen werden nicht rückwirkend nachgebucht. Outlook-Archivierung und Trello-Abschluss warten auf beide bestätigten Drucke.
+
+Implementierung, Prüfbelege und Release-/Rollback-Reihenfolge: [Acryl-Zusatzpaket](arrival-acryl-second-label-2026-09-24.md).
 
 ## Verbindliche Druckertrennung
 

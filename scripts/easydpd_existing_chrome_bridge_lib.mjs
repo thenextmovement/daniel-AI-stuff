@@ -202,6 +202,9 @@ async function writeStatusBestEffort(config, state, detail = {}) {
 
 const JOB_BINDING_FIELDS = [
   "id",
+  "parcelKind",
+  "parentPurchaseJobId",
+  "expectedPrimaryDpdTracking",
   "orderName",
   "orderUrl",
   "productLabel",
@@ -348,7 +351,7 @@ export async function handleNativeRequest(config, rawMessage) {
       return { ok: true, job: null, activeJobPending: true };
     }
     try {
-      const job = await claimJob(configuration);
+      const job = await claimJob(configuration, "acrylic-parcel-v1");
       if (job) await storeActiveJob(config, job);
       else await clearClaimSlot(config);
       await writeStatusBestEffort(config, job ? "job_claimed" : "idle", { ...verifiedExtension, jobId: job?.id || null, orderName: job?.orderName || null, purchaseClicked: false });

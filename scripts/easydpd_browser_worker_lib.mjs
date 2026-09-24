@@ -132,6 +132,14 @@ export function validateClaimedJob(job) {
     throw new BrowserWorkerError("Eingehende DHL-Sendungsnummer ist ungueltig.", 65);
   }
   if (typeof job.orderName !== "string" || job.orderName.length < 2 || /[\r\n]/.test(job.orderName)) throw new BrowserWorkerError("Shopify-Bestellname ist ungueltig.", 65);
+  const kind = job.parcelKind || "main";
+  if (!["main", "acrylic_table_device"].includes(kind)
+    || (kind === "main" && (job.parentPurchaseJobId || job.expectedPrimaryDpdTracking))
+    || (kind === "acrylic_table_device" && (
+      !/^[0-9a-f-]{36}$/i.test(String(job.parentPurchaseJobId || ""))
+      || job.parentPurchaseJobId === job.id
+      || !/^\d{14}$/.test(String(job.expectedPrimaryDpdTracking || ""))
+    ))) throw new BrowserWorkerError("Pakettyp oder Hauptlabel-Nachweis ist ungueltig.", 65);
   return job;
 }
 
@@ -193,14 +201,18 @@ export async function apiRequest(configuration, endpoint, init = {}, { retryClai
   throw lastError || new BrowserWorkerError("Ops API nicht erreichbar.", 69);
 }
 
-export async function claimJob(configuration) {
+/** @param {string} [capability] */
+export async function claimJob(configuration, capability = undefined) {
   const response = await apiRequest(configuration, "/api/internal/arrival-labels/browser-purchases/claim", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workerId: configuration.workerId, mode: configuration.mode }),
+    body: JSON.stringify({ workerId: configuration.workerId, mode: configuration.mode, capability }),
   }, { retryClaim: true });
   if (response.status === 204) return null;
   const payload = await response.json();
+  if (payload.job?.parcelKind === "acrylic_table_device" && capability !== "acrylic-parcel-v1") {
+    throw new BrowserWorkerError("Zusatzpaket ist fuer diesen Worker nicht freigegeben.");
+  }
   return validateClaimedJob(payload.job);
 }
 

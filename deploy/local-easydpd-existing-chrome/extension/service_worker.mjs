@@ -3,6 +3,7 @@ import {
   EASYDPD_FRAME_ORIGIN,
   NATIVE_HOST,
   matchingDownloadedPdf,
+  postDispatchDownloadUrl,
   validateBridgeJob,
   validateEasyDpdLabelDownloadUrl,
   validateOrderUrl,
@@ -349,25 +350,25 @@ function waitForPostDispatchPageError(tabId, frameId, job, baselineAlertTexts, s
   });
 }
 
-async function recoverPostDispatchDownload(tabId, job, settleDelayMs = 0) {
+async function recoverPostDispatchDownload(tabId, job, settleDelayMs = 0, primaryLabelPath = null) {
   if (settleDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
   await reloadAndWaitForTabComplete(tabId, job.orderUrl);
   const frameId = await easyDpdFrameId(tabId);
   const deadline = Date.now() + POST_DISPATCH_HISTORY_TIMEOUT_MS;
   let observed = null;
+  let recoveredUrl = null;
   do {
     observed = await frameMessageWhenReady(tabId, frameId, { action: "inspect_history", job });
-    if (observed?.found) break;
+    recoveredUrl = postDispatchDownloadUrl(observed, job, primaryLabelPath);
+    if (recoveredUrl) break;
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   } while (Date.now() < deadline);
 
   const evidence = safeHistoryEvidence(observed);
   await record("post_dispatch_history_checked", { jobId: job.id, orderName: job.orderName, evidence });
   if (!evidence.found) throw new Error("EasyDPD-History blieb nach frischem Reload ohne Label; kein automatischer Wiederholungskauf.");
-  if (evidence.labelCount !== 1 || evidence.trackingNumbers.length > 1 || typeof observed.downloadUrl !== "string") {
-    throw new Error("EasyDPD-History ist nach dem Dispatch nicht eindeutig einem Label-Download zuzuordnen.");
-  }
-  const downloadUrl = validateEasyDpdLabelDownloadUrl(observed.downloadUrl);
+  if (!recoveredUrl) throw new Error("Kein neues Zusatzlabel nachweisbar; kein automatischer Wiederholungskauf.");
+  const downloadUrl = validateEasyDpdLabelDownloadUrl(recoveredUrl);
   const startedAt = Date.now();
   const downloadId = await chrome.downloads.download({ url: downloadUrl, saveAs: false, conflictAction: "uniquify" });
   if (!Number.isInteger(downloadId)) throw new Error("EasyDPD-History-Download konnte nicht gestartet werden.");
@@ -390,10 +391,11 @@ async function processJob(nativeSession, tab, job) {
   let pageErrorPromise = null;
   let postDispatchReconciliationAttempted = false;
   let artifactUploadStarted = false;
+  let primaryLabelPath = null;
   try {
     await waitForTabComplete(tab.id, job.orderUrl);
     const { frameId, prepared } = await validateAndPrepareFrame(tab.id, job);
-    if (prepared.existingLabel?.found) {
+    if (prepared.existingLabel?.found && !prepared.primaryLabelVerified) {
       const trackingNumbers = prepared.existingLabel.trackingNumbers || [];
       await updateJob(nativeSession, job, "existing_label", {
         existingDpdTracking: trackingNumbers.length === 1 ? trackingNumbers[0] : null,
@@ -404,9 +406,11 @@ async function processJob(nativeSession, tab, job) {
       return;
     }
     if (!prepared.ready) throw new Error("EasyDPD-Auftrag ist nicht kaufbereit.");
+    primaryLabelPath = prepared.primaryLabelPath || null;
     await updateJob(nativeSession, job, "validated");
     const rechecked = await frameMessage(tab.id, frameId, { action: "validate_and_prepare", job });
-    if (!rechecked.ready || rechecked.existingLabel?.found) throw new Error("EasyDPD-Zustand änderte sich vor der Kaufgrenze.");
+    if (!rechecked.ready || (rechecked.existingLabel?.found && !rechecked.primaryLabelVerified)
+      || (rechecked.primaryLabelPath || null) !== primaryLabelPath) throw new Error("EasyDPD-Zustand änderte sich vor der Kaufgrenze.");
     await updateJob(nativeSession, job, "dispatching");
     dispatchStarted = true;
     const dispatchNonce = crypto.randomUUID();
@@ -414,7 +418,7 @@ async function processJob(nativeSession, tab, job) {
     const startedAt = Date.now();
     downloadController = new AbortController();
     downloadPromise = waitForDownloadedPdf(tab.id, startedAt, job.orderName, downloadController.signal);
-    const clickResult = await frameMessage(tab.id, frameId, { action: "purchase_once", job, dispatchNonce });
+    const clickResult = await frameMessage(tab.id, frameId, { action: "purchase_once", job, dispatchNonce, primaryLabelPath });
     if (clickResult.clicked !== true) throw new Error("EasyDPD-Kaufklick wurde nicht eindeutig bestätigt.");
     pageErrorController = new AbortController();
     pageErrorPromise = waitForPostDispatchPageError(
@@ -437,7 +441,7 @@ async function processJob(nativeSession, tab, job) {
         error: String(error?.message || error).slice(0, 500),
       });
       try {
-        download = await recoverPostDispatchDownload(tab.id, job);
+        download = await recoverPostDispatchDownload(tab.id, job, 0, primaryLabelPath);
       } catch (recoveryError) {
         throw new Error(`${String(error?.message || error)} Post-Dispatch-Abgleich: ${String(recoveryError?.message || recoveryError)}`);
       }
@@ -463,7 +467,7 @@ async function processJob(nativeSession, tab, job) {
     if (dispatchStarted && !serverCompleted && !postDispatchReconciliationAttempted && !artifactUploadStarted) {
       postDispatchReconciliationAttempted = true;
       try {
-        const download = await recoverPostDispatchDownload(tab.id, job, 5_000);
+        const download = await recoverPostDispatchDownload(tab.id, job, 5_000, primaryLabelPath);
         artifactUploadStarted = true;
         const uploaded = await nativeSession.send({ type: "upload_artifact", job, filePath: download.filename });
         serverCompleted = true;
