@@ -109,8 +109,8 @@ ${rulesStr}
       var plain = h.replace(/<[^>]*>/g, '');
       var ft = document.getElementById('hero-form-title-d');
       var ftm = document.getElementById('hero-form-title');
-      if (ft) ft.textContent = 'Anfrage für ' + plain + ' — in 60 Sek.';
-      if (ftm) ftm.textContent = 'Anfrage für ' + plain + ' — in 60 Sek.';
+      if (ft) ft.textContent = ${config.form_title ? JSON.stringify(config.form_title) : "'Anfrage für ' + plain + ' — in 60 Sek.'"};
+      if (ftm) ftm.textContent = ${config.form_title ? JSON.stringify(config.form_title) : "'Anfrage für ' + plain + ' — in 60 Sek.'"};
     });
   })();
   </script>`;
@@ -225,6 +225,10 @@ function replaceVariables(html, config) {
     '{{CLARITY_PAGE_TYPE}}': config.clarity_page_type || 'landing',
     '{{SLUG}}': config.slug,
     '{{H1_TEXT}}': config.h1_text,
+    '{{FORM_TITLE}}': config.form_title || 'Anfrage in 60 Sekunden',
+    '{{PREVIEW_HEADLINE}}': config.preview_headline || '3D-Vorschau in 24h',
+    '{{PREVIEW_COPY}}': config.preview_copy || 'Kostenlos; Angebot auf dieser Grundlage.',
+    '{{OFFER_BADGE}}': config.offer_badge || '3D-Vorschau in 24h',
     '{{FORM_INTRO_SUBLINE}}': config.form_intro_subline || 'Kostenlose 3D-Vorschau & Festpreisangebot',
     '{{HERO_SUBLINE}}': config.hero_subline || '',
     '{{HERO_POSTER_DESKTOP}}': config.hero_poster_desktop || '../assets/images/hero-poster-desktop-neon.webp',
