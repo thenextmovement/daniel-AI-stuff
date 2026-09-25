@@ -225,6 +225,7 @@ function replaceVariables(html, config) {
     '{{CLARITY_PAGE_TYPE}}': config.clarity_page_type || 'landing',
     '{{SLUG}}': config.slug,
     '{{H1_TEXT}}': config.h1_text,
+    '{{FORM_INTRO_SUBLINE}}': config.form_intro_subline || 'Kostenlose 3D-Vorschau & Festpreisangebot',
     '{{HERO_SUBLINE}}': config.hero_subline || '',
     '{{HERO_POSTER_DESKTOP}}': config.hero_poster_desktop || '../assets/images/hero-poster-desktop-neon.webp',
     '{{HERO_POSTER_MOBILE}}': config.hero_poster_mobile || '../assets/images/hero-poster-neon-mobile.webp',
