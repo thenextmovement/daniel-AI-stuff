@@ -16,7 +16,7 @@ Production n8n workflow for official-source model-update alerts from OpenAI/Chat
 10. Notification idempotency keys are persisted only after successful delivery. The no-change branch initializes or refreshes the baseline.
 11. Runtime failures stop the workflow and are routed through `NEONTRIP Error Alerting v1.0`; summary-only failures fall back safely after retries.
 
-## Repair prepared on 2026-09-30
+## Repair published on 2026-09-30
 
 - Workflow ID: `vseFp5GZU975CeOM`. Observed published version: `06022b5f-52c8-416a-b100-66a887c4107d`, created 2026-09-06, named `Weekly AI model news: Monday 09:15 Berlin`. Its cron was `15 9 * * 1`; the trigger label still said six hours.
 - Restore the documented `15 */6 * * *` schedule: 00:15, 06:15, 12:15, 18:15 in `Europe/Berlin`. Notifications remain conditional on unseen updates, not mandatory every six hours.
@@ -26,6 +26,7 @@ Production n8n workflow for official-source model-update alerts from OpenAI/Chat
 - Save successful executions as well as errors so future scheduled checks and send/no-send branches are traceable. The pre-repair setting was `none`, and no historical executions for this workflow are currently returned. Persisted static data records the last successful send path on 2026-09-28 at 07:15 UTC; mailbox delivery was not independently inspected.
 - Keep the existing summary fallback, Outlook credential references and global error workflow. Outlook sends are not exactly-once: an ambiguous remote acceptance/timeout can duplicate a retry; a successful send followed by failed state persistence can also replay. This repair does not introduce a new delivery ledger.
 - Ziel: six-hour official-source checks including Grok, working OpenAI/Anthropic extraction. Nachbar: deterministic summaries, exact impact matching, internal recipient, existing credentials/error route. Wirkung: one conditional internal email after successful validated analysis; local tests do not send mail. Allowed tracked files: this directory.
+- Published and read back at 2026-09-30 08:07:54 UTC. Active/draft version: `3826a8f1-ea11-4258-9f05-11f2e5a1264e`. Full structural comparison matches exactly the prepared nodes, connections and settings; all 232 sent keys and every credential reference are unchanged. The local official-source replay finds 244 candidates (88 OpenAI, 59 Anthropic, 64 Gemini, 33 xAI), retains the previous keys and produces no duplicate notification. Strict n8n validation has zero errors; its four generic Code-node throw warnings are covered by the existing fail-closed global error route. The next expected regular check is 2026-09-30 12:15 Europe/Berlin; no post-repair scheduled execution or mailbox delivery is claimed.
 - The task authorizes the bounded repair of the existing n8n workflow. Before the live write, refresh and back up the complete workflow, recheck the active/draft version, patch only the intended fields, compare the complete readback and confirm the published graph. A repository main push remains a separate release subject to exact commit approval and predeploy under `AGENTS.md`. The monitor is not currently exposed to n8n instance MCP; no exposure flag or production test run is introduced by this repair.
 
 ## NEONTRIP impact inventory
