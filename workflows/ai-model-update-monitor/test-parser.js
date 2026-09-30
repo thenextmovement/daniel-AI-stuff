@@ -1,4 +1,4 @@
-const { analyzeCode, finalizeCode, workflow } = require('./build-workflow');
+const { analyzeCode, finalizeCode, recordCode, workflow } = require('./build-workflow');
 
 function padded(value) {
   return value + '\n<!-- ' + 'official-source-fixture '.repeat(40) + '-->';
@@ -15,13 +15,11 @@ const sources = {
       </item></channel></rss>`),
   },
   'OpenAI API Changelog': {
-    openaiApi: padded(`
-      <h2>July 29, 2026</h2>
-      <p>Released an update for gpt-4o-mini with improved structured outputs.</p>`),
+    openaiApi: padded(`# Changelog\n\n## July, 2026\n\n### Jul 29\n\nReleased an update for gpt-4o-mini with improved structured outputs.`),
   },
   'Anthropic Release Notes': {
     anthropicRelease: padded(`
-      <h2>July 28, 2026</h2>
+      <h2>July 28, 2026<button>Copy link</button></h2>
       <p>Released claude-sonnet-4-6 with improved tool use and JSON reliability.</p>`),
   },
   'Anthropic News Sitemap': {
@@ -52,6 +50,12 @@ const sources = {
         <description>Released an update for gemini-3-pro-image.</description>
       </item></channel></rss>`),
   },
+  'xAI Release Notes': {
+    xaiRelease: padded(`# Release Notes\n\n## September\n\n### Grok 4.7\n\nReleased grok-4.7, now available with improved tool use. See [announcement](https://x.ai/news/grok-4-7).\n\n### Grok Voice\n\nReleased grok-voice-think-fast-2.0.`),
+  },
+  'xAI Modellkatalog': {
+    xaiModels: padded(`# Models\n\n| Model | Input |\n| --- | --- |\n| grok-4.7 (< 200k) | $2 |\n| grok-4.7 (>= 200k) | $4 |\n| grok-imagine-image-2.0 | $0.04 |`),
+  },
 };
 
 const state = {};
@@ -63,7 +67,7 @@ const runAnalyze = new Function('$', '$getWorkflowStaticData', '$execution', '$n
 
 const seed = runAnalyze(sourceAccessor, $getWorkflowStaticData, $execution, $now)[0].json;
 if (seed.mode !== 'seed' || seed.shouldEmail !== false) throw new Error('Initial run must seed without email');
-if (seed.schemaVersion !== 2 || seed.candidateCount < 4) throw new Error('Unexpected parser/schema output');
+if (seed.schemaVersion !== 3 || seed.candidateCount < 8) throw new Error('Unexpected parser/schema output');
 
 state.initialized = true;
 state.schemaVersion = seed.schemaVersion;
@@ -76,7 +80,7 @@ const migration = runAnalyze(sourceAccessor, $getWorkflowStaticData, $execution,
 if (migration.mode !== 'key-migration' || migration.shouldEmail !== false || migration.keysToMark.length < 4) {
   throw new Error('Schema migration must establish a silent baseline');
 }
-state.schemaVersion = 2;
+state.schemaVersion = 3;
 
 state.sent = {};
 const allFresh = runAnalyze(sourceAccessor, $getWorkflowStaticData, $execution, $now)[0].json;
@@ -170,10 +174,73 @@ if (fallbackEmail.summaryMode !== 'mixed-fallback' ||
   throw new Error('Validated German fallback failed');
 }
 
-if (workflow.nodes.length !== 15) throw new Error('Unexpected workflow node count');
+if (workflow.nodes.length !== 17) throw new Error('Unexpected workflow node count');
 if (!workflow.nodes.some(node => node.name === 'Deutsche Key Points erstellen') ||
     !workflow.nodes.some(node => node.name === 'E-Mail finalisieren')) {
   throw new Error('Summary/finalizer nodes missing');
+}
+
+const xaiItems = allFresh.freshItems.filter(item => item.provider === 'xAI');
+if (xaiItems.length !== 4 || !xaiItems.some(item => item.modelIds.includes('grok-4.7'))) {
+  throw new Error('xAI sources or repeated catalog-row deduplication failed');
+}
+if (xaiItems.some(item => item.modelIds.includes('grok-4-7'))) throw new Error('URL slug mistaken for model ID');
+if (!allFresh.freshItems.some(item => item.provider === 'Anthropic' && item.date === 'July 28, 2026')) {
+  throw new Error('Anthropic heading controls broke dated extraction');
+}
+for (const name of ['OpenAI API Changelog', 'Anthropic Release Notes', 'xAI Release Notes', 'xAI Modellkatalog']) {
+  const savedSource = sources[name];
+  sources[name] = Object.fromEntries(Object.keys(savedSource).map(field => [field, padded('<html>Unknown page</html>')]));
+  let rejected = false;
+  try { runAnalyze(sourceAccessor, $getWorkflowStaticData, $execution, $now); } catch { rejected = true; }
+  sources[name] = savedSource;
+  if (!rejected) throw new Error('Invalid source silently accepted: ' + name);
+}
+state.sent = {};
+const beforeSending = JSON.stringify(state);
+const pending = runAnalyze(sourceAccessor, $getWorkflowStaticData, $execution, $now)[0].json;
+if (JSON.stringify(state) !== beforeSending) throw new Error('Analysis persisted keys before sending');
+const record = new Function('$', '$getWorkflowStaticData', recordCode);
+record(() => ({ first: () => ({ json: pending }) }), $getWorkflowStaticData);
+const replay = runAnalyze(sourceAccessor, $getWorkflowStaticData, $execution, $now)[0].json;
+if (replay.newCount !== 0 || replay.shouldEmail) throw new Error('Successful-send replay notified twice');
+sources['OpenAI API Changelog'].openaiApi = sources['OpenAI API Changelog'].openaiApi.replace('improved structured outputs', 'improved reliable structured outputs');
+if (runAnalyze(sourceAccessor, $getWorkflowStaticData, $execution, $now)[0].json.newCount !== 0) {
+  throw new Error('OpenAI prose edit changed stable event identity');
+}
+sources['xAI Release Notes'].xaiRelease += '\n\n### Grok 4.8\n\nReleased grok-4.8 with new multimodal features.';
+const xaiNew = runAnalyze(sourceAccessor, $getWorkflowStaticData, $execution, $now)[0].json;
+if (xaiNew.newCount !== 1 || xaiNew.freshItems[0].provider !== 'xAI') throw new Error('New xAI event not isolated');
+if (workflow.nodes.find(node => node.id === 'schedule_6h').parameters.rule.interval[0].expression !== '15 */6 * * *') {
+  throw new Error('Six-hour schedule changed');
+}
+
+let liveEvidence;
+if (process.argv[2]) {
+  const fs = require('fs');
+  const path = require('path');
+  const fields = {
+    'OpenAI News RSS': 'openaiNews', 'OpenAI API Changelog': 'openaiApi',
+    'Anthropic Release Notes': 'anthropicRelease', 'Anthropic News Sitemap': 'anthropicSitemap',
+    'Gemini API Changelog': 'geminiApi', 'Google AI RSS': 'googleAi',
+    'xAI Release Notes': 'xaiRelease', 'xAI Modellkatalog': 'xaiModels',
+  };
+  const liveAccessor = name => ({ first: () => ({ json: {
+    [fields[name]]: fs.readFileSync(path.join(process.argv[2], (name === 'OpenAI API Changelog' ? 'openaiApiMarkdown' : fields[name]) + '.txt'), 'utf8'),
+  } }) });
+  const liveState = process.argv[3]
+    ? JSON.parse(fs.readFileSync(process.argv[3], 'utf8')).staticData.global
+    : { initialized: true, schemaVersion: 2, sent: { 'previously-sent': '2026-09-28T07:15:06Z' } };
+  const oldKeys = Object.keys(liveState.sent);
+  const baseline = runAnalyze(liveAccessor, () => liveState, $execution, $now)[0].json;
+  if (baseline.mode !== 'key-migration' || baseline.shouldEmail) throw new Error('Live baseline must not send');
+  record(() => ({ first: () => ({ json: baseline }) }), () => liveState);
+  if (oldKeys.some(key => !liveState.sent[key])) throw new Error('Existing sent key lost in migration');
+  const liveReplay = runAnalyze(liveAccessor, () => liveState, $execution, $now)[0].json;
+  if (liveReplay.newCount || liveReplay.shouldEmail) throw new Error('Live replay must not send');
+  const findings = runAnalyze(liveAccessor, () => ({ initialized: true, schemaVersion: 3, sent: {} }), $execution, $now)[0].json;
+  liveEvidence = { candidates: baseline.candidateCount, preservedSentKeys: oldKeys.length, replayMode: liveReplay.mode,
+    providerCounts: findings.freshItems.reduce((counts, item) => ({ ...counts, [item.provider]: (counts[item.provider] || 0) + 1 }), {}) };
 }
 
 process.stdout.write(JSON.stringify({
@@ -184,4 +251,5 @@ process.stdout.write(JSON.stringify({
   roboticsImpactCount: roboticsEmail.impactCount,
   exactGeminiImpactCount: exactGeminiEmail.impactCount,
   fallbackMode: fallbackEmail.summaryMode,
+  liveEvidence,
 }, null, 2));

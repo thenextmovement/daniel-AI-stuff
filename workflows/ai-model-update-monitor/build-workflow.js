@@ -49,6 +49,7 @@ const MODEL_PATTERNS = {
   OpenAI: /(gpt[-\s]?\d|chatgpt|sora|dall[-\s]?e|\bo\d(?:\b|-)|image model|audio model|voice model|realtime model|speech model|transcrib|text[-\s]?to[-\s]?speech|video model|vision model)/i,
   Anthropic: /(claude|opus|sonnet|haiku|fable|mythos|anthropic.{0,20}model|vision|image|audio|voice|video|multimodal)/i,
   Gemini: /(gemini|veo|imagen|lyria|nano banana|google.{0,20}model|flash|\bpro model|live api|\btts\b|text[-\s]?to[-\s]?speech|audio[-\s]?to[-\s]?audio|image generation|video generation)/i,
+  xAI: /(grok|imagine|xai.{0,20}model)/i,
 };
 
 function relevant(provider, text) {
@@ -161,7 +162,7 @@ function parseDatedHtml(html, provider, sourceUrl) {
   const re = /<h[23]\b[^>]*>([\s\S]*?)<\/h[23]>/gi;
   let match;
   while ((match = re.exec(html))) {
-    const text = decode(match[1]);
+    const text = decode(match[1].replace(/<button\b[\s\S]*?<\/button>/gi, ''));
     if (/^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}$/i.test(text)) {
       headings.push({ date: text, start: match.index, end: re.lastIndex });
     }
@@ -179,6 +180,65 @@ function parseDatedHtml(html, provider, sourceUrl) {
     }
   }
   return result;
+}
+
+function plainMarkdown(value) {
+  return String(value).replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+}
+
+function parseOpenaiChangelog(markdown, sourceUrl) {
+  // The official Markdown surface uses month/year headings and dated entries.
+  if (!/^# Changelog\s*$/m.test(markdown)) throw new Error('OpenAI API Changelog: unbekanntes Format');
+  const sections = [...markdown.matchAll(/^## ([A-Za-z]+), (20\d{2})\s*$/gm)];
+  const result = [];
+  for (let s = 0; s < sections.length; s++) {
+    const section = sections[s];
+    const body = markdown.slice(section.index + section[0].length, sections[s + 1]?.index ?? markdown.length);
+    const entries = [...body.matchAll(/^### [A-Za-z]{3}\s+(\d{1,2})\s*$/gm)];
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const text = plainMarkdown(body.slice(entry.index + entry[0].length, entries[i + 1]?.index ?? body.length)).trim();
+      if (!relevant('OpenAI', text)) continue;
+      const date = section[1] + ' ' + entry[1] + ', ' + section[2];
+      // Keep the existing date/event/model identity; prose edits must not resend.
+      const identity = sourceUrl + '|' + date + '|' + classifyEvent(text) + '|' + extractModelIds(text).join(',');
+      result.push(makeCandidate('OpenAI', 'OpenAI API Update – ' + date, date, sourceUrl, text, identity));
+    }
+  }
+  if (!result.length) throw new Error('OpenAI API Changelog: keine Modell-Eintraege');
+  return result;
+}
+
+function parseXaiRelease(markdown, sourceUrl) {
+  if (!/^# Release Notes\s*$/m.test(markdown)) throw new Error('xAI Release Notes: unbekanntes Format');
+  const headings = [...markdown.matchAll(/^#{2,3} (.+)\s*$/gm)];
+  const result = [];
+  let period = '';
+  for (let i = 0; i < headings.length; i++) {
+    const heading = headings[i];
+    if (heading[0].startsWith('## ')) { period = heading[1].trim(); continue; }
+    const title = heading[1].trim();
+    const body = plainMarkdown(markdown.slice(heading.index + heading[0].length, headings[i + 1]?.index ?? markdown.length)).trim();
+    if (!relevant('xAI', title + ' ' + body)) continue;
+    // This official Markdown omits day/year; do not invent them.
+    const identity = sourceUrl + '|' + period + '|' + title;
+    result.push(makeCandidate('xAI', title, period, sourceUrl, body, identity));
+  }
+  if (!result.length) throw new Error('xAI Release Notes: keine Modell-Eintraege');
+  return result;
+}
+
+function parseXaiModels(markdown, sourceUrl) {
+  if (!/^# Models\s*$/m.test(markdown)) throw new Error('xAI Modellkatalog: unbekanntes Format');
+  const ids = new Set();
+  for (const line of markdown.split('\n')) {
+    if (!/^\|/.test(line)) continue;
+    // Only the model column: references and migration text are not listings.
+    for (const id of extractModelIds(line.split('|')[1])) if (id.startsWith('grok-')) ids.add(id);
+  }
+  if (!ids.size) throw new Error('xAI Modellkatalog: keine Modell-IDs');
+  return [...ids].sort().map(id => makeCandidate('xAI', 'Grok API-Modell im Katalog: ' + id, '', sourceUrl,
+    'Die offizielle xAI-Modellpreisliste führt ' + id + ' auf. Dies ist ein Katalogeintrag, kein belegtes Veröffentlichungsdatum.', sourceUrl + '|' + id));
 }
 
 function titleFromUrl(url) {
@@ -207,14 +267,20 @@ const anthropicRelease = sourceText('Anthropic Release Notes', 'anthropicRelease
 const anthropicSitemap = sourceText('Anthropic News Sitemap', 'anthropicSitemap');
 const geminiApi = sourceText('Gemini API Changelog', 'geminiApi');
 const googleAi = sourceText('Google AI RSS', 'googleAi');
+const xaiRelease = sourceText('xAI Release Notes', 'xaiRelease');
+const xaiModels = sourceText('xAI Modellkatalog', 'xaiModels');
+const anthropicEntries = parseDatedHtml(anthropicRelease, 'Anthropic', 'https://platform.claude.com/docs/en/release-notes/overview');
+if (!anthropicEntries.length) throw new Error('Anthropic Release Notes: keine Modell-Eintraege');
 
 let candidates = [
   ...parseRss(openaiNews, 'OpenAI', 'https://openai.com/news/rss.xml'),
-  ...parseDatedHtml(openaiApi, 'OpenAI', 'https://developers.openai.com/api/docs/changelog'),
-  ...parseDatedHtml(anthropicRelease, 'Anthropic', 'https://platform.claude.com/docs/en/release-notes/overview'),
+  ...parseOpenaiChangelog(openaiApi, 'https://developers.openai.com/api/docs/changelog'),
+  ...anthropicEntries,
   ...parseAnthropicSitemap(anthropicSitemap),
   ...parseDatedHtml(geminiApi, 'Gemini', 'https://ai.google.dev/gemini-api/docs/changelog'),
   ...parseRss(googleAi, 'Gemini', 'https://blog.google/technology/ai/rss/'),
+  ...parseXaiRelease(xaiRelease, 'https://docs.x.ai/developers/release-notes'),
+  ...parseXaiModels(xaiModels, 'https://docs.x.ai/developers/models'),
 ];
 
 const unique = new Map();
@@ -223,21 +289,21 @@ for (const item of candidates) {
 }
 candidates = [...unique.values()];
 
-for (const provider of ['OpenAI', 'Anthropic', 'Gemini']) {
+for (const provider of ['OpenAI', 'Anthropic', 'Gemini', 'xAI']) {
   if (!candidates.some(item => item.provider === provider)) {
     throw new Error('Parser lieferte keine relevanten Eintraege fuer ' + provider + '. Quelle oder HTML-Struktur pruefen.');
   }
 }
 
 const state = $getWorkflowStaticData('global');
-const schemaVersion = 2;
+const schemaVersion = 3;
 const sent = state.sent && typeof state.sent === 'object' ? state.sent : {};
 const initialized = state.initialized === true;
 const needsKeyMigration = initialized && state.schemaVersion !== schemaVersion;
 const fresh = initialized && !needsKeyMigration ? candidates.filter(item => !sent[item.key]) : [];
 const keysToMark = (initialized && !needsKeyMigration ? fresh : candidates).map(item => item.key);
 
-const providerOrder = { OpenAI: 1, Anthropic: 2, Gemini: 3 };
+const providerOrder = { OpenAI: 1, Anthropic: 2, Gemini: 3, xAI: 4 };
 fresh.sort((a, b) => (providerOrder[a.provider] || 9) - (providerOrder[b.provider] || 9));
 
 const correlationId = 'ai-model-updates-' + $execution.id;
@@ -542,11 +608,13 @@ const nodes = [
     parameters: { rule: { interval: [{ field: 'cronExpression', expression: '15 */6 * * *' }] } },
   },
   httpNode('openai_news', 'OpenAI News RSS', 'https://openai.com/news/rss.xml', 'openaiNews', 240, 320),
-  httpNode('openai_api', 'OpenAI API Changelog', 'https://developers.openai.com/api/docs/changelog', 'openaiApi', 500, 320),
+  httpNode('openai_api', 'OpenAI API Changelog', 'https://developers.openai.com/api/docs/changelog.md', 'openaiApi', 500, 320),
   httpNode('anthropic_release', 'Anthropic Release Notes', 'https://platform.claude.com/docs/en/release-notes/overview', 'anthropicRelease', 760, 320),
   httpNode('anthropic_sitemap', 'Anthropic News Sitemap', 'https://www.anthropic.com/sitemap.xml', 'anthropicSitemap', 1020, 320),
   httpNode('gemini_api', 'Gemini API Changelog', 'https://ai.google.dev/gemini-api/docs/changelog', 'geminiApi', 1280, 320),
   httpNode('google_ai', 'Google AI RSS', 'https://blog.google/technology/ai/rss/', 'googleAi', 1540, 320),
+  httpNode('xai_release', 'xAI Release Notes', 'https://docs.x.ai/developers/release-notes.md', 'xaiRelease', 1540, 620),
+  httpNode('xai_models', 'xAI Modellkatalog', 'https://docs.x.ai/developers/models.md', 'xaiModels', 1800, 620),
   {
     id: 'analyze_updates',
     name: 'Updates analysieren',
@@ -677,7 +745,7 @@ const nodes = [
     parameters: {
       width: 1040,
       height: 220,
-      content: '## KI-Modell-Update-Monitor v1.1\n\nPrüft alle 6 Stunden ausschließlich offizielle Quellen von OpenAI/ChatGPT, Anthropic/Claude und Google/Gemini. Neue Meldungen werden aus dem offiziellen Quellenauszug auf Deutsch in 2–4 Key Points zusammengefasst. Das Zusammenfassungsmodell darf weder Websuche noch URL-Kontext oder Codeausführung nutzen; sein JSON wird vor der E-Mail deterministisch validiert.\n\n**Impact:** Workflow-Treffer entstehen nur bei exakter Modell-ID-Übereinstimmung mit dem bestätigten Produktiv-Inventar. Allgemeine Anbieter- oder Modalitäts-Treffer erzeugen keine vermeintliche Direktbetroffenheit.\n\n**Versand:** support@neontrip.de → info@neontrip.de. Pro Lauf maximal eine Sammelmail; Deduplizierung erst nach erfolgreichem Outlook-Versand. Schemawechsel setzt einmalig nur eine neue Baseline.\n\n**Fehler:** Quellen- und E-Mail-Fehler stoppen den Workflow. Fällt nur die deutsche Zusammenfassung nach Retries aus, erzeugt der Validator sichere deutsche Fallback-Stichpunkte. Rollback: gesicherten Workflow-Snapshot wiederherstellen.',
+      content: '## KI-Modell-Update-Monitor v1.1\n\nPrüft alle 6 Stunden ausschließlich offizielle Quellen von OpenAI/ChatGPT, Anthropic/Claude, Google/Gemini und xAI/Grok. Neue Meldungen werden aus dem offiziellen Quellenauszug auf Deutsch in 2–4 Key Points zusammengefasst. Das Zusammenfassungsmodell darf weder Websuche noch URL-Kontext oder Codeausführung nutzen; sein JSON wird vor der E-Mail deterministisch validiert.\n\n**Impact:** Workflow-Treffer entstehen nur bei exakter Modell-ID-Übereinstimmung mit dem bestätigten Produktiv-Inventar. Allgemeine Anbieter- oder Modalitäts-Treffer erzeugen keine vermeintliche Direktbetroffenheit.\n\n**Versand:** support@neontrip.de → info@neontrip.de. Pro Lauf maximal eine Sammelmail; Deduplizierung erst nach erfolgreichem Outlook-Versand. Schemawechsel setzt einmalig nur eine neue Baseline.\n\n**Fehler:** Quellen- und E-Mail-Fehler stoppen den Workflow. Fällt nur die deutsche Zusammenfassung nach Retries aus, erzeugt der Validator sichere deutsche Fallback-Stichpunkte. Rollback: gesicherten Workflow-Snapshot wiederherstellen.',
     },
   },
 ];
@@ -690,7 +758,9 @@ const connections = {
   'Anthropic Release Notes': chain('Anthropic News Sitemap'),
   'Anthropic News Sitemap': chain('Gemini API Changelog'),
   'Gemini API Changelog': chain('Google AI RSS'),
-  'Google AI RSS': chain('Updates analysieren'),
+  'Google AI RSS': chain('xAI Release Notes'),
+  'xAI Release Notes': chain('xAI Modellkatalog'),
+  'xAI Modellkatalog': chain('Updates analysieren'),
   'Updates analysieren': chain('Neue Updates?'),
   'Neue Updates?': {
     main: [
@@ -711,7 +781,7 @@ const workflow = {
     executionOrder: 'v1',
     timezone: 'Europe/Berlin',
     saveDataErrorExecution: 'all',
-    saveDataSuccessExecution: 'none',
+    saveDataSuccessExecution: 'all',
     executionTimeout: 300,
     errorWorkflow: 'ArT3LN25Mb1PAuBE',
   },
