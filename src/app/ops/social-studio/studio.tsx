@@ -30,7 +30,12 @@ async function api(action: string, data: object = {}) {
     );
   return j;
 }
-async function renderImage(file: string, width: number, height: number) {
+async function renderImage(
+  file: string,
+  width: number,
+  height: number,
+  fit: "contain" | "cover" = "contain",
+) {
   const img = new Image();
   img.src = "/ops/social-studio/originals/" + encodeURIComponent(file);
   await img.decode();
@@ -40,7 +45,10 @@ async function renderImage(file: string, width: number, height: number) {
   const ctx = c.getContext("2d")!;
   ctx.fillStyle = "#111214";
   ctx.fillRect(0, 0, width, height);
-  const k = Math.min(width / img.width, height / img.height);
+  const k =
+    fit === "cover"
+      ? Math.max(width / img.width, height / img.height)
+      : Math.min(width / img.width, height / img.height);
   ctx.drawImage(
     img,
     (width - img.width * k) / 2,
@@ -209,7 +217,12 @@ export default function Studio() {
         const images: Record<string, string> = {};
         for (const f of Object.values(FORMATS)) {
           if (!images[f.key])
-            images[f.key] = await renderImage(item.file, f.width, f.height);
+            images[f.key] = await renderImage(
+              item.file,
+              f.width,
+              f.height,
+              f.key === FORMATS.ig.key ? "cover" : "contain",
+            );
         }
         const j = await api("approve", {
           id: draft.id,
@@ -535,6 +548,7 @@ export default function Studio() {
                     className="preview"
                     style={
                       {
+                        objectFit: channel === "ig" ? "cover" : "contain",
                         "--ratio":
                           FORMATS[channel].width +
                           "/" +
@@ -542,11 +556,21 @@ export default function Studio() {
                       } as React.CSSProperties
                     }
                     src={
+                      (!editable &&
+                        publicLink(
+                          draft?.deliveries.find((r) => r.channel === channel)
+                            ?.image_url,
+                        )) ||
                       "/ops/social-studio/originals/" +
-                      encodeURIComponent(item.file)
+                        encodeURIComponent(item.file)
                     }
                     alt={"Formatvorschau " + LABELS[channel] + ": " + item.name}
                   />
+                  {channel === "ig" && editable && (
+                    <p className="muted small">
+                      Prüfe, dass das Schild vollständig im Bild ist.
+                    </p>
+                  )}
                   <h2>{item.name}</h2>
                   <p className="muted small">
                     {LABELS[channel]} · {FORMATS[channel].width} ×{" "}

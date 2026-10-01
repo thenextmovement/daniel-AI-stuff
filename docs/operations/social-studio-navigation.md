@@ -52,6 +52,16 @@ Der Bliss-Test wurde ausdrücklich über Ops freigegeben und danach mit Buffers 
 
 Fokussierte Prüfung: URL-freie Instagram-Texte mit Absätzen/Emoji, unveränderte Nicht-Instagram-Verträge, tatsächliche Zeit nach vorgezogenem Buffer-Versand, ausdrückliche Freigabe, Parallelfreigabe und Verhalten bei unklarem Provider-Ergebnis. Lokale Vorbereitung ist keine Veröffentlichung; Live-Version und Löschbelege werden im aktuellen Task separat protokolliert.
 
+## Instagram-Feed-Zuschnitt, 01.10.2026
+
+Ziel: Neue Instagram-Exporte füllen das bestehende Format 1080×1350 vollständig mit einem mittigen Zuschnitt. Der bisherige dunkle Hintergrund darf keine hinzugefügten Balken oben, unten oder seitlich erzeugen. Die bearbeitbare Instagram-Vorschau zeigt denselben Ausschnitt und weist auf die Prüfung des vollständigen Schilds hin.
+
+Nachbar: Gemini-Eingabebild und die Exportformate für Facebook, LinkedIn, Pinterest und Google Business verwenden weiterhin die bisherige vollständige Einpassung. Texte, Termine, Freigabe, Datenbank und Gateway bleiben unverändert. Änderungen betreffen ausschließlich die native Social-Studio-Oberfläche und diese Dokumentation.
+
+Wirkung: Der bestehende Freigabeweg übergibt für neue Beiträge das zugeschnittene Instagram-JPEG an den unveränderten Upload. Bereits geplante oder veröffentlichte Beiträge werden nicht verändert; ihre nicht bearbeitbare Vorschau zeigt die gespeicherte Plattform-Bilddatei, sofern vorhanden. Bereits veröffentlichte Medien werden durch einen Code-Release nicht ersetzt.
+
+Lokal geprüft: techHAUS im vorhandenen Freigabeablauf mit ausschließlich lokalen Datenbank-/Provider-Doppeln exportiert. Das tatsächlich übergebene JPEG hat 1080×1350 Pixel, keine hinzugefügten Balken und zeigt das vollständige Schild. Andere Plattformformate behalten ihre bisherige Einpassung; die Vorschau bestehender Veröffentlichungen nutzt deren gespeicherte Bild-URL. Alle 1.296 Quote-Tests, TypeScript, Produktions-Build und acht Deployment-Gate-Tests bestanden. Der Produktionsnachweis folgt erst nach Freigabe des exakten Release-Commits.
+
 ## Rollback
 
 Kein automatischer Rückbau nach unklaren Posts. Bei neuen Ops-Freigaben zuerst kanonische Tabellen und Provider-IDs abgleichen. Die D1-Daten bleiben bestehen; nur bei nachgewiesen fehlenden neuen Ops-Aktionen darf die alte Site-Version 3 zusammen mit der bisherigen Gateway-Credential wiederhergestellt werden. Neue Ops-Tabellen und Daten dabei erhalten. Ops-Code nur über gezielten, exakt freigegebenen Revert mit regulärem Release-Gate zurücknehmen.
