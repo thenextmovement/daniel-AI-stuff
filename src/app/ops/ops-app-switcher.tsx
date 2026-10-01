@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeEuro, BarChart3, BookOpenCheck, BrainCircuit, Building2, Calculator, ClipboardList, Factory, FileText, Headphones, MailCheck, Palette, PhoneCall, PlaneLanding, ReceiptText, Truck, type LucideIcon, UsersRound } from "lucide-react";
+import { BadgeEuro, BarChart3, BookOpenCheck, BrainCircuit, Building2, Calculator, ClipboardList, Factory, FileText, Headphones, Images, MailCheck, Palette, PhoneCall, PlaneLanding, ReceiptText, Truck, type LucideIcon, UsersRound } from "lucide-react";
 
 export type OpsAppKey =
   | "records"
@@ -11,6 +11,7 @@ export type OpsAppKey =
   | "companyBrain"
   | "companyKnowledge"
   | "design"
+  | "socialStudio"
   | "offers"
   | "billing"
   | "dunning"
@@ -95,6 +96,13 @@ const OPS_APPS: Array<{
     helper: "Mockups & Freigaben",
     href: "/ops/design",
     Icon: Palette,
+  },
+  {
+    key: "socialStudio",
+    label: "Social Studio",
+    helper: "Fotos, Texte & Postingplan",
+    href: "/ops/social-studio",
+    Icon: Images,
   },
   {
     key: "offers",
