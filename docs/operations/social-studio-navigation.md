@@ -38,6 +38,20 @@ Fokussierte API-Tests: fremder Ursprung, veraltete Revision, ausdrückliche Frei
 
 Fotos: 201 Originale und 201 Thumbnails aus der bestehenden Sammlung, Kopien per SHA-256 geprüft. Vier bestehende Entwürfe wurden vollständig aus den tatsächlichen Textfeldern gelesen und mit D1-Metadaten verknüpft. Diese Vorbereitung ist noch kein bestätigter Produktivumzug; dessen Belege werden nach Veröffentlichung ergänzt.
 
+## Instagram-Texte und Veröffentlichungszeit, 01.10.2026
+
+Instagram-Texte dürfen passende Emojis und Leerzeilen enthalten und benötigen keine URL. HTTP-URLs sind für Instagram gesperrt; die bisherigen Link- und Emoji-Regeln der anderen Plattformen bleiben bestehen. Gemini erhält eine konkrete Vorgabe für 2–3 kurze Absätze, 1–2 passende Emojis, direkte Sprache und wenige Hashtags. Allgemeine Werbefloskeln werden vermieden. Ein Motiv wird erst nach der Auswahl und Textfreigabe durch einen Menschen veröffentlicht. Der Agent wählt keinen weiteren Testbeitrag selbst aus.
+
+Kunden, tatsächliche Standorte und fertiggestellte Kundenaufträge werden ausschließlich mit bestätigten Projektdaten genannt. Die KI-Sammlung allein belegt keine realisierte Kundenreferenz. Die vorhandene Instagram-Kennzeichnung für generierte Bilder bleibt erhalten; ein Textwechsel entfernt keine Plattform-Kennzeichnung.
+
+Die Code-Quelle für den bestehenden Gateway-Knoten `Validate & Prepare` liegt in `social-studio-gateway-code.js`. Der freizugebende Diff ändert ausschließlich die Instagram-Promptvorgabe und die Instagram-Textprüfung in `publish` und `edit`. Alle anderen Knoten, Credentials, Verbindungen und der Drei-Tage-Rhythmus bleiben unverändert. Der Live-Patch erfolgt koordiniert mit dem Ops-Release nach erneutem Versionsvergleich, Backup und vollständigem Graph-Diff.
+
+Veröffentlichte Karten zeigen die jüngste bestätigte `sent_at`-Zeit der Plattformen statt des ursprünglichen Planungstermins. Ohne bestätigte Zeit wird kein Veröffentlichungsdatum erfunden; geplante Karten zeigen weiterhin ihren reservierten Termin.
+
+Der Bliss-Test wurde ausdrücklich über Ops freigegeben und danach mit Buffers vorhandenem `Publish Now` sofort veröffentlicht. Ein eigener Sofort-Button in Ops wurde mit dieser begrenzten Text-/Datumsreparatur nicht hinzugefügt. Ein weiterer Test erfolgt erst nach Motivauswahl und ausdrücklicher Textfreigabe.
+
+Fokussierte Prüfung: URL-freie Instagram-Texte mit Absätzen/Emoji, unveränderte Nicht-Instagram-Verträge, tatsächliche Zeit nach vorgezogenem Buffer-Versand, ausdrückliche Freigabe, Parallelfreigabe und Verhalten bei unklarem Provider-Ergebnis. Lokale Vorbereitung ist keine Veröffentlichung; Live-Version und Löschbelege werden im aktuellen Task separat protokolliert.
+
 ## Rollback
 
 Kein automatischer Rückbau nach unklaren Posts. Bei neuen Ops-Freigaben zuerst kanonische Tabellen und Provider-IDs abgleichen. Die D1-Daten bleiben bestehen; nur bei nachgewiesen fehlenden neuen Ops-Aktionen darf die alte Site-Version 3 zusammen mit der bisherigen Gateway-Credential wiederhergestellt werden. Neue Ops-Tabellen und Daten dabei erhalten. Ops-Code nur über gezielten, exakt freigegebenen Revert mit regulärem Release-Gate zurücknehmen.

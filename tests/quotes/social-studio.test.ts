@@ -10,7 +10,8 @@ import {
 
 const id = catalog[0].id;
 const texts = Object.fromEntries([
-  ...CHANNELS.map((c) => [
+  ["ig", "Ein Schild, das auffällt.\n\nTürkis und Magenta auf dunklem Stein. ✨\n\n#Leuchtreklame #NEONTRIP"],
+  ...CHANNELS.filter((c) => c !== "ig").map((c) => [
     c,
     "Ein leuchtendes Schild. https://anfrage.neontrip.de",
   ]),

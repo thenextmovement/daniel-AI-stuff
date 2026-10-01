@@ -76,6 +76,18 @@ export function berlin(s: string | null) {
       })
     : "Noch kein Termin";
 }
+export function postTimeLabel(d: Pick<Draft, "status" | "due_at" | "deliveries">) {
+  if (d.status === "sent") {
+    const sent = d.deliveries
+      .filter((r) => r.status === "sent" && r.sent_at)
+      .map((r) => Date.parse(r.sent_at!))
+      .filter(Number.isFinite);
+    return sent.length
+      ? berlin(new Date(Math.max(...sent)).toISOString()) + " Uhr"
+      : "Veröffentlichungszeit noch nicht bestätigt";
+  }
+  return d.due_at ? berlin(d.due_at) + " Uhr" : "Termin wird vorbereitet";
+}
 export function publicLink(s: unknown) {
   if (typeof s !== "string") return null;
   try {

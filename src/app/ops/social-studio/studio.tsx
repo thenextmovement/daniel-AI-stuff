@@ -14,6 +14,7 @@ import {
   stateNames,
   berlin,
   publicLink,
+  postTimeLabel,
   type Draft,
 } from "@/lib/ops/social-studio/studio-state";
 async function api(action: string, data: object = {}) {
@@ -609,6 +610,12 @@ export default function Studio() {
                     </>
                   )}
                   <label htmlFor="post-text">Text für {LABELS[channel]}</label>
+                  {channel === "ig" && editable && (
+                    <p className="small muted">
+                      Kurz und persönlich, mit Absätzen und passenden Emojis.
+                      Ohne URL. Kunde und Ort nur nennen, wenn sie bestätigt sind.
+                    </p>
+                  )}
                   <textarea
                     id="post-text"
                     value={texts[channel]}
@@ -753,9 +760,7 @@ export default function Studio() {
                         </span>
                       </div>
                       <strong className="due">
-                        {d.due_at
-                          ? berlin(d.due_at) + " Uhr"
-                          : "Termin wird vorbereitet"}
+                        {postTimeLabel(d)}
                       </strong>
                       <p className="muted small">
                         Freigegeben von {d.approved_by || "–"}

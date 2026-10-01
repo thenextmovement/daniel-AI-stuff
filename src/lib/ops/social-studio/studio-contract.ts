@@ -37,7 +37,7 @@ export function validateTexts(value: unknown): Texts {
       s.length > (key === "pinterestTitle" ? 100 : LIMITS[key])
     )
       throw new Error("Text fehlt oder ist zu lang: " + key);
-    if (/\p{Extended_Pictographic}/u.test(s))
+    if (key !== "ig" && /\p{Extended_Pictographic}/u.test(s))
       throw new Error("Bitte Symbole aus dem Text entfernen.");
     if (/hersteller|produktion|produzieren|manufacturer/i.test(s))
       throw new Error("Bitte NEONTRIP als Spezialisten beschreiben.");
@@ -55,7 +55,10 @@ export function validateTexts(value: unknown): Texts {
       )
     )
       throw new Error("Bitte den Text direkt über das Schild formulieren.");
-    if (key !== "pinterestTitle") {
+    if (key === "ig") {
+      if (/https?:\/\//i.test(s))
+        throw new Error("Bitte den Instagram-Text ohne URL formulieren.");
+    } else if (key !== "pinterestTitle") {
       if (!s.includes("https://anfrage.neontrip.de"))
         throw new Error("Bitte den Anfragelink im Text behalten.");
       const urls = s.match(/https?:\/\/[^\s]+/g) || [];
