@@ -39,7 +39,7 @@ const publish = {action:"publish",id:gallery,channel:"ig",text:captions.ig,dueAt
 test("existing gateway publish and edit accept link-free Instagram captions without relaxing other channels or future-slot validation", async () => {
   const result = await prepare(publish);
   assert.equal(result[0].json.body.variables.input.text,captions.ig);
-  assert.equal(result[0].json.body.variables.input.metadata.instagram.isAiGenerated,true);
+  assert.equal(result[0].json.body.variables.input.metadata.instagram.isAiGenerated,false);
   const edit=await prepare({action:"edit",id:gallery,bufferId:"existing-post-123",channel:"ig",operation:"schedule",text:captions.ig,dueAt:due});
   assert.equal(edit[0].json.body.variables.input.id,"existing-post-123");
   await assert.rejects(prepare({...publish,text:captions.ig+" https://anfrage.neontrip.de"}),/Invalid text/);

@@ -13,7 +13,7 @@ if(!ids[b.channel]||typeof b.text!=='string'||!b.text.trim()||b.text.length>(b.c
 if(!/^https:\/\/klibiejfisijpagzkxls\.supabase\.co\/storage\/v1\/object\/public\/social-media-posts\/dashboard\/[a-f0-9]{64}\/(?:portrait|landscape|pin)\.jpg$/.test(b.imageUrl||'')||!b.imageUrl.includes('/'+b.id+'/'))throw new Error('Invalid asset URL');
 if(new Date(b.dueAt).getTime()<=Date.now()+600000)throw new Error('Future slot required');
 const input={channelId:ids[b.channel],schedulingType:'automatic',mode:'customScheduled',dueAt:b.dueAt,text:b.text,assets:[{image:{url:b.imageUrl}}],saveToDraft:false,needsApproval:false,aiAssisted:true};
-if(b.channel==='ig')input.metadata={instagram:{type:'post',shouldShareToFeed:true,isAiGenerated:true}};
+if(b.channel==='ig')input.metadata={instagram:{type:'post',shouldShareToFeed:true,isAiGenerated:false}};
 if(b.channel==='fb')input.metadata={facebook:{type:'post'}};
 if(b.channel==='pinterest')input.metadata={pinterest:{boardServiceId:'1082060316658953593',title:String(b.pinterestTitle||'').slice(0,100),url:'https://anfrage.neontrip.de'}};
 if(b.channel==='gmb')input.metadata={google:{type:'whats_new',title:'NEONTRIP Designidee',detailsWhatsNew:{button:'learn_more',link:'https://anfrage.neontrip.de'}}};
