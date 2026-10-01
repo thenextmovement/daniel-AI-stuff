@@ -1,30 +1,43 @@
-# NEONTRIP Social Studio in Ops
+# Native NEONTRIP Social Studio in Ops
 
-## Scope und Vertrag
+## Vertrag
 
-- Ziel: eigener Eintrag „Social Studio“ im gemeinsamen Ops-Menü, Einstieg unter `/ops/social-studio` und Öffnen des bestehenden Dashboards in einem neuen Tab.
-- Nachbar: alle bestehenden Menüpunkte, aktiven Markierungen, Ops-Anmeldung und Geschäftsprozesse bleiben unverändert.
-- Wirkung: ausschließlich Navigation. Keine Beitragsfreigabe, Terminreservierung, Provider-Aktion oder Berechtigungsänderung beim Öffnen.
-- Code: `src/app/ops/ops-app-switcher.tsx` und `src/app/ops/social-studio/page.tsx`.
+- Ziel: Fotoauswahl, Entwürfe, Plattformtexte, Freigabe, Termine und bestätigte Veröffentlichungen direkt unter `/ops/social-studio` im gemeinsamen Ops-Menü.
+- Nachbar: 17 vorhandene Menüpunkte, Ops-Anmeldung, Gemini-/Buffer-Verträge und Drei-Kalendertage-Rhythmus bleiben bestehen. Keine Änderungen für RIESENOBJEKTE.
+- Wirkung: Nur eine ausdrücklich bestätigte Freigabe reserviert einen Termin und plant fünf Plattformbeiträge. Unbekannte Provider-Ergebnisse bleiben `manual_review`; keine blinden Wiederholungen.
+- Grenzen: eigener Seitenbereich, `/api/ops/social-studio`, `src/lib/ops/social-studio`, geschützte Assets unter `/ops/social-studio/originals` und `/thumbs`, zwei neue NEONTRIP-Tabellen, bestehender Secret-Sync für genau zwei neue Runtime-Schlüssel.
 
-## Bestehenden Einstieg wiederverwenden
+## Aktive Architektur nach Veröffentlichung
 
-Die Einstiegsseite folgt dem Muster `/ops/offers`: gemeinsamer `OpsPageHeader`, vorhandene `OpsPageIntro`- und Layout-Komponenten, anschließend ein Link zur separaten Anwendung. Der Menüeintrag ist auch im hellen App-Switcher und auf den Ops-Anmeldeseiten verfügbar. Die Ops-Seite behält das Menü sichtbar; das separate Dashboard läuft in einem neuen Tab.
+Die React-Oberfläche läuft als Bestandteil von Ops. Keine Einbettung, kein externer Dashboard-Aufruf und kein zweiter Login. `resolveOpsRequestActor` prüft die bestehende Ops-Sitzung; bestätigte Cloudflare-Identität wird als Freigebender gespeichert, bei gemeinsamem Portalzugang `ops-session`. Das Menü bleibt sichtbar. Die Login-Seite markiert den neuen Bereich korrekt.
 
-Dashboard: <https://neontrip-social-studio.neontripdach.chatgpt.site>. Seine bestehende ChatGPT-Zugriffsfreigabe bleibt maßgeblich. Ops-Authentifizierung ist kein Social-Studio-Login; keine SSO-, Proxy- oder Datenmigration in diesem Scope. Es werden keine Schlüssel oder Nutzerdaten in URL beziehungsweise Frontend übernommen.
+Die Speicherung nutzt den vorhandenen serverseitigen Supabase-REST-Zugang zum Projekt `klibiejfisijpagzkxls`. `neontrip_social_drafts` und `neontrip_social_deliveries` übernehmen das bestehende D1-Modell; ausschließlich `service_role` erhält Tabellenzugriff, RLS ist aktiv. Zeitfelder behalten die bisherigen ISO-Strings für exakte Provider-Vergleiche. Die bestehende `social_post_schedule`-Reservierung und deren Berlin-/DST-Logik bleiben maßgeblich.
 
-## Verifikation und Veröffentlichung
+Revision und Status werden gemeinsam per bedingtem Update beansprucht, bevor Provider-Aktionen beginnen. Schreiben werden nicht automatisch wiederholt. Plattformstatus bleibt getrennt; Zurückziehen und erneute Freigabe verwenden bestätigte bestehende Buffer-IDs. Die Listenabfrage teilt Plattformzeilen in Gruppen bis 250 auf, damit das PostgREST-Zeilenlimit keine Plattformen abschneidet.
 
-Vor Veröffentlichung: Menü auf mehreren Ops-Seiten und im hellen/dunklen Layout prüfen, aktive Markierung der neuen Seite, Ziel-URL, `target="_blank"`, `rel="noopener noreferrer"`, mobile Darstellung sowie unveränderte bestehende Links prüfen. Quote-Suite, TypeScript und Produktions-Build gemäß Ops-Release-Gate ausführen.
+Die serverseitigen Runtime-Schlüssel `STUDIO_GATEWAY_URL` und `STUDIO_GATEWAY_KEY` verbinden Ops mit dem bestehenden Workflow `i3LxcumS6UeW2pPh`. Der neue interne Header-Zugang ersetzt ausschließlich die Credential-Referenz des Gateway-Webhooks. Gemini, Buffer, Knoten, Verbindungen und Scheduler bleiben unverändert. Die bisherige Credential bleibt für Rollback erhalten. Keine Schlüssel in Client, URL oder Repo.
 
-Der vorhandene `scripts/smoke_ops_menu_ui.mjs` erwartet auf Mobilgeräten einen „Bereiche“-Toggle, den der aktuelle App-Switcher nicht mehr besitzt. Für diesen Scope deshalb die tatsächliche aktuelle Menüoberfläche direkt prüfen; keine fachfremde Smoke-Test-Reparatur.
+## Übernahme und Reihenfolge
 
-Lokal geprüft am 01.10.2026:
+1. Native Ops-Implementierung, gebaute Ablöseseite und vollständigen Export der vier vorhandenen Entwürfe prüfen. Export enthält ID, vollständige sechs Texte, Revision und Zeitfelder. Keine abgeschnittenen D1-Connector-Zellen übernehmen.
+2. Ops-Kandidat nach Repo-Gate freigeben. Runtime-Konfiguration über `coolify-secret-sync.yml`, Modus `sync_ops_social_studio_credentials`, vorbereiten; feste Ops-UUID/Domain, unveränderte fremde Envs und exakter Readback werden geprüft, ohne Restart.
+3. Bisherige Site durch vorbereitete Ablöseseite ersetzen. Ihr alter POST-Endpunkt antwortet 410; auch bereits offene alte Browseroberflächen können keine Freigaben schreiben. D1-Daten und Zugriffsliste bleiben erhalten.
+4. D1-Metadaten und vollständige Entwürfe unmittelbar vor Import erneut abgleichen. Bei Abweichung stoppen und frisch exportieren. Neue Schema-Migration und vier Entwürfe in Ops übernehmen; sämtliche Felder und Hashes vergleichen. Keine Beiträge oder Termine erzeugen.
+5. Gateway-Version erneut prüfen, exakt eine Credential-Referenz ändern und kompletten Diff vor Veröffentlichung vergleichen. Mit einer reinen `verify`-/`preview`-Abfrage Verbindung prüfen; keine Veröffentlichung testen.
+6. Exakten genehmigten Ops-Commit über `codex-predeploy ops` und `codex-safe-push-main` veröffentlichen. Live Health-SHA, geschützte Route/Assets, authentifizierte Entwürfe und Terminanzeige prüfen.
 
-- Alle 1.282 Quote-Tests bestanden; `npx tsc --noEmit` und `npm run build` erfolgreich. Ein erster Build kollidierte mit einem parallel gestarteten Dev-Server; nach dessen Stop und getrennter Wiederholung erfolgreich.
-- React-Renderprüfung für helles und dunkles Menü: 18 Links, nur „Social Studio“ aktiv; alle 17 bisherigen Einträge sind gegenüber dem Ausgangsstand unverändert.
-- Browser: `/ops/social-studio`, `/ops/offers` und `/ops/voice-copilot`; Navigation zu und von Social Studio, korrekte aktive Markierung und Öffnen des realen Dashboards in einem neuen Tab bestätigt. Das Dashboard zeigte die bestehenden vier Entwürfe, null geplante/veröffentlichte Beiträge; keine Freigabe ausgelöst.
-- Desktop bei 1.512 Pixeln ohne horizontalen Overflow; 390- und 768-Pixel-Ansichten der echten lokalen Route in temporären Vorschau-Frames visuell geprüft, einschließlich vollständigem Menü, Textumbruch und Öffnen-Button. Die Vorschau-Datei anschließend entfernt.
-- Die neue Route liegt unter dem vorhandenen `/ops/:path*`-Middleware-Schutz. Auth-Code, Workflow, Datenbank und Dashboard wurden nicht geändert.
+Die zwei leeren Tabellen wurden am 01.10.2026 bereits angelegt und verifiziert: RLS aktiv, kein anon/authenticated-Schreibzugriff, service_role zugelassen. Der Datenimport folgt erst nach Sperrung des alten Schreibwegs.
 
-Implementierung und lokale Prüfung sind kein Produktionsnachweis. Veröffentlichung erst nach Freigabe des exakten sauberen Commits, `codex-predeploy ops` und `codex-safe-push-main`. Danach Deploy-SHA und den Menüpunkt in der produktiven Ops-Oberfläche prüfen. Rollback durch gezielten Revert mit demselben Release-Gate.
+Schritt 3–6 sind ein geordneter Umstieg: kein Parallelbetrieb zweier beschreibbarer Draft-Datenbanken. Während des Umstiegs ist Social Studio kurzzeitig gesperrt. Andere Ops-Bereiche bleiben unberührt.
+
+## Prüfung, 01.10.2026
+
+Lokal mit begrenztem Datenbank-/Provider-Doppel, ohne reale Posts: Fotoauswahl führt innerhalb von Ops zum vorhandenen Entwurf; Speichern bestätigt persistierte Revision; Pinterest-Titel und 1000×1500-Vorschau; Termin vor Freigabe; Freigabe bis zum Bestätigungs-Häkchen gesperrt. Gemeinsames Menü aktiv, Bilder geladen, Desktop und 390-Pixel-Ansicht ohne Seiten-Overflow. CSS vollständig auf `.ops-social-studio` begrenzt; bestehende Ops-Seiten erhalten keine globalen Stiländerungen.
+
+Fokussierte API-Tests: fremder Ursprung, veraltete Revision, ausdrückliche Freigabe, gleichzeitige Freigaben, geänderter Slot, unbekanntes Buffer-Ergebnis, Rücknahme und erneute Freigabe mit denselben IDs. Alle 1.292 Tests der vollen Quote-Suite, TypeScript, Produktions-Build und acht Deployment-Gate-Tests bestanden. Drei zusätzliche Konfigurationstests bestätigen exakt zwei Runtime-Schlüssel, unveränderte andere Envs und fehlenden Restart. Alle CSS-Selektoren sind lokal begrenzt.
+
+Fotos: 201 Originale und 201 Thumbnails aus der bestehenden Sammlung, Kopien per SHA-256 geprüft. Vier bestehende Entwürfe wurden vollständig aus den tatsächlichen Textfeldern gelesen und mit D1-Metadaten verknüpft. Diese Vorbereitung ist noch kein bestätigter Produktivumzug; dessen Belege werden nach Veröffentlichung ergänzt.
+
+## Rollback
+
+Kein automatischer Rückbau nach unklaren Posts. Bei neuen Ops-Freigaben zuerst kanonische Tabellen und Provider-IDs abgleichen. Die D1-Daten bleiben bestehen; nur bei nachgewiesen fehlenden neuen Ops-Aktionen darf die alte Site-Version 3 zusammen mit der bisherigen Gateway-Credential wiederhergestellt werden. Neue Ops-Tabellen und Daten dabei erhalten. Ops-Code nur über gezielten, exakt freigegebenen Revert mit regulärem Release-Gate zurücknehmen.

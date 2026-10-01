@@ -13,6 +13,7 @@ function activeAppFromPath(path: string): OpsAppKey {
   if (path.startsWith("/ops/customer-records/price-review")) return "priceReview";
   if (path.startsWith("/ops/customer-records/shipping")) return "shipping";
   if (path.startsWith("/ops/customer-records/inbound-shipping")) return "inboundShipping";
+  if (path.startsWith("/ops/social-studio")) return "socialStudio";
   if (path.startsWith("/ops/offers")) return "offers";
   return "records";
 }

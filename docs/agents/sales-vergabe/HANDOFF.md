@@ -30,7 +30,7 @@ Stand: 2026-07-21, verifiziert gegen Ops `origin/main` auf Commit `d3e14db4e1da4
 4. `[verifiziert]` Priorisierte Fehler, Risiken und offene Punkte: [KNOWN-ISSUES.md](./KNOWN-ISSUES.md)
 5. `[verifiziert]` Reproduzierbare Belege und Testergebnisse: [VERIFICATION.md](./VERIFICATION.md)
 6. `[verifiziert]` Maschinenlesbares Agentenmanifest: [agent.json](./agent.json)
-7. Gemeinsame Ops-Navigation: [Social-Studio-Einstieg](../../operations/social-studio-navigation.md). Veröffentlichung und Laufzeitstatus anhand des dort beschriebenen Release-Gates prüfen.
+7. Nativer Social-Studio-Bereich: [Oberfläche, Speicherung und Umstieg](../../operations/social-studio-navigation.md). Veröffentlichung und Laufzeitstatus anhand des dort beschriebenen Release-Gates prüfen.
 
 ## Nicht verhandelbare Grenzen
 
