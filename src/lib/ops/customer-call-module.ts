@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
 import {
   type CustomerSearchResult,
+  listCustomerInternalTasks,
+  completeCustomerInternalTask,
   type CustomerWorkboardSection,
   listCustomerRecordsByRequestIds,
   parseTrelloCardIdentifier,
@@ -1094,6 +1097,7 @@ async function insertSalesCallResultWithOptimisticGuard(
     source: string | null;
   },
   expectedLatestResultId: string | null | undefined,
+  requireAtomic = false,
 ) {
   const expected = normalizeWhitespace(expectedLatestResultId);
   try {
@@ -1131,7 +1135,7 @@ async function insertSalesCallResultWithOptimisticGuard(
 
     throw new SupabaseRestError("Call-Ergebnis konnte nicht gespeichert werden.", 500, response);
   } catch (error) {
-    if (!isMissingRpcError(error, "ops_record_sales_call_result")) throw error;
+    if (requireAtomic || !isMissingRpcError(error, "ops_record_sales_call_result")) throw error;
   }
 
   const previousRows = await supabaseRequest<SalesCallResultRow[]>(SALES_CALL_RESULTS_TABLE, undefined, {
@@ -2268,7 +2272,9 @@ export function advanceCadenceStateFromResult(
         }
       } else {
         next.currentStage = current.currentStage;
-        next.nextCallDueAt = next.standardCallCount <= 1 ? scheduleRetryFromNow(1) : scheduleRetryFromNow(2);
+        next.nextCallDueAt = CALLBACK_NEXT_STEP_RE.test(result.nextStep)
+          ? result.nextStep.replace(/^callback_/, "")
+          : next.standardCallCount <= 1 ? scheduleRetryFromNow(1) : scheduleRetryFromNow(2);
         next.nextCallAction = next.standardCallCount <= 1 ? "retry_next_day" : "retry_in_2_days";
         next.cadenceFinished = false;
       }
@@ -3356,7 +3362,9 @@ export async function refreshSalesCallList(actor?: SalesCallActor): Promise<Sale
   return buildModuleStateFromRun(run);
 }
 
-export async function recordSalesCallResult(input: SalesCallResultInput, actor?: SalesCallActor) {
+export async function recordSalesCallResult(
+  input: SalesCallResultInput, actor?: SalesCallActor, options?: { feedbackVersion: string },
+) {
   const callListItemId = normalizeWhitespace(input.callListItemId);
   const inputRequestId = normalizeWhitespace(input.requestId);
   if (!callListItemId && !inputRequestId) throw new QuoteValidationError("Listen-Eintrag oder Request-ID fehlt.");
@@ -3379,6 +3387,22 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
   if (!record) {
     throw new QuoteValidationError("Fallkontext konnte nicht geladen werden.");
   }
+  if (options) {
+    const context = await getSalesCallFeedbackContext(requestId, record);
+    if ((context.latestResult?.preset === "do-not-call" || record.opsState.status === "do_not_contact"
+      || record.callOps.contactabilityStatus === "do_not_contact") && input.preset !== "do-not-call") {
+      throw new QuoteValidationError("Kontaktstopp aktiv. Eine erneute Kontaktfreigabe muss in der Kundenakte geklärt werden.", [], 409);
+    }
+    if ((["do-not-call", "not-interested", "bought"].includes(context.latestResult?.preset || "")
+        || record.opsState.isClosed || Boolean(record.order)
+        || record.opsState.status === "do_not_contact" || record.callOps.contactabilityStatus === "do_not_contact")
+      && !["do-not-call", "not-interested", "called-done"].includes(input.preset)) {
+      throw new QuoteValidationError("Vorgang bereits abgeschlossen oder Kontaktstopp aktiv. Bitte in der Kundenakte klären.", [], 409);
+    }
+    if (context.version !== options.feedbackVersion) {
+      throw new QuoteValidationError("Der Vorgang wurde inzwischen geändert. Bitte neu laden und prüfen.", [], 409);
+    }
+  }
   const derived = buildSalesCallResultFromPreset({
     ...input,
     callListItemId: callListItemId || null,
@@ -3389,7 +3413,7 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
     ? (item.source_keys as CustomerWorkboardSection["key"][])
     : deriveAdHocSourceKeys(record);
   const liveGuard = deriveSalesCallGuard(record, sourceKeys);
-  if (!liveGuard.allowed && input.preset !== "review-not-useful" && input.preset !== "review-useful") {
+  if (!liveGuard.allowed && !options && input.preset !== "review-not-useful" && input.preset !== "review-useful") {
     throw new QuoteValidationError(`Call ist aktuell gesperrt: ${liveGuard.blockedReason || "nicht anrufbar"}.`);
   }
 
@@ -3408,6 +3432,14 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
   })();
   const previousStoredCadenceState = previousStateRows[0] ? mapCadenceStateRow(previousStateRows[0]) : null;
   const previousCadenceState = deriveCadenceState(record, null, previousStoredCadenceState);
+  if (options && input.preset === "not-reached") {
+    const recent = await supabaseRequest<SalesCallResultRow[]>(SALES_CALL_RESULTS_TABLE, undefined, {
+      select: "preset", request_id: "eq." + requestId, order: "created_at.desc", limit: 3,
+    });
+    const attempts = recent.findIndex((entry) => entry.preset !== "not-reached");
+    previousCadenceState.standardCallCount = attempts < 0 ? recent.length : attempts;
+    previousCadenceState.retryCount = previousCadenceState.standardCallCount;
+  }
 
   const requiresPostReminderDecision =
     previousCadenceState.currentStage === "no_response_call" &&
@@ -3443,12 +3475,21 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
       validation_useful: derived.validationUseful,
       notes: derived.notes,
       operator_id: derived.operatorId,
-      source: derived.source,
+      source: options ? "hot_lead_email_feedback" : derived.source,
     },
     input.expectedLatestResultId ?? null,
+    Boolean(options),
   );
 
-  await insertSalesCallAuditLog({
+  const syncFailures: string[] = [];
+  const sync = async (name: string, effect: () => Promise<unknown>) => {
+    try { await effect(); }
+    catch (error) {
+      if (!options) throw error;
+      syncFailures.push(name);
+    }
+  };
+  await sync("Protokoll", () => insertSalesCallAuditLog({
     requestId,
     actor,
     action: SALES_CALL_RESULT_RECORDED_ACTION,
@@ -3465,7 +3506,7 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
       storage_mode: usedRpc ? "rpc" : "rest_fallback",
       superseded_result_ids: supersededResultIds,
     },
-  });
+  }));
 
   const nextCadenceState = advanceCadenceStateFromResult(
     previousCadenceState,
@@ -3477,8 +3518,20 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
       postReminderDecision: input.postReminderDecision || null,
     },
   );
-  await upsertCadenceState(nextCadenceState);
-  await syncSalesTaskFromResult(nextCadenceState, mapResultRow(created));
+  await sync("Anrufplanung", () => upsertCadenceState(nextCadenceState));
+  await sync("Folgeaufgabe", () => syncSalesTaskFromResult(nextCadenceState, mapResultRow(created)));
+  if (options) {
+    await sync("Anrufaufgabe", async () => {
+      const board = await listCustomerInternalTasks({ requestId, includeDone: false, limit: 500 });
+      for (const task of board.tasks.filter((task) =>
+        task.requestId === requestId && ["neontrip_offer_call", "neontrip_inquiry_call"].includes(task.sourceType || "")
+        && task.status === "open" && (!task.createdAt || task.createdAt <= created.created_at!))) {
+        await completeCustomerInternalTask(task.id, "Sales-Call-Ergebnis " + created.id + ": " + input.preset,
+          { ...actor, mode: actor?.mode === "local_bypass" ? "local_bypass" : "ops_session" });
+      }
+    });
+    return { itemId: null, result: mapResultRow(created), syncPending: syncFailures, record };
+  }
 
   const state = await getSalesCallModuleState();
   return {
@@ -3487,5 +3540,31 @@ export async function recordSalesCallResult(input: SalesCallResultInput, actor?:
     gate: state.gate,
     completion: state.completion,
     record,
+  };
+}
+
+// A mail link only opens this read-only context. The browser must explicitly POST.
+export async function getSalesCallFeedbackContext(requestId: string, loaded?: CustomerSearchResult) {
+  const record = loaded || (await loadLightweightSalesCallRecords([requestId]))[0];
+  if (!record || record.requestId !== requestId) throw new QuoteValidationError("Vorgang nicht gefunden.", [], 404);
+  const [results, cadence, recent] = await Promise.all([
+    loadLatestActiveResultsByRequestId([requestId]), loadCadenceStatesByRequestId([requestId]),
+    supabaseRequest<SalesCallResultRow[]>(SALES_CALL_RESULTS_TABLE, undefined, {
+      select: "preset", request_id: "eq." + requestId, order: "created_at.desc", limit: 3,
+    })
+  ]);
+  const latestResult = results.get(requestId) || null;
+  const state = cadence.get(requestId) || null;
+  const guard = deriveSalesCallGuard(record, deriveAdHocSourceKeys(record));
+  const version = createHash("sha256").update(JSON.stringify({
+    requestId, latestResultId: latestResult?.id, cadenceAt: state?.updatedAt, request: record.request,
+    quote: record.quote, order: record.order, updatedAt: record.updatedAt,
+    phone: record.phone, contactability: record.callOps.contactabilityStatus,
+    nextCallback: record.callOps.nextCallbackAt, status: record.opsState.status,
+  })).digest("hex");
+  return {
+    requestId, version, name: record.displayName || record.email, company: record.company,
+    phone: record.phone, latestResult, pendingCallbackAt: state?.pendingCallbackAt || null,
+    guard, retryCount: recent.findIndex((row) => row.preset !== "not-reached") < 0 ? recent.length : recent.findIndex((row) => row.preset !== "not-reached"),
   };
 }

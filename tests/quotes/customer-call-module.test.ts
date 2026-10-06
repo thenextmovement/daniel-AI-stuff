@@ -549,6 +549,7 @@ test("advanceCadenceStateFromResult sends not-reached cases into retry bucket wi
 
   assert.equal(next.queueBucket, "not_reached");
   assert.equal(next.nextCallAction, "retry_next_day");
+  assert.equal(next.nextCallDueAt, "2026-05-22");
   assert.equal(next.cadenceFinished, false);
 });
 
