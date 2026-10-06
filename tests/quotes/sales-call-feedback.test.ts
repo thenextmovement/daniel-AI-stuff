@@ -62,7 +62,7 @@ test("mail feedback is read-only until confirmation, rejects concurrent/stale wr
     result = null; cadence = null; failAudit = true;
     const fresh = await getSalesCallFeedbackContext(requestId);
     const saved = await recordSalesCallResult(input, {}, { feedbackVersion: fresh.version });
-    assert.ok("syncPending" in saved && saved.syncPending.includes("Protokoll"));
+    assert.ok(saved.syncPending?.includes("Protokoll"));
     assert.ok(saved.result.id);
 
     result = null; cadence = null; failAudit = false; unknownRpcOutcome = true;
