@@ -403,6 +403,39 @@ export function createShopifyClient(): ArrivalDataClients["shopify"] {
   };
 }
 
+// Fetch by immutable ID, never by a bounded recent-order search or cached snapshot.
+export async function fetchShopifyDispatchEvidence(id: string): Promise<ShopifyOrderEvidence> {
+  if (!/^gid:\/\/shopify\/Order\/\d+$/.test(id)) throw new ArrivalIntegrationError("Shopify-Bestellkennung fehlt.", "shopify_order_invalid");
+  const config = shopifyConfig();
+  if (config.domain !== "galaxybuzzdk.myshopify.com") throw new ArrivalIntegrationError("NEONTRIP-Produktionsshop ist nicht konfiguriert.", "shopify_store_mismatch");
+  const response = await fetchWithRetry(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": config.token },
+    body: JSON.stringify({ query: `query ArrivalDispatchOrder($id: ID!) {
+      order(id: $id) {
+        id name displayFinancialStatus note tags customAttributes { key value }
+        shippingLines(first: 100) { nodes { title code } pageInfo { hasNextPage } }
+      }
+    }`, variables: { id } }),
+  }, { integration: "shopify_dispatch_check", attempts: 1, timeoutMs: 10_000 });
+  const payload = await response.json();
+  const raw = payload?.data?.order;
+  const lines = raw?.shippingLines;
+  const validAttributes = Array.isArray(raw?.customAttributes) && raw.customAttributes.every((attribute: JsonRecord) =>
+    attribute && typeof attribute.key === "string" && typeof attribute.value === "string");
+  if (payload?.errors?.length || !raw || raw.id !== id || typeof raw.name !== "string" || !raw.name
+    || typeof raw.displayFinancialStatus !== "string" || !raw.displayFinancialStatus
+    || !(raw.note === null || typeof raw.note === "string")
+    || !Array.isArray(raw.tags) || !raw.tags.every((tag: unknown) => typeof tag === "string")
+    || !validAttributes || !Array.isArray(lines?.nodes) || lines?.pageInfo?.hasNextPage !== false
+    || !lines.nodes.every((line: JsonRecord) => line && typeof line.title === "string" && (line.code === null || typeof line.code === "string"))) {
+    throw new ArrivalIntegrationError("Aktuelle Shopify-Versandhinweise sind nicht vollstaendig belegt.", "shopify_dispatch_evidence_missing");
+  }
+  const order = mapShopifyOrder(raw, config.domain);
+  if (!order) throw new ArrivalIntegrationError("Shopify-Bestellung fehlt.", "shopify_order_missing");
+  return order;
+}
+
 function mapShopifyOrder(raw: JsonRecord, shopDomain: string): ShopifyOrderEvidence | null {
   const id = String(raw.id || "");
   const name = String(raw.name || "");

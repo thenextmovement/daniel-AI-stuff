@@ -1,3 +1,4 @@
+import { assertArrivalDispatchAllowed, ArrivalDispatchHeldError } from "@/lib/ops/arrival-labels/dispatch-gate";
 import { NextRequest, NextResponse } from "next/server";
 import { isArrivalBrowserWorkerAuthorized } from "@/lib/ops/arrival-labels/auth";
 import { validateBrowserPurchaseJobId, validateBrowserWorkerId, type BrowserPurchaseResult } from "@/lib/ops/arrival-labels/browser-purchase";
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       trackingNumbers,
     } : null;
     if (body.result === "existing_label" && evidence?.found !== true) throw new PrintInputError("Vorhandenes EasyDPD-Label ist nicht belegt.");
+    if (body.result === "dispatching") await assertArrivalDispatchAllowed("browser", jobId, workerId);
     const job = body.result === "existing_label"
       ? await blockArrivalBrowserPurchaseForExistingLabel({
         jobId,
@@ -54,6 +56,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       });
     return NextResponse.json({ ok: true, status: job.status }, { headers: NO_STORE });
   } catch (error) {
+    if (error instanceof ArrivalDispatchHeldError) return NextResponse.json({ ok: false, error: "shopify_manual_review", message: error.message }, { status: 409, headers: NO_STORE });
     console.error("arrival browser purchase result failed", { name: error instanceof Error ? error.name : "unknown" });
     const invalid = error instanceof PrintInputError;
     return NextResponse.json(

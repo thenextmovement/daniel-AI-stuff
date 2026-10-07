@@ -1,3 +1,4 @@
+import { assertArrivalDispatchAllowed, ArrivalDispatchHeldError } from "@/lib/ops/arrival-labels/dispatch-gate";
 import { NextRequest, NextResponse } from "next/server";
 import { isArrivalPrintWorkerAuthorized } from "@/lib/ops/arrival-labels/auth";
 import { PrintInputError, readBoundedJson, validatePrintWorkerId, type PrintJobResult } from "@/lib/ops/arrival-labels/printing";
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (cupsJobId && !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}-\d+$/.test(cupsJobId)) {
       return NextResponse.json({ ok: false, error: "invalid_cups_job_id" }, { status: 400, headers: NO_STORE });
     }
+    if (body.result === "dispatching") await assertArrivalDispatchAllowed("print", jobId, workerId);
     const job = await updateArrivalPrintJob({
       jobId,
       workerId,
@@ -34,6 +36,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
     return NextResponse.json({ ok: true, status: job.status, cupsJobId: job.cups_job_id }, { headers: NO_STORE });
   } catch (error) {
+    if (error instanceof ArrivalDispatchHeldError) return NextResponse.json({ ok: false, error: "shopify_manual_review", message: error.message }, { status: 409, headers: NO_STORE });
     console.error("arrival print result failed", { name: error instanceof Error ? error.name : "unknown" });
     const invalid = error instanceof PrintInputError;
     return NextResponse.json(

@@ -35,7 +35,7 @@ test("only the exact acrylic line item with positive integer quantity plans one 
   for (const quantity of [0, -1, 0.5, NaN]) assert.equal(hasAcrylicTableDevice([{ title: "Acryl LED-Tischgerät", quantity }]), false);
   assert.equal(hasAcrylicTableDevice([]), false);
   assert.equal(labelOverlayText("2619113486"), "113486");
-  assert.equal(labelOverlayText("2619113486", "acrylic_table_device"), "Acryl LED-Tischgerät");
+  assert.equal(labelOverlayText("2619113486", "acrylic_table_device"), "113486 (Tischgerät)");
 });
 
 test("both bridge boundaries require a bound primary and preserve Express and price limits", () => {
@@ -173,13 +173,13 @@ test("extra A6 overlay fits the verified live area and leaves protected content 
   const normal = await annotateDpdLabelPdf(source, job.incomingDhlTrackingNumber, layout);
   const extra = await annotateDpdLabelPdf(source, job.incomingDhlTrackingNumber, layout, "acrylic_table_device");
   assert.equal(normal.qa.overlayText, "113486");
-  assert.equal(extra.qa.overlayText, "Acryl LED-Tischgerät");
+  assert.equal(extra.qa.overlayText, "113486 (Tischgerät)");
   assert.equal(extra.qa.a6, true);
   assert.deepEqual(extra.qa.protectedAreaIntersections, []);
   const text = await extractPdfText(extra.pdf);
-  assert.match(text.replace(/\s+/g, " "), /Acryl LED-\s*Tischgerät/);
+  assert.match(text.replace(/\s+/g, " "), /113486\s*\(Tischgerät\)/);
   assert.match(text, new RegExp(newTracking));
-  assert.doesNotMatch(text, /113486/);
+  assert.match(text, /113486/);
   const png = await renderPdfFirstPageToPng(extra.pdf, 3);
   assert.ok(png.length > 1000);
   if (process.env.ARRIVAL_ACRYLIC_QA_DIR) {
