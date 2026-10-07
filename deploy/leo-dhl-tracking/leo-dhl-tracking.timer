@@ -1,0 +1,12 @@
+[Unit]
+Description=Leo DHL tracking at 09:00 and 18:00 Berlin
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 Europe/Berlin
+OnCalendar=*-*-* 18:00:00 Europe/Berlin
+Persistent=true
+AccuracySec=1min
+Unit=leo-dhl-tracking.service
+
+[Install]
+WantedBy=timers.target

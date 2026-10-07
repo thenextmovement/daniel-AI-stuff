@@ -1,0 +1,19 @@
+[Unit]
+Description=Leo DHL tracking (prepared template, not installed)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@WORKER_USER@
+WorkingDirectory=@VERIFIED_RELEASE_DIR@
+EnvironmentFile=@PRIVATE_ENV_FILE@
+ExecStart=/usr/bin/node --import tsx scripts/run_leo_dhl_tracking.ts check
+# Change check to sync only after the runbook acceptance gates are met.
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=@PRIVATE_STATE_DIR@
+TimeoutStartSec=1h
