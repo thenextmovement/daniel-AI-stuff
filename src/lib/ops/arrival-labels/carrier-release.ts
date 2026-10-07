@@ -1,5 +1,6 @@
 import { supabaseRequest, supabaseRpc } from '@/lib/quotes/supabase-rest';
-import { ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID, type DhlArrival, type TrelloCardEvidence } from './domain';
+import { ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID, assessTrelloAutomationGate, findTrelloCardForTracking, type DhlArrival, type TrelloCardEvidence } from './domain';
+import { createTrelloClient } from './clients';
 import { assessDhlRelease, resolveCardDhlTracking, type DhlReleaseEvent } from './tracking';
 
 // Three intake lists plus Create Invoice catch-up: Vera can move a card between discovery runs.
@@ -58,5 +59,13 @@ export async function assertCarrierReleaseForCase(caseId: string) {
   const shipment = row && await shipmentForTracking(row.incoming_dhl_tracking_number);
   if (!shipment || shipment.trello_card_id !== row.trello_card_id || !(await releaseForShipment(shipment)).allowed) {
     throw new Error('Aktuelle Deutschland-/Zollfreigabe fehlt; kein Dispatch.');
+  }
+  // A queued label may outlive a changed tracking number, archived card or manual hold.
+  // Reuse the live board reader to also catch duplicate tracking on another card.
+  const cards = await createTrelloClient().listQuentinCards();
+  const card = findTrelloCardForTracking(cards, row.incoming_dhl_tracking_number).card;
+  if (!card || card.id !== row.trello_card_id || card.boardId !== ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID
+    || !card.listId || !card.listName || assessTrelloAutomationGate(card).blocked) {
+    throw new Error('Aktuelle Trello-Zuordnung oder Listenfreigabe fehlt; kein Dispatch.');
   }
 }

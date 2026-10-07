@@ -59,14 +59,27 @@ test('card resolver finds a custom-field-only number and rejects title/field con
   assert.equal(findTrelloCardForTracking([{...card,name:'1123456789'}], '0012345678').card,null);
 });
 
-async function integration(options: {present?:boolean; persist?:boolean; wrongCard?:boolean; duplicate?:boolean; released?:boolean; listId?:string; foreignBoard?:boolean; assertion?:boolean} = {}) {
+async function integration(options: {present?:boolean; persist?:boolean; wrongCard?:boolean; duplicate?:boolean; released?:boolean; listId?:string; foreignBoard?:boolean; assertion?:boolean; changedTracking?:boolean; conflictingTracking?:boolean; manualList?:boolean; missingCard?:boolean; archivedCard?:boolean; duplicateLiveCard?:boolean; missingList?:boolean} = {}) {
   const previousFetch = globalThis.fetch;
+  const trelloEnvNames = ['TRELLO_API_KEY','TRELLO_TOKEN','ARRIVAL_LABEL_TRELLO_BOARD_ID'] as const;
+  const previousTrelloEnv = Object.fromEntries(trelloEnvNames.map(key=>[key,process.env[key]]));
+  process.env.TRELLO_API_KEY='test-key'; process.env.TRELLO_TOKEN='test-token';
+  process.env.ARRIVAL_LABEL_TRELLO_BOARD_ID='62bae9b97705e7419ed64593';
   const previousUrl = process.env.SUPABASE_URL;
   const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   process.env.SUPABASE_URL='https://database.example.invalid';process.env.SUPABASE_SERVICE_ROLE_KEY='test-only';
   const calls: string[] = []; const writes:unknown[]=[];
   globalThis.fetch = async (input,init) => {
     const url = new URL(String(input)); calls.push(url.pathname);
+    if (url.hostname==='api.trello.com') {
+      if (url.pathname.endsWith('/customFields')) return Response.json([{id:'tracking',name:'Tracking number'}]);
+      if (url.pathname.endsWith('/lists')) return Response.json(options.missingList ? [] : [{id:'list1',name:options.manualList?'Problem with Sign':'Create Invoice (With Tracking)'}]);
+      if (url.pathname.endsWith('/cards')) {
+        const card = {id:'card1',name:options.conflictingTracking?'DHL 1123456789':'#NEONT123',url:'https://trello.com/c/abcdefgh',idBoard:options.foreignBoard?'foreign':'62bae9b97705e7419ed64593',idList:'list1',closed:options.archivedCard||false,customFieldItems:[{idCustomField:'tracking',value:{text:options.changedTracking?'DHL 1123456789':'DHL 0012345678'}}]};
+        return Response.json(options.missingCard?[]:options.duplicateLiveCard?[card,{...card,id:'card2'}]:[card]);
+      }
+      throw new Error('Unexpected Trello endpoint');
+    }
     if (url.pathname.endsWith('arrival_label_cases')) return Response.json([{incoming_dhl_tracking_number:'0012345678',trello_card_id:'card1'}]);
     if (url.pathname.endsWith('inbound_shipments')) return Response.json(options.present === false ? [] : [{id:'shipment1',trello_card_id:options.wrongCard?'old-card':'card1',tracking_number:'0012345678',last_checked_at:new Date().toISOString(),status_reason:null}]);
     if (url.pathname.endsWith('inbound_tracking_events')) return Response.json(options.released === false ? [] : [event('Arrived at DHL Sort Facility',new Date(Date.now()-3600000).toISOString()),event('Clearance processing complete',new Date(Date.now()-3000000).toISOString())]);
@@ -80,6 +93,9 @@ async function integration(options: {present?:boolean; persist?:boolean; wrongCa
     return {arrivals,calls,writes};
   } finally {
     globalThis.fetch = previousFetch;
+    for (const key of trelloEnvNames) {
+      if (previousTrelloEnv[key]===undefined) delete process.env[key]; else process.env[key]=previousTrelloEnv[key];
+    }
     if (previousUrl===undefined) delete process.env.SUPABASE_URL;else process.env.SUPABASE_URL=previousUrl;
     if (previousKey===undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=previousKey;
   }
@@ -104,4 +120,14 @@ test('dispatch rechecks carrier evidence and blocks when it was withdrawn', asyn
   await integration({assertion:true});
   await assert.rejects(integration({assertion:true,released:false}),/Zollfreigabe/);
   await assert.rejects(integration({assertion:true,wrongCard:true}),/Zollfreigabe/);
+});
+
+test('dispatch stops when the live Trello tracking or card no longer matches the planned shipment', async () => {
+  for (const option of [{changedTracking:true},{conflictingTracking:true},{missingCard:true},{archivedCard:true},{duplicateLiveCard:true},{foreignBoard:true}]) {
+    await assert.rejects(integration({assertion:true,...option}),/Trello/);
+  }
+});
+test('dispatch respects a newly selected manual Trello list and unavailable list evidence', async () => {
+  await assert.rejects(integration({assertion:true,manualList:true}),/Trello/);
+  await assert.rejects(integration({assertion:true,missingList:true}),/Trello/);
 });
