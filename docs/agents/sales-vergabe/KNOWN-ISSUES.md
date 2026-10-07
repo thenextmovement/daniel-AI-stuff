@@ -2,6 +2,12 @@
 
 ## Priorität Hoch
 
+### Verspätete Proforma nach Zahlung setzt Rechnungsstatus zurück
+
+- Am 07.10.2026 bei #NEONT4746 durch aktive SQL-Funktionen, kanonische Jobs und die tatsächlich versandten PDFs bestätigt.
+- Begrenzte Migration mit isolierten PostgreSQL-Tests vorbereitet; noch nicht veröffentlicht. Bereits versandte Dokumente und Bestandsdaten werden nicht automatisch korrigiert.
+- Ursache, Ziel/Nachbar/Wirkung, Rücknahme und offene Versandgrenze: [Reparaturstand](./BILLING-PAID-PROFORMA-REPAIR-20261007.md).
+
 ### Event-Constraint ist gegenüber dem Code veraltet
 
 - `[verifiziert]` `supabase/migrations/20260609102438_create_supplier_sales_ops.sql` erlaubt in `supplier_sale_events.event_type` nur zehn ursprüngliche Werte.
