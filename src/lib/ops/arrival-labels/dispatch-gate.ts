@@ -1,3 +1,4 @@
+import { carrierReleaseEnabled, assertCarrierReleaseForCase } from "./carrier-release";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { assessShopifyAutomationGate } from "./domain";
 import { fetchShopifyDispatchEvidence } from "./clients";
@@ -21,6 +22,7 @@ export async function assertArrivalDispatchAllowed(kind: "browser" | "print", jo
       { select: "shopify_order_id", id: `eq.${job.case_id}`, limit: 1 });
     orderId = cases[0]?.shopify_order_id;
   }
+  if (carrierReleaseEnabled()) await assertCarrierReleaseForCase(job.case_id);
   const order = await fetchShopifyDispatchEvidence(orderId || "");
   const gate = assessShopifyAutomationGate(order);
   if (!(Date.parse(job.lease_expires_at) > Date.now())) throw new Error("Reservierung waehrend Shopify-Pruefung abgelaufen.");

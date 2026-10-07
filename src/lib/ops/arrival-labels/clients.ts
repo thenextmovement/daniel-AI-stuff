@@ -250,14 +250,19 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
       cardsUrl.searchParams.set("token", token);
       cardsUrl.searchParams.set("fields", "id,name,url,desc,idBoard,idList,closed,dateLastActivity");
       cardsUrl.searchParams.set("filter", "open");
+      cardsUrl.searchParams.set("customFieldItems", "true");
       const listsUrl = new URL(`https://api.trello.com/1/boards/${boardId}/lists`);
       listsUrl.searchParams.set("key", apiKey);
       listsUrl.searchParams.set("token", token);
       listsUrl.searchParams.set("fields", "id,name");
       listsUrl.searchParams.set("filter", "all");
-      const [cardsResponse, listsResponse] = await Promise.all([
+      const fieldsUrl = new URL(`https://api.trello.com/1/boards/${boardId}/customFields`);
+      fieldsUrl.searchParams.set("key", apiKey);
+      fieldsUrl.searchParams.set("token", token);
+      const [cardsResponse, listsResponse, fieldsResponse] = await Promise.all([
         fetchWithRetry(cardsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_cards" }),
         fetchWithRetry(listsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_lists" }),
+        fetchWithRetry(fieldsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_custom_fields" }),
       ]);
       const cards = await cardsResponse.json() as Array<{
         id?: string;
@@ -268,8 +273,13 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
         idList?: string;
         closed?: boolean;
         dateLastActivity?: string;
+        customFieldItems?: Array<{idCustomField:string;value?:{text?:string;number?:string}}>;
       }>;
       const lists = await listsResponse.json() as Array<{ id?: string; name?: string }>;
+      const fields = await fieldsResponse.json() as Array<{id:string;name:string}>;
+      const trackingFields = fields.filter(field => field.name.toLowerCase().replace(/[^a-z0-9]/g, "") === "trackingnumber");
+      if (trackingFields.length !== 1) throw new ArrivalIntegrationError("Tracking field missing or ambiguous", "tracking_field_ambiguous");
+      const trackingFieldId = trackingFields[0].id;
       const listNames = new Map(lists.filter((list) => list.id && list.name).map((list) => [list.id as string, list.name as string]));
       return cards
         .filter((card) => !card.closed && card.id && card.name && card.url)
@@ -282,6 +292,7 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
           listId: card.idList || null,
           listName: card.idList ? listNames.get(card.idList) || null : null,
           dateLastActivity: card.dateLastActivity || null,
+          trackingField: (card.customFieldItems || []).filter(item => item.idCustomField === trackingFieldId).map(item => item.value?.text ?? item.value?.number ?? "").join(" / ") || null,
         }));
     },
   };

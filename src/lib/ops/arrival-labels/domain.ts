@@ -1,3 +1,4 @@
+import { resolveCardDhlTracking } from "./tracking";
 import { createHash } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 
@@ -38,7 +39,7 @@ export type DhlArrival = {
   deliveryState: "unknown" | "due_today" | "delivered_today";
   expectedArrivalAt: string | null;
   messageIds: string[];
-  sourceKinds: Array<"outlook_dhl" | "trello_sign_shipped" | "trello_create_invoice">;
+  sourceKinds: Array<"outlook_dhl" | "trello_sign_shipped" | "trello_create_invoice" | "carrier_tracking">;
   trelloTrigger: {
     boardId: string;
     listId: string;
@@ -50,6 +51,7 @@ export type DhlArrival = {
 };
 
 export type TrelloCardEvidence = {
+  trackingField?: string | null;
   id: string;
   name: string;
   url: string;
@@ -581,7 +583,7 @@ function dateTextMatches(text: string, localDate: string) {
 }
 
 export function findTrelloCardForTracking(cards: TrelloCardEvidence[], trackingNumber: string) {
-  const matches = cards.filter((card) => card.name.includes(trackingNumber));
+  const matches = cards.filter((card) => resolveCardDhlTracking(card.name, card.trackingField).trackingNumber === trackingNumber);
   if (matches.length === 1) return { card: matches[0], error: null as string | null };
   if (matches.length === 0) return { card: null, error: `Keine Trello-Karte enthaelt ${trackingNumber}.` };
   return { card: null, error: `${matches.length} Trello-Karten enthalten ${trackingNumber}.` };

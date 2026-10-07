@@ -1,3 +1,4 @@
+import { carrierReleaseEnabled, loadCarrierReleasedArrivals } from "./carrier-release";
 import { Temporal } from "@js-temporal/polyfill";
 import { randomUUID } from "node:crypto";
 import type { ArrivalDataClients, ExistingArrivalCaseEvidence } from "./clients";
@@ -218,9 +219,12 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
       runtimeClients.trello.listQuentinCards(),
     ]);
     const orders = await runtimeClients.shopify.listRecentOrders(localDate, cards);
+    const useCarrierRelease = carrierReleaseEnabled();
     const observedArrivals = mergeDhlArrivals(
       arrivalsFromDhlMessages(messages, localDate),
-      arrivalsFromTrelloSignShipped(cards, localDate, trelloTriggerSettings),
+      ...(useCarrierRelease
+        ? [await loadCarrierReleasedArrivals(cards, localDate, persist)]
+        : [arrivalsFromTrelloSignShipped(cards, localDate, trelloTriggerSettings)]),
     );
     const orderIds = [...new Set(orders.map((order) => order.id))];
     const [existingByOrder, handledCasesByTracking] = await Promise.all([
@@ -229,10 +233,10 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
         observedArrivals.map((arrival) => arrival.trackingNumber),
       ) || Promise.resolve(new Map<string, ExistingArrivalCaseEvidence>()),
     ]);
-    // New purchases require current Sign SHIPPED membership; DHL mail alone is not a release.
+    // Carrier rollout replaces the old list release; DHL mail alone never grants purchase.
     // Keep handled cases for later delivery/mail reconciliation, always as existing_label below.
     const arrivals = observedArrivals.filter((arrival) =>
-      arrival.sourceKinds.includes("trello_sign_shipped")
+      (useCarrierRelease ? arrival.sourceKinds.includes("carrier_tracking") : arrival.sourceKinds.includes("trello_sign_shipped"))
       || handledCasesByTracking.has(arrival.trackingNumber));
     const hints = Object.fromEntries(cards.map((card) => [card.id, customerNameHintsFromCard(card)]));
     const cases = arrivals.map((arrival) => {
