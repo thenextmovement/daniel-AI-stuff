@@ -1,4 +1,4 @@
-import { assertArrivalDispatchAllowed, ArrivalDispatchHeldError } from "@/lib/ops/arrival-labels/dispatch-gate";
+import { assertArrivalDispatchAllowed, acknowledgeArrivalDispatchHold, ArrivalDispatchHeldError } from "@/lib/ops/arrival-labels/dispatch-gate";
 import { NextRequest, NextResponse } from "next/server";
 import { isArrivalPrintWorkerAuthorized } from "@/lib/ops/arrival-labels/auth";
 import { PrintInputError, readBoundedJson, validatePrintWorkerId, type PrintJobResult } from "@/lib/ops/arrival-labels/printing";
@@ -26,6 +26,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (cupsJobId && !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}-\d+$/.test(cupsJobId)) {
       return NextResponse.json({ ok: false, error: "invalid_cups_job_id" }, { status: 400, headers: NO_STORE });
     }
+    if (body.result === "retryable_error" && await acknowledgeArrivalDispatchHold("print", jobId, workerId)) return NextResponse.json({ ok: true, status: "manual_review" }, { headers: NO_STORE });
     if (body.result === "dispatching") await assertArrivalDispatchAllowed("print", jobId, workerId);
     const job = await updateArrivalPrintJob({
       jobId,

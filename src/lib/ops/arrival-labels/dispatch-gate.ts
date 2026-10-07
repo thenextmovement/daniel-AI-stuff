@@ -23,10 +23,22 @@ export async function assertArrivalDispatchAllowed(kind: "browser" | "print", jo
   }
   const order = await fetchShopifyDispatchEvidence(orderId || "");
   const gate = assessShopifyAutomationGate(order);
+  if (!(Date.parse(job.lease_expires_at) > Date.now())) throw new Error("Reservierung waehrend Shopify-Pruefung abgelaufen.");
   if (!gate.blocked) return;
   await supabaseRpc("arrival_labels_hold_before_dispatch", {
     p_job_kind: kind, p_job_id: jobId, p_worker_id: workerId,
     p_reason: gate.reason, p_reason_codes: gate.reasonCodes,
   });
   throw new ArrivalDispatchHeldError();
+}
+
+// Legacy workers report a safe pre-dispatch error after HTTP 409. Acknowledge
+// only our audited hold so they release their local slot without undoing it.
+export async function acknowledgeArrivalDispatchHold(kind: "browser" | "print", jobId: string, workerId: string) {
+  const jobs = await supabaseRequest<{ id: string; status: string }[]>(kind === "browser" ? "arrival_label_browser_purchase_jobs" : "arrival_label_print_jobs", undefined,
+    { select: "id,status", id: `eq.${jobId}`, lease_owner: `eq.${workerId}`, status: "eq.manual_review", limit: 1 });
+  if (jobs[0]?.status !== "manual_review") return false;
+  const events = await supabaseRequest<{ event_key: string }[]>("arrival_label_events", undefined,
+    { select: "event_key", event_key: `eq.shopify-dispatch-hold:${kind}:${jobId}`, event_type: "eq.shopify_dispatch_held", limit: 1 });
+  return events.length === 1;
 }

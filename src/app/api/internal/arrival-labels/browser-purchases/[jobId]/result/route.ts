@@ -1,4 +1,4 @@
-import { assertArrivalDispatchAllowed, ArrivalDispatchHeldError } from "@/lib/ops/arrival-labels/dispatch-gate";
+import { assertArrivalDispatchAllowed, acknowledgeArrivalDispatchHold, ArrivalDispatchHeldError } from "@/lib/ops/arrival-labels/dispatch-gate";
 import { NextRequest, NextResponse } from "next/server";
 import { isArrivalBrowserWorkerAuthorized } from "@/lib/ops/arrival-labels/auth";
 import { validateBrowserPurchaseJobId, validateBrowserWorkerId, type BrowserPurchaseResult } from "@/lib/ops/arrival-labels/browser-purchase";
@@ -39,6 +39,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       trackingNumbers,
     } : null;
     if (body.result === "existing_label" && evidence?.found !== true) throw new PrintInputError("Vorhandenes EasyDPD-Label ist nicht belegt.");
+    if (body.result === "retryable_error" && await acknowledgeArrivalDispatchHold("browser", jobId, workerId)) return NextResponse.json({ ok: true, status: "manual_review" }, { headers: NO_STORE });
     if (body.result === "dispatching") await assertArrivalDispatchAllowed("browser", jobId, workerId);
     const job = body.result === "existing_label"
       ? await blockArrivalBrowserPurchaseForExistingLabel({

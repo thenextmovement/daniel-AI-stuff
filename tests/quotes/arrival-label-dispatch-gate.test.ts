@@ -11,7 +11,7 @@ const WORKER = "test-worker-01";
 const TOKEN = "test-only-dispatch-token-32-characters-long";
 const keys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ARRIVAL_LABEL_PRINT_API_TOKEN", "ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN", "SHOPIFY_SHOP_DOMAIN", "SHOPIFY_ADMIN_API_ACCESS_TOKEN", "SHOPIFY_ADMIN_API_VERSION"] as const;
 
-async function scenario(kind: "print" | "browser", options: { note?: string | null; pickup?: boolean; missingOrder?: boolean; malformed?: boolean; wrongOwner?: boolean; holdFails?: boolean; result?: string; parcelKind?: string; shopDomain?: string } = {}) {
+async function scenario(kind: "print" | "browser", options: { note?: string | null; pickup?: boolean; missingOrder?: boolean; malformed?: boolean; wrongOwner?: boolean; holdFails?: boolean; result?: string; parcelKind?: string; shopDomain?: string; held?: boolean; auditedHold?: boolean } = {}) {
   const previous = keys.map(key => process.env[key]);
   const beforeFetch = globalThis.fetch;
   Object.assign(process.env, { SUPABASE_URL: "https://database.example.invalid", SUPABASE_SERVICE_ROLE_KEY: "test-only", ARRIVAL_LABEL_PRINT_API_TOKEN: TOKEN, ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN: TOKEN, SHOPIFY_SHOP_DOMAIN: options.shopDomain || "galaxybuzzdk.myshopify.com", SHOPIFY_ADMIN_API_ACCESS_TOKEN: "test-only", SHOPIFY_ADMIN_API_VERSION: "2026-07" });
@@ -22,8 +22,9 @@ async function scenario(kind: "print" | "browser", options: { note?: string | nu
     calls.push(url.pathname);
     if (url.pathname.endsWith("arrival_label_print_jobs") || url.pathname.endsWith("arrival_label_browser_purchase_jobs")) {
       assert.equal(url.searchParams.get("lease_owner"), `eq.${WORKER}`);
-      return Response.json(options.wrongOwner ? [] : [{ id: ID, case_id: CASE, status: kind === "browser" ? "validated" : "claimed", shopify_order_id: GID, lease_owner: WORKER, lease_expires_at: new Date(Date.now() + 60_000).toISOString(), parcel_kind: options.parcelKind || "main" }]);
+      return Response.json(options.wrongOwner ? [] : [{ id: ID, case_id: CASE, status: options.held ? "manual_review" : kind === "browser" ? "validated" : "claimed", shopify_order_id: GID, lease_owner: WORKER, lease_expires_at: new Date(Date.now() + 60_000).toISOString(), parcel_kind: options.parcelKind || "main" }]);
     }
+    if (url.pathname.endsWith("arrival_label_events")) return Response.json(options.auditedHold ? [{ event_key: `shopify-dispatch-hold:${kind}:${ID}` }] : []);
     if (url.pathname.endsWith("arrival_label_cases")) return Response.json([{ id: CASE, shopify_order_id: GID }]);
     if (url.pathname.endsWith("graphql.json")) {
       const body = JSON.parse(String(init?.body));
@@ -95,3 +96,16 @@ test("CUPS completion is still recorded after dispatch without reclassifying the
   assert.equal(result.response.status, 200);
   assert.deepEqual(result.calls, ["/rest/v1/rpc/arrival_labels_update_print_job"]);
 });
+
+for (const kind of ["print", "browser"] as const) {
+  test(`${kind}: legacy worker can acknowledge audited hold without restarting dispatch`, async () => {
+    const result = await scenario(kind, { result: "retryable_error", held: true, auditedHold: true });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.payload.status, "manual_review");
+    assert.equal(result.calls.some(path => path.includes("/rpc/") || path.endsWith("graphql.json")), false);
+  });
+  test(`${kind}: other uncertain/manual states still use existing transition restrictions`, async () => {
+    const result = await scenario(kind, { result: "retryable_error", held: true });
+    assert.ok(result.calls.some(path => path.includes("rpc/arrival_labels_update_")));
+  });
+}
