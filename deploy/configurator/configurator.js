@@ -7,7 +7,7 @@ import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufactur
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
 import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261004-a1';
-import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery} from './checkout-client.js?v=20261008-ads1';
+import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent} from './checkout-client.js?v=20261008-consent1';
 import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261006-bridges1';
 import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261007-tablet-accessories1-factor26';
@@ -93,7 +93,7 @@ const STAND_SUPPORT_MM=MANUFACTURING_PROFILE.standSupportMm;
 // Assumed photo widths for room metadata; example-room display framing is normalized below.
 // Uploaded photos keep their calibrated width. Changing sign size must never refit it to the photo.
 const ROOMS = [
-  {id:'reception',spanMm:6000,name:'Empfang',image:'./assets/scenes/reception-detail.webp'},
+  {id:'reception',spanMm:6000,name:'Empfang',image:'./assets/scenes/reception-detail-desktop-v1.webp',mobileImage:'./assets/scenes/reception-detail-mobile-v1.webp'},
   {id:'office',spanMm:5500,name:'Büro',image:'./assets/scenes/office-detail.webp'},
   {id:'event',spanMm:8000,name:'Event',image:'./assets/scenes/event-detail.webp'},
   {id:'podcast',spanMm:4000,name:'Podcast-Studio',image:'./assets/scenes/podcast-detail.webp'},
@@ -864,7 +864,7 @@ function paintColorControls(){
   $('#color-gallery-selection').textContent=rgb?'RGB-Farbwechsel':selected?.name||'Mehrfarbig';
   $('#color-gallery-context').textContent=target?`Für „${target.text}“ · 17 Farben`:state.mode==='logo'?'Für dein Logo · 17 Farben':'Für deinen ganzen Schriftzug · 17 Farben';
   const example=$('#current-color-example'),exampleColor=selected||state.color;
-  if(example.dataset.colorId!==exampleColor.id||colorCurrentLayout!==state.result?.layout||colorCurrentTarget!==state.colorTarget){example.replaceChildren(createColorExample(exampleColor,colorExampleOptions('color-current')));example.dataset.colorId=exampleColor.id;colorCurrentLayout=state.result?.layout;colorCurrentTarget=state.colorTarget;}
+  if(example.getClientRects().length&&(example.dataset.colorId!==exampleColor.id||colorCurrentLayout!==state.result?.layout||colorCurrentTarget!==state.colorTarget)){example.replaceChildren(createColorExample(exampleColor,colorExampleOptions('color-current')));example.dataset.colorId=exampleColor.id;colorCurrentLayout=state.result?.layout;colorCurrentTarget=state.colorTarget;}
   if($('#color-gallery').open)refreshColorExamples();
   $('#mobile-color-target').value=state.colorTarget;
   $('#color-scope').textContent=target?`Farbe für „${target.text}“`:'Farbe für den ganzen Schriftzug';
@@ -1385,7 +1385,8 @@ for(const color of AVAILABLE_COLORS){
 }
 for(const color of AVAILABLE_COLORS){
   const button=document.createElement('button');button.type='button';button.className='color-swatch';button.dataset.color=color.id;button.style.setProperty('--swatch',color.color);button.setAttribute('aria-label',color.name);button.title=color.name;const colorLabel=document.createElement('span');colorLabel.className='color-swatch-label';colorLabel.textContent=color.name.replace('Zitronengelb','Zitronen\u00adgelb');
-  button.append(createColorExample(color,{prefix:'color-card-'+color.id}),colorLabel);
+  // Build the wall-photo SVG only when the color gallery is opened.
+  button.append(svg('svg',{'aria-hidden':'true',viewBox:'0 0 780 260'}),colorLabel);
   button.addEventListener('click',()=>{
     if(state.lightMode==='rgb')return;
     if(state.colorTarget==='all'){state.color=color;if(state.mode!=='logo'){state.wordColors.clear();state.charColors.clear();}}
@@ -1395,6 +1396,9 @@ for(const color of AVAILABLE_COLORS){
     paint();
   });$('#color-palette').append(button);
 }
+// The legacy current-color card can become visible after a layout/step change.
+const currentColorVisibility=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))paintColorControls();});
+currentColorVisibility.observe($('#current-color-example'));
 function openColorGallery({focusTarget=false}={}){
   const dialog=$('#color-gallery');refreshColorExamples();
   $('#color-gallery-size').textContent=`Dein Schild: Breite ${$('#stage-width').textContent} · Höhe ${$('#stage-height').textContent}`;
@@ -1672,10 +1676,12 @@ function paintRoom(){
   $('#scene-strip').classList.toggle('is-tabletop',state.mount==='table-stand');
   const group=$('#preview-room');
   if(state.scene==='technical'){group.replaceChildren();return;}
-  if(group.dataset.room===room.id && group.children.length)return;
-  group.dataset.room=room.id;group.replaceChildren();
+  const roomImage=mobile&&room.mobileImage?room.mobileImage:room.image;
+  const roomImageUrl=roomImage?new URL(roomImage,import.meta.url).href:SCENE_IMAGE;
+  if(group.dataset.room===room.id&&group.dataset.image===roomImageUrl&&group.children.length)return;
+  group.dataset.room=room.id;group.dataset.image=roomImageUrl;group.replaceChildren();
   const crop=svg('svg',{x:0,y:0,width:1000,height:500,viewBox:room.image?'0 0 1000 500':`${room.col*1000} ${room.row*500} 1000 500`,preserveAspectRatio:'xMidYMid meet',overflow:'hidden'});
-  const photo=svg('image',{id:'scene-photo',href:room.image?new URL(room.image,import.meta.url).href:SCENE_IMAGE,x:room.photoWidth?(1000-room.photoWidth)/2:0,y:room.photoHeight?(500-room.photoHeight)/2:0,width:room.photoWidth||(room.image?1000:2000),height:room.photoHeight||(room.image?500:2000)});
+  const photo=svg('image',{id:'scene-photo',href:roomImageUrl,x:room.photoWidth?(1000-room.photoWidth)/2:0,y:room.photoHeight?(500-room.photoHeight)/2:0,width:room.photoWidth||(room.image?1000:2000),height:room.photoHeight||(room.image?500:2000)});
   if(room.outdoor)photo.setAttribute('preserveAspectRatio','xMidYMid slice');
   photo.addEventListener('error',()=>{$('#scene-note').textContent='Szenenbild nicht verfügbar. Dein Entwurf bleibt sichtbar.';});
   crop.append(photo);group.append(crop);
@@ -2148,6 +2154,7 @@ const checkoutClient=createCheckoutClient({
   apiBaseUrl:checkoutApiOrigin===window.location.origin?'':checkoutApiOrigin,
   readSession:()=>readAsset(CHECKOUT_SESSION_KEY),
   saveSession:token=>saveAssetIfMissing(CHECKOUT_SESSION_KEY,token),
+  readVisitorConsent:()=>cookiebotVisitorConsent(window.Cookiebot),
   readFile:async(id,kind)=>(await getDraftAsset(id,kind)).file
 });
 function refreshCartButtons(){

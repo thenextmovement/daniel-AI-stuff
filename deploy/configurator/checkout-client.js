@@ -31,10 +31,25 @@ const messages={
   CHECKOUT_NOT_CONFIGURED:'Die Kasse ist noch nicht verfügbar. Dein Warenkorb bleibt gespeichert.',
   CHECKOUT_UNCONFIRMED:'Die Übergabe ist noch nicht bestätigt. Dein Warenkorb bleibt gespeichert. Bitte versuche es später erneut.',
   PRICE_CHANGED:'Der bestätigte Gesamtpreis hat sich geändert. Bitte prüfe deinen Warenkorb erneut.',
+  INVALID_CONSENT:'Deine Datenschutzauswahl konnte nicht bestätigt werden. Bitte lade diese Seite erneut. Dein Warenkorb bleibt gespeichert.',
+  CONSENT_CHANGED:'Deine Datenschutzauswahl wurde geändert. Bitte klicke erneut auf „Zur Kasse“, damit deine aktuelle Auswahl übernommen wird.',
   NOT_ENABLED:'Die Bestellvorbereitung ist hier noch nicht aktiviert.'
 };
 export class CheckoutClientError extends Error{
   constructor(code,message){super(message||messages[code]||'Die Bestellvorbereitung ist gerade nicht verfügbar. Ihr Warenkorb bleibt erhalten.');this.code=code;}
+}
+
+// Keep consent outside the cart identity and only forward an explicit visitor choice.
+export function cookiebotVisitorConsent(cookiebot){
+  if(cookiebot?.hasResponse!==true)return undefined;
+  const c=cookiebot.consent;
+  if(!c||!['statistics','marketing','preferences'].every(key=>typeof c[key]==='boolean'))throw new CheckoutClientError('INVALID_CONSENT');
+  return {analytics:c.statistics,marketing:c.marketing,preferences:c.preferences};
+}
+function consentKey(choice){
+  if(choice===undefined)return '';
+  if(!choice||Object.keys(choice).length!==3||!['analytics','marketing','preferences'].every(key=>typeof choice[key]==='boolean'))throw new CheckoutClientError('INVALID_CONSENT');
+  return ['analytics','marketing','preferences'].map(key=>String(choice[key])).join(':');
 }
 
 // Keep the chosen delivery tier while the date advances in our own cart.
@@ -87,7 +102,7 @@ export function requiredCheckoutAssets(payload){
   return [...refs].map(([id,kind])=>({id,kind}));
 }
 
-export function createCheckoutClient({readSession,saveSession,readFile,fetcher=(...args)=>fetch(...args),cryptoApi=globalThis.crypto,timeoutMs=60_000,apiBaseUrl=''}){
+export function createCheckoutClient({readSession,saveSession,readFile,readVisitorConsent=()=>undefined,fetcher=(...args)=>fetch(...args),cryptoApi=globalThis.crypto,timeoutMs=60_000,apiBaseUrl=''}){
   if(apiBaseUrl!==''&&apiBaseUrl!=='https://angebote.neontrip.de')throw new CheckoutClientError('ORIGIN_NOT_ALLOWED');
   let sessionPromise=null,pending=null;
   const uploads=new Map();
@@ -144,6 +159,9 @@ export function createCheckoutClient({readSession,saveSession,readFile,fetcher=(
       if(new TextEncoder().encode(JSON.stringify(payload)).length+refs.length*240>MAX_JSON_BYTES)throw new CheckoutClientError('PAYLOAD_TOO_LARGE');
       const token=await session();
       for(const ref of refs)payload.assetRefs.push(await upload(ref,token));
+      // Read after uploads, immediately before the existing checkout request.
+      const visitorConsent=readVisitorConsent(),sentConsentKey=consentKey(visitorConsent);
+      if(visitorConsent!==undefined)payload.visitorConsent={...visitorConsent};
       const body=JSON.stringify(payload);
       if(new TextEncoder().encode(body).length>MAX_JSON_BYTES)throw new CheckoutClientError('PAYLOAD_TOO_LARGE');
       const {status,result}=await request('/api/public/configurator/checkout',body,{'Content-Type':'application/json','X-Neontrip-Cart-Token':token});
@@ -151,6 +169,9 @@ export function createCheckoutClient({readSession,saveSession,readFile,fetcher=(
       const deliveryMatches=result?.delivery?.dateIso===payload.delivery.dateIso&&result.delivery.businessDays===payload.delivery.businessDays&&result.delivery.countryCode===payload.delivery.countryCode;
       if(status===409&&deliveryMatches&&HEX64.test(result?.id)&&result.status==='BLOCKED'&&result.checkoutUrl===null&&result.priceVersion==='unapproved'&&Array.isArray(result.blockers)&&result.blockers.length&&result.blockers.every(code=>known.includes(code)))return {id:result.id,status:'BLOCKED',blockers:result.blockers,delivery:payload.delivery};
       if(status===200&&deliveryMatches&&HEX64.test(result?.id)&&result.status==='CREATED'&&typeof result.priceVersion==='string'&&/^[a-zA-Z0-9._-]{1,100}$/.test(result.priceVersion)&&result.priceVersion!=='unapproved'&&result.currency==='EUR'&&Number.isSafeInteger(result.subtotalCents)&&result.subtotalCents>0&&Array.isArray(result.blockers)&&result.blockers.length===0){
+        if(consentKey(readVisitorConsent())!==sentConsentKey)throw new CheckoutClientError('CONSENT_CHANGED');
+        // An older backend must not silently ignore a supplied privacy choice.
+        if(consentKey(result.visitorConsent)!==sentConsentKey)throw new CheckoutClientError('INVALID_CONSENT');
         const checkoutUrl=checkedCheckoutUrl(result.checkoutUrl);
         if(!Number.isSafeInteger(expectedTotalCents)||expectedTotalCents!==result.subtotalCents)throw new CheckoutClientError('PRICE_CHANGED');
         return {id:result.id,status:'CREATED',checkoutUrl,delivery:payload.delivery};

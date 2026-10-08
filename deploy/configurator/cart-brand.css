@@ -103,10 +103,10 @@
 #cart-dialog .cart-trust-stars { grid-column: 1; grid-row: 1; align-self: end; width: 55px; height: 10px; margin: 0 auto -2px; fill: #be7800; }
 #cart-dialog #cart-checkout .cart-trust-note { font-size: 10px; line-height: 1.45; margin-top: 10px; }
 
-/* Main configurator actions use the shared NEONTRIP brand color. */
+/* Main configurator actions keep white labels on a contrast-safe NEONTRIP pink. */
 body.nt-configurator :is(#next-step, #add-to-cart, #review-add-to-cart, #page-add-to-cart):not(:disabled):not([aria-disabled=true]) {
-  background: var(--pink) !important;
-  border-color: var(--pink) !important;
+  background: #c51a7a !important;
+  border-color: #c51a7a !important;
   color: #fff !important;
 }
 @media (max-width: 1000px) {
@@ -238,4 +238,15 @@ body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calenda
 }
 @media (prefers-reduced-motion: reduce) {
   body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calendar-continue, #next-step, #page-add-to-cart)::before { transition: none; }
+}
+
+/* 8 Oct 2026: keep the mobile Back control clear of the 48px Cookiebot widget.
+   The widget stays available in its existing position; consent behavior is unchanged. */
+@media (max-width: 760px) {
+  body.lichtbuehne.lichtbuehne-v4.designstudio:has(#CookiebotWidget) #main #previous-step {
+    margin-inline-start: 56px;
+    width: calc(100% - 56px);
+    min-width: 0;
+    white-space: normal;
+  }
 }
