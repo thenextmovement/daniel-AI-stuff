@@ -1,0 +1,31 @@
+/* Sharing follows the existing local Lichtbühne dialogs. */
+body.lichtbuehne :is(.design-share-dialog,.shared-design-dialog){width:min(620px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:28px;background:#faf7f3;color:#211b17;border:1px solid #d8d1ca;border-radius:14px;overflow:auto}
+body.lichtbuehne :is(.design-share-dialog,.shared-design-dialog) h2{font-size:26px;line-height:1.15;letter-spacing:-.03em;margin:0 48px 8px 0}
+body.lichtbuehne :is(.design-share-dialog,.shared-design-dialog) p{font-size:13px;line-height:1.5;margin:8px 0 14px;color:#655b55}
+body.lichtbuehne .share-preview{display:flex;gap:10px;margin:14px 0}
+body.lichtbuehne .share-preview figure{flex:1;min-width:0;margin:0;background:#211c22;border-radius:8px;padding:12px;color:white}
+body.lichtbuehne .share-preview img{display:block;width:100%;height:130px;object-fit:contain}
+body.lichtbuehne .share-preview figcaption{font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+body.lichtbuehne .design-share-dialog label{display:block;font-size:13px;font-weight:600;margin:12px 0 6px}
+body.lichtbuehne .design-share-dialog :is(textarea,input){display:block;width:100%;min-width:0;padding:10px 12px;background:white;border:1px solid #b7aaa0;border-radius:6px;color:#211b17;font-size:15px;line-height:1.4}
+body.lichtbuehne .design-share-dialog textarea{resize:vertical;min-height:70px}
+body.lichtbuehne .share-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+body.lichtbuehne .share-actions :is(button,a),body.lichtbuehne .share-comparison-button,body.lichtbuehne #shared-design-list button{display:flex;align-items:center;justify-content:center;min-height:44px;border:1px solid #b7aaa0;border-radius:6px;background:#fff;color:#302720;padding:10px;font:600 13px Inter,sans-serif;text-decoration:none;cursor:pointer}
+body.lichtbuehne .share-actions #share-email,body.lichtbuehne .share-comparison-button{background:#c51a7a;color:#fff;border-color:#c51a7a}
+body.lichtbuehne .share-actions [aria-disabled=true]{opacity:.45;cursor:wait;pointer-events:none}
+body.lichtbuehne .share-note{padding:10px 12px;background:#efe8e2;border-radius:6px;font-size:12px;line-height:1.5}
+body.lichtbuehne .share-note p{font-size:12px;margin:5px 0 8px}
+body.lichtbuehne .share-note a{display:inline-flex;align-items:center;min-height:44px;color:#961454;font-weight:600}
+body.lichtbuehne #share-status{margin-bottom:0;color:#713150;min-height:20px}
+body.lichtbuehne #shared-design-list article{border:1px solid #d2c6bc;border-radius:8px;background:white;padding:14px;margin:12px 0}
+body.lichtbuehne #shared-design-list h3{font-size:18px;margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere}
+body.lichtbuehne #shared-design-list button{width:100%}
+body.lichtbuehne #share-comparison{width:100%;margin-top:14px}
+body.lichtbuehne #open-shared-designs{min-height:44px;border:1px solid #b7aaa0;border-radius:6px;padding:8px 12px;background:#fff;color:#8b1759;font-size:13px;font-weight:600;margin-bottom:10px}
+@media(max-width:760px){
+ body.lichtbuehne #main .editor{grid-template-rows:48px minmax(140px,1fr) 52px minmax(122px,auto)}
+ body.lichtbuehne .design-tools{grid-template-columns:repeat(3,minmax(0,1fr))}
+ body.lichtbuehne :is(.design-share-dialog,.shared-design-dialog){padding:20px}
+ body.lichtbuehne .share-preview img{height:100px}
+ body.lichtbuehne #share-native{grid-column:1/-1}
+}

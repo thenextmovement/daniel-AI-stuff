@@ -1,0 +1,50 @@
+/* Header from the current local landing page; footer from anfrage.neontrip.de. */
+.hero-header{display:flex;align-items:center;justify-content:space-between;gap:32px;padding-block:28px;position:relative;z-index:10}
+.hero-brand img{width:174px;height:auto}
+.hero-desktop{display:flex;align-items:center;gap:44px}
+.hero-desktop a,.hero-nav-toggle{text-decoration:none;font-size:15px;font-weight:500;color:#fff}
+.hero-nav-toggle{display:flex;align-items:center;gap:8px;background:none;border:0;padding:10px 0}
+.hero-nav-toggle .icon{width:17px}
+.hero-product-nav{position:relative}
+.hero-dropdown{position:absolute;top:100%;left:0;min-width:300px;background:#fff;color:var(--dark);border-radius:12px;padding:12px;box-shadow:0 12px 40px #0002}
+.hero-dropdown a{color:var(--dark);padding:14px;display:flex;align-items:center;justify-content:space-between;font-size:14px}
+.hero-dropdown a:hover{background:var(--surface);border-radius:8px}
+.hero-header-cta{color:#fff;border-color:#ffffffb3;background:transparent}
+.hero-header-cta:hover{background:#ffffff24;border-color:#fff}
+.hero-mobile-toggle{display:none}
+.hero-mobile-nav{position:absolute;z-index:15;top:94px;left:24px;right:24px;padding:14px;background:#fff;border-radius:16px;color:var(--dark);box-shadow:0 20px 50px #0003}
+.hero-mobile-nav a{display:flex;align-items:center;justify-content:space-between;padding:14px;text-decoration:none;font-weight:500}
+.nt-configurator{height:auto;min-height:100svh;grid-template-rows:70px minmax(468px,calc(100svh - 112px)) 42px auto}
+.config-site-header{position:relative;background:#0a0a0a;color:#fff;z-index:20}
+.config-site-header .hero-header{height:70px;padding-block:0;width:calc(100% - 56px);max-width:none}
+.config-site-header .hero-header-cta{min-height:42px;padding:10px 22px;font-size:13px}
+.config-site-header .hero-mobile-nav{top:calc(100% - 2px)}
+.app-footer-logo img{width:100px;height:auto}
+.brand-footer{background:#f3f4f6;color:#0a0a0a;min-width:0;outline:none}
+.brand-footer-grid{max-width:1400px;margin:auto;padding:64px 32px 48px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:40px}
+.brand-footer h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#686868;margin-bottom:16px;line-height:1.5}
+.brand-footer a{text-decoration:none}
+.brand-footer a:hover{text-decoration:underline;text-underline-offset:4px}
+.brand-footer-grid nav>a{display:block;font-size:14px;font-weight:500;color:#616161;margin-top:10px;line-height:1.5}
+.brand-footer-about>a{display:inline-block;margin-bottom:12px}
+.brand-footer-about>a img{width:120px;height:auto}
+.brand-footer-about p{font-size:14px;font-weight:500;line-height:1.5}
+.brand-footer-about .brand-footer-tagline{font-size:12px;font-weight:400;color:#626262;margin-top:4px}
+.brand-footer-social{display:flex;gap:8px;margin-top:20px}
+.brand-footer-social a{width:32px;height:32px;display:grid;place-items:center;background:#0a0a0a0d;border-radius:50%}
+.brand-footer-social svg{width:14px;height:14px}
+.brand-footer-social a:hover{background:#0a0a0a1a}
+.brand-footer-contact>a{display:block;font-size:14px;font-weight:600;color:#b81b77;overflow-wrap:anywhere}
+.brand-footer-contact p{font-size:12px;line-height:1.7;color:#626262;margin:4px 0 16px}
+.brand-footer-dark{background:#0a0a0a;color:#fff;padding:40px 32px 24px}
+.brand-footer-inner{max-width:1400px;margin:auto}
+.brand-footer-wordmark{width:100%;height:auto;opacity:.9}
+.brand-footer-legal{display:flex;align-items:center;gap:24px;margin-top:26px;font-size:12px;color:#a1a1aa;flex-wrap:wrap}
+.brand-footer-legal nav{display:flex;gap:16px;flex-wrap:wrap}
+.brand-footer-inquiry{margin-left:auto;display:flex;gap:8px;align-items:center}
+.brand-footer-inquiry .icon{width:15px;height:15px}
+@media(max-width:1100px){.hero-desktop{gap:24px}.config-site-header .hero-header{gap:20px}}
+@media(max-width:900px){.hero-desktop,.hero-header-cta{display:none}.hero-mobile-toggle{display:grid}.brand-footer-grid{gap:24px;grid-template-columns:repeat(2,minmax(0,1fr))}.brand-footer-inquiry{margin-left:0}}
+@media(max-width:760px){.nt-configurator{height:auto;min-height:100svh;grid-template-rows:54px minmax(558px,calc(100svh - 92px)) 38px auto}.config-site-header .hero-header{height:54px;width:calc(100% - 24px);gap:12px}.hero-brand img{width:146px}.hero-mobile-toggle{width:36px;height:36px}.hero-mobile-nav{left:12px;right:12px}.app-footer-logo{display:none}.brand-footer-grid{padding:40px 20px;gap:30px 18px}.brand-footer-about{grid-column:1/-1}.brand-footer-contact{grid-column:1/-1}.brand-footer-dark{padding:28px 20px 24px}.brand-footer-legal{gap:16px;margin-top:22px}.brand-footer-legal nav{gap:10px 16px}.brand-footer-inquiry{font-size:12px}}
+
+@media(min-width:761px) and (max-width:1000px){.nt-configurator{grid-template-rows:70px minmax(650px,calc(100svh - 112px)) 42px auto}}
