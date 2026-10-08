@@ -1062,26 +1062,33 @@ function paint() {
     const ink='#ffffff';
     const viewport=$('#sign-preview').getBoundingClientRect();
     const measureScale=Math.max(.1,Math.min(viewport.width/$('#sign-preview').viewBox.baseVal.width,viewport.height/$('#sign-preview').viewBox.baseVal.height));
-    const measureFont=14/measureScale,tick=4/measureScale;
-    const dimY=centerY+backing.heightMm*pxPerMm/2+18/measureScale,dimX=(1000+backing.widthMm*pxPerMm)/2+20/measureScale;
+    const mobileMeasures=mobileChoiceMedia.matches;
+    const measureFont=(mobileMeasures?12:14)/measureScale,tick=4/measureScale;
+    const dimY=centerY+backing.heightMm*pxPerMm/2+18/measureScale,dimX=(1000+backing.widthMm*pxPerMm)/2+(mobileMeasures?4:20)/measureScale;
     const line=(x1,y1,x2,y2)=>measures.append(svg('line',{x1,y1,x2,y2,stroke:ink,'stroke-width':1,opacity:.65}));
     const outerX=(1000-backing.widthMm*pxPerMm)/2;
     line(outerX,dimY,outerX+backing.widthMm*pxPerMm,dimY);line(outerX,dimY-tick,outerX,dimY+tick);line(outerX+backing.widthMm*pxPerMm,dimY-tick,outerX+backing.widthMm*pxPerMm,dimY+tick);
     line(dimX,plateTop,dimX,plateBottom);line(dimX-tick,plateTop,dimX+tick,plateTop);line(dimX-tick,plateBottom,dimX+tick,plateBottom);
     measures.append(svg('text',{x:500,y:dimY+16/measureScale,fill:ink,'font-family':'Inter,sans-serif','font-size':measureFont,'text-anchor':'middle'},`Breite ${cm(backing.widthMm)} cm`));
-    const heightLabel=`Höhe ${cm(backing.heightMm)} cm`,heightLabelX=dimX+8/measureScale,viewRight=$('#sign-preview').viewBox.baseVal.x+$('#sign-preview').viewBox.baseVal.width-8/measureScale;
-    const clampHeightLabel=matchMedia('(max-width:760px)').matches&&heightLabelX+heightLabel.length*7/measureScale>viewRight;
-    const x=clampHeightLabel?viewRight:heightLabelX;
-    const label=svg('text',{x,y:(plateTop+plateBottom)/2-7/measureScale,fill:ink,'font-family':'Inter,sans-serif','font-size':measureFont,'text-anchor':clampHeightLabel?'end':'start'});
+    const heightLabelX=dimX+(mobileMeasures?6:8)/measureScale,viewRight=$('#sign-preview').viewBox.baseVal.x+$('#sign-preview').viewBox.baseVal.width-8/measureScale-offset.x;
+    const x=heightLabelX;
+    const label=svg('text',{x,y:(plateTop+plateBottom)/2-7/measureScale,fill:ink,'font-family':'Inter,sans-serif','font-size':measureFont,'text-anchor':'start'});
     label.append(svg('tspan',{x,dy:0},'Höhe'),svg('tspan',{x,dy:18/measureScale},`${cm(backing.heightMm)} cm`));measures.append(label);
+    if(mobileMeasures&&label.getBBox().x+label.getBBox().width>viewRight){
+      label.setAttribute('x',viewRight);label.setAttribute('text-anchor','end');
+      for(const span of label.children)span.setAttribute('x',viewRight);
+    }
   }
   const fallback=$('#preview-size-fallback'),v=$('#sign-preview').viewBox.baseVal;
   const dimensionBounds=$('#sign-preview').getBoundingClientRect();
   const dimensionScale=Math.min(dimensionBounds.width/v.width,dimensionBounds.height/v.height);
-  const crampedMeasures=mobileChoiceMedia.matches&&(v.x+v.width-((1000+backing.widthMm*pxPerMm)/2+offset.x))*dimensionScale<90;
-  const outside=crampedMeasures||(1000-backing.widthMm*pxPerMm)/2+offset.x<v.x+30||(1000+backing.widthMm*pxPerMm)/2+offset.x>v.x+v.width-100||plateTop+offset.y<v.y+20||plateBottom+offset.y>v.y+v.height-65;
+  // Judge the fitted mobile labels themselves, not a fixed 90-pixel reserve.
+  const measureBounds=measures.getBBox(),edge=4/Math.max(.1,dimensionScale);
+  const outside=mobileChoiceMedia.matches
+    ? measureBounds.x+offset.x<v.x+edge||measureBounds.x+measureBounds.width+offset.x>v.x+v.width-edge||measureBounds.y+offset.y<v.y+edge||measureBounds.y+measureBounds.height+offset.y>v.y+v.height-edge
+    : (1000-backing.widthMm*pxPerMm)/2+offset.x<v.x+30||(1000+backing.widthMm*pxPerMm)/2+offset.x>v.x+v.width-100||plateTop+offset.y<v.y+20||plateBottom+offset.y>v.y+v.height-65;
   measures.style.visibility=outside?'hidden':'';
-  fallback.hidden=state.dimensions&&!outside;fallback.textContent=`Breite ${cm(backing.widthMm)} cm · Höhe ${cm(backing.heightMm)} cm`;
+  fallback.hidden=!state.dimensions||!outside;fallback.textContent=`Breite ${cm(backing.widthMm)} cm · Höhe ${cm(backing.heightMm)} cm`;
   const handles=$('#preview-handles');handles.replaceChildren();
   $('#direct-edit-hint').hidden=technical;
   previewBox={x:(1000-backing.widthMm*pxPerMm)/2+offset.x,y:plateTop+offset.y,width:backing.widthMm*pxPerMm,height:backing.heightMm*pxPerMm,pxPerMm,centerY};
