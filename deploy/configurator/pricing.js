@@ -1,4 +1,4 @@
-import {PRICE_RULES} from './pricing-data.js?v=20261007-factor26';
+import {PRICE_RULES} from './pricing-data.js?v=20261008-min189';
 import {geometryCostPrice,interpolateSupplement} from './pricing-model.js?v=20261007-factor26';
 import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufacturing,minimumTextDesign} from './manufacturing-profile.js?v=20261006-stand1';
 export {PRICE_RULES};
@@ -7,6 +7,8 @@ const euro=new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'});
 // Daniel confirmed on 05.10.2026: existing selling prices already include 20% off.
 // Presentation only: do not discount the cost calculation or net selling price again.
 export const INCLUDED_DISCOUNT_PERCENT=20;
+// Gross sign price after the included discount, before optional extras/delivery.
+export const MINIMUM_SIGN_GROSS=189;
 // Customer-facing gross unit prices use nearest 5 cents; internal net costs stay intact.
 export const roundGrossPrice=amount=>Math.round((amount+Number.EPSILON)*20)/20;
 export function priceAmounts(price,quantity=1){
@@ -95,7 +97,7 @@ export function calculatePrice({text,fontId,widthMm,heightMm,ledMeters,backing='
  if(typeof text!=='string'||!text.trim())return {...result,status:'invalid-text',reasons:['Bitte einen gültigen Schriftzug eingeben.']};
  const selling=geometryCostPrice(target,rules.costModel);
  if(!selling)return {...result,status:'calculation-error',reasons:['Die Berechnungsdaten sind nicht vollständig geladen. Bitte die Seite neu laden.']};
- const baseNet=selling.net;
+ const baseNet=Math.max(selling.net,MINIMUM_SIGN_GROSS/(1+rules.vatRate));
  result.pricingBasis=selling;
  result.costs={productionUsd:selling.productionUsd,shippingUsd:selling.shippingUsd,supplierUsd:selling.supplierUsd,supplierEur:selling.supplierEur,reserveUsd:0,longCm,method:rules.costModel.method};
  const components=[{id:'sign',label:'Neon-LED-Schild inkl. Lieferantenversand',net:baseNet}];

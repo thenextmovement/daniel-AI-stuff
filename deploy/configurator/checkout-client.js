@@ -1,4 +1,4 @@
-import {minimumDeliveryBusinessDays,deliveryDateIsoForBusinessDays,deliveryOptionForDate} from './delivery-calendar.js?v=20261008-ads1';
+import {minimumDeliveryBusinessDays,deliveryDateIsoForBusinessDays,deliveryOptionForDate} from './delivery-calendar.js?v=20261008-min189';
 // Same-origin checkout preparation. Only a verified server receipt can navigate.
 export const CHECKOUT_SESSION_KEY='neontrip-checkout-session-v1';
 const MAX_JSON_BYTES=2_000_000;
