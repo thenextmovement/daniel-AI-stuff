@@ -36,7 +36,7 @@ for p in products:
 <p>So bestellen oder deinen eigenen Text gestalten. Du siehst den Preis deiner Auswahl direkt im Konfigurator.</p>
 <ul class="shopping-specs"><li>{esc(dimensions)}</li><li>{esc(p['colorName'])}</li><li>{esc(mount)}</li><li>Für innen</li></ul>
 <p><strong>Abgebildete Ausgangskonfiguration:</strong> „{esc(p['text'])}“ in {esc(p['font'])}, transparente Trägerplatte im Formzuschnitt.</p>
-<p>Inklusive {esc(included)}.</p><p>Standardlieferung: voraussichtlich 15 Werktage. Dringend? Frühere Termine und Express-Aufpreise siehst du im Lieferkalender.</p>
+<p>Inklusive {esc(included)}.</p><p>Standardlieferung: voraussichtlich 15 Werktage ab Bestellung bzw. Zahlungseingang bis zur Zustellung. Versand aus Deutschland. Dringend? Frühere Termine und Express-Aufpreise siehst du im Lieferkalender.</p>
 <div class="shopping-links"><a href="#config-ar">Bei dir mit AR ansehen</a><a href="#config-delivery-info">Express-Termin prüfen</a></div>
 <div class="shopping-recovery"><button id="shopping-resume" type="button" hidden>Letzte Anpassung dieses Angebots öffnen</button><a id="shopping-original" href="/configurator/" hidden>Zu deinem bisherigen Entwurf</a></div><p id="shopping-status" role="status"></p>
 <noscript><p>Aktiviere JavaScript, um dieses Schild zu bestellen oder anzupassen.</p></noscript></div></section>'''
@@ -56,6 +56,8 @@ for p in products:
  item=ET.SubElement(channel,'item')
  fields={'id':p['id'],'link':url,'image_link':image,'availability':'in_stock','price':price+' EUR','condition':'new','brand':'NEONTRIP','identifier_exists':'no','color':p['colorName'],'size':dimensions,'material':'LED-Neon-Flex / Acryl','product_type':'Leuchtschilder > Personalisierte LED-Neon-Schriftzüge > '+p['family'],'custom_label_0':'nt_configurator_shopping','custom_label_1':p['family'],'included_destination':'Shopping_ads'}
  for key,value in fields.items():ET.SubElement(item,'{'+ns+'}'+key).text=value
+ # These six offers are prepared for the paused Shopping campaign only.
+ ET.SubElement(item,'{'+ns+'}excluded_destination').text='Free_listings'
  for key,value in [('structured_title',p['name']),('structured_description',description)]:
   entry=ET.SubElement(item,'{'+ns+'}'+key)
   ET.SubElement(entry,'{'+ns+'}digital_source_type').text='trained_algorithmic_media'

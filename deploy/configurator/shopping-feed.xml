@@ -20,6 +20,7 @@
       <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
       <g:custom_label_1>Wunschname</g:custom_label_1>
       <g:included_destination>Shopping_ads</g:included_destination>
+      <g:excluded_destination>Free_listings</g:excluded_destination>
       <g:structured_title>
         <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
         <g:content>Personalisierter LED-Neon-Wunschname – Emma, 60 cm, Warmweiß</g:content>
@@ -52,6 +53,7 @@
       <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
       <g:custom_label_1>Hochzeit</g:custom_label_1>
       <g:included_destination>Shopping_ads</g:included_destination>
+      <g:excluded_destination>Free_listings</g:excluded_destination>
       <g:structured_title>
         <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
         <g:content>Personalisierter LED-Neon-Hochzeitsschriftzug – Forever Together, 120 cm, Warmweiß</g:content>
@@ -84,6 +86,7 @@
       <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
       <g:custom_label_1>Café</g:custom_label_1>
       <g:included_destination>Shopping_ads</g:included_destination>
+      <g:excluded_destination>Free_listings</g:excluded_destination>
       <g:structured_title>
         <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
         <g:content>Personalisierter LED-Neon-Schriftzug fürs Café – Kaffee, 80 cm, Warmweiß</g:content>
@@ -116,6 +119,7 @@
       <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
       <g:custom_label_1>Studio</g:custom_label_1>
       <g:included_destination>Shopping_ads</g:included_destination>
+      <g:excluded_destination>Free_listings</g:excluded_destination>
       <g:structured_title>
         <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
         <g:content>Personalisierter LED-Neon-Studio-Schriftzug – IM GESPRÄCH, 100 cm, Warmweiß</g:content>
@@ -148,6 +152,7 @@
       <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
       <g:custom_label_1>Empfang</g:custom_label_1>
       <g:included_destination>Shopping_ads</g:included_destination>
+      <g:excluded_destination>Free_listings</g:excluded_destination>
       <g:structured_title>
         <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
         <g:content>Personalisierter LED-Neon-Schriftzug für den Empfang – BEWEGRAUM, 100 cm, Grün</g:content>
@@ -180,6 +185,7 @@
       <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
       <g:custom_label_1>Zuhause</g:custom_label_1>
       <g:included_destination>Shopping_ads</g:included_destination>
+      <g:excluded_destination>Free_listings</g:excluded_destination>
       <g:structured_title>
         <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
         <g:content>Personalisierter LED-Neon-Schriftzug für Zuhause – Stay golden, 80 cm, Warmweiß</g:content>
