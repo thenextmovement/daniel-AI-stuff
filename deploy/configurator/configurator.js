@@ -1779,11 +1779,14 @@ const priceDock=$('.design-summary');
 new ResizeObserver(()=>{const height=priceDock.getBoundingClientRect().height;if(height>0&&mobileChoiceMedia.matches)document.documentElement.style.setProperty('--price-dock-height',`${height}px`);}).observe(priceDock);
 const pagePurchase=$('#page-purchase');
 function updatePurchaseDockVisibility(){
+  // Desktop needs the full configurator clear of the viewport before the dock appears.
+  if(!mobileChoiceMedia.matches){pagePurchase.hidden=$('#main').getBoundingClientRect().bottom>0;return;}
   const action=$('#next-step').getBoundingClientRect();
   const actionVisible=action.top>=0&&action.bottom<=window.innerHeight&&action.width>0;
   pagePurchase.hidden=actionVisible;
 }
-new IntersectionObserver(updatePurchaseDockVisibility,{threshold:[0,1]}).observe($('#next-step'));
+const purchaseVisibilityObserver=new IntersectionObserver(updatePurchaseDockVisibility,{threshold:[0,1]});
+purchaseVisibilityObserver.observe($('#next-step'));purchaseVisibilityObserver.observe($('#main'));
 let purchaseScrollFrame=0;
 window.addEventListener('scroll',()=>{if(!purchaseScrollFrame)purchaseScrollFrame=requestAnimationFrame(()=>{purchaseScrollFrame=0;updatePurchaseDockVisibility();});},{passive:true});
 window.addEventListener('resize',updatePurchaseDockVisibility);
