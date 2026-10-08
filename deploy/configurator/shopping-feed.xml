@@ -1,0 +1,200 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
+  <channel>
+    <title>NEONTRIP Konfigurator</title>
+    <link>https://anfrage.neontrip.de/configurator/</link>
+    <description>Sechs personalisierbare LED-Neon-Schriftzüge</description>
+    <item>
+      <g:id>nt-cfg-emma-60-warmweiss</g:id>
+      <g:link>https://anfrage.neontrip.de/configurator/neon-wunschname-emma</g:link>
+      <g:image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-emma-60-warmweiss-main.png</g:image_link>
+      <g:availability>in_stock</g:availability>
+      <g:price>232.25 EUR</g:price>
+      <g:condition>new</g:condition>
+      <g:brand>NEONTRIP</g:brand>
+      <g:identifier_exists>no</g:identifier_exists>
+      <g:color>Warmweiß</g:color>
+      <g:size>60 × 19,9 cm</g:size>
+      <g:material>LED-Neon-Flex / Acryl</g:material>
+      <g:product_type>Leuchtschilder &gt; Personalisierte LED-Neon-Schriftzüge &gt; Wunschname</g:product_type>
+      <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
+      <g:custom_label_1>Wunschname</g:custom_label_1>
+      <g:included_destination>Shopping_ads</g:included_destination>
+      <g:structured_title>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>Personalisierter LED-Neon-Wunschname – Emma, 60 cm, Warmweiß</g:content>
+      </g:structured_title>
+      <g:structured_description>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>LED-Neon-Schriftzug mit dem Beispieltext „Emma“, Schrift Alexa, 60 × 19,9 cm Außenmaß, Warmweiß, transparente Acrylplatte im Formzuschnitt, für innen. Enthalten: Dimmer mit Fernbedienung, Premium-Netzteil, 2 m Anschlusskabel und Wandmontage-Set. Text, Schrift, Farbe und Größe im Konfigurator anpassbar; der Preis wird neu berechnet.</g:content>
+      </g:structured_description>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-emma-60-warmweiss-room.png</g:additional_image_link>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-emma-60-warmweiss-detail.png</g:additional_image_link>
+      <g:shipping>
+        <g:country>DE</g:country>
+        <g:service>Standard</g:service>
+        <g:price>0.00 EUR</g:price>
+      </g:shipping>
+    </item>
+    <item>
+      <g:id>nt-cfg-forever-together-120-warmweiss</g:id>
+      <g:link>https://anfrage.neontrip.de/configurator/neon-hochzeit-forever-together</g:link>
+      <g:image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-forever-together-120-warmweiss-main.png</g:image_link>
+      <g:availability>in_stock</g:availability>
+      <g:price>504.80 EUR</g:price>
+      <g:condition>new</g:condition>
+      <g:brand>NEONTRIP</g:brand>
+      <g:identifier_exists>no</g:identifier_exists>
+      <g:color>Warmweiß</g:color>
+      <g:size>120 × 25,8 cm</g:size>
+      <g:material>LED-Neon-Flex / Acryl</g:material>
+      <g:product_type>Leuchtschilder &gt; Personalisierte LED-Neon-Schriftzüge &gt; Hochzeit</g:product_type>
+      <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
+      <g:custom_label_1>Hochzeit</g:custom_label_1>
+      <g:included_destination>Shopping_ads</g:included_destination>
+      <g:structured_title>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>Personalisierter LED-Neon-Hochzeitsschriftzug – Forever Together, 120 cm, Warmweiß</g:content>
+      </g:structured_title>
+      <g:structured_description>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>LED-Neon-Schriftzug mit dem Beispieltext „Forever Together“, Schrift Amanda, 120 × 25,8 cm Außenmaß, Warmweiß, transparente Acrylplatte im Formzuschnitt, für innen. Enthalten: Dimmer mit Fernbedienung, Premium-Netzteil, 2 m Anschlusskabel und Wandmontage-Set. Text, Schrift, Farbe und Größe im Konfigurator anpassbar; der Preis wird neu berechnet.</g:content>
+      </g:structured_description>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-forever-together-120-warmweiss-room.png</g:additional_image_link>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-forever-together-120-warmweiss-detail.png</g:additional_image_link>
+      <g:shipping>
+        <g:country>DE</g:country>
+        <g:service>Standard</g:service>
+        <g:price>0.00 EUR</g:price>
+      </g:shipping>
+    </item>
+    <item>
+      <g:id>nt-cfg-kaffee-80-warmweiss</g:id>
+      <g:link>https://anfrage.neontrip.de/configurator/neon-cafe-kaffee</g:link>
+      <g:image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-kaffee-80-warmweiss-main.png</g:image_link>
+      <g:availability>in_stock</g:availability>
+      <g:price>413.65 EUR</g:price>
+      <g:condition>new</g:condition>
+      <g:brand>NEONTRIP</g:brand>
+      <g:identifier_exists>no</g:identifier_exists>
+      <g:color>Warmweiß</g:color>
+      <g:size>80 × 32,5 cm</g:size>
+      <g:material>LED-Neon-Flex / Acryl</g:material>
+      <g:product_type>Leuchtschilder &gt; Personalisierte LED-Neon-Schriftzüge &gt; Café</g:product_type>
+      <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
+      <g:custom_label_1>Café</g:custom_label_1>
+      <g:included_destination>Shopping_ads</g:included_destination>
+      <g:structured_title>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>Personalisierter LED-Neon-Schriftzug fürs Café – Kaffee, 80 cm, Warmweiß</g:content>
+      </g:structured_title>
+      <g:structured_description>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>LED-Neon-Schriftzug mit dem Beispieltext „Kaffee“, Schrift Alexa, 80 × 32,5 cm Außenmaß, Warmweiß, transparente Acrylplatte im Formzuschnitt, für innen. Enthalten: Dimmer mit Fernbedienung, Premium-Netzteil, 2 m Anschlusskabel und Wandmontage-Set, zusätzlich ein Drahtseil-Abhängeset. Text, Schrift, Farbe und Größe im Konfigurator anpassbar; der Preis wird neu berechnet.</g:content>
+      </g:structured_description>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-kaffee-80-warmweiss-room.png</g:additional_image_link>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-kaffee-80-warmweiss-detail.png</g:additional_image_link>
+      <g:shipping>
+        <g:country>DE</g:country>
+        <g:service>Standard</g:service>
+        <g:price>0.00 EUR</g:price>
+      </g:shipping>
+    </item>
+    <item>
+      <g:id>nt-cfg-im-gespraech-100-warmweiss</g:id>
+      <g:link>https://anfrage.neontrip.de/configurator/neon-studio-im-gespraech</g:link>
+      <g:image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-im-gespraech-100-warmweiss-main.png</g:image_link>
+      <g:availability>in_stock</g:availability>
+      <g:price>382.70 EUR</g:price>
+      <g:condition>new</g:condition>
+      <g:brand>NEONTRIP</g:brand>
+      <g:identifier_exists>no</g:identifier_exists>
+      <g:color>Warmweiß</g:color>
+      <g:size>100 × 17,9 cm</g:size>
+      <g:material>LED-Neon-Flex / Acryl</g:material>
+      <g:product_type>Leuchtschilder &gt; Personalisierte LED-Neon-Schriftzüge &gt; Studio</g:product_type>
+      <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
+      <g:custom_label_1>Studio</g:custom_label_1>
+      <g:included_destination>Shopping_ads</g:included_destination>
+      <g:structured_title>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>Personalisierter LED-Neon-Studio-Schriftzug – IM GESPRÄCH, 100 cm, Warmweiß</g:content>
+      </g:structured_title>
+      <g:structured_description>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>LED-Neon-Schriftzug mit dem Beispieltext „IM GESPRÄCH“, Schrift Monaco, 100 × 17,9 cm Außenmaß, Warmweiß, transparente Acrylplatte im Formzuschnitt, für innen. Enthalten: Dimmer mit Fernbedienung, Premium-Netzteil, 2 m Anschlusskabel und Wandmontage-Set. Text, Schrift, Farbe und Größe im Konfigurator anpassbar; der Preis wird neu berechnet.</g:content>
+      </g:structured_description>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-im-gespraech-100-warmweiss-room.png</g:additional_image_link>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-im-gespraech-100-warmweiss-detail.png</g:additional_image_link>
+      <g:shipping>
+        <g:country>DE</g:country>
+        <g:service>Standard</g:service>
+        <g:price>0.00 EUR</g:price>
+      </g:shipping>
+    </item>
+    <item>
+      <g:id>nt-cfg-bewegraum-100-gruen</g:id>
+      <g:link>https://anfrage.neontrip.de/configurator/neon-empfang-bewegraum</g:link>
+      <g:image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-bewegraum-100-gruen-main.png</g:image_link>
+      <g:availability>in_stock</g:availability>
+      <g:price>373.55 EUR</g:price>
+      <g:condition>new</g:condition>
+      <g:brand>NEONTRIP</g:brand>
+      <g:identifier_exists>no</g:identifier_exists>
+      <g:color>Helles Grün</g:color>
+      <g:size>100 × 15,3 cm</g:size>
+      <g:material>LED-Neon-Flex / Acryl</g:material>
+      <g:product_type>Leuchtschilder &gt; Personalisierte LED-Neon-Schriftzüge &gt; Empfang</g:product_type>
+      <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
+      <g:custom_label_1>Empfang</g:custom_label_1>
+      <g:included_destination>Shopping_ads</g:included_destination>
+      <g:structured_title>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>Personalisierter LED-Neon-Schriftzug für den Empfang – BEWEGRAUM, 100 cm, Grün</g:content>
+      </g:structured_title>
+      <g:structured_description>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>LED-Neon-Schriftzug mit dem Beispieltext „BEWEGRAUM“, Schrift Avante, 100 × 15,3 cm Außenmaß, Helles Grün, transparente Acrylplatte im Formzuschnitt, für innen. Enthalten: Dimmer mit Fernbedienung, Premium-Netzteil, 2 m Anschlusskabel und Wandmontage-Set. Text, Schrift, Farbe und Größe im Konfigurator anpassbar; der Preis wird neu berechnet.</g:content>
+      </g:structured_description>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-bewegraum-100-gruen-room.png</g:additional_image_link>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-bewegraum-100-gruen-detail.png</g:additional_image_link>
+      <g:shipping>
+        <g:country>DE</g:country>
+        <g:service>Standard</g:service>
+        <g:price>0.00 EUR</g:price>
+      </g:shipping>
+    </item>
+    <item>
+      <g:id>nt-cfg-stay-golden-80-warmweiss</g:id>
+      <g:link>https://anfrage.neontrip.de/configurator/neon-zuhause-stay-golden</g:link>
+      <g:image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-stay-golden-80-warmweiss-main.png</g:image_link>
+      <g:availability>in_stock</g:availability>
+      <g:price>439.50 EUR</g:price>
+      <g:condition>new</g:condition>
+      <g:brand>NEONTRIP</g:brand>
+      <g:identifier_exists>no</g:identifier_exists>
+      <g:color>Warmweiß</g:color>
+      <g:size>80 × 39,3 cm</g:size>
+      <g:material>LED-Neon-Flex / Acryl</g:material>
+      <g:product_type>Leuchtschilder &gt; Personalisierte LED-Neon-Schriftzüge &gt; Zuhause</g:product_type>
+      <g:custom_label_0>nt_configurator_shopping</g:custom_label_0>
+      <g:custom_label_1>Zuhause</g:custom_label_1>
+      <g:included_destination>Shopping_ads</g:included_destination>
+      <g:structured_title>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>Personalisierter LED-Neon-Schriftzug für Zuhause – Stay golden, 80 cm, Warmweiß</g:content>
+      </g:structured_title>
+      <g:structured_description>
+        <g:digital_source_type>trained_algorithmic_media</g:digital_source_type>
+        <g:content>LED-Neon-Schriftzug mit dem Beispieltext „Stay golden“, Schrift WildScript, 80 × 39,3 cm Außenmaß, Warmweiß, transparente Acrylplatte im Formzuschnitt, für innen. Enthalten: Dimmer mit Fernbedienung, Premium-Netzteil, 2 m Anschlusskabel und Wandmontage-Set. Text, Schrift, Farbe und Größe im Konfigurator anpassbar; der Preis wird neu berechnet.</g:content>
+      </g:structured_description>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-stay-golden-80-warmweiss-room.png</g:additional_image_link>
+      <g:additional_image_link>https://anfrage.neontrip.de/configurator/assets/shopping/nt-cfg-stay-golden-80-warmweiss-detail.png</g:additional_image_link>
+      <g:shipping>
+        <g:country>DE</g:country>
+        <g:service>Standard</g:service>
+        <g:price>0.00 EUR</g:price>
+      </g:shipping>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,27 @@
+/* Product entry, reusing the existing NEONTRIP typography and button system. */
+.shopping-offer{color:#171717;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(24px,4vw,64px);padding-block:32px 40px;align-items:center}
+.shopping-media{margin:0;background:#f3f2f0;border-radius:18px;overflow:hidden}
+.shopping-media > img{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:contain}
+.shopping-offer h1{color:#171717;font-size:clamp(25px,3vw,42px);line-height:1.12;letter-spacing:-.03em;margin:12px 0 18px}
+.shopping-offer p{line-height:1.55;margin:10px 0;color:#414141}
+.shopping-offer .config-kicker{color:#222}
+.shopping-specs{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0;padding:0;list-style:none}
+.shopping-specs li{padding:7px 11px;border:1px solid #ddd;border-radius:100px;font-size:13px}
+.shopping-price{display:flex;flex-direction:column;gap:4px;margin:18px 0}
+.shopping-price strong{font-size:32px;line-height:1.2;letter-spacing:-.02em;color:#111}
+.shopping-price small,.shopping-price span{font-size:13px;color:#555}
+.shopping-actions{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}
+.shopping-actions button{padding:14px 20px;min-height:48px;border:1px solid #151515;border-radius:100px;background:white;color:#151515;font:inherit;font-weight:600;cursor:pointer}
+.shopping-actions #shopping-buy{background:#e6007e;border-color:#e6007e;color:#fff}
+.shopping-actions button:disabled{opacity:.5;cursor:wait}
+.shopping-links{display:flex;gap:12px 20px;flex-wrap:wrap;font-size:14px}
+.shopping-links a,.shopping-recovery a,.shopping-recovery button{color:#222;text-decoration:underline;text-underline-offset:3px}
+.shopping-recovery{display:flex;flex-wrap:wrap;gap:10px 20px;margin-top:16px;font-size:13px}
+.shopping-recovery button{border:0;padding:0;background:none;font:inherit;cursor:pointer}
+.shopping-recovery [hidden]{display:none}
+.shopping-offer :focus-visible{outline:2px solid #111;outline-offset:4px}
+#shopping-status:empty{display:none}
+#shopping-status{font-size:14px;color:#a01333}
+@media(max-width:760px){.shopping-offer{grid-template-columns:1fr;gap:18px;padding-block:20px 28px}.shopping-media > img{aspect-ratio:1.6;object-fit:cover}.shopping-offer h1{color:#171717;font-size:26px;margin-top:8px}.shopping-actions button{flex:1 1 140px;padding:12px}.shopping-price{margin:14px 0}.shopping-specs{margin:12px 0}.shopping-price strong{font-size:28px}}
+
+.shopping-gallery{display:flex;justify-content:center;gap:8px;padding:10px 8px 4px}.shopping-gallery button{padding:0;border:2px solid transparent;border-radius:8px;overflow:hidden;cursor:pointer;background:#fff}.shopping-gallery button[aria-pressed="true"]{border-color:#e6007e}.shopping-gallery img{display:block;width:54px;height:54px;object-fit:cover}.shopping-media figcaption{text-align:center;font-size:11px;color:#555;padding:4px 8px 10px}

@@ -6,13 +6,17 @@ import {loadFontCatalog,searchFontCatalog,catalogFontAssetId,validateCatalogFont
 import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufacturing,minimumTextGroupClearance} from './manufacturing-profile.js?v=20261006-stand1';
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
-import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261004-a1';
+import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261008-shopping1';
 import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent} from './checkout-client.js?v=20261008-consent2';
 import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261006-bridges1';
 import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261007-tablet-accessories1-factor26';
 import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261006-quantities1';
 const $ = selector => document.querySelector(selector);
+// Generated product entries share the editor and pricing contract. A product entry
+// must never replace the visitor's draft from the ordinary configurator route.
+const shoppingOffer=JSON.parse($('#shopping-offer')?.textContent||'null');
+const shoppingDraftKey=shoppingOffer?`neontrip-configurator-draft-v1-${shoppingOffer.id}`:undefined;
 // The initial editor structure is rendered in HTML; only interaction is bound here.
 const motifHeading=$('.studio-motif-heading');
 const studioContext=$('.studio-context');
@@ -172,7 +176,7 @@ function persistDesign(snapshot){
   try{
     const assetIds=designAssetRefs(snapshot);
     if(assetIds.some(id=>!draftAssets.get(id)?.persisted))throw new Error('Datei nicht gespeichert');
-    saveDraft(snapshot);lastSavedSnapshot=serialized;$('#draft-status').textContent='Auf diesem Gerät gespeichert';
+    saveDraft(snapshot,shoppingDraftKey);lastSavedSnapshot=serialized;$('#draft-status').textContent='Auf diesem Gerät gespeichert';
   }catch{$('#draft-status').textContent='Speichern nicht möglich – diesen Tab geöffnet lassen.';}
 }
 function commitHistory(){
@@ -359,6 +363,11 @@ function paintPrice(){
   if(!budgetSelecting)budgetAdvisor?.refreshContext();
   state.price=designRendering?{status:'pending',net:null}:state.result?priceForResult(state,state.result):state.price;
   renderPriceValue($('.design-price strong'),state.price);
+  if(shoppingOffer){
+    $('#shopping-current-price').textContent=priceLabel(state.price);
+    $('#shopping-buy').disabled=designRendering||!state.result||!state.sizeValid||state.price?.status!=='calculated';
+    $('#shopping-selection').textContent='Preis deiner aktuellen Auswahl';
+  }
   refreshFontQuotes();
   updatePagePurchase();
   $('.design-price small').textContent=priceCorrectionHint(state.price);
@@ -2534,6 +2543,39 @@ window.addEventListener('pagehide',()=>{commitHistory();if(draftReady&&!draftApp
 setStep(0,false,{scroll:false});startWorker();
 async function bootDraft(){
   $('.editor').inert=true;$('.editor-tabs').inert=true;$('.preview-column').inert=true;
+  if(shoppingOffer){
+    document.querySelectorAll('[data-shopping-image]').forEach(button=>button.addEventListener('click',()=>{
+      $('#shopping-hero').src=button.dataset.shoppingImage;
+      document.querySelectorAll('[data-shopping-image]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+    }));
+    let saved;
+    try{saved=readDraft(shoppingDraftKey);}catch{/* Keep an unreadable saved draft untouched. */}
+    try{
+      await applyDesign(shoppingOffer.design);
+      if(!state.result||!state.sizeValid||state.price?.status!=='calculated')throw new Error('Das Angebot konnte gerade nicht geladen werden. Bitte lade die Seite erneut.');
+      history=new DraftHistory(captureDesign());
+      // A visit/reload always shows the advertised product, while a previous
+      // personalisation stays recoverable until the customer edits again.
+      lastSavedSnapshot=JSON.stringify(captureDesign());draftReady=true;
+      const resume=$('#shopping-resume');
+      if(saved&&JSON.stringify(saved)!==lastSavedSnapshot){
+        resume.hidden=false;resume.addEventListener('click',async()=>{
+          draftApplying=true;$('.editor').inert=true;
+          try{await applyDesign(saved);history.record(captureDesign());persistDesign(captureDesign());resume.hidden=true;}
+          catch(error){$('#shopping-status').textContent=error.message;}
+          finally{draftApplying=false;$('.editor').inert=false;refreshHistoryButtons();}
+        });
+      }
+      const original=$('#shopping-original');original.href='/configurator/'+location.search;
+      try{original.hidden=!readDraft();}catch{original.hidden=false;}
+      $('#shopping-buy').addEventListener('click',openOrderReview);
+      $('#shopping-edit').addEventListener('click',()=>{setStep(0);$('#sign-text').focus();});
+      $('#draft-status').textContent='Anpassungen werden auf diesem Gerät gespeichert';
+      $('.editor').inert=false;$('.editor-tabs').inert=false;$('.preview-column').inert=false;refreshHistoryButtons();
+      showIncomingDesigns();setupBudgetAdvisor();
+    }catch(error){$('#shopping-status').textContent=error.message;$('#shopping-buy').disabled=true;$('#shopping-edit').disabled=true;}
+    return;
+  }
   let restored=false,failure=false;
   try{const saved=readDraft();if(saved){await applyDesign(saved);restored=true;}else await update();}
   catch{failure=true;await update();$('#draft-status').textContent='Entwurf konnte nicht geladen werden. Neue Änderungen werden gespeichert.';}
@@ -2667,7 +2709,7 @@ async function openDesignShare(records){
   figure.append(previewImage(record),caption);$('#share-preview').append(figure);
  }
  let reason='';
- try{currentShare.link=createDesignLink(records.map(r=>r.design),location.href,sharePolicy);}catch(error){reason=error.message;}
+ try{currentShare.link=createDesignLink(records.map(r=>r.design),shoppingOffer?new URL('/configurator/',location.href).href:location.href,sharePolicy);}catch(error){reason=error.message;}
  $('#share-link').value=currentShare.link;$('#share-copy').disabled=!currentShare.link;
  labelShareAction('share-copy',currentShare.local?'Lokaler Link':'Link kopieren');shareDetails.open=false;
  $('#share-link').hidden=$('#share-link-label').hidden=!currentShare.link;
