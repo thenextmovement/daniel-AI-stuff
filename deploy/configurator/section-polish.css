@@ -101,17 +101,6 @@ body.nt-configurator .nt-config-content .nt-product-v2-actions .nt-content-text-
 #config-product .nt-product-v2-facts svg { color: var(--pink); stroke: currentColor; }
 
 body.nt-configurator .studio-preview-footer { gap: 12px; flex-wrap: wrap; }
-body.nt-configurator #studio-mounting-download {
-  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
-  min-height: 44px; padding: 10px 14px; margin-left: auto;
-  background: #fff; border: 1px solid #181615; border-radius: 999px;
-  font-family: Inter, sans-serif; font-size: 14px; font-weight: 600;
-  line-height: 1.35; color: #181615; text-decoration: none;
-}
-body.nt-configurator #studio-mounting-download svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; }
-body.nt-configurator #studio-mounting-download small { font-size: 12px; font-weight: 400; }
-body.nt-configurator #studio-mounting-download:hover { background: #fff0f7; }
-body.nt-configurator #studio-mounting-download:focus-visible { outline: 2px solid #a51261; outline-offset: 3px; }
 .nt-review-wall .nt-review-wall__photo { position: relative; }
 /* Section actions share the configurator's pill shape; choice cards stay cards. */
 body.nt-configurator .nt-config-content .nt-product-v2-actions .nt-content-text-link,
@@ -140,9 +129,6 @@ body.nt-configurator .brand-footer-grid h2 { font-size: 14px; }
   body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor .design-summary {
     background: #fff0f7; border-top: 3px solid #fa31a2;
     padding-top: 10px; padding-bottom: 10px;
-  }
-  body.nt-configurator #studio-mounting-download {
-    order: 6; width: 100%; margin: 4px 0 10px; min-height: 48px;
   }
 }
 

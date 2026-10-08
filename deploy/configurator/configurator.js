@@ -19,7 +19,6 @@ const studioContext=$('.studio-context');
 const textTools=$('.studio-text-tools');
 const studioToolbar=$('.studio-toolbar');
 const studioSceneActions=$('.studio-scene-actions');
-const mountingDownload=$('#studio-mounting-download');
 const studioVariantTools=$('.studio-variant-tools');
 const colorGalleryBody=$('.color-gallery-body');
 const lookCards=$('.look-cards');
@@ -1754,7 +1753,6 @@ function syncMobileStudio(){
     $('#save-design span').textContent='Aktuellen Entwurf speichern';
     $('#share-design span').textContent='Aktuellen Entwurf teilen';
     $('.editor').prepend($('.journey'));
-    $('.editor').append(mountingDownload);
     $('.studio-palette').append($('.studio-rgb'));
     $('.step-navigation').prepend($('#previous-step'));
   }else{
@@ -1763,7 +1761,7 @@ function syncMobileStudio(){
     studioVariantTools.append(studioDesignTools);
     $('#save-design span').textContent='Speichern';$('#share-design span').textContent='Teilen';
     studioToolbar.append(mobileExpand,mobileTools);
-    studioToolbar.prepend(studioViewTabs);studioToolbar.insertBefore(studioSceneActions,mobileExpand);livePreview.append(studioFooter);studioFooter.append(mountingDownload);
+    studioToolbar.prepend(studioViewTabs);studioToolbar.insertBefore(studioSceneActions,mobileExpand);livePreview.append(studioFooter);
     $('.workbench-heading').after($('.journey'),studioContext,$('#usage-note'),$('#accessory-migration-note'));
     $('.studio-palette').append($('.studio-rgb'));
     $('.step-navigation').prepend($('#previous-step'));
