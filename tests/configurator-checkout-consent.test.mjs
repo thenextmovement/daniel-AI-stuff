@@ -23,9 +23,13 @@ function fixture(options={}){
 
 test('only an explicit Cookiebot choice becomes checkout consent',()=>{
   assert.equal(cookiebotVisitorConsent(undefined),undefined);
-  assert.equal(cookiebotVisitorConsent({hasResponse:false,consent:{statistics:false,marketing:false,preferences:false}}),undefined);
+  assert.equal(cookiebotVisitorConsent({hasResponse:false,consent:{method:null,statistics:false,marketing:false,preferences:false}}),undefined);
   assert.deepEqual(cookiebotVisitorConsent({hasResponse:true,consent:{statistics:true,marketing:false,preferences:true}}),{analytics:true,marketing:false,preferences:true});
   assert.throws(()=>cookiebotVisitorConsent({hasResponse:true,consent:{statistics:'false',marketing:false,preferences:false}}),{code:'INVALID_CONSENT'});
+});
+test('Cookiebot withdrawal remains an explicit denial after hasResponse is reset',()=>{
+  assert.deepEqual(cookiebotVisitorConsent({hasResponse:false,consented:false,declined:false,consent:{method:'explicit',statistics:false,marketing:false,preferences:false}}),denied);
+  assert.equal(cookiebotVisitorConsent({hasResponse:false,consent:{method:'explicit',statistics:true,marketing:true,preferences:true}}),undefined);
 });
 for(const choice of [denied,granted,{analytics:true,marketing:false,preferences:false},undefined]){
   test(`checkout preserves explicit purposes or absent choice: ${JSON.stringify(choice)}`,async()=>{

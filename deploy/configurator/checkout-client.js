@@ -41,8 +41,10 @@ export class CheckoutClientError extends Error{
 
 // Keep consent outside the cart identity and only forward an explicit visitor choice.
 export function cookiebotVisitorConsent(cookiebot){
-  if(cookiebot?.hasResponse!==true)return undefined;
-  const c=cookiebot.consent;
+  const c=cookiebot?.consent;
+  // withdraw() resets hasResponse but records an explicit denial of every purpose.
+  const withdrawn=c?.method==='explicit'&&['statistics','marketing','preferences'].every(key=>c[key]===false);
+  if(cookiebot?.hasResponse!==true&&!withdrawn)return undefined;
   if(!c||!['statistics','marketing','preferences'].every(key=>typeof c[key]==='boolean'))throw new CheckoutClientError('INVALID_CONSENT');
   return {analytics:c.statistics,marketing:c.marketing,preferences:c.preferences};
 }
