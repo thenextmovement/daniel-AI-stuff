@@ -109,25 +109,65 @@ if(mountingVideo){
   document.addEventListener('visibilitychange',()=>{if(document.hidden)mountingVideo.pause();else {const box=mountingVideo.getBoundingClientRect();if(box.bottom>0&&box.top<innerHeight)playMounting();}});
 }
 
-// Reveal only illustrative media/process cards. Copy remains readable without JavaScript.
+// Short, one-time entrances. Content is visible even without JavaScript or observers.
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
-const revealItems = [...document.querySelectorAll('.nt-v2-reveal')];
+const revealItems = [...document.querySelectorAll([
+  '.nt-v2-reveal', '.nt-trust-grid > a', '.nt-content-heading-row > div',
+  '#config-ar .nt-ar-copy', '#config-ar .nt-ar-photo',
+  '#config-product .nt-product-v2-copy', '#config-product .nt-product-v2-photo',
+  '#config-product .nt-product-v2-facts > div',
+  '#config-customers .nt-proof__heading', '#config-customers .nt-proof__band',
+  '#config-delivery-info .nt-express__heading',
+  '.nt-content-final .nt-content-inner > div', '#config-other-signs .nt-category',
+  '#config-customer-photos .nt-review-wall__header', '#config-customer-photos .nt-review-wall__card'
+].join(','))];
+const activeEntrances = new Set();
+function animateEntrance(element, {distance = 14, duration = 500, delay = 0} = {}) {
+  if (motionPreference.matches || !element.animate || element.contains(document.activeElement)) return;
+  const animation = element.animate([
+    {opacity: 0, transform: `translateY(${distance}px)`},
+    {opacity: 1, transform: 'translateY(0)'}
+  ], {duration, delay, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'backwards'});
+  activeEntrances.add(animation);
+  const cleanup = () => activeEntrances.delete(animation);
+  animation.addEventListener('finish', cleanup, {once: true});
+  animation.addEventListener('cancel', cleanup, {once: true});
+}
 if ('IntersectionObserver' in window && !motionPreference.matches) {
   const observer = new IntersectionObserver(entries => {
     for (const entry of entries) if (entry.isIntersecting) {
-      entry.target.classList.remove('nt-awaiting');
       observer.unobserve(entry.target);
+      // Anchor jumps/back navigation should never fade text already above the viewport.
+      if (entry.boundingClientRect.top < 0) continue;
+      const compact = matchMedia('(max-width: 760px)').matches;
+      const delay = compact ? 0 : parseFloat(getComputedStyle(entry.target).getPropertyValue('--nt-reveal-delay')) || 0;
+      animateEntrance(entry.target, {distance: compact ? 8 : 14, duration: compact ? 400 : 500, delay});
     }
-  }, {threshold: 0.12});
-  revealItems.forEach(item => { item.classList.add('nt-awaiting'); observer.observe(item); });
-  document.documentElement.classList.add('nt-motion-ready');
+  }, {threshold: .08, rootMargin: '0px 0px -24px 0px'});
+  revealItems.forEach(item => observer.observe(item));
   motionPreference.addEventListener('change', event => {
     if (event.matches) {
-      revealItems.forEach(item => item.classList.remove('nt-awaiting'));
       observer.disconnect();
     }
   });
 }
+motionPreference.addEventListener('change', event => {
+  if (event.matches) activeEntrances.forEach(animation => animation.cancel());
+});
+// Keyboard focus stays fully visible, including while a section enters.
+document.addEventListener('focusin', event => {
+  activeEntrances.forEach(animation => {
+    if (animation.effect.target.contains(event.target)) animation.cancel();
+  });
+});
+document.querySelectorAll('#schriftzug-faq .nt-faq-list details').forEach(item => {
+  item.addEventListener('toggle', () => {
+    activeEntrances.forEach(animation => {
+      if (item.contains(animation.effect.target)) animation.cancel();
+    });
+    if (item.open) item.querySelectorAll(':scope > p').forEach(answer => animateEntrance(answer, {distance: 4, duration: 180}));
+  });
+});
 
 // Informational landing-page calendar and chat, specialized for the current sign.
 // The delivery calendar in the cart remains authoritative; this check reserves nothing.
