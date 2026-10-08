@@ -34,27 +34,28 @@ export function initBudgetAdvisor(root,api){
  const fonts=[...new Set([...previewOrder.filter(id=>api.fonts.includes(id)),...api.fonts])];
  const colors=[...api.colors,{id:'rgb',name:'RGB-Farbwechsel',color:'rgb'}];
  let committed={...api.initial},revision=0,results=[],started=false;
+ let contextKey=api.contextKey(),resultContextKey=null;
  const cache=new Map();
  root.dataset.editing='false';root.dataset.state='idle';root.dataset.priceVersion=api.priceVersion;
  root.innerHTML=`<div class="nt-budget-inner">
- <div class="nt-budget-heading"><h2 id="budget-title">Dein Preisrechner.</h2><p class="nt-budget-intro">Text, Größe und Budget eingeben.<br>Finde bis zu drei passende Looks.</p></div>
+ <div class="nt-budget-heading"><div><p class="nt-budget-kicker">DEIN PREISRECHNER</p><h2 id="budget-title">Dein Text. Dein Budget.</h2></div><p class="nt-budget-intro">Vergleiche bis zu drei Looks für deinen<br class="nt-budget-desktop-break"> Wunschtext – passend zu Größe und Budget.</p></div>
  <button class="nt-budget-wishes" type="button" aria-expanded="false" aria-controls="budget-form"><span><strong data-budget-text></strong><small data-budget-summary></small></span><span>Ändern ${arrow}</span></button>
  <form id="budget-form" class="nt-budget-form">
  <label class="nt-budget-text"><span>Dein Wunschtext</span><textarea name="text" rows="1" maxlength="160" required aria-label="Dein Wunschtext"></textarea></label>
- <label><span>Breite in cm</span><input name="width" type="number" inputmode="decimal" min="50" max="400" step="0.1" required></label>
- <label><span>Budget in €</span><input name="budget" type="number" inputmode="decimal" min="1" max="100000" step="0.01" required></label>
+ <label><span>Wunschbreite (cm)</span><input name="width" type="number" inputmode="decimal" min="50" max="400" step="0.1" required></label>
+ <label><span>Max. Budget (€)</span><input name="budget" type="number" inputmode="decimal" min="1" max="100000" step="0.01" required></label>
  <label class="nt-budget-color"><span>Leuchtfarbe</span><select name="color">${colors.map(c=>`<option value="${c.id}">${escape(c.name)}</option>`).join('')}</select></label>
  <button class="nt-budget-action nt-budget-search" type="submit">Looks finden ${arrow}</button>
  <button class="nt-budget-back" type="button">Zurück zu deinen Vorschlägen</button>
  </form>
- <div class="nt-budget-results"><p class="nt-budget-status" role="status" aria-live="polite">Deine Vorschläge werden berechnet, sobald du hier bist.</p><div class="nt-budget-grid" aria-label="Schriftvorschläge"></div></div>
+ <div class="nt-budget-results"><p class="nt-budget-status" role="status" aria-live="polite">Deine Vorschläge werden berechnet, sobald du hier bist.</p><div class="nt-budget-grid" aria-label="Schriftvorschläge"></div></div><p class="nt-budget-included">Inklusive MwSt. und deiner gewählten Ausstattung. Eilauftrag und Express werden im Warenkorb ergänzt.</p>
  </div>`;
  const $=s=>root.querySelector(s),form=$('form'),grid=$('.nt-budget-grid'),status=$('.nt-budget-status'),search=$('.nt-budget-search'),wishes=$('.nt-budget-wishes');
  const nameFor=id=>colors.find(c=>c.id===id)?.name||id;
  function restore(){for(const [name,value] of Object.entries(committed))form.elements[name].value=value;form.elements.text.setCustomValidity('');}
  function summary(){ $('[data-budget-text]').textContent=committed.text;$('[data-budget-summary]').textContent=`${decimal(committed.width)} cm · ${nameFor(committed.color)} · max. ${money(committed.budget)}`; }
  function editing(value){root.dataset.editing=String(value);wishes.setAttribute('aria-expanded',String(value));if(value)form.elements.text.focus({preventScroll:true});else if(matchMedia('(max-width:760px)').matches)wishes.focus({preventScroll:true});if(matchMedia('(max-width:760px)').matches)root.scrollIntoView({block:'start',behavior:'instant'});}
- function stale(){revision++;root.dataset.state='stale';search.disabled=false;grid.querySelectorAll('button').forEach(b=>b.disabled=true);status.textContent='Wünsche geändert – bitte neu berechnen.';}
+ function stale(message='Wünsche geändert – bitte neu berechnen.'){revision++;root.dataset.state='stale';search.disabled=false;grid.querySelectorAll('button').forEach(b=>b.disabled=true);status.textContent=message;}
  function showQuotes(quotes,input){
   results=selectBudgetQuotes(quotes,input.budget);grid.replaceChildren();root.dataset.resultCount=results.length;
   const samePrice=results.length>1&&new Set(results.map(q=>Math.round(q.gross*100))).size===1;
@@ -62,7 +63,7 @@ export function initBudgetAdvisor(root,api){
   for(const [index,q] of results.entries()){
    const card=document.createElement('article');card.className='nt-budget-card';card.dataset.budgetFont=q.design.fontId;card.dataset.gross=q.gross;
    const color=input.color==='rgb'?'rgb':colors.find(c=>c.id===input.color).color;
-   card.innerHTML=`<div class="nt-budget-scene">${neonPreview(q,color)}</div><div class="nt-budget-card-info"><div><h3>${q.design.fontId}</h3><p>${decimal(q.size.widthMm/10)} × ${decimal(q.size.heightMm/10)} cm</p></div><strong>${money(q.gross)}</strong></div><button class="nt-budget-action" type="button" data-budget-choose="${index}" aria-label="${q.design.fontId} für ${money(q.gross)} im Konfigurator wählen">Wählen ${arrow}</button>`;
+   card.innerHTML=`<div class="nt-budget-scene"><img class="nt-budget-brand" src="${escape(api.logoUrl||'assets/logo-white.svg')}" alt="" aria-hidden="true" width="83" height="18">${neonPreview(q,color)}</div><div class="nt-budget-card-info"><div class="nt-budget-font"><h3>${q.design.fontId}</h3><p>${decimal(q.size.widthMm/10)} × ${decimal(q.size.heightMm/10)} cm</p></div><div class="nt-budget-price"><span>Schildpreis inkl. MwSt.</span><strong>${money(q.gross)}</strong></div></div><button class="nt-budget-action" type="button" data-budget-choose="${index}" aria-label="${q.design.fontId} für ${money(q.gross)} im Konfigurator wählen">Wählen ${arrow}</button>`;
    grid.append(card);
   }
   if(!results.length){
@@ -77,19 +78,20 @@ export function initBudgetAdvisor(root,api){
   const text=form.elements.text.value.trim();form.elements.text.setCustomValidity(!text?'Bitte gib deinen Wunschtext ein.':text.split('\n').length>5?'Bitte höchstens fünf Zeilen verwenden.':'');
   if(!form.reportValidity())return;
   const input={text,width:Number(form.elements.width.value),budget:Number(form.elements.budget.value),color:form.elements.color.value};
-  const id=++revision,isCurrent=()=>id===revision;started=true;root.dataset.state='pending';search.disabled=true;grid.querySelectorAll('button').forEach(b=>b.disabled=true);status.textContent='Wir berechnen deine Schriftvorschläge …';
+  contextKey=api.contextKey();const quoteContextKey=contextKey;
+  const id=++revision,isCurrent=()=>id===revision&&quoteContextKey===api.contextKey();started=true;root.dataset.state='pending';search.disabled=true;grid.querySelectorAll('button').forEach(b=>b.disabled=true);status.textContent='Wir berechnen deine Schriftvorschläge …';
   try{
    const quotes=[];let failures=0;root.dataset.checkedFonts='0';
    for(const font of fonts){
     if(!isCurrent())return;
-    const key=JSON.stringify([input.text,input.width,input.color,font,api.priceVersion]);
-    try{let q=cache.get(key);if(!q){q=await api.quote(input,font,isCurrent);if(q){if(cache.size>72)cache.delete(cache.keys().next().value);cache.set(key,q);}}if(q)quotes.push(q);}
+    const key=JSON.stringify([input.text,input.width,input.color,font,api.priceVersion,quoteContextKey]);
+    try{let q=cache.get(key);if(!q){q=await api.quote(input,font,isCurrent);if(q&&isCurrent()){if(cache.size>72)cache.delete(cache.keys().next().value);cache.set(key,q);}}if(q)quotes.push(q);}
     catch{failures++;}
     if(isCurrent()){root.dataset.checkedFonts=String(quotes.length+failures);status.textContent=`Wir prüfen ${quotes.length+failures} von ${fonts.length} Schriften …`;}
    }
    if(!isCurrent())return;
    if(!quotes.length&&failures)throw new Error('Schriften konnten nicht geladen werden. Bitte erneut versuchen.');
-   committed=input;summary();showQuotes(quotes,input);root.dataset.state='ready';
+   resultContextKey=quoteContextKey;committed=input;summary();showQuotes(quotes,input);root.dataset.state='ready';
    if(failures)status.textContent+=' Einige Schriften konnten nicht geladen werden.';
    const wasEditing=root.dataset.editing==='true';root.dataset.editing='false';wishes.setAttribute('aria-expanded','false');if(wasEditing&&matchMedia('(max-width:760px)').matches){document.activeElement?.blur();wishes.focus({preventScroll:true});root.scrollIntoView({block:'start',behavior:'instant'});}
   }catch(error){if(isCurrent()){root.dataset.state='error';status.textContent=error.message||'Die Berechnung ist gerade nicht verfügbar. Bitte erneut versuchen.';}}
@@ -102,12 +104,19 @@ export function initBudgetAdvisor(root,api){
  $('.nt-budget-back').addEventListener('click',()=>{restore();editing(false);calculate();});
  grid.addEventListener('click',async event=>{
   const button=event.target.closest('[data-budget-choose]');if(!button||button.disabled||root.dataset.state!=='ready')return;
+  if(resultContextKey!==api.contextKey()){refreshContext();return;}
   const q=results[Number(button.dataset.budgetChoose)],id=revision;root.dataset.state='applying';grid.querySelectorAll('button').forEach(b=>b.disabled=true);status.textContent='Dein Look wird in den Konfigurator übernommen …';
-  try{await api.choose(q);if(revision===id){root.dataset.state='ready';status.textContent=`${q.design.fontId} ist im Konfigurator ausgewählt.`;}}
+  try{const selection=await api.choose(q);if(revision===id){root.dataset.state='ready';status.textContent=selection?.message||`${q.design.fontId} ist im Konfigurator ausgewählt.`;}}
   catch(error){if(revision===id){root.dataset.state='ready';status.textContent=error.message;}}
   finally{if(revision===id)grid.querySelectorAll('button').forEach(b=>b.disabled=false);}
  });
+ function refreshContext(){
+  const next=api.contextKey();if(next===contextKey)return;
+  contextKey=next;cache.clear();stale('Ausstattung geändert – wir aktualisieren deine Vorschläge.');
+  if(started&&root.dataset.editing!=='true')calculate();
+ }
  restore();summary();
  if(location.hash==='#config-budget')root.scrollIntoView({block:'start'});
  const observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)&&!started){observer.disconnect();calculate();}},{rootMargin:'300px'});observer.observe(root);
+ return {refreshContext};
 }

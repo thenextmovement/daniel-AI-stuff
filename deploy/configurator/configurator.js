@@ -1,3 +1,4 @@
+import {initBudgetAdvisor} from './budget-advisor.js?v=20261008-budget-live1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
 import {initDeliveryCalendar,deliveryTierLabel,minimumDeliveryBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261008-ads1';
 import {refreshWishDelivery} from './content-experience.js?v=20261008-ads-sections1';
@@ -132,7 +133,7 @@ const positions=new Map();
 const cameras=new Map();
 let previewBox=null,drag=null,dragFrame=0,photoRevision=0,resizeFocus=null;
 const state = {font:'Waikiki',fontId:'Waikiki',text:$('#sign-text').value,alignment:'center',lineHeight:.8,axis:'width',valueMm:1000-2*MANUFACTURING_PROFILE.contourMarginMm,color:COLORS[7],wordColors:new Map(),words:[],colorTarget:'all',light:true,dimensions:true,scene:'wall',room:'reception',backing:'contour',mount:'wall-mount',previousRoom:'reception',result:null,sizeValid:true,autoContourNotice:false};
-let designRendering=false,compactLineSpacing=false;
+let designRendering=false,compactLineSpacing=false,budgetAdvisor,budgetSelecting=false;
 // Spacing edits retain the physical letter scale, including across an invalid oversized draft.
 let spacingAnchor=null;
 const spacingContent=text=>String(text).replace(/[^\S\r\n]/gu,'');
@@ -355,6 +356,7 @@ function invalidatePrice(pending=true){
   for(const price of document.querySelectorAll('.preset-price')){price.textContent='Wird berechnet …';price.closest('button').disabled=true;}
 }
 function paintPrice(){
+  if(!budgetSelecting)budgetAdvisor?.refreshContext();
   state.price=designRendering?{status:'pending',net:null}:state.result?priceForResult(state,state.result):state.price;
   renderPriceValue($('.design-price strong'),state.price);
   refreshFontQuotes();
@@ -1182,6 +1184,45 @@ async function calculateFontQuote(context,id,entry,key,isCurrent=()=>key===fontQ
     }
   }
   return {price:priceForResult(design,result),size:pricingPlateSize(result.size,design),axis:design.axis,valueMm:design.valueMm,lineHeight:design.lineHeight,...(includeGeometry?{result,design}: {})};
+}
+// Budget suggestions share the font cards' geometry and retail-price calculation.
+function budgetContextKey(){
+  return JSON.stringify([PRICE_RULES.version,state.alignment,state.lineHeight,state.backing,state.plateFinish,state.mount,priceOptions(state)]);
+}
+function setupBudgetAdvisor(){
+  const root=$('#config-budget');if(!root)return;
+  budgetAdvisor=initBudgetAdvisor(root,{
+    fonts:FONTS,colors:AVAILABLE_COLORS,logoUrl:'../assets/brand/logo-white.svg',priceVersion:PRICE_RULES.version,
+    initial:{text:state.text.trim()||'Stay golden',width:state.result?Math.round(plateSize(state.result.size).widthMm)/10:100,budget:400,color:state.lightMode==='rgb'?'rgb':state.color.id},
+    contextKey:budgetContextKey,
+    async quote(input,font,isCurrent){
+      const contextKey=budgetContextKey();
+      const context={...fontPriceContext(),mode:'text',text:input.text,axis:'width',valueMm:input.width*10-20,outerMm:input.width*10,
+        color:input.color==='rgb'?'pink':input.color,lightMode:input.color==='rgb'?'rgb':'static',wordColors:[],charColors:[]};
+      const q=await calculateFontQuote(context,font,null,contextKey,()=>isCurrent()&&contextKey===budgetContextKey(),true);
+      if(!q)return null;
+      // Never suggest a silently adjusted width or a price from an invalid design.
+      if(q.price.status==='calculated'&&Math.abs(q.size.widthMm-input.width*10)>.5)q.price={status:'invalid-size',net:null,reasons:['Diese Außenbreite ist mit der gewählten Rückplatte nicht möglich.']};
+      return {...q,contextKey,gross:priceAmounts(q.price)?.gross};
+    },
+    async choose(q){
+      if(draftApplying||designRendering)throw new Error('Bitte warte, bis der aktuelle Entwurf berechnet ist.');
+      if(q.contextKey!==budgetContextKey()||q.price.status!=='calculated')throw new Error('Bitte die Vorschläge mit deiner aktuellen Ausstattung neu berechnen.');
+      const before=captureDesign();commitHistory();draftApplying=true;budgetSelecting=true;
+      const regions=[$('.editor'),$('.editor-tabs'),$('.preview-column')];regions.forEach(node=>node.inert=true);
+      try{
+        await applyDesign({...before,...q.design,font:q.design.fontId,fontSource:null,retainedFontSource:null,mode:'text',logo:null});
+        if(!state.result||state.price?.status!=='calculated')throw new Error('Der Vorschlag konnte nicht übernommen werden. Bitte erneut berechnen.');
+        const size=plateSize(state.result.size),gross=priceAmounts(state.price).gross;
+        if(Math.abs(size.widthMm-q.size.widthMm)>.5||Math.abs(size.heightMm-q.size.heightMm)>.5||Math.round(gross*100)!==Math.round(q.gross*100)){
+          await applyDesign(before);throw new Error('Maße oder Preis haben sich geändert. Bitte die Vorschläge neu berechnen.');
+        }
+        history.record(captureDesign());persistDesign(captureDesign());setStep(0,false,{scroll:false});
+        regions.forEach(node=>node.inert=false);$('#main').scrollIntoView({block:'start',behavior:'instant'});$('#sign-text').focus({preventScroll:true});
+        return {message:`${state.font} ist im Konfigurator ausgewählt. Maße und Preis stimmen mit deinem Vorschlag überein.`};
+      }finally{draftApplying=false;budgetSelecting=false;regions.forEach(node=>node.inert=false);refreshHistoryButtons();budgetAdvisor?.refreshContext();}
+    }
+  });
 }
 async function runFontQuotes(){
   if(fontQuoteRunning||designRendering||!state.result||!fontQuoteContextValue)return;
@@ -2486,7 +2527,7 @@ async function bootDraft(){
   if(!restored&&!failure)persistDesign(captureDesign());
   if(!failure)$('#draft-status').textContent=restored?'Entwurf wiederhergestellt':'Wird auf diesem Gerät gespeichert';
   $('.editor').inert=false;$('.editor-tabs').inert=false;$('.preview-column').inert=false;refreshHistoryButtons();
-  showIncomingDesigns();
+  showIncomingDesigns();setupBudgetAdvisor();
 }
 bootDraft();
 
