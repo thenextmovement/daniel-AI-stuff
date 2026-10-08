@@ -84,23 +84,6 @@
 #cart-dialog [hidden] { display: none !important; }
 
 #cart-dialog .cart-wordmark { display: block; width: 148px; height: auto; margin: 0 0 18px; }
-#cart-dialog .cart-trust { display: grid; gap: 8px; list-style: none; padding: 0; margin: 16px 0 0; }
-#cart-dialog .cart-trust-badge {
-  display: grid; grid-template-columns: 76px minmax(0,1fr); align-items: center; column-gap: 12px;
-  width: 100%; min-height: 48px; box-sizing: border-box; padding: 10px 12px;
-  border: 1px solid #e3e0dd; border-radius: 4px; background: #fff;
-}
-#cart-dialog .cart-trust-brand { display: inline-flex; align-items: center; justify-content: center; min-height: 26px; font-size: 17px; font-weight: 600; letter-spacing: -.04em; }
-#cart-dialog .cart-google-label { color: #35302d; }
-#cart-dialog .cart-paypal-label { color: #003087; font-style: italic; }
-#cart-dialog .cart-klarna-label { background: #ffb3c7; color: #17120f; border-radius: 3px; }
-#cart-dialog .cart-trust-copy { display: grid; gap: 3px; min-width: 0; }
-#cart-dialog .cart-trust-copy strong { margin: 0; font-size: 11px; font-weight: 500; line-height: 1.3; color: var(--cart-ink); letter-spacing: 0; }
-#cart-dialog .cart-trust-copy > span { color: var(--cart-muted); font-size: 10px; line-height: 1.3; }
-#cart-dialog .cart-trust-google { min-height: 56px; }
-#cart-dialog .cart-trust-google .cart-trust-brand { grid-column: 1; grid-row: 1; align-self: start; min-height: 20px; }
-#cart-dialog .cart-trust-google .cart-trust-copy { grid-column: 2; grid-row: 1; }
-#cart-dialog .cart-trust-stars { grid-column: 1; grid-row: 1; align-self: end; width: 55px; height: 10px; margin: 0 auto -2px; fill: #be7800; }
 #cart-dialog #cart-checkout .cart-trust-note { font-size: 10px; line-height: 1.45; margin-top: 10px; }
 
 /* Main configurator actions keep white labels on a contrast-safe NEONTRIP pink. */
