@@ -121,3 +121,14 @@
 /7365b15fc43b4676907bff3354158af1.txt
   Cache-Control: public, max-age=86400
   Content-Type: text/plain
+
+# Immutable only for newly versioned configurator media.
+/configurator/assets/backing-preview-20261008/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/configurator/assets/scenes/optimized-20261008/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/configurator/sitemap.xml
+  Cache-Control: public, max-age=3600
+  Content-Type: application/xml

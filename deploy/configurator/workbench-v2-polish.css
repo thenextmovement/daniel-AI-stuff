@@ -1,0 +1,157 @@
+/* Desktop polish for the existing six-step workbench.
+   Reference: NEONTRIP Brand Style Guide, 28.09.2026, and approved LED-Neon V2.
+   CSS only: same DOM, state, preview geometry, prices and responsive flow.
+   Deliberately inactive at 1000px and below. */
+@media (min-width:1001px) {
+  body.nt-configurator #main,
+  body.nt-configurator #main:has(.preview-stage[data-scene=technical]) {
+    grid-template-rows:auto 96px minmax(0,1fr);
+    height:max(680px,calc(100svh - 68px));
+    min-height:680px;
+    row-gap:18px;
+    padding-top:20px;
+    padding-bottom:20px;
+    background:#fff;
+  }
+  body.nt-configurator #main>.config-intro h1 {
+    max-width:100%;
+    font:600 clamp(46px,4.1vw,68px)/1.04 Inter,Arial,sans-serif;
+    letter-spacing:-.048em;
+    color:#0a0a0a;
+    white-space:normal;
+    text-wrap:balance;
+  }
+
+  /* One calm row; the active chapter carries the dark/pink identity of V2. */
+  body.nt-configurator #main>.editor-tabs {gap:10px}
+  body.nt-configurator #main>.editor-tabs :is(button,#tab-0,#tab-4) {
+    grid-template-columns:34px minmax(0,1fr);
+    min-height:96px;
+    padding:15px 12px;
+    gap:7px 10px;
+    border:1px solid #d9d9d9;
+    border-radius:8px;
+    background:#fff;
+    color:#181615;
+    box-shadow:none;
+    transition:background-color .2s ease,border-color .2s ease,color .2s ease;
+  }
+  body.nt-configurator #main>.editor-tabs button:before {
+    font-size:26px;
+    font-weight:500;
+    letter-spacing:-.055em;
+    color:#777;
+  }
+  body.nt-configurator #main>.editor-tabs .choice-label {
+    font-size:17px;
+    line-height:1.2;
+    font-weight:600;
+    letter-spacing:-.035em;
+    color:#181615;
+  }
+  body.nt-configurator #main>.editor-tabs :is(.choice-value,#tab-4 .choice-value) {
+    font-size:13px;
+    line-height:1.35;
+    font-weight:400;
+    color:#666;
+  }
+  body.nt-configurator #main>.editor-tabs :is(button,#tab-0,#tab-4):hover {
+    border-color:#181615;
+    background:#f4f4f4;
+  }
+  body.nt-configurator #main>.editor-tabs :is(button,#tab-0,#tab-4)[aria-selected=true] {
+    background:#181615;
+    border-color:#181615;
+    box-shadow:inset 0 -3px #fa31a2;
+  }
+  body.nt-configurator #main>.editor-tabs :is(button,#tab-0,#tab-4)[aria-selected=true]:before {color:#fa31a2}
+  body.nt-configurator #main>.editor-tabs :is(button,#tab-0,#tab-4)[aria-selected=true] .choice-label {color:#fff}
+  body.nt-configurator #main>.editor-tabs :is(button,#tab-0,#tab-4)[aria-selected=true] .choice-value {color:#e2dcd6}
+  body.nt-configurator #main>.editor-tabs button:focus-visible {outline:3px solid #fa31a2;outline-offset:3px}
+
+  /* The active editor remains scrollable; larger controls never clip a step. */
+  body.nt-configurator #main .editor {border-color:#dedede;border-radius:12px;background:#fff}
+  body.nt-configurator #main .editor .choices-heading {padding:20px 22px 17px;border-color:#e5e5e5}
+  body.nt-configurator #main .editor .choices-heading strong {font-size:28px;line-height:1.12;font-weight:600;letter-spacing:-.045em}
+  body.nt-configurator #main .editor .editor-intro p {font-size:16px;line-height:1.5;color:#595959;margin-top:7px}
+  body.nt-configurator #main .editor-panels {padding-inline:22px;scroll-padding-block:18px}
+  body.nt-configurator #main .editor-block {padding-block:20px}
+  body.nt-configurator #main .editor .editor-panels :is(.text-options p,.size-help,.color-note,.mount-description,.mount-warning) {font-size:14px;line-height:1.55}
+  body.nt-configurator #main .editor :is(button,input,textarea,summary):focus-visible {outline:3px solid #fa31a2;outline-offset:3px}
+
+  /* Text */
+  body.nt-configurator #panel-0 .design-mode {margin-bottom:18px}
+  body.nt-configurator #panel-0 .design-mode button {min-height:46px;font-size:15px}
+  body.nt-configurator #sign-text {height:126px;min-height:126px;font-size:32px;line-height:1.35;padding:16px;border-radius:8px}
+  body.nt-configurator #panel-0 .text-options {margin-top:14px}
+  body.nt-configurator #panel-0 .alignment button {width:42px;height:42px}
+  body.nt-configurator #panel-0 .alignment svg {width:20px;height:20px}
+  body.nt-configurator #panel-0 .line-height-control label {font-size:15px}
+  body.nt-configurator #panel-0 .line-height-control output {font-size:14px}
+
+  /* Typeface */
+  body.nt-configurator #panel-1 .font-upload label {padding:13px 14px;min-height:54px;font-size:15px}
+  body.nt-configurator #panel-1 .font-upload small {font-size:12px}
+  body.nt-configurator #panel-1 .upload-note {font-size:12px;line-height:1.5;margin-block:9px}
+  body.nt-configurator #panel-1 .font-library-switch {gap:8px;margin-block:16px}
+  body.nt-configurator #panel-1 .font-library-switch button {min-height:44px;font-size:14px}
+  body.nt-configurator #panel-1 .font-search {min-height:46px}
+  body.nt-configurator #panel-1 .font-search input {font-size:16px}
+  body.nt-configurator #panel-1 #font-categories button {min-height:40px;font-size:12px}
+  body.nt-configurator #panel-1 .font-grid {gap:10px}
+  body.nt-configurator #panel-1 .catalog-font-card .font-option {min-height:86px;padding:13px}
+  body.nt-configurator #panel-1 .catalog-font-option strong {font-size:20px}
+  body.nt-configurator #panel-1 .font-option small {font-size:12px}
+  body.nt-configurator #panel-1 :is(.font-preview-help,#font-count) {font-size:13px}
+
+  /* Color */
+  body.nt-configurator #panel-2 :is(.light-mode-options,.color-scope-switch) button {min-height:44px;font-size:14px}
+  body.nt-configurator #panel-2 .color-targets {max-height:46px;align-items:stretch}
+  body.nt-configurator #panel-2 .color-targets button {min-height:42px;font-size:14px}
+  body.nt-configurator #panel-2 .color-palette {gap:9px;margin-top:18px}
+  body.nt-configurator #panel-2 .color-swatch {min-height:82px;height:82px;gap:8px;border-radius:8px}
+  body.nt-configurator #panel-2 .color-swatch:before {width:32px;height:32px}
+  body.nt-configurator #panel-2 .color-swatch-label {font-size:13px;line-height:1.2}
+  body.nt-configurator #panel-2 #rgb-settings :is(p,small) {font-size:14px;line-height:1.5}
+
+  /* Size */
+  body.nt-configurator #panel-3 .size-presets {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0 22px}
+  body.nt-configurator #panel-3 .size-presets button {min-height:50px;font-size:16px;border-radius:8px}
+  body.nt-configurator #panel-3 .size-fields label {font-size:15px}
+  body.nt-configurator #panel-3 .measurement-input input {font-size:30px;padding-block:15px}
+  body.nt-configurator #panel-3 .size-custom-label {font-size:14px;margin-bottom:12px}
+  body.nt-configurator #panel-3 :is(.production-note,.production-assumptions,.slider-labels) {font-size:13px;line-height:1.5}
+
+  /* Backing plate */
+  body.nt-configurator #panel-4 .backing-options {gap:10px}
+  body.nt-configurator #panel-4 .backing-options button {min-height:108px;padding:15px 7px;font-size:14px;gap:10px}
+  body.nt-configurator #panel-4 .backing-options svg {height:48px}
+  body.nt-configurator #panel-4 .plate-finish-heading {margin:24px 0 13px}
+  body.nt-configurator #panel-4 .plate-finish-heading h3 {font-size:18px;font-weight:600;letter-spacing:-.025em}
+  body.nt-configurator #panel-4 .plate-finish-heading span {font-size:13px}
+  body.nt-configurator #panel-4 .plate-finishes {gap:10px}
+  body.nt-configurator #panel-4 .plate-finishes button {min-height:85px;padding:13px 6px;gap:10px;font-size:13px}
+  body.nt-configurator #panel-4 .plate-finishes i {width:40px;height:28px}
+  body.nt-configurator #panel-4 .plate-custom {margin-top:16px;font-size:14px}
+  body.nt-configurator #panel-4 .plate-custom small {font-size:12px}
+
+  /* Mounting: actual supplied hardware is large enough to recognize. */
+  body.nt-configurator #panel-5 .mount-options {grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  body.nt-configurator #panel-5 .mount-option {min-height:158px;padding:16px 12px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:12px;border-radius:8px;font-size:15px;line-height:1.3;text-align:center}
+  body.nt-configurator #panel-5 .mount-option img {width:92px;height:92px;object-fit:contain;border-radius:5px}
+  body.nt-configurator #panel-5 .mount-option span {max-width:100%;overflow-wrap:anywhere}
+  body.nt-configurator #panel-5 .mount-option[aria-pressed=true] {background:#fff7fb;border-color:#fa31a2;box-shadow:inset 0 0 0 1px #fa31a2}
+  body.nt-configurator #panel-5 .choice-details {margin-top:18px}
+
+  body.nt-configurator #main .editor .step-navigation {padding:12px 20px 14px}
+  body.nt-configurator #main .editor .step-navigation #next-step {min-height:50px;font-size:15px;font-weight:600}
+}
+@media (min-width:1001px) and (max-width:1150px) {
+  body.nt-configurator #main>.editor-tabs :is(button,#tab-0,#tab-4) {grid-template-columns:27px minmax(0,1fr);gap:6px;padding:12px 9px}
+  body.nt-configurator #main>.editor-tabs button:before {font-size:23px}
+  body.nt-configurator #main>.editor-tabs .choice-label {font-size:15px}
+  body.nt-configurator #main>.editor-tabs :is(.choice-value,#tab-4 .choice-value) {font-size:12px}
+}
+@media (min-width:1001px) and (prefers-reduced-motion:reduce) {
+  body.nt-configurator #main>.editor-tabs :is(button,#tab-0,#tab-4) {transition:none}
+}

@@ -1,0 +1,39 @@
+/* Font discovery only: keep selection, previews, quotes and upload controls unchanged. */
+body.lichtbuehne.designstudio #font-dialog-tabs button small{display:block;font-size:11px;line-height:1.4;font-weight:400;margin-top:3px}
+body.lichtbuehne.designstudio #font-overview .font-filter-toolbar{padding:12px;border:1px solid #ded6dc;border-radius:8px;background:#f7f5f6;margin:12px 0 10px}
+body.lichtbuehne.designstudio #font-style-filter summary{display:none}
+body.lichtbuehne.designstudio #font-overview .font-filter-heading{display:block;font-size:12px;line-height:1.4;font-weight:600;margin-bottom:7px;color:#51464e}
+body.lichtbuehne.designstudio #font-overview #font-categories{display:flex;flex-wrap:wrap;gap:6px;margin:0}
+body.lichtbuehne.designstudio #font-overview #font-categories button{min-height:42px;padding:9px 12px;border:1px solid #d0c5cd;border-radius:6px;background:white;color:#382a33;font:500 13px/1.35 Inter,system-ui,sans-serif;white-space:normal}
+body.lichtbuehne.designstudio #font-overview #font-categories button[aria-pressed=true]{border-color:#a80d64;background:#a80d64;color:white}
+body.lichtbuehne.designstudio #font-overview .font-category-mobile{display:none}
+body.lichtbuehne.designstudio #font-overview .font-trait{display:flex;align-items:center;gap:9px;min-height:44px;width:fit-content;margin-top:5px;font-size:13px;font-weight:600;cursor:pointer}
+body.lichtbuehne.designstudio #font-overview #font-trait{appearance:auto;position:static;opacity:1;width:18px;height:18px;margin:0;accent-color:#a80d64;cursor:pointer}
+body.lichtbuehne.designstudio #font-overview #font-trait-note{margin:0;font-size:12px;line-height:1.4;color:#685d65}
+body.lichtbuehne.designstudio #font-overview .font-filter-state{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid #e0d9dd;margin-top:8px;padding-top:7px;min-height:36px}
+body.lichtbuehne.designstudio #font-overview #font-filter-active{min-width:0;font-size:12px;line-height:1.45;color:#55454f;overflow-wrap:anywhere}
+body.lichtbuehne.designstudio #font-overview #font-filter-reset{flex:none;min-height:36px;padding:5px 2px;border:0;background:transparent;font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px;color:#8d0a54}
+body.lichtbuehne.designstudio #font-overview .font-results-heading{display:flex;align-items:center;justify-content:space-between;margin:0 0 10px}
+body.lichtbuehne.designstudio #font-overview :is(#font-style-filter summary,#font-categories button,#font-trait,#font-category-select,#font-filter-reset):focus-visible{outline:3px solid #9f0d60;outline-offset:3px}
+@media(max-width:760px){
+ body.lichtbuehne.designstudio #font-dialog-tabs button{font-size:12px;overflow-wrap:anywhere}
+ body.lichtbuehne.designstudio #font-dialog-tabs button small{font-size:10px}
+ body.lichtbuehne.designstudio #font-overview .font-filter-toolbar{padding:0 10px;margin:10px 0}
+ body.lichtbuehne.designstudio #font-style-filter summary{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;list-style:none;cursor:pointer;font-size:13px;font-weight:600}
+ body.lichtbuehne.designstudio #font-style-filter summary::-webkit-details-marker{display:none}
+ body.lichtbuehne.designstudio #font-style-filter summary .icon{width:18px;height:18px;flex:none}
+ body.lichtbuehne.designstudio #font-style-filter[open] summary .icon{transform:rotate(180deg)}
+ body.lichtbuehne.designstudio #font-overview .font-filter-heading,body.lichtbuehne.designstudio #font-overview #font-categories{display:none}
+ body.lichtbuehne.designstudio #font-overview .font-category-mobile{display:flex;flex-direction:column;align-items:stretch;gap:5px;font-size:12px}
+ body.lichtbuehne.designstudio #font-overview .font-category-mobile select{max-width:none;width:100%;min-height:44px;padding:8px;background:white;font-size:14px}
+ body.lichtbuehne.designstudio #font-overview .font-filter-options{padding:0 0 10px}
+ body.lichtbuehne.designstudio #font-overview .font-filter-state{margin-top:0;padding:0;min-height:36px}
+ body.lichtbuehne.designstudio #font-overview #font-filter-reset{min-height:44px}
+}
+
+@media(min-width:761px){
+ body.lichtbuehne.designstudio #font-overview{height:min(860px,calc(100dvh - 48px))}
+ body.lichtbuehne.designstudio #font-overview .font-filter-options{display:grid;grid-template-columns:max-content 1fr;column-gap:14px;align-items:center}
+ body.lichtbuehne.designstudio #font-overview :is(.font-filter-heading,#font-categories){grid-column:1/-1}
+ body.lichtbuehne.designstudio #font-overview #font-trait-note{margin-top:5px}
+}

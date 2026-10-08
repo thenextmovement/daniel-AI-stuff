@@ -1,0 +1,30 @@
+/* Offer AR entry: the original camera photo with the live configurator artwork. */
+.nt-config-content #config-ar{background:#fff}
+#config-ar .nt-ar-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);grid-template-areas:'intro photo' 'steps photo';align-items:start;gap:0 clamp(28px,5vw,80px)}
+#config-ar .nt-ar-photo{grid-area:photo;align-self:center;position:relative;min-width:0;margin:0;overflow:hidden;border-radius:16px;background:#e9e2d8;aspect-ratio:1200/1024}
+#config-ar .nt-ar-photo>svg{display:block;width:100%;height:100%}
+#config-ar .nt-ar-photo figcaption{position:absolute;bottom:12px;right:12px;left:12px;width:fit-content;max-width:calc(100% - 24px);margin-left:auto;padding:6px 10px;border-radius:6px;background:#fffffff0;font-size:12px;line-height:1.4;color:#524d49}
+#config-ar .nt-ar-intro{grid-area:intro;min-width:0}
+#config-ar .nt-ar-copy{grid-area:steps;min-width:0}
+#config-ar .nt-content-lead{max-width:43ch;margin:20px 0 12px}
+#config-ar .nt-ar-size{font-size:18px;line-height:1.5;font-weight:600;margin:0 0 22px}
+#config-ar .nt-ar-steps{list-style:none;display:grid;gap:16px;margin:0 0 24px;padding:0}
+#config-ar .nt-ar-steps li{display:flex;gap:14px;align-items:flex-start}
+#config-ar .nt-ar-steps li>span{display:grid;place-items:center;flex:0 0 36px;height:36px;border:1px solid #e6dae1;border-radius:50%;font-size:13px;font-weight:600;color:#bd0870}
+#config-ar .nt-ar-steps strong{font-size:16px;line-height:1.5}
+#config-ar .nt-ar-steps p{font-size:16px;line-height:1.5;color:#5b555a;margin:2px 0 0;max-width:42ch}
+#config-ar .nt-content-cta{min-height:48px;gap:20px}
+#config-ar .nt-content-cta:disabled{opacity:.5;cursor:default}
+#config-ar .nt-ar-note{font-size:14px;line-height:1.5;color:#5b555a;margin:10px 0 20px}
+#config-ar .nt-content-text-link{display:inline-flex;align-items:center;gap:12px;min-height:44px;font-size:16px}
+#config-ar .nt-content-text-link svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7}
+@media(max-width:760px){
+ #config-ar .nt-ar-layout{grid-template-columns:1fr;grid-template-areas:'intro' 'photo' 'steps';gap:24px}
+ #config-ar .nt-ar-photo{aspect-ratio:1200/1024}
+ #config-ar .nt-ar-copy{display:flex;flex-direction:column;align-items:flex-start}
+ #config-ar .nt-content-heading{font-size:var(--nt-section-heading)}
+ #config-ar .nt-content-lead{margin:14px 0 10px;font-size:16px}
+ #config-ar .nt-ar-size{font-size:16px;margin-bottom:0}
+ #config-ar .nt-content-cta{width:100%;font-size:16px}
+ #config-ar .nt-ar-note{margin-bottom:8px}
+}

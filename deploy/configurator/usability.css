@@ -1,0 +1,73 @@
+/* Bounded usability repairs, 05.10.2026. Keep the approved Lichtbühne layout. */
+body.lichtbuehne #preview-dimensions{display:block;pointer-events:none}
+body.lichtbuehne #main #dimensions-toggle{display:inline-flex!important;align-items:center;gap:6px;position:absolute;left:28px;bottom:18px;z-index:4;min-height:40px;padding:8px 12px;border:1px solid #ffffff80;border-radius:6px;background:#25201cd9;color:white;font-size:13px}
+body.lichtbuehne #main .stage-measure{display:none}
+body.lichtbuehne #open-scenes .scene-change{display:inline;color:inherit;font-size:13px;font-weight:600;text-decoration:none}
+body.lichtbuehne #open-scenes .mobile-background-label{display:none}
+body.lichtbuehne #main .scene-tabs button{opacity:1;color:#27201b;background:#fff;border:1px solid #e5ded8;font-weight:600}
+body.lichtbuehne #main .scene-tabs button[aria-pressed=true]{background:#c51a7a;color:#fff;border-color:#c51a7a}
+body.lichtbuehne .design-tools-help{font-size:12px;line-height:1.4;color:#65564d;margin:0 0 2px}
+body.lichtbuehne .finish-launch{display:flex;align-items:center;gap:12px;width:100%;padding:12px;border:1px solid #bd6397;border-radius:8px;background:#fff2f8;color:#392331;text-align:left;margin:8px 0}
+body.lichtbuehne .finish-launch strong{font-size:16px;display:block}
+body.lichtbuehne .finish-launch small{display:block;font-size:13px;color:#6c515f;margin-top:3px}
+body.lichtbuehne .finish-preview{display:block;flex:none;width:44px;height:44px;border:1px solid #aa929e;border-radius:6px;background:var(--finish-color,#fff)}
+body.lichtbuehne .finish-preview[data-finish=clear]{background:repeating-conic-gradient(#fff 0 25%,#eee5eb 0 50%) 50%/16px 16px}
+body.lichtbuehne .finish-preview[data-finish^=mirror]{background:linear-gradient(130deg,#8f8570,var(--finish-color),#fff,var(--finish-color),#80725c)}
+body.lichtbuehne .finish-launch-action{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#931358}
+body.lichtbuehne .finish-launch-action svg{width:18px;height:18px}
+body.lichtbuehne .finish-dialog{width:min(740px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:24px;border:1px solid #d8d1ca;border-radius:14px;background:#faf7f3;color:#211b17;overflow:auto}
+body.lichtbuehne .finish-dialog header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}
+body.lichtbuehne .finish-dialog h2{font-size:25px;line-height:1.2;margin:0 0 6px}
+body.lichtbuehne .finish-dialog p{font-size:13px;line-height:1.5;color:#665a52;margin:0}
+body.lichtbuehne .finish-dialog .plate-finish-heading{display:none}
+body.lichtbuehne .finish-dialog .plate-finishes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+body.lichtbuehne .finish-dialog .plate-finishes button{display:grid;justify-items:center;gap:10px;padding:14px;border:1px solid #c5b5bd;border-radius:8px;background:white;color:#31202b;font-size:14px;min-height:112px}
+body.lichtbuehne .finish-dialog .plate-finishes button i{display:block;width:60px;height:54px;border:1px solid #b2a5ac;border-radius:5px}
+body.lichtbuehne .finish-dialog .plate-finishes button[aria-pressed=true]{border-color:#c51a7a;box-shadow:inset 0 0 0 1px #c51a7a;background:#fff0f7}
+body.lichtbuehne .finish-dialog .plate-custom{display:flex;gap:12px;align-items:center;margin:18px 0;font-size:14px}
+body.lichtbuehne .finish-dialog .plate-custom small{display:block;font-size:12px;color:#796773}
+body.lichtbuehne .finish-done{display:block;width:100%;margin-top:20px;min-height:46px;border:0;border-radius:7px;background:#c51a7a;color:white;font-size:14px;font-weight:600}
+body.lichtbuehne .minimum-size-note{font-size:12px;line-height:1.45;color:#705065;margin:6px 0}
+body.lichtbuehne .minimum-size-note:empty{display:none}
+body.lichtbuehne #main .price-extras{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 0 0}
+body.lichtbuehne .price-extras legend{font-size:13px;margin-bottom:4px}
+body.lichtbuehne .price-extras label{display:grid;grid-template-columns:18px 58px minmax(0,1fr);gap:8px;border:1px solid #cbbdb4;border-radius:7px;background:#fff;padding:8px;font-size:12px;cursor:pointer}
+body.lichtbuehne .price-extras label:has(:checked){background:#fff0f7;border-color:#c51a7a}
+body.lichtbuehne .price-extras label img{width:58px;height:58px;object-fit:contain;grid-row:1/3;grid-column:2}
+body.lichtbuehne .price-extras label input{grid-row:1/3;margin:0}
+body.lichtbuehne .price-extras label span{margin:0;white-space:normal}
+body.lichtbuehne .price-extras .extra-copy small{display:block;font-size:11px;color:#766454;line-height:1.3;margin-top:3px}
+body.lichtbuehne .price-extras label>span:last-child{grid-column:3;font-size:12px}
+body.lichtbuehne .price-extras p{grid-column:1/-1;font-size:11px;margin:0}
+body.lichtbuehne #main .mount-option small{font-size:12px;font-weight:600;margin-top:auto}
+@media(min-width:761px){
+ body.lichtbuehne #main .editor{height:auto;min-height:416px;grid-template-rows:auto 1fr auto}
+ body.lichtbuehne #main .editor-panels{overflow:visible;overscroll-behavior:auto;padding-right:0}
+ body.lichtbuehne #main #panel-3 .size-presets{grid-template-columns:repeat(4,minmax(0,1fr))}
+ body.lichtbuehne #main #panel-3 .size-presets button{min-height:51px}
+ body.lichtbuehne #main .custom-size-entry{padding:10px 12px;margin-bottom:8px}
+ body.lichtbuehne #main #custom-size-help{margin-bottom:6px}
+ body.lichtbuehne #main .backing-options button{min-height:145px;padding:7px;gap:6px}
+ body.lichtbuehne #main .backing-options .backing-example,body.lichtbuehne #main .backing-options img{height:86px;object-fit:cover}
+ body.lichtbuehne #main .backing-copy small{font-size:11px;line-height:1.3;margin-top:3px}
+ body.lichtbuehne #main .mount-option{min-height:135px;padding:6px;gap:5px}
+ body.lichtbuehne #main .mount-option img{height:80px}
+ body.lichtbuehne #main .choice-details{margin-top:6px;padding-top:4px}
+}
+@media(max-width:1100px) and (min-width:761px){
+ body.lichtbuehne #main .editor{grid-template-columns:155px minmax(0,1fr) 200px;gap:0 18px;padding-left:20px;padding-right:20px}
+ body.lichtbuehne #main .mount-options{grid-template-columns:repeat(4,minmax(0,1fr))}
+ body.lichtbuehne #main .mount-option{font-size:11px}
+ body.lichtbuehne #main .mount-option img{height:64px}
+}
+@media(max-width:760px){
+ body.lichtbuehne #main #dimensions-toggle{left:12px;bottom:10px;min-height:36px;padding:6px 9px;font-size:11px;white-space:nowrap}
+ body.lichtbuehne .design-tools-help{display:none}
+ body.lichtbuehne .finish-launch{padding:9px;gap:8px}
+ body.lichtbuehne .finish-launch strong{font-size:14px}
+ body.lichtbuehne .finish-launch-action{font-size:12px}
+ body.lichtbuehne .finish-dialog{padding:18px;width:calc(100vw - 20px)}
+ body.lichtbuehne .finish-dialog .plate-finishes{grid-template-columns:1fr 1fr;gap:8px}
+ body.lichtbuehne .finish-dialog .plate-finishes button{min-height:96px;padding:10px}
+ body.lichtbuehne #main .price-extras{grid-template-columns:1fr}
+}
