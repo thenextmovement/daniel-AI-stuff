@@ -96,7 +96,7 @@
   const player = root.querySelector('.nt-proof__player');
   const close = root.querySelector('.nt-proof__close');
   const load = root.querySelector('.nt-proof__load');
-  const external = root.querySelector('.nt-proof__external');
+  let external = root.querySelector('.nt-proof__external');
   const poster = root.querySelector('.nt-proof__consent img');
   const title = root.querySelector('#nt-proof-dialog-title');
   let activeButton;
@@ -109,6 +109,7 @@
       poster.src = button.querySelector('img').src;
       poster.alt = `Vorschaubild ${name}`;
       title.textContent = name;
+      if(external.tagName!=='A'){const link=document.createElement('a');link.className=external.className;link.textContent=external.textContent;link.target='_blank';link.rel='noopener noreferrer';external.replaceWith(link);external=link;}
       external.href = `https://www.youtube.com/watch?v=${video}`;
       player.replaceChildren();
       player.hidden = true;

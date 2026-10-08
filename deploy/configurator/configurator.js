@@ -1,86 +1,39 @@
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
-import {initDeliveryCalendar,deliveryTierLabel,minimumDeliveryBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261007-factor26';
-import {refreshWishDelivery} from './content-experience.js?v=20261007-factor26';
+import {initDeliveryCalendar,deliveryTierLabel,minimumDeliveryBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261008-ads1';
+import {refreshWishDelivery} from './content-experience.js?v=20261008-ads1';
 import {loadFontCatalog,searchFontCatalog,catalogFontAssetId,validateCatalogFont,FONT_CATALOG_CATEGORIES} from './font-catalog.js?v=20261006-filters1';
 import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufacturing,minimumTextGroupClearance} from './manufacturing-profile.js?v=20261006-stand1';
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
 import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261004-a1';
-import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery} from './checkout-client.js?v=20261007-cart-checkout1-factor26';
+import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery} from './checkout-client.js?v=20261008-ads1';
 import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261006-bridges1';
 import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261007-tablet-accessories1-factor26';
 import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261006-quantities1';
 const $ = selector => document.querySelector(selector);
-// Approved Lichtbühne v4: recompose existing controls without changing design data.
-const lookCards=document.createElement('div');lookCards.className='look-cards';
-lookCards.innerHTML='<button id="look-font" type="button" aria-haspopup="dialog" aria-controls="font-overview"><strong>Schrift</strong><span id="look-font-sample"></span><small id="look-font-name"></small><span class="look-change">Ändern <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span></button><button id="look-color" type="button" aria-haspopup="dialog" aria-controls="color-gallery"><strong>Farbe</strong><i id="look-color-chip" aria-hidden="true"></i><span class="look-color-copy"><span id="look-color-name"></span><small id="look-color-off"></small></span><span class="look-change">Ändern <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span></button>';
-$('#panel-0').append(lookCards);
-const motifHeading=document.createElement('div');motifHeading.className='studio-motif-heading';
-const textLabel=$('label[for="sign-text"]');textLabel.classList.remove('sr-only');textLabel.textContent='Dein Text';
-$('#text-settings').before(motifHeading);motifHeading.append(textLabel,$('#text-count'));
-$('#text-settings .block-heading').hidden=true;
-$('.workbench-heading').prepend($('#page-heading'));
-$('#panel-0').prepend($('#usage-options'));
-$('#usage-options').after($('#usage-note'));
-const studioContext=document.createElement('div');studioContext.className='studio-context';
-const scenarioField=document.createElement('label');scenarioField.className='studio-scenario';
-scenarioField.innerHTML='<span>Vorschauhintergrund</span><select id="studio-scenario" aria-label="Hintergrund der Vorschau auswählen"></select><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>';
-$('#usage-options').before(studioContext);studioContext.append($('#usage-options'),scenarioField);
+// The initial editor structure is rendered in HTML; only interaction is bound here.
+const motifHeading=$('.studio-motif-heading');
+const studioContext=$('.studio-context');
+const textTools=$('.studio-text-tools');
+const studioToolbar=$('.studio-toolbar');
+const studioSceneActions=$('.studio-scene-actions');
+const mountingDownload=$('#studio-mounting-download');
+const studioVariantTools=$('.studio-variant-tools');
+const colorGalleryBody=$('.color-gallery-body');
+const lookCards=$('.look-cards');
 const scenarioSelect=$('#studio-scenario');
+const textLayout=$('.text-layout-options');
+const studioFooter=$('.studio-preview-footer');
+const studioDesignTools=$('.design-tools');
+const studioFonts=$('.studio-fonts');
+const studioColors=$('.studio-colors');
+const inlineRgbNote=$('#studio-rgb-note');
+const previewSlot=$('#preview-slot');
 scenarioSelect.addEventListener('change',()=>{if(!ROOMS.some(room=>room.id===scenarioSelect.value&&sceneAvailable(room)))return;state.room=scenarioSelect.value;state.scene='wall';paint();});
-$('.editor-panels').after($('.design-tools'));
-// Compact text tools live inside the textarea frame; spacing opens only on demand.
-const textFrame=document.createElement('div');textFrame.className='studio-text-frame';
-$('#sign-text').before(textFrame);textFrame.append($('#sign-text'));
-const textTools=document.createElement('div');textTools.className='studio-text-tools';
-textTools.append($('.alignment'));textFrame.append(textTools);
-const textLayout=document.createElement('details');textLayout.className='text-layout-options';
-textLayout.innerHTML='<summary aria-label="Zeilenabstand einstellen"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12M3 4v16m-2-3 2 3 2-3M1 7l2-3 2 3"/></svg><span id="studio-line-spacing">80 %</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></summary>';
-textLayout.append($('.line-height-control'));textTools.append(textLayout);
-const textLayoutDone=document.createElement('button');textLayoutDone.type='button';textLayoutDone.className='text-layout-done';textLayoutDone.textContent='Fertig';
-textLayoutDone.addEventListener('click',()=>{textLayout.open=false;textLayout.querySelector('summary').focus({preventScroll:true});});
-textLayout.querySelector('.line-height-control').append(textLayoutDone);
+$('.text-layout-done').addEventListener('click',()=>{textLayout.open=false;textLayout.querySelector('summary').focus({preventScroll:true});});
 document.addEventListener('click',event=>{if(!textLayout.contains(event.target))textLayout.open=false;});
 textLayout.addEventListener('keydown',event=>{if(event.key==='Escape'){textLayout.open=false;textLayout.querySelector('summary').focus();}});
-$('.scene-selector').prepend($('#light-toggle'));
-// Existing actions move outside the photo, preserving their handlers and accessibility.
-const studioToolbar=document.createElement('div');studioToolbar.className='studio-toolbar';
-const studioSceneActions=document.createElement('div');studioSceneActions.className='studio-scene-actions';
-studioSceneActions.append($('#light-toggle'),$('#open-scenes'));
-studioToolbar.append($('.scene-tabs'),studioSceneActions);$('.preview-column').prepend(studioToolbar);
-const studioBrand=document.createElement('img');studioBrand.className='studio-brand';studioBrand.src='../assets/brand/logo-white.svg';studioBrand.alt='NEONTRIP';studioBrand.width=110;studioBrand.height=21;$('#preview-stage').append(studioBrand);
-const studioFooter=document.createElement('div');studioFooter.className='studio-preview-footer';
-// Keep the verified PDF directly available in both responsive layouts.
-const mountingDownload=$('.nt-product-v2-actions a[download]').cloneNode(true);
-mountingDownload.id='studio-mounting-download';mountingDownload.className='studio-mounting-download';
-mountingDownload.innerHTML='<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg><span>Montageanleitung herunterladen</span><small>PDF</small>';
-studioFooter.append(mountingDownload);
-const studioDesignTools=$('.design-tools');
-const studioVariantTools=document.createElement('div');studioVariantTools.className='studio-variant-tools';
-studioVariantTools.append(studioDesignTools);$('#preview-stage').before(studioVariantTools);$('.preview-column').append(studioFooter);
-const studioFonts=document.createElement('section');studioFonts.className='studio-fonts';
-studioFonts.innerHTML='<div class="studio-choice-heading"><h2>Schriftart <span id="studio-selected-font"></span></h2><button type="button" id="studio-all-fonts" aria-haspopup="dialog">Alle Schriften <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></div><div class="studio-font-grid" role="group" aria-label="Schriftvorschläge"></div>';
-const studioColors=document.createElement('section');studioColors.className='studio-colors';
-studioColors.innerHTML='<div class="studio-choice-heading"><h2>Farbe <span id="studio-selected-color"></span></h2><button type="button" id="studio-all-colors" aria-haspopup="dialog">Farbvorschau <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></div><div class="studio-palette" role="group" aria-label="Leuchtfarbe"></div><button type="button" class="studio-rgb" data-light-mode="rgb" aria-label="RGB-Farbwechsel" title="RGB-Farbwechsel"></button>';
-lookCards.after(studioFonts,studioColors);
-// A light colour-cycle icon replaces the solid colour wheel in both selectors.
-const rgbIcon='<svg class="rgb-mode-icon" viewBox="0 0 36 36" aria-hidden="true"><path d="M7 10a14 14 0 0 1 23 2m-1-5 1 5-5-1" stroke="#d70c79"/><path d="M31 18a14 14 0 0 1-14 14m4-3-4 3 4 2" stroke="#18995a"/><path d="M10 30A14 14 0 0 1 4 14m-3 4 3-4 3 4" stroke="#2872da"/><text x="18" y="21" text-anchor="middle">RGB</text></svg>';
-$('.studio-rgb').innerHTML=rgbIcon+'<span>RGB</span>';
-const galleryRgb=$('.light-mode-options [data-light-mode="rgb"]');
-galleryRgb.replaceChildren();galleryRgb.insertAdjacentHTML('beforeend',rgbIcon);galleryRgb.append('RGB-Farbwechsel');
-
-// Colour modes and per-letter editing stay in the full selection, beside its gallery.
-const galleryOptions=document.createElement('div');galleryOptions.className='gallery-options';
-galleryOptions.append($('.light-mode-options'),$('#rgb-outdoor-note'),$('#retired-color-note'),$('#rgb-settings'),$('#color-detail-options'));
-const colorGalleryBody=document.createElement('div');colorGalleryBody.className='color-gallery-body';
-colorGalleryBody.append(galleryOptions,$('#color-palette'));
-$('#color-gallery .color-gallery-header').after(colorGalleryBody);
-const inlineRgbNote=$('#rgb-outdoor-note').cloneNode(true);inlineRgbNote.id='studio-rgb-note';studioColors.append(inlineRgbNote);
-const previewSlot=document.createElement('div');previewSlot.id='preview-slot';previewSlot.hidden=true;
-$('.preview-column').before(previewSlot);
-$('#preview-stage').append($('#open-large-preview'),$('#preview-size-fallback'),$('#scene-note'));
-$('#mobile-light-on svg').innerHTML='<path d="M12 3v9m-5-7a8 8 0 1 0 10 0"/>';
 function fitTextField(){const field=$('#sign-text');field.style.height='0px';field.style.height=Math.max(54,field.scrollHeight+2)+'px';}
 $('#sign-text').addEventListener('input',fitTextField);
 const mobileChoiceMedia=matchMedia('(max-width:760px)');
@@ -117,8 +70,8 @@ const COLORS = [
 const AVAILABLE_COLORS=COLORS.filter(color=>color.id!=='tropical_blue');
 const BACKINGS = {
   contour: {name:'Formzuschnitt',description:'Folgt eng der Schriftkontur. Getrennte Wörter werden durch breite Übergänge verbunden.'},
-  rectangle: {name:'Rechteckig',description:'Gerade Kanten rund um Ihren Schriftzug, mit ca. 1,5 cm Rand auf jeder Seite.'},
-  square: {name:'Quadratisch',description:'Gleich lange Seiten. Ihr Schriftzug sitzt mittig, mit mindestens ca. 1,5 cm Rand.'},
+  rectangle: {name:'Rechteckig',description:'Gerade Kanten rund um deinen Schriftzug, mit ca. 1,5 cm Rand auf jeder Seite.'},
+  square: {name:'Quadratisch',description:'Gleich lange Seiten. Dein Schriftzug sitzt mittig, mit mindestens ca. 1,5 cm Rand.'},
   freestanding: {name:'Freigestellt',description:'Schmale transparente Stützen hinter den Buchstaben, ohne seitlichen Überstand. Die genaue Statik wird vor Fertigung geprüft.'}
 };
 const PLATE_FINISHES={clear:'Transparent', 'uv-print':'UV-Druck', 'mirror-gold':'Gold verspiegelt', 'mirror-silver':'Silber verspiegelt'};
@@ -129,9 +82,9 @@ function normalizedFinish(value){
 }
 function finishName(value){const finish=normalizedFinish(value);return PLATE_FINISHES[finish.kind]+(finish.kind==='uv-print'?' · '+(finish.color==='#FFFFFF'?'Weiß':finish.color==='#000000'?'Schwarz':finish.color):'');}
 const MOUNTS={
-  none:{name:'Ohne Montageset',description:'Sie verwenden eigenes Montagezubehör.'},
+  none:{name:'Ohne Montageset',description:'Du verwendest eigenes Montagezubehör.'},
   'wall-mount':{name:'Wandmontage-Set',image:'wall-mount.webp',description:'Schrauben, Dübel und Abstandshalter zur verschraubten Wandmontage.'},
-  'hanging-kit':{name:'Drahtseil-Abhängeset',image:'hanging-kit.webp',description:'Zwei Drahtseile, um Ihr Schild von der Decke abzuhängen.'},
+  'hanging-kit':{name:'Drahtseil-Abhängeset',image:'hanging-kit.webp',description:'Zwei Drahtseile, um dein Schild von der Decke abzuhängen.'},
   'adhesive-kit':{name:'3M-Klebeset',image:'adhesive-kit.webp',description:'3M-Klett-Klebestreifen, von Schild und geeignetem Untergrund rückstandslos ablösbar.'},
   'table-stand':{name:'Acryl-Steckfüße',image:'table-stand.webp',description:'Zwei transparente Acrylfüße halten dein Schild auf einem Tisch oder einer Theke. Die Rückplatte erhält eine gerade Unterkante und Steckschlitze.'}
 };
@@ -149,14 +102,14 @@ const ROOMS = [
   {id:'outdoor-party',outdoor:true,spanMm:3200,signY:220,mobileMinWidth:700,name:'Open-Air-Party',image:'./assets/scenes/outdoor-20261007/evenings/outdoor-courtyard-party.webp'},
   {id:'outdoor-terrace',outdoor:true,spanMm:3200,signY:220,standY:323,mobileMinWidth:700,name:'Überdachte Terrasse',image:'./assets/scenes/outdoor-20261007/evenings/outdoor-pergola-terrace.webp'},
   {id:'shop',spanMm:5000,name:'Schaufenster · innen',image:'./assets/scenes/shop-detail.webp'},
-  {id:'restaurant',spanMm:5000,name:'Restaurant',image:'./assets/scenes/restaurant.png'},
-  {id:'cafe',spanMm:4000,name:'Café',image:'./assets/scenes/cafe.png'},
-  {id:'beauty',spanMm:4000,name:'Beautystudio',image:'./assets/scenes/beauty.png'},
-  {id:'medical',spanMm:5000,name:'Arztpraxis',image:'./assets/scenes/medical.png'},
-  {id:'physio',spanMm:4500,name:'Physio-Studio',image:'./assets/scenes/physio.png'},
-  {id:'fitness',spanMm:6500,name:'Fitnessstudio',image:'./assets/scenes/fitness.png'},
+  {id:'restaurant',spanMm:5000,name:'Restaurant',image:'./assets/scenes/optimized-20261008/restaurant.webp'},
+  {id:'cafe',spanMm:4000,name:'Café',image:'./assets/scenes/optimized-20261008/cafe.webp'},
+  {id:'beauty',spanMm:4000,name:'Beautystudio',image:'./assets/scenes/optimized-20261008/beauty.webp'},
+  {id:'medical',spanMm:5000,name:'Arztpraxis',image:'./assets/scenes/optimized-20261008/medical.webp'},
+  {id:'physio',spanMm:4500,name:'Physio-Studio',image:'./assets/scenes/optimized-20261008/physio.webp'},
+  {id:'fitness',spanMm:6500,name:'Fitnessstudio',image:'./assets/scenes/optimized-20261008/fitness.webp'},
   {id:'studio',spanMm:4500,name:'Neutrale Wand',image:'./assets/scenes/studio-detail.webp'},
-  {id:'tabletop',spanMm:3300,name:'Event · Podest',image:'./assets/scenes/event-podium.png'}
+  {id:'tabletop',spanMm:3300,name:'Event · Podest',image:'./assets/scenes/optimized-20261008/event-podium.webp'}
 ];
 const SCENE_IMAGE = new URL('./assets/scenes/neontrip-scenarios-wide.png',import.meta.url).href;
 // Indoor rooms keep their shared display scale; outdoor scenes use their own framing.
@@ -194,7 +147,7 @@ const draftAssets=new Map();
 state.mode='text';state.logo=null;state.fontSource=null;state.plateFinish=normalizedFinish();state.charColors=new Map();state.characters=[];state.colorScope='words';state.lightMode='static';
 let rgbPaused=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let logoSelectionRevision=0;
-const designName=()=>state.mode==='logo'?(state.logo?.name||'Ihr Logo'):state.text;
+const designName=()=>state.mode==='logo'?(state.logo?.name||'Dein Logo'):state.text;
 function designAssetRefs(snapshot){return [snapshot.photo?.assetId,snapshot.fontId?.startsWith('upload-')?snapshot.fontId:null,snapshot.logo?.assetId,snapshot.logo?.originalAssetId].filter(Boolean);}
 let draftReady=false,draftApplying=false,draftTimer,history,lastSavedSnapshot;
 let shareDesignKey=null;
@@ -297,7 +250,8 @@ async function applyDesign(value){
   $('#sign-text').value=state.text;$('#size-error').hidden=true;
   for(const b of document.querySelectorAll('[data-align]'))b.setAttribute('aria-pressed',b.dataset.align===state.alignment);
   $('#photo-settings').hidden=!photo;if(photo)$('#photo-width').value=photo.spanMm/10;
-  $('#preview-room').replaceChildren();renderSceneButtons();syncDesignMode();state.result=null;paint();await update();
+  // update() first invalidates the price; a restored draft has no calculated price yet.
+  $('#preview-room').replaceChildren();renderSceneButtons();syncDesignMode();state.result=null;await update();
 }
 async function moveHistory(delta){
   if(draftApplying||!history)return;commitHistory();
@@ -318,7 +272,7 @@ function startWorker() {
     clearTimeout(request.timeout); pending.delete(data.requestId);
     data.ok ? request.resolve(data) : request.reject(Object.assign(new Error(data.error),{code:data.code}));
   };
-  worker.onerror = () => resetWorker('Die Schriftverarbeitung wurde unterbrochen. Bitte wählen Sie die Schrift erneut.');
+  worker.onerror = () => resetWorker('Die Schriftverarbeitung wurde unterbrochen. Bitte wähle die Schrift erneut.');
 }
 function resetWorker(message) {
   worker.terminate(); loaded.clear();
@@ -328,7 +282,7 @@ function resetWorker(message) {
 function callWorker(data) {
   return new Promise((resolve,reject) => {
     const id = ++requestId;
-    const timeout = setTimeout(() => resetWorker('Die Schrift konnte nicht rechtzeitig verarbeitet werden. Bitte wählen Sie eine andere Schrift.'),12000);
+    const timeout = setTimeout(() => resetWorker('Die Schrift konnte nicht rechtzeitig verarbeitet werden. Bitte wähle eine andere Schrift.'),12000);
     pending.set(id,{resolve,reject,timeout}); worker.postMessage({...data,requestId:id});
   });
 }
@@ -341,7 +295,7 @@ function ensureFont() {
   return loaded.get(id);
 }
 async function ensureLogo(){
-  if(!state.logo)throw new Error('Bitte laden Sie zuerst Ihr Logo hoch.');
+  if(!state.logo)throw new Error('Bitte lade zuerst dein Logo hoch.');
   const id=state.logo.assetId,asset=await getDraftAsset(id,'logo');
   if(!asset.raster)asset.raster=await decodeLogoFile(asset.file);
   // Worker owns its bounded cache; repeat load so an evicted logo can be edited.
@@ -464,7 +418,7 @@ async function refreshCartPrice(){
   else{
     const amounts=prices.map((p,i)=>priceAmounts(p,items[i].quantity));
     const changed=prices.some((p,i)=>{const before=priceAmounts(items[i].previousPrice),after=priceAmounts(p);return before&&after&&Math.abs(before.gross-after.gross)>.01;});
-    $('#checkout-preparation-status').textContent=changed?'Die Preise Ihrer gespeicherten Entwürfe wurden aktualisiert. Bitte prüfen Sie Einzelpreise und Gesamtpreis.':'';
+    $('#checkout-preparation-status').textContent=changed?'Die Preise deiner gespeicherten Entwürfe wurden aktualisiert. Bitte prüfe Einzelpreise und Gesamtpreis.':'';
     cartTotals={signNet:Math.round(prices.reduce((sum,p,i)=>sum+p.baseNet*items[i].quantity,0)),subtotalGross:Math.round(amounts.reduce((sum,p)=>sum+p.gross,0)*100)/100};
   }
   refreshDeliverySummary();
@@ -491,7 +445,7 @@ function priceStatusForError(error){
   return ({EMPTY_TEXT:'empty',EMPTY_OUTLINE:'empty',TOO_MANY_LINES:'too-many-lines',UNSUPPORTED_GLYPH:'invalid-text',INVALID_TEXT:'invalid-text',INVALID_SIZE:'invalid-size',MISSING_FONT:'missing-font',INVALID_FONT:'missing-font'})[error.code]||'calculation-error';
 }
 function errorMessage(error) {
-  if (error.code === 'EMPTY_TEXT') return 'Geben Sie Ihren Text ein, um die Vorschau zu sehen.';
+  if (error.code === 'EMPTY_TEXT') return 'Gib deinen Text ein, um die Vorschau zu sehen.';
   if (error.code === 'UNSUPPORTED_GLYPH') return error.message;
   if(!error.code&&!error.priceStatus)return 'Die Vorschau konnte nicht vollständig berechnet werden. Bitte erneut versuchen oder die Seite neu laden.';
   return error.message;
@@ -508,6 +462,7 @@ async function update(sizeNotice='') {
   $('#line-height-help').textContent=text.includes('\n')?'Die Maße passen sich dem Zeilenabstand an.':'Ab zwei Textzeilen einstellbar.';
   scheduleDraft();
   syncColorWords();paintColorControls();
+  paintRoom();
   $('#text-count').textContent=`${text.length} / 160`;
   $('#text-error').hidden=true;
   $('#size-error').hidden=true;
@@ -515,8 +470,8 @@ async function update(sizeNotice='') {
   
   updateFontSelection();updateChoices();
   if(!state.sizeValid) {clearResult('Bitte ein gültiges Maß eingeben.',true,'invalid-size');return;}
-  if(state.mode==='text'&&!text.trim()) {clearResult('Geben Sie Ihren Text ein.',false,'empty');return;}
-  if(state.mode==='text'&&text.length>160) {clearResult('Bitte verwenden Sie höchstens 160 Zeichen.',true);return;}
+  if(state.mode==='text'&&!text.trim()) {clearResult('Gib deinen Text ein.',false,'empty');return;}
+  if(state.mode==='text'&&text.length>160) {clearResult('Bitte verwende höchstens 160 Zeichen.',true);return;}
   if(state.mode==='logo'&&!state.logo){clearResult('Wähle „Text gestalten“, um einen Schriftzug zu erstellen.',false,'unsupported-mode');return;}
   $('#preview-state').textContent='Vorschau wird aktualisiert …';$('#preview-state').classList.remove('is-error');$('#preview-state').hidden=false;
   try {
@@ -696,7 +651,7 @@ function paintMount(){
   $('#choice-value-5').textContent=MOUNTS[state.mount].name;
   $('#mount-description').textContent=MOUNTS[state.mount].description;
   $('#mount-warning').hidden=state.mount!=='adhesive-kit'&&!invalidStand&&!invalidHanging&&!autoContour;
-  $('#mount-warning').textContent=(autoContour?'Rückplatte wurde auf Formzuschnitt geändert. ':'')+(state.mount==='adhesive-kit'?(adhesiveOver100()?'Ab 100 cm keine dauerhafte Lösung: Klebestreifen nur vorübergehend und nach Prüfung des Untergrunds verwenden.':'Klebestreifen nur vorübergehend und auf geeignetem Untergrund verwenden.'):invalidHanging?'Freigestellte Schriftzüge können nicht mit dem Abhängeset montiert werden. Wählen Sie Formzuschnitt oder eine rechteckige Rückplatte.':invalidStand?'Die Rückplatte ist zu schmal für die beiden Steckfüße. Bitte wählen Sie ein größeres Schild oder eine andere Montage.':'');
+  $('#mount-warning').textContent=(autoContour?'Rückplatte wurde auf Formzuschnitt geändert. ':'')+(state.mount==='adhesive-kit'?(adhesiveOver100()?'Ab 100 cm keine dauerhafte Lösung: Klebestreifen nur vorübergehend und nach Prüfung des Untergrunds verwenden.':'Klebestreifen nur vorübergehend und auf geeignetem Untergrund verwenden.'):invalidHanging?'Freigestellte Schriftzüge können nicht mit dem Abhängeset montiert werden. Wähle Formzuschnitt oder eine rechteckige Rückplatte.':invalidStand?'Die Rückplatte ist zu schmal für die beiden Steckfüße. Bitte wähle ein größeres Schild oder eine andere Montage.':'');
   if(standTooTall){
     const warning=$('#mount-warning'),otherWarning=state.mount!=='table-stand'&&!warning.hidden?warning.textContent+' ':'';
     warning.hidden=false;warning.textContent=otherWarning+TABLE_STAND_HEIGHT_MESSAGE+' ';
@@ -806,7 +761,7 @@ const retiredCableMessage='Zusätzliches Kabel wird nicht mehr angeboten und wur
 // the shared base color. Line/word positions match the existing font layout.
 function syncColorWords(){
   if(state.mode==='logo'){
-    state.words=[{text:state.logo?.name||'Ihr Logo',lineIndex:0,wordIndex:0,key:'logo'}];state.colorTarget='all';$('#color-targets').replaceChildren();return;
+    state.words=[{text:state.logo?.name||'Dein Logo',lineIndex:0,wordIndex:0,key:'logo'}];state.colorTarget='all';$('#color-targets').replaceChildren();return;
   }
   const occurrences=new Map(),words=[];
   for(const [lineIndex,line] of state.text.replace(/\r\n?/g,'\n').split('\n').entries()){
@@ -906,7 +861,7 @@ function paintColorControls(){
   $('#mobile-color-target').value=state.colorTarget;
   $('#color-scope').textContent=target?`Farbe für „${target.text}“`:'Farbe für den ganzen Schriftzug';
   $('#color-note').textContent=target?(selected?`„${target.text}“: ausgeschaltet ${selected.off==='#F4F4F4'?'weiß':selected.name}.`:'Die neue Farbe ersetzt die bisherigen Farben in dieser Auswahl.'):'Eine neue Gesamtfarbe ersetzt alle Wort- und Buchstabenfarben.';
-  if(state.mode==='logo'){$('#color-scope').textContent='Leuchtfarbe für Ihr Logo';$('#color-note').textContent='Die gewählte LED-Farbe gilt für den gesamten Logo-Linienentwurf.';}
+  if(state.mode==='logo'){$('#color-scope').textContent='Leuchtfarbe für dein Logo';$('#color-note').textContent='Die gewählte LED-Farbe gilt für den gesamten Logo-Linienentwurf.';}
   $('.word-color-help').hidden=state.mode==='logo'||rgb;$('#color-scope-switch').hidden=state.mode==='logo'||rgb;
   $('#color-targets').hidden=rgb;$('#color-palette').hidden=rgb;$('#color-scope').hidden=rgb;$('#color-note').hidden=rgb;$('#rgb-settings').hidden=!rgb;
   $('#rgb-preview-toggle').textContent=rgbPaused?'Farbwechsel abspielen':'Farbwechsel pausieren';$('#rgb-preview-toggle').setAttribute('aria-pressed',String(!rgbPaused));
@@ -943,7 +898,7 @@ function paint() {
   if(shareDesignKey&&shareDesignKey!==JSON.stringify(captureDesign())){
     shareDesignKey=null;shareRevision++;shareAbort?.abort();sharePending=false;shareExpiresAt=0;
     $('#ar-share-qr').hidden=true;$('#ar-share-placeholder').hidden=false;$('#ar-share-link').hidden=true;
-    $('#ar-share-status').textContent='Ihr Entwurf hat sich geändert. Erstellen Sie einen neuen QR-Code.';
+    $('#ar-share-status').textContent='Dein Entwurf hat sich geändert. Erstelle einen neuen QR-Code.';
   }
   const c=state.color;
   const stage=$('#preview-stage');stage.style.setProperty('--neon',c.color);stage.dataset.scene=state.scene;stage.classList.toggle('is-off',!state.light);
@@ -1141,7 +1096,7 @@ function paint() {
   if(resizeFocus){const [sx,sy]=resizeFocus;resizeFocus=null;$('#preview-handles [data-sx="'+sx+'"][data-sy="'+sy+'"]')?.focus();}
   $('#sign-preview').setAttribute('aria-label',`${designName()}, ${state.mode==='logo'?'Logo':'Schrift '+state.font}, ${colorSummary()}, Außenmaße ${dimensions(backing)}, ${BACKINGS[state.backing].name}, Montage ${MOUNTS[state.mount].name}, ${state.light?'eingeschaltet':'ausgeschaltet'}, Szene ${ROOMS.find(r=>r.id===state.room).name}.`);
 }
-function sampleText(){return state.text.trim().replace(/\s+/g,' ').slice(0,40)||'Ihr Text';}
+function sampleText(){return state.text.trim().replace(/\s+/g,' ').slice(0,40)||'Dein Text';}
 // Visible cards first, then the 37 bundled fonts for three distinct retail price suggestions.
 const visibleFontCards=new Set(),fontQuoteCache=new Map(),catalogSourceCache=new Map();
 let fontQuoteKey='',fontQuoteContextValue=null,fontQuoteRunning=false,fontQuoteTimer;
@@ -1172,7 +1127,7 @@ function refreshFontQuotes(){
   if(designRendering)return;
   const context=fontPriceContext(),key=JSON.stringify(context);
   if(key!==fontQuoteKey){invalidateFontQuotes();fontQuoteKey=key;fontQuoteContextValue=context;}
-  const fixedSize=state.result?`${cm(context.outerMm)} cm ${context.axis==='width'?'Breite':'Höhe'}`:'deiner gewählten Größe';
+  const fixedSize=state.result?`${cm(context.outerMm)} cm ${context.axis==='width'?'Breite':'Höhe'}`:'Deiner gewählten Größe';
   $('.studio-fonts .font-price-context').textContent=state.result?`Dein Schild bei ${fixedSize} · inkl. MwSt.`:'Schildpreise für deinen Text und deine Größe';
   $('#font-price-explanation').textContent=`Für deinen Text bei ${fixedSize}, inklusive gewählter Ausstattung und 19 % MwSt. Der Rabatt ist bereits enthalten. ${context.axis==='width'?'Die Höhe':'Die Breite'} ergibt sich aus der Schrift; beide Maße stehen auf jeder Karte.`;
   if(!state.result||!state.sizeValid||!state.text.trim()){
@@ -1334,7 +1289,12 @@ function updateFontSelection(){
   }else{sample.textContent=state.text?'Vorschau wird berechnet …':'Dein Text';sample.layout=null;}
   sample.title=state.text;
   $('#current-font-name').textContent=state.font;$('#current-font-sample').textContent=state.text||'Dein Text';$('#current-font-sample').style.fontFamily=state.fontId.startsWith('upload-')||state.fontSource?'NT-Uploaded':`NT-${state.font}`;
-  $('#font-source-note').hidden=!state.fontSource;if(state.fontSource){$('#font-source-note a').href=state.fontSource.entry.license.url;$('#font-source-note a').textContent=`${state.font} · ${state.fontSource.entry.license.spdx}`;}
+  $('#font-source-note').hidden=!state.fontSource;
+  if(state.fontSource){
+    let link=$('#font-source-note [data-font-license]');
+    if(link.tagName!=='A'){const anchor=document.createElement('a');anchor.dataset.fontLicense='';anchor.target='_blank';anchor.rel='noopener noreferrer';link.replaceWith(anchor);link=anchor;}
+    link.href=state.fontSource.entry.license.url;link.textContent=`${state.font} · ${state.fontSource.entry.license.spdx}`;
+  }
 }
 // One browser for all font sources; reuse the existing catalogue and file handlers.
 $('#font-dialog-tabs').append($('.font-library-switch'));
@@ -1513,7 +1473,7 @@ function filterFonts(preserveMobilePage=false){
   const grid=$('#font-grid'),query=$('#font-search').value.trim();for(const card of grid.querySelectorAll('[data-quote-font]')){fontQuoteObserver.unobserve(card);visibleFontCards.delete(card);}grid.replaceChildren();let visible=0,total=0;
   if(fontLibrary==='neon'){
     for(const name of studioFontOrder)if(name.toLocaleLowerCase('de').includes(query.toLocaleLowerCase('de'))){grid.append(makeFontButton(name));visible++;}total=visible;
-    $('.font-preview-help').textContent='Ihr eigener Text, direkt in unseren Neon-Schriften.';
+    $('.font-preview-help').textContent='Dein eigener Text, direkt in unseren Neon-Schriften.';
   }else if(fontCatalog){
     const page=searchFontCatalog(fontCatalog,{query,category:fontCategory,trait:fontTraitEnabled?'outline':'all',limit:Math.min(fontCatalogLimit,60)});
     const pages=[];for(let offset=0;offset<Math.min(fontCatalogLimit,page.total);offset+=60)pages.push(...searchFontCatalog(fontCatalog,{query,category:fontCategory,trait:fontTraitEnabled?'outline':'all',offset,limit:Math.min(60,fontCatalogLimit-offset)}).items);
@@ -1523,7 +1483,7 @@ function filterFonts(preserveMobilePage=false){
       const name=document.createElement('strong'),hint=document.createElement('small');name.textContent=entry.family;hint.textContent=entry.file.bytes>5000000?'Über 5 MB · derzeit nicht unterstützt':'Im Schild ausprobieren';button.append(name,hint);button.disabled=entry.file.bytes>5000000;addFontQuote(button,{id:catalogFontAssetId(entry),name:entry.family,entry});button.addEventListener('click',()=>selectCatalogFont(entry));
       const license=document.createElement('a');license.href=entry.license.url;license.target='_blank';license.rel='noopener noreferrer';license.textContent=entry.license.spdx;license.setAttribute('aria-label',`Lizenz für ${entry.family}`);card.append(button,license);grid.append(card);
     }visible=pages.length;total=page.total;
-    $('.font-preview-help').textContent=fontTraitEnabled?'Konturschriften. Nach Auswahl erscheint dein Text in der Neon-Vorschau; zwei fertigbare Lichtlinien sind nicht garantiert.':'Schriftnamen zur Orientierung. Nach Auswahl erscheint Ihr Text in der tatsächlichen Schrift auf dem Schild.';
+    $('.font-preview-help').textContent=fontTraitEnabled?'Konturschriften. Nach Auswahl erscheint dein Text in der Neon-Vorschau; zwei fertigbare Lichtlinien sind nicht garantiert.':'Schriftnamen zur Orientierung. Nach Auswahl erscheint dein Text in der tatsächlichen Schrift auf dem Schild.';
   }
   updateFontFilterState(query);
   $('#font-count').textContent=fontLibrary==='free'&&!fontCatalog?'Katalog wird geladen …':visible===total?`${total} ${total===1?'Schrift':'Schriften'}`:`${visible} von ${total} Schriften`;
@@ -1562,8 +1522,8 @@ $('#font-upload').addEventListener('change',async event=>{
   const selectionRev=++fontSelectionRevision;
   const status=$('#upload-state');status.hidden=false;
   try{
-    if(!/\.(ttf|otf|woff2?)$/i.test(file.name)||file.size>5_000_000||file.size<100)throw new Error('Bitte wählen Sie eine gültige TTF-, OTF- oder WOFF-Datei bis 5 MB.');
-    status.textContent='Schrift wird auf Ihrem Gerät geprüft …';
+    if(!/\.(ttf|otf|woff2?)$/i.test(file.name)||file.size>5_000_000||file.size<100)throw new Error('Bitte wähle eine gültige TTF-, OTF- oder WOFF-Datei bis 5 MB.');
+    status.textContent='Schrift wird auf deinem Gerät geprüft …';
     const bytes=await file.arrayBuffer();
     const magic=new DataView(bytes).getUint32(0,false);
     if(magic!==0x00010000&&magic!==0x4f54544f&&magic!==0x74727565&&magic!==0x774f4646&&magic!==0x774f4632)throw new Error('Die Datei ist keine unterstützte TTF-, OTF- oder WOFF-Schrift.');
@@ -1660,7 +1620,7 @@ function paintRoom(){
   $('#scene-note').textContent='';
   $('#scene-note').title=state.scene==='technical'?'Die Maßangaben gelten für die gesamten Außenmaße des Schilds.':`Angenommene Bildbreite auf Schildhöhe: ${cm(previewSpanMm(room))} cm. Keine vermessene Raumszene.`;
   for(const button of document.querySelectorAll('[data-room]')){button.setAttribute('aria-pressed',button.dataset.room===room.id);button.hidden=!sceneAvailable(ROOMS.find(item=>item.id===button.dataset.room));}
-  if(room.id==='custom')$('#scene-note').title=room.calibration?'Eigenes Foto mit Ihrem Referenzmaß':'Eigenes Foto ohne Referenzmaß';
+  if(room.id==='custom')$('#scene-note').title=room.calibration?'Eigenes Foto mit deinem Referenzmaß':'Eigenes Foto ohne Referenzmaß';
   $('#scene-strip').classList.toggle('is-tabletop',state.mount==='table-stand');
   const group=$('#preview-room');
   if(state.scene==='technical'){group.replaceChildren();return;}
@@ -1669,7 +1629,7 @@ function paintRoom(){
   const crop=svg('svg',{x:0,y:0,width:1000,height:500,viewBox:room.image?'0 0 1000 500':`${room.col*1000} ${room.row*500} 1000 500`,preserveAspectRatio:'xMidYMid meet',overflow:'hidden'});
   const photo=svg('image',{id:'scene-photo',href:room.image?new URL(room.image,import.meta.url).href:SCENE_IMAGE,x:room.photoWidth?(1000-room.photoWidth)/2:0,y:room.photoHeight?(500-room.photoHeight)/2:0,width:room.photoWidth||(room.image?1000:2000),height:room.photoHeight||(room.image?500:2000)});
   if(room.outdoor)photo.setAttribute('preserveAspectRatio','xMidYMid slice');
-  photo.addEventListener('error',()=>{$('#scene-note').textContent='Szenenbild nicht verfügbar. Ihr Entwurf bleibt sichtbar.';});
+  photo.addEventListener('error',()=>{$('#scene-note').textContent='Szenenbild nicht verfügbar. Dein Entwurf bleibt sichtbar.';});
   crop.append(photo);group.append(crop);
   group.append(svg('rect',{width:1000,height:500,fill:'#05070a',opacity:room.id==='reception'?.08:.04}));
 }
@@ -1699,10 +1659,7 @@ $('#summary-price-details').addEventListener('click',()=>openOrderReview({overvi
 const largeRoom=$('#large-room-dialog'),livePreview=$('.preview-column');
 // Mobile uses the same live controls in focused sections, without a second design state.
 let activeStep=0;
-const mobileLook=document.createElement('div');mobileLook.className='studio-mobile-look';
-mobileLook.setAttribute('role','group');mobileLook.setAttribute('aria-label','Gestaltung auswählen');
-mobileLook.innerHTML='<button type="button" data-mobile-look="text" aria-pressed="true">Text</button><button type="button" data-mobile-look="font" aria-pressed="false">Schrift</button><button type="button" data-mobile-look="color" aria-pressed="false">Farbe</button><button type="button" data-mobile-look="size" aria-pressed="false" aria-controls="panel-3">Größe</button><button type="button" data-mobile-look="backing" aria-pressed="false" aria-controls="panel-4">Rückplatte</button>';
-$('.editor-panels').before(mobileLook);
+const mobileLook=$('.studio-mobile-look');
 function selectMobileLook(value,navigate=true){
   const previousScroll=window.scrollY;
   const step=value==='size'?3:value==='backing'?4:0;
@@ -1784,11 +1741,15 @@ mobileChoiceMedia.addEventListener('change',()=>{if(largeRoom.open&&!mobileChoic
 const stepNames=['Text','Schriftart','Leuchtfarbe','Größe','Rückplatte','Montage'];
 function visibleSteps(){return state.mode==='logo'?[0,2,3,4,5]:[0,1,2,3,4,5];}
 function adjacentStep(delta){const steps=visibleSteps();return steps[Math.max(0,Math.min(steps.length-1,steps.indexOf(activeStep)+delta))];}
+function loadBackingPreviews(){
+  for(const image of document.querySelectorAll('#panel-4 img[data-src]')){image.src=image.dataset.src;delete image.dataset.src;}
+}
 function setStep(index,focus=false,{scroll=true}={}){
   if(index===1){if(mobileChoiceMedia.matches)selectMobileLook('font',false);else openFontOverview();index=0;}
   if(index===2){if(mobileChoiceMedia.matches)selectMobileLook('color',false);else openColorGallery();index=0;}
   if(state.mode==='logo'&&index===1)index=0;
   activeStep=index;
+  if(index===4)loadBackingPreviews();
   const group=index<3?0:index<5?1:2,previousGroup=Number(document.body.dataset.activeGroup||0);
   document.body.dataset.activeGroup=group;
   const journeyGroup=mobileChoiceMedia.matches&&group===1?0:group;
@@ -1891,7 +1852,7 @@ function syncDesignMode(){
   mobileLook.querySelector('[data-mobile-look=text]').textContent=isLogo?'Logo':'Text';mobileLook.querySelector('[data-mobile-look=font]').hidden=isLogo;
   if(isLogo&&document.body.dataset.mobileLook==='font')selectMobileLook('text');
   studioFonts.hidden=isLogo;$('#text-count').hidden=isLogo;$('#look-font').hidden=isLogo;$('#text-settings').hidden=isLogo;$('#logo-settings').hidden=!isLogo;$('#tab-1').hidden=isLogo;document.querySelector('[data-canvas-step="1"]').hidden=isLogo;
-  $('#tab-0 .choice-label').textContent=isLogo?'Logo':'Text';$('#tab-0').setAttribute('aria-label',isLogo?'Logo ändern':'Ihr Text ändern');
+  $('#tab-0 .choice-label').textContent=isLogo?'Logo':'Text';$('#tab-0').setAttribute('aria-label',isLogo?'Logo ändern':'Dein Text ändern');
   $('#summary-font').previousElementSibling.textContent=isLogo?'Motiv':'Schriftart';
   $('#summary-size').previousElementSibling.textContent='Gesamte Außenmaße';
   $('#tab-3 .choice-label').textContent='Größe';
@@ -1917,7 +1878,7 @@ $('#logo-download-original').addEventListener('click',async()=>{try{const asset=
 // server; neither these browser values nor its geometry authorize a paid order.
 let orderSnapshot=null,orderDesign=null,orderReviewRevision=0;
 function captureOrderSnapshot(){
-  const result=state.result;if(!result||!state.sizeValid)throw new Error('Bitte erstellen Sie zuerst einen gültigen Entwurf.');
+  const result=state.result;if(!result||!state.sizeValid)throw new Error('Bitte erstelle zuerst einen gültigen Entwurf.');
   const words=state.words.map(word=>({...word,color:{...wordColor(word)}}));
   const characterSummary=new Map();if(state.mode!=='logo')for(const glyph of result.layout.glyphs){const target=state.characters.find(c=>c.key===glyph.colorKey);if(!target)continue;const color=glyphColor(glyph),fallback=glyph.charMapping==='line-fallback',word=state.words.find(w=>w.lineIndex===glyph.lineIndex&&w.wordIndex===glyph.wordIndex);characterSummary.set(glyph.colorKey+':'+(fallback?glyph.wordIndex:'')+':'+color.id,{...target,text:fallback?(word?.text||target.text):target.text,color:{...color}});}
   return structuredClone({
@@ -2000,19 +1961,19 @@ function orderColorDisplay(snapshot){
 async function openOrderReview({overview=false}={}){
   const token=++orderReviewRevision,dialog=$('#order-review');orderSnapshot=null;orderDesign=null;
   dialog.classList.toggle('selection-overview',overview);dialog.scrollTop=0;
-  $('#order-title').textContent=overview?'Deine Auswahl':'Alles so, wie Sie es möchten?';
-  $('#order-review .dialog-intro').textContent=overview?'Dein Schild auf einen Blick. Jede Auswahl lässt sich ändern.':'Prüfen Sie Schriftzug, Maße und Ausstattung Ihres Entwurfs.';
+  $('#order-title').textContent=overview?'Deine Auswahl':'Alles so, wie du es möchtest?';
+  $('#order-review .dialog-intro').textContent=overview?'Dein Schild auf einen Blick. Jede Auswahl lässt sich ändern.':'Prüfe Schriftzug, Maße und Ausstattung deines Entwurfs.';
 
-  $('#order-content').hidden=true;$('#order-status').textContent='Ihr Entwurf wird geprüft …';
+  $('#order-content').hidden=true;$('#order-status').textContent='Dein Entwurf wird geprüft …';
   if(!dialog.open)dialog.showModal();
   clearTimeout(timer);await update();
   if(token!==orderReviewRevision||!dialog.open)return;
-  if(!state.result){$('#order-status').textContent=$('#preview-state').textContent||'Bitte prüfen Sie Ihren Entwurf.';return;}
+  if(!state.result){$('#order-status').textContent=$('#preview-state').textContent||'Bitte prüfe deinen Entwurf.';return;}
   try{
     const snapshot=captureOrderSnapshot();orderSnapshot=snapshot;orderDesign=structuredClone(captureDesign());$('#review-add-to-cart').disabled=!cartReady||!snapshot.mount.valid||snapshot.price.status!=='calculated';$('#review-add-to-cart').textContent=editingCartId?'Änderungen übernehmen':'In den Warenkorb';
-    $('#order-preview').replaceChildren(orderPreview());$('.order-preview-caption').textContent=(state.light?'Eingeschaltet. ':'Ausgeschaltet. ')+'Ihr Schild ohne Raumfoto. Farbe und Leuchtwirkung können am Bildschirm abweichen.';
+    $('#order-preview').replaceChildren(orderPreview());$('.order-preview-caption').textContent=(state.light?'Eingeschaltet. ':'Ausgeschaltet. ')+'Dein Schild ohne Raumfoto. Farbe und Leuchtwirkung können am Bildschirm abweichen.';
     $('#order-specifications').replaceChildren(
-      orderRow(snapshot.mode==='logo'?(overview?'Dein Logo':'Ihr Logo'):(overview?'Dein Text':'Ihr Text'),snapshot.text,0),orderRow(snapshot.mode==='logo'?'Motiv':'Schriftart',snapshot.font.name+(snapshot.font.source?' · freier Schriftkatalog':snapshot.font.uploaded?' · eigene Schrift':''),snapshot.mode==='logo'?0:1),
+      orderRow(snapshot.mode==='logo'?(overview?'Dein Logo':'Dein Logo'):(overview?'Dein Text':'Dein Text'),snapshot.text,0),orderRow(snapshot.mode==='logo'?'Motiv':'Schriftart',snapshot.font.name+(snapshot.font.source?' · freier Schriftkatalog':snapshot.font.uploaded?' · eigene Schrift':''),snapshot.mode==='logo'?0:1),
       orderRow('Leuchtfarben',orderColorDisplay(snapshot),2),orderRow('Einsatzbereich',snapshot.outdoor?'Außen':'Innen',0),orderRow('Gesamte Außenmaße (B × H)',dimensions(snapshot.plate),3),
       orderRow(overview?'Rückplatte':'Träger',snapshot.plate.name+' · '+finishName(snapshot.plate.finish),4),
       orderRow('Montage',snapshot.mount.name,5)
@@ -2027,7 +1988,7 @@ async function openOrderReview({overview=false}={}){
     const accessories=Object.entries(counts).filter(([,n])=>n>0).map(([key,n])=>`${n} × ${accessoryNames[key]}${['wall-mount','premium-white','dimmer'].includes(key)?' (1 inklusive)':''}`);
     accessories.push('2 m Anschlusskabel inklusive');
     $('#order-specifications').append(orderRow('Zubehör pro Schild',accessories.join('\n'),5));
-    $('#order-production-note').textContent=$('#production-note').textContent+(snapshot.mount.valid?'':' Die ausgewählte Montage passt nicht zur aktuellen Größe. Bitte ändern Sie die Montage.');
+    $('#order-production-note').textContent=$('#production-note').textContent+(snapshot.mount.valid?'':' Die ausgewählte Montage passt nicht zur aktuellen Größe. Bitte ändere die Montage.');
     $('#review-quantity').value=cartItems.find(item=>item.id===editingCartId)?.quantity||1;
     renderPriceValue($('#order-review .order-purchase strong'),snapshot.price,Number($('#review-quantity').value));
     $('#order-price-detail').textContent=priceDetail(snapshot.price);
@@ -2038,7 +1999,7 @@ $('#open-order-review').addEventListener('click',openOrderReview);
 let arController=null,arRevision=0;
 async function openArPreview(){
   const token=++arRevision,dialog=$('#ar-dialog');arController?.dispose();arController=null;
-  $('#ar-host').replaceChildren();$('#ar-status').textContent='Ihr Schild wird in Originalmaßen für 3D und AR vorbereitet …';$('#ar-start').disabled=true;$('#ar-size').textContent='';
+  $('#ar-host').replaceChildren();$('#ar-status').textContent='Dein Schild wird in Originalmaßen für 3D und AR vorbereitet …';$('#ar-start').disabled=true;$('#ar-size').textContent='';
   dialog.showModal();dialog.scrollTop=0;clearTimeout(timer);await update();
   if(token!==arRevision||!dialog.open)return;
   try{
@@ -2053,7 +2014,7 @@ async function openArPreview(){
     controller.element.addEventListener('ar-status',event=>{
       if(token!==arRevision)return;
       const status=event.detail?.status;
-      if(status==='failed')$('#ar-status').textContent='AR konnte nicht gestartet werden. Ihr Entwurf bleibt erhalten.';
+      if(status==='failed')$('#ar-status').textContent='AR konnte nicht gestartet werden. Dein Entwurf bleibt erhalten.';
       if(status==='object-placed')$('#ar-status').textContent='Schild platziert. Die konfigurierte Größe bleibt fest eingestellt.';
       if(status==='not-presenting')$('#ar-status').textContent=controller.availabilityMessage;
     });
@@ -2079,7 +2040,7 @@ async function openArShare(){
  if(shareDesignKey===JSON.stringify(captureDesign())&&shareExpiresAt>Date.now()&&!$('#ar-share-qr').hidden)return;
  sharePending=true;shareExpiresAt=0;$('#ar-share-retry').hidden=true;
  const token=++shareRevision;shareAbort?.abort();shareAbort=new AbortController();shareDesignKey=null;
- $('#ar-share-status').textContent='Ihr aktueller Entwurf wird vorbereitet …';$('#ar-share-qr').hidden=true;$('#ar-share-placeholder').hidden=false;$('#ar-share-link').hidden=true;
+ $('#ar-share-status').textContent='Dein aktueller Entwurf wird vorbereitet …';$('#ar-share-qr').hidden=true;$('#ar-share-placeholder').hidden=false;$('#ar-share-link').hidden=true;
  try{
   clearTimeout(timer);await update();if(token!==shareRevision)return;
   const snapshot=captureOrderSnapshot();
@@ -2092,7 +2053,7 @@ async function openArShare(){
   shareExpiresAt=Date.parse(result.expiresAt);
   $('#ar-share-link').href=result.shareUrl;$('#ar-share-link').hidden=false;$('#ar-share-qr').hidden=false;$('#ar-share-placeholder').hidden=true;
   $('#ar-share-status').textContent='Bereit. Gültig bis '+new Intl.DateTimeFormat('de-DE',{dateStyle:'short',timeStyle:'short'}).format(new Date(result.expiresAt))+(snapshot.lightMode==='rgb'?' · RGB wird als statische Rotphase gezeigt.':'');
- }catch(error){if(token===shareRevision){shareDesignKey=null;$('#ar-share-status').textContent=error.message||'Die Modellfreigabe konnte nicht erstellt werden. Bitte versuchen Sie es erneut.';$('#ar-share-retry').hidden=false;}}
+ }catch(error){if(token===shareRevision){shareDesignKey=null;$('#ar-share-status').textContent=error.message||'Die Modellfreigabe konnte nicht erstellt werden. Bitte versuche es erneut.';$('#ar-share-retry').hidden=false;}}
  finally{if(token===shareRevision){sharePending=false;}}
 }
 $('#ar-start').addEventListener('click',()=>{
@@ -2217,7 +2178,7 @@ function refreshDeliverySummary(){
   const previousDate=selectedDelivery?.dateIso;
   if(selectedDelivery)selectedDelivery=rollingCheckoutDelivery(selectedDelivery,{signNet:cartTotals?.signNet,designs});
   if(previousDate&&previousDate!==selectedDelivery?.dateIso)persistCart();
-  const summary=selectedDelivery?`${new Intl.DateTimeFormat('de-DE',{dateStyle:'full',timeZone:'UTC'}).format(new Date(selectedDelivery.dateIso+'T12:00:00Z'))} · ${deliveryTierLabel(selectedDelivery.businessDays)} · für alle Schilder.`:previousDate?'Ihr bisheriger Termin ist für diesen Warenkorb nicht mehr verfügbar. Bitte wählen Sie erneut.':'Ein gemeinsamer Liefertermin für Ihren Warenkorb.';
+  const summary=selectedDelivery?`${new Intl.DateTimeFormat('de-DE',{dateStyle:'full',timeZone:'UTC'}).format(new Date(selectedDelivery.dateIso+'T12:00:00Z'))} · ${deliveryTierLabel(selectedDelivery.businessDays)} · für alle Schilder.`:previousDate?'Dein bisheriger Termin ist für diesen Warenkorb nicht mehr verfügbar. Bitte wähle erneut.':'Ein gemeinsamer Liefertermin für deinen Warenkorb.';
   $('#cart-delivery-summary').textContent=summary+(restricted?' '+DELIVERY_RESTRICTION_NOTE:'');
   if(!cartPricesValid||!cartTotals){
     $('#cart-tax-breakdown').hidden=true;
@@ -2256,7 +2217,7 @@ $('#delivery-dialog').addEventListener('close',()=>{showCart();$('#cart-delivery
 
 async function addReviewedDesign(){
   if(!orderSnapshot?.mount.valid||!orderDesign||!cartReady||orderSnapshot?.price.status!=='calculated'||!Number.isFinite(orderSnapshot.price.net))return;
-  if(!editingCartId&&cartItems.length>=20){$('#order-status').textContent='Der Warenkorb enthält bereits 20 Entwürfe. Bitte entfernen Sie zuerst einen Entwurf.';return;}
+  if(!editingCartId&&cartItems.length>=20){$('#order-status').textContent='Der Warenkorb enthält bereits 20 Entwürfe. Bitte entferne zuerst einen Entwurf.';return;}
   const quantity=Number($('#review-quantity').value);if(!Number.isInteger(quantity)||quantity<1||quantity>99){$('#order-status').textContent='Bitte eine Stückzahl von 1 bis 99 eingeben.';$('#review-quantity').focus();return;}
   const old=cartItems.find(item=>item.id===editingCartId);
   const item={id:old?.id||crypto.randomUUID(),quantity,design:structuredClone(orderDesign),snapshot:structuredClone(orderSnapshot),previewSvg:new XMLSerializer().serializeToString($('#order-preview svg'))};
@@ -2290,7 +2251,7 @@ $('#cart-items').addEventListener('click',async event=>{
   $('#cart-storage-status').textContent='Entwurf wird geladen …';
   try{
     await applyDesign(item.design);
-    if(!state.result)throw new Error('Der gespeicherte Entwurf konnte nicht neu gezeichnet werden. Bitte prüfen Sie Schrift und Größe.');
+    if(!state.result)throw new Error('Der gespeicherte Entwurf konnte nicht neu gezeichnet werden. Bitte prüfe Schrift und Größe.');
     editingCartId=item.id;draftApplying=false;commitHistory();persistDesign(captureDesign());await persistCart();
     $('#cart-dialog').close();setStep(0,true);refreshCartButtons();
   }catch(error){$('#cart-storage-status').textContent=error.message;}
@@ -2337,7 +2298,7 @@ async function goToCheckout(){
   const status=$('#checkout-preparation-status');status.textContent='Dein Warenkorb wird an die Kasse übergeben …';
   try{
     if(!await refreshCartPrice())return;
-    if(!selectedDelivery){status.textContent='Bitte wählen Sie zuerst einen aktuellen Liefertermin.';return;}
+    if(!selectedDelivery){status.textContent='Bitte wähle zuerst einen aktuellen Liefertermin.';return;}
     if(!reviewedDelivery||reviewedDelivery.businessDays!==selectedDelivery.businessDays||reviewedDelivery.feeGross!==selectedDelivery.feeGross){status.textContent='Die Lieferoption oder ihr Preis wurde aktualisiert. Bitte prüfe die Übersicht erneut.';return;}
     const expectedTotalCents=Math.round((cartTotals.subtotalGross+selectedDelivery.feeGross)*100);
     const receipt=await checkoutClient.prepare(cartItems,selectedDelivery,expectedTotalCents);
@@ -2345,7 +2306,7 @@ async function goToCheckout(){
       status.textContent='Dein Warenkorb ist bereit. Weiter zur sicheren Bezahlung …';
       window.location.assign(receipt.checkoutUrl);
     }else status.textContent='Die Kasse ist für diese Konfiguration noch nicht verfügbar. Dein Warenkorb bleibt gespeichert.';
-  }catch(error){status.textContent=error.message||'Die Sicherung konnte nicht bestätigt werden. Ihr Warenkorb bleibt auf diesem Gerät erhalten.';}
+  }catch(error){status.textContent=error.message||'Die Sicherung konnte nicht bestätigt werden. Dein Warenkorb bleibt auf diesem Gerät erhalten.';}
   finally{
     cartSyncing=false;$('#cart-items').inert=false;
     $('#cart-dialog').querySelectorAll('[data-close]').forEach(button=>button.disabled=false);
@@ -2359,14 +2320,14 @@ async function restoreCart(){
   try{
     const saved=await readAsset(CART_STORAGE_KEY);
     if(saved){
-      if(saved.version!==1||!Array.isArray(saved.items)||saved.items.length>20||saved.items.some(item=>!item||typeof item.id!=='string'||!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>99||typeof item.snapshot?.text!=='string'||typeof item.design?.text!=='string'||!Array.isArray(item.snapshot?.words)||typeof item.previewSvg!=='string'||item.previewSvg.length>4000000||!['widthMm','heightMm'].every(k=>Number.isFinite(item.snapshot?.sign?.[k])&&Number.isFinite(item.snapshot?.plate?.[k]))))throw new Error('Der gespeicherte Warenkorb konnte nicht gelesen werden. Bitte lassen Sie diesen Tab geöffnet.');
+      if(saved.version!==1||!Array.isArray(saved.items)||saved.items.length>20||saved.items.some(item=>!item||typeof item.id!=='string'||!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>99||typeof item.snapshot?.text!=='string'||typeof item.design?.text!=='string'||!Array.isArray(item.snapshot?.words)||typeof item.previewSvg!=='string'||item.previewSvg.length>4000000||!['widthMm','heightMm'].every(k=>Number.isFinite(item.snapshot?.sign?.[k])&&Number.isFinite(item.snapshot?.plate?.[k]))))throw new Error('Der gespeicherte Warenkorb konnte nicht gelesen werden. Bitte lass diesen Tab geöffnet.');
       removedCable=saved.items.some(item=>hasRetiredCable(item.design)||hasRetiredCable(item.snapshot));
       cartItems=saved.items.map(item=>({...item,design:{...item.design,...priceOptions(item.design)},snapshot:{...item.snapshot,...priceOptions(item.snapshot)}}));editingCartId=cartItems.some(item=>item.id===saved.editingId)?saved.editingId:null;
       // Older carts only stored a calendar date; its original tier cannot be
       // recovered safely. Keep the designs and require a fresh delivery choice.
       if(cartItems.length){try{selectedDelivery=rollingCheckoutDelivery({businessDays:saved.deliveryBusinessDays},{designs:cartItems.map(item=>item.design)});}catch{selectedDelivery=null;}}
     }
-    cartReady=true;renderCart();$('#cart-storage-status').textContent=removedCable?retiredCableMessage:cartItems.length?'Warenkorb auf diesem Gerät wiederhergestellt. Noch keine Bestellung.':'Ihr Warenkorb wird auf diesem Gerät gespeichert.';
+    cartReady=true;renderCart();$('#cart-storage-status').textContent=removedCable?retiredCableMessage:cartItems.length?'Warenkorb auf diesem Gerät wiederhergestellt. Noch keine Bestellung.':'Dein Warenkorb wird auf diesem Gerät gespeichert.';
   }catch(error){cartReady=false;$('#cart-storage-status').textContent=error.message||'Der lokale Warenkorb ist derzeit nicht verfügbar.';refreshCartButtons();}
 }
 restoreCart();
@@ -2446,7 +2407,7 @@ $('#background-upload').addEventListener('change',async event=>{
   const rev=++photoRevision,status=$('#photo-status');let url;
   status.hidden=false;status.textContent='Foto wird geladen …';
   try{
-    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10_000_000)throw new Error('Bitte wählen Sie JPG, PNG oder WebP bis 10 MB.');
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10_000_000)throw new Error('Bitte wähle JPG, PNG oder WebP bis 10 MB.');
     url=URL.createObjectURL(file);const img=new Image();img.src=url;await img.decode();
     if(rev!==photoRevision){URL.revokeObjectURL(url);return;}
     if(!img.naturalWidth||!img.naturalHeight)throw new Error('Das Foto konnte nicht gelesen werden.');
@@ -2459,7 +2420,7 @@ $('#background-upload').addEventListener('change',async event=>{
     if(old)Object.assign(old,custom);else ROOMS.push(custom);
     positions.delete('custom');cameras.delete('custom');$('#preview-room').replaceChildren();
     state.room='custom';state.scene='wall';$('#photo-settings').hidden=false;
-    status.textContent='Foto geladen. Legen Sie für dieses Bild ein neues Referenzmaß fest oder passen Sie die geschätzte Bildbreite an.';
+    status.textContent='Foto geladen. Lege für dieses Bild ein neues Referenzmaß fest oder passe die geschätzte Bildbreite an.';
     renderSceneButtons();paint();
   }catch(error){if(url)URL.revokeObjectURL(url);status.textContent=error.message;}
   event.target.value='';
@@ -2467,7 +2428,7 @@ $('#background-upload').addEventListener('change',async event=>{
 $('#photo-width').addEventListener('input',event=>{
   const value=Number(event.target.value),room=ROOMS.find(room=>room.id==='custom');
   if(!room)return;
-  if(!event.target.value||value<50||value>5000){$('#photo-status').hidden=false;$('#photo-status').textContent='Bitte geben Sie eine Bildbreite zwischen 50 und 5.000 cm ein.';return;}
+  if(!event.target.value||value<50||value>5000){$('#photo-status').hidden=false;$('#photo-status').textContent='Bitte gib eine Bildbreite zwischen 50 und 5.000 cm ein.';return;}
   room.spanMm=value*10;room.calibration=null;$('#photo-status').textContent='Bildmaßstab aktualisiert.';paint();
 });
 $('#apply-background').addEventListener('click',()=>{state.room='custom';state.scene='wall';paint();$('#scene-dialog').close();});

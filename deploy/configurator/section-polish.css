@@ -97,9 +97,9 @@ body.nt-configurator :is(.nt-content-cta, #next-step, #page-add-to-cart, #add-to
 }
 body.nt-configurator :is(.nt-content-cta, #next-step, #page-add-to-cart, #add-to-cart, #review-add-to-cart) svg { color: inherit; stroke: currentColor; }
 body.nt-configurator .nt-config-content .nt-product-v2-actions .nt-content-text-link { min-height: 48px; font-size: 16px; }
-#config-mounting-video { pointer-events: none; }
+
 #config-product .nt-product-v2-facts svg { color: var(--pink); stroke: currentColor; }
-#config-mounting-video::-webkit-media-controls { display: none !important; }
+
 body.nt-configurator .studio-preview-footer { gap: 12px; flex-wrap: wrap; }
 body.nt-configurator #studio-mounting-download {
   display: inline-flex; align-items: center; justify-content: center; gap: 9px;
@@ -144,4 +144,27 @@ body.nt-configurator .brand-footer-grid h2 { font-size: 14px; }
   body.nt-configurator #studio-mounting-download {
     order: 6; width: 100%; margin: 4px 0 10px; min-height: 48px;
   }
+}
+
+/* Ads landing-page load and accessibility corrections, 08.10.2026. */
+body.nt-configurator .nt-product-v2-facts>div{display:block;position:relative;padding-left:39px}
+body.nt-configurator .nt-product-v2-facts dt svg{position:absolute;left:0;top:0}
+body.lichtbuehne.lichtbuehne-v4.designstudio #main #text-help,
+.nt-review-wall__rating>span{color:#57504c}
+.nt-product-v2-photo{position:relative}
+.mounting-video-toggle{position:absolute;right:14px;bottom:48px;display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:10px 14px;border:1px solid #181615;border-radius:999px;background:#fff;color:#181615;font:600 14px/1.3 Inter,sans-serif;cursor:pointer}
+.mounting-video-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}
+.mounting-video-toggle:focus-visible{outline:3px solid #a51261;outline-offset:3px}
+.studio-font-grid{min-height:94px}
+@media(max-width:380px){body.nt-configurator .nt-product-v2-facts>div{padding-left:0}body.nt-configurator .nt-product-v2-facts dt svg{position:static;display:block;margin-bottom:8px}}
+
+@media(max-width:760px){
+ /* Responsive controls move into their popover before use; keep their initial slots out of flow. */
+ body.designstudio #main .preview-column>.studio-preview-footer,
+ body.designstudio #main .studio-toolbar>.scene-tabs,
+ body.designstudio #main .studio-toolbar>.studio-scene-actions{display:none!important}
+}
+@media(max-width:760px){
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>.studio-context,
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>#usage-note{display:none!important}
 }

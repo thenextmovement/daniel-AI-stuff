@@ -1,4 +1,4 @@
-import {minimumDeliveryBusinessDays,deliveryDateIsoForBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261007-factor26';
+import {minimumDeliveryBusinessDays,deliveryDateIsoForBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261008-ads1';
 let wishMinimumDays=2,refreshWishCalendar;
 export function refreshWishDelivery(design){
   const minimum=minimumDeliveryBusinessDays([design]);
@@ -99,14 +99,37 @@ document.querySelectorAll('.nt-material-chapters details').forEach(chapter => {
   });
 });
 
-// Silent mounting demonstration: no player controls; pause only while off screen.
+// Load only on demand. A deliberate pause survives scrolling and tab changes.
 const mountingVideo=document.querySelector('#config-mounting-video');
-if(mountingVideo){
+const mountingToggle=document.querySelector('#mounting-video-toggle');
+if(mountingVideo&&mountingToggle){
+  const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
+  let visible=false,manualPause=false,manualStart=false,loaded=false,playRevision=0;
   mountingVideo.muted=true;
-  const playMounting=()=>{if(!document.hidden)mountingVideo.play().catch(()=>{});};
-  const observer=new IntersectionObserver(entries=>{for(const entry of entries){if(entry.isIntersecting)playMounting();else mountingVideo.pause();}},{threshold:.1});
-  observer.observe(mountingVideo);
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)mountingVideo.pause();else {const box=mountingVideo.getBoundingClientRect();if(box.bottom>0&&box.top<innerHeight)playMounting();}});
+  const updateControl=()=>{
+    const paused=mountingVideo.paused;
+    mountingToggle.querySelector('span').textContent=paused?'Montagevideo abspielen':'Montagevideo pausieren';
+    mountingToggle.querySelector('path').setAttribute('d',paused?'m8 5 11 7-11 7Z':'M8 5v14M16 5v14');
+  };
+  const stop=()=>{playRevision++;mountingVideo.pause();updateControl();};
+  const play=()=>{
+    if(document.hidden||!visible||manualPause||(reducedMotion.matches&&!manualStart))return;
+    if(!loaded){const source=mountingVideo.querySelector('source');source.src=source.dataset.src;source.removeAttribute('data-src');mountingVideo.load();loaded=true;}
+    const revision=++playRevision;
+    mountingVideo.play().then(()=>{if(revision!==playRevision&&(manualPause||!visible||document.hidden))mountingVideo.pause();updateControl();}).catch(updateControl);
+  };
+  mountingToggle.addEventListener('click',()=>{
+    if(!mountingVideo.paused){manualPause=true;stop();}
+    else{manualPause=false;manualStart=true;visible=true;play();}
+  });
+  mountingVideo.addEventListener('play',updateControl);
+  mountingVideo.addEventListener('pause',updateControl);
+  if('IntersectionObserver' in window){
+    const observer=new IntersectionObserver(entries=>{for(const entry of entries){visible=entry.isIntersecting&&entry.intersectionRatio>=.1;if(visible)play();else stop();}},{threshold:[0,.1]});
+    observer.observe(mountingVideo);
+  }
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else play();});
+  reducedMotion.addEventListener('change',()=>{manualStart=false;if(reducedMotion.matches)stop();else play();});
 }
 
 // Reveal only illustrative media/process cards. Copy remains readable without JavaScript.
