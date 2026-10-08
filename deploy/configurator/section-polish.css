@@ -145,3 +145,16 @@ body.nt-configurator .brand-footer-grid h2 { font-size: 14px; }
     order: 6; width: 100%; margin: 4px 0 10px; min-height: 48px;
   }
 }
+
+/* Legible supporting copy in the existing lower-page sections. */
+body.nt-configurator #config-product .nt-product-v2-facts dd {font-size:16px;line-height:1.5}
+body.nt-configurator #config-delivery-info :is(.nt-express__urgent>p,.nt-express__review blockquote,.nt-express__date-result) {font-size:16px;line-height:1.5}
+body.nt-configurator #config-delivery-info .nt-express__author {font-size:12px;line-height:1.4}
+body.nt-configurator #config-delivery-info :is(.nt-express__review figcaption a,.nt-express__review-author strong,.nt-express__project-label) {font-size:14px;line-height:1.4}
+@media(max-width:760px){
+ #config-product .nt-product-v2-layout {grid-template-columns:minmax(0,1fr)}
+ #config-product .nt-product-v2-facts {grid-template-columns:repeat(2,minmax(0,1fr))}
+ #config-product .nt-product-v2-facts>div {display:block;min-width:0}
+ #config-product .nt-product-v2-facts svg {margin:0 0 8px}
+ #config-product .nt-product-v2-facts dd {hyphens:auto;overflow-wrap:break-word}
+}

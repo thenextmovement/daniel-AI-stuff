@@ -194,7 +194,7 @@ body.nt-configurator .nt-config-content .ar-feature{width:min(1440px,91.6%);max-
 .nt-config-content .nt-trust-grid small{font-size:14px;line-height:1.5;margin-top:6px}
 .nt-product-v2-layout{grid-template-columns:1.12fr 1fr;grid-template-areas:'video intro' 'video facts' 'video actions';gap:16px 5%;align-items:start}
 .nt-product-v2-copy{grid-area:intro}
-.nt-product-v2-photo{grid-area:video;align-self:center;margin:0}
+.nt-product-v2-photo{grid-area:video;align-self:start;margin:0}
 .nt-product-v2-photo video{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:contain;background:#e9e8e6;border-radius:10px}
 .nt-product-v2-facts{grid-area:facts;padding:16px 0 22px;margin:0}
 .nt-product-v2-actions{grid-area:actions;min-width:0}

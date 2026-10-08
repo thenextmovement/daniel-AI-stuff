@@ -76,10 +76,10 @@
 #config-customers h2{font-size:var(--nt-section-heading);font-family:Inter,sans-serif}
 #config-customers .nt-proof__inner{max-width:1600px}
 #config-customers .nt-proof__eyebrow{margin:0 0 14px}
-#config-customers .nt-proof__intro{margin:22px 0 0}
+#config-customers .nt-proof__intro{margin:22px 0 0;font-size:16px;line-height:1.55}
 #config-customers .nt-proof__load{background:var(--pink);color:#fff;min-height:48px;border-radius:999px;font-weight:600}
-#config-customers .nt-proof__caption small{font-size:11px}
-#config-customers .nt-proof__caption strong{font-size:14px}
+#config-customers .nt-proof__caption small{font-size:12px}
+#config-customers .nt-proof__caption strong{font-size:16px;line-height:1.35}
 @media(max-width:760px){
  #config-customers .nt-proof__eyebrow{margin-bottom:16px}
  #config-customers .nt-proof__intro{margin-top:14px}
