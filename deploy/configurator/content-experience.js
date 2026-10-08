@@ -294,3 +294,16 @@ if(videoRail){
   controls.forEach(button=>button.addEventListener('click',()=>videoRail.scrollBy({left:Number(button.dataset.videoStep)*videoRail.clientWidth*.85,behavior:motionPreference.matches?'instant':'smooth'})));
   videoRail.addEventListener('scroll',sync,{passive:true});new ResizeObserver(sync).observe(videoRail);sync();
 }
+// Native lazy-loading still fetches distant proof images on slow connections.
+// Wait until their section approaches the viewport, including cloned video cards.
+function initDeferredContentImages(){
+  const images=[...document.querySelectorAll('img[data-deferred-src]')];
+  const load=image=>{image.src=image.dataset.deferredSrc;delete image.dataset.deferredSrc;};
+  if(!('IntersectionObserver' in window)){images.forEach(load);return;}
+  const observer=new IntersectionObserver(entries=>{
+    for(const entry of entries)if(entry.isIntersecting){load(entry.target);observer.unobserve(entry.target);}
+  },{rootMargin:'300px 0px'});
+  images.forEach(image=>observer.observe(image));
+}
+if(document.readyState==='complete')initDeferredContentImages();
+else addEventListener('DOMContentLoaded',initDeferredContentImages,{once:true});

@@ -111,7 +111,8 @@
       event.preventDefault();
       activeButton = button;
       const { video, title: name } = button.dataset;
-      poster.src = button.querySelector('img').src;
+      const image = button.querySelector('img');
+      poster.src = image.dataset.deferredSrc || image.src;
       poster.alt = `Vorschaubild ${name}`;
       title.textContent = name;
       if(external.tagName!=='A'){const link=document.createElement('a');link.className=external.className;link.textContent=external.textContent;link.target='_blank';link.rel='noopener noreferrer';external.replaceWith(link);external=link;}
