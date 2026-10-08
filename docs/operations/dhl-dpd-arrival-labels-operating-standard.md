@@ -113,3 +113,29 @@ Implementierung, Prüfbelege und Release-/Rollback-Reihenfolge: [Acryl-Zusatzpak
 - Auditdaten werden beim Rollback bewahrt. Unsichere Käufe oder Druckjobs werden nicht automatisch storniert, wiederholt oder gelöscht.
 
 Der konkrete manuelle Batch vom 20.07.2026 ist in [dhl-dpd-arrival-labels-manual-batch-2026-07-20.md](dhl-dpd-arrival-labels-manual-batch-2026-07-20.md) festgehalten.
+
+## Aktualisierung vom 07.10.2026: frische Shopify-Prüfung und Tischgerät-Aufdruck
+
+Release-Kandidat, noch nicht produktiv: Vor `dispatching` für jeden Browserkauf und jeden A6-/A4-Druck wird die zugehörige Bestellung anhand ihrer unveränderlichen Shopify-ID direkt aus `galaxybuzzdk.myshopify.com` gelesen. Eine nicht vollständig belegte Antwort erlaubt keinen Dispatch. Menschliche Sonderhinweise und Abholung werden mit der bestehenden Shopify-Regel geprüft; erlaubte Angebotsmetadaten und interne UUIDs bleiben erlaubt. Ein Acryl-Tischgerät als Artikel allein ist kein Sperrgrund.
+
+Eine neue Sperre hält den reservierten Auftrag und den Fall atomar auf `manual_review`, protokolliert `shopify_dispatch_held` einmal pro Auftrag und verändert keine vorhandenen Kauf-/Druckbelege. Die private Leo-Kontrolle kann den neuen Zustand erkennen; dieser Patch sendet selbst keine E-Mail oder WhatsApp-Nachricht. Der bisherige Worker darf die belegte Shopify-Sperre quittieren und seinen lokalen Auftragsslot freigeben, ohne die Datenbanksperre zurückzusetzen. Nach bereits erfolgtem Dispatch bleiben Abschlussquittungen unverändert verarbeitbar. Der Zeitpunkt der Shopify-Abfrage und der externe Kauf/Druck sind keine gemeinsame Transaktion; spätere Änderungen benötigen weiterhin eine manuelle Behandlung.
+
+Beim Acryl-Zusatzpaket wird die bestehende zweite, gesondert zugeordnete DPD-Buchung beibehalten. Hauptlabel: sechs DHL-Endziffern. Zusatzlabel: dieselben sechs Ziffern gefolgt von `(Tischgerät)`, bei schmaler Druckfläche zweizeilig. Alte Labels werden nicht nachträglich erneut gebucht oder gedruckt.
+
+Geprüft: 132 betroffene Node-Tests; TypeScript ohne Fehler; isolierte PostgreSQL-16-Fixture mit realen Arrival-Migrationen und zwei vollständigen, simulierten Kauf-/CUPS-Ketten, deduplizierten Sperren und Schutz vor Rücksetzen nach Dispatch. Zwei synthetische, klar als TEST gekennzeichnete A6-PDFs über den bestehenden CUPS-Adapter auf Rahims Brother gesendet; CUPS-Abschlussbelege `Brother_QL_1110NWB-88` und `Brother_QL_1110NWB-89`, 07.10.2026 14:14 Europe/Berlin. Kein Carrier-Kauf, kein Kundenauftrag und keine zentrale Produktivqueue für diese Druckprobe geändert. Papierqualität nicht vor Ort bestätigt; kein Nachweis einer Installation auf Daniels Gerät oder einer automatischen Fallback-Umschaltung.
+
+Release-Reihenfolge: In-flight Browser-/Druckjobs prüfen; bei laufendem Dispatch das Schema-/App-Fenster verschieben. Zwei neue Migrationen und exakt freigegebenen App-Commit zusammen bereitstellen; der neue Zusatzaufdruck muss zur SQL-Artefaktprüfung passen. Danach App-Commit/Gesundheit und einen freigegebenen Canary prüfen. Vorhandene n8n-Trigger bleiben durch diesen Patch unverändert; die geplante zusätzliche Drei-Listen-/Deutschland-/Zollfreigabe ist kein Bestandteil dieses Releases.
+
+## Leo carrier release candidate — 2026-10-07
+
+The optional `ARRIVAL_LABEL_CARRIER_RELEASE_ENABLED=true` rollout switches new-case release from Sign SHIPPED membership to carrier evidence. Default is off; do not enable before carrier access, end-to-end shadow comparison, and worker readiness are verified. This is not a completed Leo rollout.
+
+The candidate resolves a ten-digit DHL Express waybill from title or Tracking number custom field and rejects disagreement. It enrolls new trackings from Sign Approved, Only Super Urgent and Prepare Shipping, with Create Invoice catch-up for cards moved between discovery runs. Existing tracking/card associations continue after moves. Multiple card matches and changed associations do not grant release.
+
+Release requires a recent successful check plus explicit physical Germany movement and German customs completion, using individual carrier event text/location rather than the broad shipment-normalized status. A later hold/customs/return event blocks release. The same carrier evidence is checked again before browser purchase and print dispatch; fresh Shopify checks and existing idempotent queues remain in place. No registration or queue write in non-persisting dry-run.
+
+The existing n8n 17TRACK time gate was separately changed to 09:00, 11:00, 13:00 and 15:00 Europe/Berlin. It still has its existing batch limits, registration scope and notifier. 191 historical registrations reported insufficient quota; no top-up performed. Reconcile current eligible shipments before buying quota or replaying old rejections. Webhook route exists, but current provider delivery and immediate label-trigger integration are not verified. API data and webhook authentication need live verification before rollout.
+
+Device priority/fallback, private Kai error-outbox integration, scoped Leo API access and Daniel/Fabienne device acceptance remain open. Existing local scheduler and printers are not deactivated or replaced by this candidate. Do not identify unit tests as a real carrier purchase/print test.
+
+Candidate follow-up: before carrier-gated purchase or print dispatch, re-read the live Quentin board and require the same unique card/tracking association and a known non-manual list. Changed/conflicting tracking, a duplicate card, archived/missing card, foreign board or unavailable list evidence blocks dispatch. This uses the existing Trello reader and remains behind the carrier-release flag. Two regression tests failed before the fix; all 41 carrier/dispatch tests and TypeScript passed afterward. No production activation.

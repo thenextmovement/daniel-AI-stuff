@@ -250,14 +250,19 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
       cardsUrl.searchParams.set("token", token);
       cardsUrl.searchParams.set("fields", "id,name,url,desc,idBoard,idList,closed,dateLastActivity");
       cardsUrl.searchParams.set("filter", "open");
+      cardsUrl.searchParams.set("customFieldItems", "true");
       const listsUrl = new URL(`https://api.trello.com/1/boards/${boardId}/lists`);
       listsUrl.searchParams.set("key", apiKey);
       listsUrl.searchParams.set("token", token);
       listsUrl.searchParams.set("fields", "id,name");
       listsUrl.searchParams.set("filter", "all");
-      const [cardsResponse, listsResponse] = await Promise.all([
+      const fieldsUrl = new URL(`https://api.trello.com/1/boards/${boardId}/customFields`);
+      fieldsUrl.searchParams.set("key", apiKey);
+      fieldsUrl.searchParams.set("token", token);
+      const [cardsResponse, listsResponse, fieldsResponse] = await Promise.all([
         fetchWithRetry(cardsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_cards" }),
         fetchWithRetry(listsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_lists" }),
+        fetchWithRetry(fieldsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_custom_fields" }),
       ]);
       const cards = await cardsResponse.json() as Array<{
         id?: string;
@@ -268,8 +273,13 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
         idList?: string;
         closed?: boolean;
         dateLastActivity?: string;
+        customFieldItems?: Array<{idCustomField:string;value?:{text?:string;number?:string}}>;
       }>;
       const lists = await listsResponse.json() as Array<{ id?: string; name?: string }>;
+      const fields = await fieldsResponse.json() as Array<{id:string;name:string}>;
+      const trackingFields = fields.filter(field => field.name.toLowerCase().replace(/[^a-z0-9]/g, "") === "trackingnumber");
+      if (trackingFields.length !== 1) throw new ArrivalIntegrationError("Tracking field missing or ambiguous", "tracking_field_ambiguous");
+      const trackingFieldId = trackingFields[0].id;
       const listNames = new Map(lists.filter((list) => list.id && list.name).map((list) => [list.id as string, list.name as string]));
       return cards
         .filter((card) => !card.closed && card.id && card.name && card.url)
@@ -282,6 +292,7 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
           listId: card.idList || null,
           listName: card.idList ? listNames.get(card.idList) || null : null,
           dateLastActivity: card.dateLastActivity || null,
+          trackingField: (card.customFieldItems || []).filter(item => item.idCustomField === trackingFieldId).map(item => item.value?.text ?? item.value?.number ?? "").join(" / ") || null,
         }));
     },
   };
@@ -401,6 +412,39 @@ export function createShopifyClient(): ArrivalDataClients["shopify"] {
       return [...new Map(mapped.map((order) => [order.id, order])).values()];
     },
   };
+}
+
+// Fetch by immutable ID, never by a bounded recent-order search or cached snapshot.
+export async function fetchShopifyDispatchEvidence(id: string): Promise<ShopifyOrderEvidence> {
+  if (!/^gid:\/\/shopify\/Order\/\d+$/.test(id)) throw new ArrivalIntegrationError("Shopify-Bestellkennung fehlt.", "shopify_order_invalid");
+  const config = shopifyConfig();
+  if (config.domain !== "galaxybuzzdk.myshopify.com") throw new ArrivalIntegrationError("NEONTRIP-Produktionsshop ist nicht konfiguriert.", "shopify_store_mismatch");
+  const response = await fetchWithRetry(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": config.token },
+    body: JSON.stringify({ query: `query ArrivalDispatchOrder($id: ID!) {
+      order(id: $id) {
+        id name displayFinancialStatus note tags customAttributes { key value }
+        shippingLines(first: 100) { nodes { title code } pageInfo { hasNextPage } }
+      }
+    }`, variables: { id } }),
+  }, { integration: "shopify_dispatch_check", attempts: 1, timeoutMs: 10_000 });
+  const payload = await response.json();
+  const raw = payload?.data?.order;
+  const lines = raw?.shippingLines;
+  const validAttributes = Array.isArray(raw?.customAttributes) && raw.customAttributes.every((attribute: JsonRecord) =>
+    attribute && typeof attribute.key === "string" && typeof attribute.value === "string");
+  if (payload?.errors?.length || !raw || raw.id !== id || typeof raw.name !== "string" || !raw.name
+    || typeof raw.displayFinancialStatus !== "string" || !raw.displayFinancialStatus
+    || !(raw.note === null || typeof raw.note === "string")
+    || !Array.isArray(raw.tags) || !raw.tags.every((tag: unknown) => typeof tag === "string")
+    || !validAttributes || !Array.isArray(lines?.nodes) || lines?.pageInfo?.hasNextPage !== false
+    || !lines.nodes.every((line: JsonRecord) => line && typeof line.title === "string" && (line.code === null || typeof line.code === "string"))) {
+    throw new ArrivalIntegrationError("Aktuelle Shopify-Versandhinweise sind nicht vollstaendig belegt.", "shopify_dispatch_evidence_missing");
+  }
+  const order = mapShopifyOrder(raw, config.domain);
+  if (!order) throw new ArrivalIntegrationError("Shopify-Bestellung fehlt.", "shopify_order_missing");
+  return order;
 }
 
 function mapShopifyOrder(raw: JsonRecord, shopDomain: string): ShopifyOrderEvidence | null {

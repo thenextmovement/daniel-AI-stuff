@@ -67,7 +67,28 @@ begin
       perform pg_temp.check_assert(purchase.expected_primary_dpd_tracking = '01476817678011', 'extra binds printed primary tracking');
     end if;
     perform public.arrival_labels_update_browser_purchase(purchase.id, 'fixture-new-bridge', 'validated');
+    -- A newly observed human instruction must stop this exact owned job.
+    begin
+      perform public.arrival_labels_hold_before_dispatch('browser', purchase.id, 'fixture-new-bridge', 'Shopify: Paket öffnen', array['non_standard_shopify_note']);
+      perform public.arrival_labels_hold_before_dispatch('browser', purchase.id, 'fixture-new-bridge', 'Shopify: Paket öffnen', array['non_standard_shopify_note']);
+      perform pg_temp.check_assert((select status = 'manual_review' and lease_expires_at is null and last_error = 'Shopify: Paket öffnen' from public.arrival_label_browser_purchase_jobs where id = purchase.id), 'browser held before dispatch');
+      perform pg_temp.check_assert((select count(*) = 1 from public.arrival_label_events where event_key = 'shopify-dispatch-hold:browser:' || purchase.id::text), 'browser hold event deduplicated');
+      rejected := false;
+      begin
     perform public.arrival_labels_update_browser_purchase(purchase.id, 'fixture-new-bridge', 'dispatching');
+      exception when raise_exception then rejected := true;
+      end;
+      perform pg_temp.check_assert(rejected, 'browser held job cannot dispatch');
+      raise exception 'rollback test hold only' using errcode = 'P0002';
+    exception when no_data_found then null;
+    end;
+    perform public.arrival_labels_update_browser_purchase(purchase.id, 'fixture-new-bridge', 'dispatching');
+    rejected := false;
+    begin
+      perform public.arrival_labels_hold_before_dispatch('browser', purchase.id, 'fixture-new-bridge', 'late instruction', array['non_standard_shopify_note']);
+    exception when raise_exception then rejected := true;
+    end;
+    perform pg_temp.check_assert(rejected, 'browser already-dispatched state cannot be reset by hold');
     if i = 2 then
       rejected := false;
       begin
@@ -77,7 +98,7 @@ begin
       perform pg_temp.check_assert(rejected, 'extra cannot upload primary PDF tracking');
     end if;
     tracking := case when i = 1 then '01476817678011' else '01476817678012' end;
-    overlay := case when i = 1 then '113486' else 'Acryl LED-Tischgerät' end;
+    overlay := case when i = 1 then '113486' else '113486 (Tischgerät)' end;
     rejected := false;
     begin
       perform public.arrival_labels_update_browser_purchase(purchase.id, 'fixture-new-bridge', 'purchased', tracking, repeat('a',64), 1501);
@@ -113,7 +134,28 @@ begin
     end if;
     perform public.arrival_labels_update_browser_purchase(purchase.id, 'fixture-new-bridge', 'completed', p_print_job_id => print_job.id);
     perform public.arrival_labels_claim_print_job('fixture-print-worker', 'shipping-a6');
+    -- A newly observed human instruction must stop this exact owned job.
+    begin
+      perform public.arrival_labels_hold_before_dispatch('print', print_job.id, 'fixture-print-worker', 'Shopify: Paket öffnen', array['non_standard_shopify_note']);
+      perform public.arrival_labels_hold_before_dispatch('print', print_job.id, 'fixture-print-worker', 'Shopify: Paket öffnen', array['non_standard_shopify_note']);
+      perform pg_temp.check_assert((select status = 'manual_review' and lease_expires_at is null and last_error = 'Shopify: Paket öffnen' from public.arrival_label_print_jobs where id = print_job.id), 'print held before dispatch');
+      perform pg_temp.check_assert((select count(*) = 1 from public.arrival_label_events where event_key = 'shopify-dispatch-hold:print:' || print_job.id::text), 'print hold event deduplicated');
+      rejected := false;
+      begin
     perform public.arrival_labels_update_print_job(print_job.id, 'fixture-print-worker', 'dispatching');
+      exception when raise_exception then rejected := true;
+      end;
+      perform pg_temp.check_assert(rejected, 'print held job cannot dispatch');
+      raise exception 'rollback test hold only' using errcode = 'P0002';
+    exception when no_data_found then null;
+    end;
+    perform public.arrival_labels_update_print_job(print_job.id, 'fixture-print-worker', 'dispatching');
+    rejected := false;
+    begin
+      perform public.arrival_labels_hold_before_dispatch('print', print_job.id, 'fixture-print-worker', 'late instruction', array['non_standard_shopify_note']);
+    exception when raise_exception then rejected := true;
+    end;
+    perform pg_temp.check_assert(rejected, 'print already-dispatched state cannot be reset by hold');
     perform public.arrival_labels_update_print_job(print_job.id, 'fixture-print-worker', 'submitted', 'Fixture_Brother-' || i);
     if i = 1 then
       primary_print := print_job.id;

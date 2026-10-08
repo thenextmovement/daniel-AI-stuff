@@ -86,7 +86,7 @@ export async function annotateDpdLabelPdf(inputPdf: Uint8Array, trackingNumber: 
   // The exact approved text may wrap, but never shrink below the existing 12pt minimum.
   const singleLineSize = Math.min(requestedFontSize, maximumWidth / font.widthOfTextAtSize(overlayText, 1));
   const lines = parcelKind === "acrylic_table_device" && singleLineSize < 12
-    ? ["Acryl LED-", "Tischgerät"] : [overlayText];
+    ? [trackingNumber.slice(-6), "(Tischgerät)"] : [overlayText];
   const fontSize = Math.min(requestedFontSize,
     ...lines.map((line) => maximumWidth / font.widthOfTextAtSize(line, 1)),
     layout.safeArea.height * 0.9 / (font.heightAtSize(1, { descender: false }) + (lines.length - 1) * 1.2));
