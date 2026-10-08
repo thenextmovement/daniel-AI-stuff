@@ -178,3 +178,13 @@ body.nt-configurator #config-delivery-info :is(.nt-express__review figcaption a,
  body.nt-configurator #config-product .nt-product-v2-facts dt svg {position:static;display:block;margin:0 0 8px}
  #config-product .nt-product-v2-facts dd {hyphens:auto;overflow-wrap:break-word}
 }
+
+/* Keep the mounting copy and PDF within the video's natural desktop height. */
+#config-product .nt-product-v2-layout{grid-template-rows:auto 1fr auto}
+#config-product .nt-product-v2-facts{align-self:center;padding:8px 0 18px;row-gap:16px}
+#config-product .nt-product-v2-actions{align-self:end}
+@media(max-width:1279px){
+ #config-product .nt-product-v2-layout{grid-template-columns:minmax(0,1fr);grid-template-areas:'intro' 'video' 'facts' 'actions';grid-template-rows:auto;gap:24px}
+ #config-product .nt-product-v2-copy,#config-product .nt-product-v2-photo{grid-row:auto}
+ #config-product .nt-product-v2-facts{align-self:start;width:100%;padding:0 0 22px}
+}
