@@ -390,6 +390,7 @@ function updatePagePurchase(){
 }
 function invalidatePrice(pending=true){
   $('#share-design').disabled=true;$('#stage-ar').disabled=true;
+  $('#config-ar-start').disabled=true;$('#ar-customer-design').replaceChildren();$('#config-ar-size').textContent=pending?'Dein Entwurf wird aktualisiert …':'Gib zuerst deinen Text ein.';
   state.price={status:pending?'pending':'unavailable',net:null,reasons:[]};
   invalidateFontQuotes();
   updatePagePurchase();
@@ -414,6 +415,11 @@ function paintPrice(){
   $('#stage-ar span').textContent=state.mount==='table-stand'?'3D ansehen':'An deiner Wand ansehen';
   $('#stage-ar').setAttribute('aria-controls',mobileAr||state.mount==='table-stand'?'ar-dialog':'ar-share-dialog');
   $('#stage-ar').title=state.mount==='table-stand'?'3D-Vorschau. Wand-AR ist für Tischständer noch nicht verfügbar.':'';
+  const arEntry=$('#config-ar-start');arEntry.disabled=$('#stage-ar').disabled;
+  arEntry.setAttribute('aria-controls',$('#stage-ar').getAttribute('aria-controls'));
+  arEntry.querySelector('span').textContent=state.mount==='table-stand'?'In 3D ansehen':mobileAr?'An deiner Wand ansehen':'QR-Code für dein Schild öffnen';
+  $('#config-ar-instructions').textContent=state.mount==='table-stand'?'Deinen Entwurf in der 3D-Vorschau von allen Seiten ansehen.':mobileAr?'Vorschau öffnen und die Wandansicht starten.':'QR-Code öffnen und mit deiner Handykamera scannen.';
+  $('#config-ar-note').textContent=state.mount==='table-stand'?'Wand-AR ist für Tischständer noch nicht verfügbar.':'Ohne App-Installation auf unterstützten Smartphones.';
   paintAccessoryQuantities();
 }
 async function storedPrice(design){
@@ -1137,6 +1143,7 @@ function paint() {
     }
   }
   paintBackingExample();
+  paintArSection();
   if(activeStep===3)refreshPresetSizes();
   if(resizeFocus){const [sx,sy]=resizeFocus;resizeFocus=null;$('#preview-handles [data-sx="'+sx+'"][data-sy="'+sy+'"]')?.focus();}
   $('#sign-preview').setAttribute('aria-label',`${designName()}, ${state.mode==='logo'?'Logo':'Schrift '+state.font}, ${colorSummary()}, Außenmaße ${dimensions(backing)}, ${BACKINGS[state.backing].name}, Montage ${MOUNTS[state.mount].name}, ${state.light?'eingeschaltet':'ausgeschaltet'}, Szene ${ROOMS.find(r=>r.id===state.room).name}.`);
@@ -1771,6 +1778,10 @@ window.addEventListener('scroll',()=>{if(!purchaseScrollFrame)purchaseScrollFram
 window.addEventListener('resize',updatePurchaseDockVisibility);
 new ResizeObserver(()=>{const height=pagePurchase.getBoundingClientRect().height;if(height)document.documentElement.style.setProperty('--page-purchase-height',`${height}px`);}).observe(pagePurchase);
 $('#page-add-to-cart').addEventListener('click',openOrderReview);
+for(const link of document.querySelectorAll('[data-resume-design]'))link.addEventListener('click',event=>{
+ event.preventDefault();const main=$('#main');main.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+ $('.journey [aria-current=step]').focus({preventScroll:true});
+});
 // The mobile price dock is sticky within the editor and leaves with it.
 // Keep its in-flow height when it scrolls out; no observer-driven layout jump.
 $('#open-large-preview').addEventListener('click',()=>{
@@ -1966,6 +1977,14 @@ function orderPreview(){
   }
   return preview;
 }
+function paintArSection(){
+  const host=$('#ar-customer-design'),valid=!designRendering&&state.result&&state.sizeValid;
+  if(!valid){host.replaceChildren();$('#config-ar-size').textContent=designRendering?'Dein Entwurf wird aktualisiert …':'Gib einen gültigen Entwurf ein, um die Vorschau zu nutzen.';return;}
+  const preview=orderPreview();
+  for(const [name,value] of Object.entries({x:318,y:227,width:420,height:250}))preview.setAttribute(name,value);
+  host.replaceChildren(preview);
+  $('#config-ar-size').textContent=`Dein Entwurf · ${dimensions(plateSize(state.result.size))}`;
+}
 function orderRow(label,value,step){
   const row=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;
   if(value instanceof Node)dd.append(value);else dd.textContent=value;
@@ -2062,13 +2081,16 @@ async function openArPreview(){
 let shareRevision=0,shareAbort,sharePending=false,shareExpiresAt=0;
 const mobileAr=/iPhone|iPad|iPod|Android/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const arSharePanel=$('#ar-share-panel');
-$('#stage-ar').addEventListener('click',()=>{
+function openCurrentDesignAr(){
+ if($('#stage-ar').disabled)return;
  mobileTools.open=false;
  if(mobileAr||state.mount==='table-stand'){openArPreview();return;}
  const dialog=$('#ar-share-dialog');$('#ar-share-dialog-content').append(arSharePanel);
  if(!dialog.open)dialog.showModal();
  openArShare();
-});
+}
+$('#stage-ar').addEventListener('click',openCurrentDesignAr);
+$('#config-ar-start').addEventListener('click',openCurrentDesignAr);
 $('#ar-share-retry').addEventListener('click',openArShare);
 $('#ar-share-dialog').addEventListener('close',()=>{
  if(sharePending){shareRevision++;shareAbort?.abort();sharePending=false;shareDesignKey=null;arSharePanel.hidden=true;}
