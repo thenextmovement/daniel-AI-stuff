@@ -58,7 +58,7 @@ test('auth/quota/network/invalid JSON failures never include response bodies or 
   await assert.rejects(()=>fetchDhlUnified(number,'test-secret',async()=>new Response('private-token'),now),/dhl_invalid_json/);
 });
 test('Berlin polling slots handle summer/winter time and do not poll at night',()=>{
-  for(const [date,expected] of [['2026-10-07T06:59:59Z',null],['2026-10-07T07:00:00Z','2026-10-07/09'],['2026-10-07T16:00:00Z','2026-10-07/18'],['2026-12-07T08:00:00Z','2026-12-07/09'],['2026-12-07T17:00:00Z','2026-12-07/18']]) assert.equal(berlinPollSlot(Date.parse(date!)),expected);
+  for(const [date,expected] of [['2026-10-07T06:59:59Z',null],['2026-10-07T07:00:00Z','2026-10-07/09'],['2026-10-07T16:00:00Z','2026-10-07/18'],['2026-12-07T08:00:00Z','2026-12-07/09'],['2026-12-07T17:00:00Z','2026-12-07/18'],['2026-10-07T20:59:59Z','2026-10-07/18'],['2026-10-07T21:00:00Z','2026-10-07/23'],['2026-12-07T22:00:00Z','2026-12-07/23'],['2026-10-07T22:00:00Z',null]]) assert.equal(berlinPollSlot(Date.parse(date!)),expected);
 });
 test('intake accepts all three lists and Create Invoice catch-up with title or field',()=>{
   for(const list of ['6347e0971a7efc0482e6c3fe','6544ca38c328c64bbcabf4e8','69ff17bfab2afaaf96f7033a','69ef8a5b2e64cf224dd5746e']) {
@@ -82,4 +82,25 @@ test('non-German localities containing de never grant Germany release',()=>{
   for(const e of events)e.location.address.addressLocality='RIO DE JANEIRO';
   const r=normalizeDhlUnified(number,body(events),now);
   assert.equal(assessDhlRelease({events:r.events.map(e=>({event_time:e.eventTime,event_location:e.eventLocation,carrier_status_text:e.statusText})),lastCheckedAt:'2026-10-07T12:30:00Z',statusReason:null},now).allowed,false);
+});
+
+test('supplemental carrier instructions survive normalization as a private-safe blocking marker',()=>{
+  const rr='Customs clearance status updated. Note - The Customs clearance process may start while the shipment is in transit to the destination.';
+  const arrival=event('Arrived at DHL Sort Facility','2026-10-07T11:00:00');
+  const clearance=event('Clearance processing complete','2026-10-07T11:10:00');
+  const update=event(rr,'2026-10-07T11:20:00');
+  const movement=event('Processed at LEIPZIG','2026-10-07T11:30:00');
+  const allow=(events:unknown[])=>{
+    const r=normalizeDhlUnified(number,{shipments:[{id:number,service:'express',events}]},now);
+    assert.doesNotMatch(JSON.stringify(r),/PRIVATE INSTRUCTIONS/);
+    return assessDhlRelease({events:r.events.map(e=>({event_time:e.eventTime,event_location:e.eventLocation,carrier_status_text:e.statusText})),lastCheckedAt:'2026-10-07T12:30:00Z',statusReason:null},now).allowed;
+  };
+  for(const key of ['remark','nextSteps']) {
+    assert.equal(allow([arrival,clearance,{...update,[key]:'PRIVATE INSTRUCTIONS: import documents required'},movement]),false);
+    assert.equal(allow([arrival,clearance,update,{...movement,[key]:'PRIVATE INSTRUCTIONS'}]),false);
+    assert.equal(allow([arrival,{...clearance,[key]:'PRIVATE INSTRUCTIONS'},movement]),false);
+    // Earlier annotations must not poison later explicit, unannotated clearance.
+    assert.equal(allow([{...arrival,[key]:'PRIVATE INSTRUCTIONS'},clearance,movement]),true);
+    assert.equal(allow([arrival,clearance,{...update,[key]:'   '},movement]),true);
+  }
 });

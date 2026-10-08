@@ -39,6 +39,35 @@ test('later hold, renewed customs or return blocks', () => {
     assert.equal(assess([arrived, cleared, event(text, '2026-10-07T11:00:00Z')]).allowed, false);
   }
 });
+const genericCustomsUpdate = 'Customs clearance status updated. Note - The Customs clearance process may start while the shipment is in transit to the destination.';
+test('standard customs update resolves only after strictly later German processing or departure', () => {
+  const update = event(genericCustomsUpdate, '2026-10-07T11:00:00Z');
+  for (const text of ['Processed at LEIPZIG - GERMANY', 'Shipment has departed from a DHL facility LEIPZIG - GERMANY']) {
+    const movement = event(text, '2026-10-07T11:30:00Z');
+    assert.equal(assess([arrived, cleared, update, movement]).allowed, true);
+    assert.equal(assess([movement, update, cleared, arrived]).allowed, true);
+  }
+});
+test('generic update without subsequent qualifying German movement remains blocked', () => {
+  const update = event(genericCustomsUpdate, '2026-10-07T11:00:00Z');
+  for (const movement of [
+    event('Processed at LEIPZIG', '2026-10-07T10:30:00Z'),
+    event('Processed at LEIPZIG', '2026-10-07T11:00:00Z'),
+    event('Processed at HONG KONG', '2026-10-07T11:30:00Z', 'HK'),
+    event('Arrived at DHL Sort Facility', '2026-10-07T11:30:00Z'),
+    event('Delivered', '2026-10-07T11:30:00Z'),
+    event('Out with courier for delivery', '2026-10-07T11:30:00Z'),
+  ]) assert.equal(assess([arrived, cleared, update, movement]).allowed, false);
+});
+test('movement never overrides real holds, unknown customs updates or supplemental instructions', () => {
+  const movement = event('Processed at LEIPZIG', '2026-10-07T11:30:00Z');
+  for (const text of ['Shipment on hold', 'Clearance event', 'Customs clearance status updated', 'Returned to shipper', 'Exception', genericCustomsUpdate + ' Importer must provide documents.']) {
+    assert.equal(assess([arrived, cleared, event(text, '2026-10-07T11:00:00Z'), movement]).allowed, false);
+  }
+  assert.equal(assess([arrived, cleared, event('Shipment on hold', '2026-10-07T10:30:00Z'), event(genericCustomsUpdate, '2026-10-07T11:00:00Z'), movement]).allowed, false);
+  assert.equal(assess([arrived, cleared, movement, event(genericCustomsUpdate, '2026-10-07T12:00:00Z')]).allowed, false);
+  assert.equal(assess([arrived, event(genericCustomsUpdate, '2026-10-07T11:00:00Z'), movement]).allowed, false);
+});
 test('a later complete clearance with physical processing resolves an earlier hold', () => {
   assert.equal(assess([event('Shipment on hold', '2026-10-07T09:00:00Z'), arrived, cleared]).allowed, true);
 });

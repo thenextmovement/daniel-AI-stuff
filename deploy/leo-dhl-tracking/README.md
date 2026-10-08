@@ -12,9 +12,15 @@ From the verified Ops release with its existing Node dependencies:
 
 Use a private 0600 environment file outside the repository with DHL_API_KEY, the existing authorized Trello/Supabase runtime connection and absolute LEO_DHL_STATE_DIR. Never paste keys into commands, Git or logs. The state directory must be persistent, 0700, writable only by the worker. Fill every @...@ placeholder in the service template with verified runtime paths/user. The default service runs check mode; do not enable its timer until a successful manual check.
 
-The timer is 09:00 and 18:00 Europe/Berlin with DST adjustment and one catch-up on restart. Slot deduplication prevents repeated requests in that slot. A check consumes the slot; switching to sync does not replay that request. Wait for the next slot rather than deleting quota evidence. Every actual HTTP attempt is reserved first, spaced by at least 5.1 seconds, with a conservative 225 requests per rolling 24 hours. The initial DHL development plan is not production approval; confirm the application's current entitlement before activation. If all due candidates cannot fit the remaining budget, the batch stops with an explicit issue rather than silently losing coverage.
+The timer is 09:00, 18:00 and 23:00 Europe/Berlin with DST adjustment and one catch-up on restart. Slot deduplication prevents repeated requests in that slot. A check consumes the slot; switching to sync does not replay that request. Wait for the next slot rather than deleting quota evidence. Every actual HTTP attempt is reserved first, spaced by at least 5.1 seconds, with a conservative 225 requests per rolling 24 hours. The initial DHL development plan is not production approval; confirm the application's current entitlement before activation. If all due candidates cannot fit the remaining budget, the batch stops with an explicit issue rather than silently losing coverage.
 
 Trello intake: Sign Approved, Only Super Urgent, Prepare Shipping; Create Invoice catches cards moved before discovery. Already registered cards can continue in Sign SHIPPED. Title/custom-field mismatch, ambiguous ten-digit numbers, duplicate cards or an existing foreign card mapping stop selection. Full waybills retain leading zeroes. Completed cards should leave this list scope through the existing final workflow; verify the plan count before activation to avoid historical-card quota consumption.
+
+## Carrier release rule
+
+The alternatives are German clearance completion with proven physical German arrival, or subsequent German processing/departure after explicit German clearance. One valid path is enough; do not wait for all three. Arrival, pre-advice, ETA or a waybill alone never release a case. A new generic customs update remains blocking until a strictly later German processing/departure event supersedes its exact standard text. Same-time or foreign movement, extra customs instructions, unknown customs updates and real holds do not resolve it. Existing Shopify and duplicate checks still apply.
+
+The 23:00 slot improves the chance of preparation before the delivery day; neither a full day of lead time nor physical printing while laptops are off is guaranteed. Quota remains 225 total requests per rolling 24 hours across all three slots.
 
 ## Release and acceptance gates
 

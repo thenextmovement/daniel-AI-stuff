@@ -44,13 +44,16 @@ export function normalizeDhlUnified(trackingNumber: string, payload: unknown, no
     const e=obj(value),address=obj(obj(e.location).address),country=text(address.countryCode).toUpperCase();
     const description=text(e.description);
     if(!description) throw new Error('dhl_event_description_missing');
+    // Preserve the existence, not private contents, of instructions the gate cannot assess.
+    const supplementalDetails = [e.remark,e.nextSteps].some(v => v != null && (typeof v !== 'string' || v.trim().length > 0));
+    const statusText = description + (supplementalDetails ? ' [Unreviewed carrier details]' : '');
     const timestamp=eventTime(text(e.timestamp),country,now);
     // Country evidence must come only from the carrier country code, never a city name.
     const location=/^[A-Z]{2}$/.test(country)?country:null;
     const code=text(e.statusCode)||null;
-    const key='dhl-unified:'+createHash('sha256').update(JSON.stringify([trackingNumber,timestamp,location,text(address.addressLocality),code,description])).digest('hex');
-    unique.set(key,{eventKey:key,carrierEventId:null,statusCode:code,statusText:description,eventTime:timestamp,eventLocation:location,
-      rawEvent:{timestamp,statusCode:code,description,location:{address:{addressLocality:text(address.addressLocality),countryCode:country}}}});
+    const key='dhl-unified:'+createHash('sha256').update(JSON.stringify([trackingNumber,timestamp,location,text(address.addressLocality),code,statusText])).digest('hex');
+    unique.set(key,{eventKey:key,carrierEventId:null,statusCode:code,statusText,eventTime:timestamp,eventLocation:location,
+      rawEvent:{timestamp,statusCode:code,description,supplementalDetails,location:{address:{addressLocality:text(address.addressLocality),countryCode:country}}}});
   }
   const events=[...unique.values()].sort((a,b)=>Date.parse(a.eventTime)-Date.parse(b.eventTime));
   return {carrier:'dhl',trackingNumber,events,rawResponse:{provider:'dhl-unified',id:trackingNumber,service:'express',events:events.map(e=>e.rawEvent)}};
@@ -74,7 +77,7 @@ export async function fetchDhlUnified(trackingNumber:string,key:string,fetcher:t
 export function berlinPollSlot(now=Date.now()):string|null {
   const local=Temporal.Instant.fromEpochMilliseconds(now).toZonedDateTimeISO('Europe/Berlin');
   if(local.hour<9) return null;
-  return `${local.toPlainDate()}/${local.hour>=18?'18':'09'}`;
+  return `${local.toPlainDate()}/${local.hour>=23?'23':local.hour>=18?'18':'09'}`;
 }
 
 export function planDhlChecks(cards:TrelloCardEvidence[],shipments:DhlShipmentLink[]) {

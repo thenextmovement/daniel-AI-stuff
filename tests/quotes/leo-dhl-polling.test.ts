@@ -46,3 +46,15 @@ test('slow reservation persistence cannot collapse actual HTTP spacing',async()=
   },false);
   assert.ok(calls[1]-calls[0]>=5100);
 });
+
+test('09, 18 and 23 slots each poll once without replay or extra business writes',async()=>{
+  const h=harness();let clock=at;h.ports.now=()=>clock;
+  for(const hour of [7,16,21]) {
+    clock=Date.parse('2026-10-07T'+String(hour).padStart(2,'0')+':00:00Z');
+    await runDhlPollBatch([candidate()],h.state,h.ports,false);
+    await runDhlPollBatch([candidate()],h.state,h.ports,false);
+  }
+  assert.equal(h.calls.length,3);
+  assert.deepEqual(h.state.attempts.map(a=>a.slot),['2026-10-07/09','2026-10-07/18','2026-10-07/23']);
+  assert.equal(h.writes.length,0);
+});
