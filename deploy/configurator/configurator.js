@@ -1,3 +1,5 @@
+import {frameRoom,roomArea,moveWithinRoom} from './room-framing.js?v=20261008-entry-room1';
+import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261008-entry-room1';
 import {initBudgetAdvisor} from './budget-advisor.js?v=20261008-budget-live1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
 import {initDeliveryCalendar,deliveryTierLabel,minimumDeliveryBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261008-min189';
@@ -13,6 +15,10 @@ import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261008-min189';
 import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261006-quantities1';
 const $ = selector => document.querySelector(selector);
+const draftWriteGuard=createDraftWriteGuard();
+const entryOnboarding=initEntryOnboarding({field:$('#sign-text'),help:$('#entry-help'),label:$('#entry-label')});
+function acceptReplacementDraft(){draftWriteGuard.release();$('#use-replacement-draft').hidden=true;}
+$('#use-replacement-draft').addEventListener('click',()=>{if(designRendering||!state.result||!state.sizeValid)return;acceptReplacementDraft();persistDesign(captureDesign());});
 // The initial editor structure is rendered in HTML; only interaction is bound here.
 const motifHeading=$('.studio-motif-heading');
 const studioContext=$('.studio-context');
@@ -130,8 +136,9 @@ function ensureSceneMatchesUsage(){
 function sceneSignY(room){return room.signY??(room.id==='shop'?235:room.id==='studio'||room.id==='reception'?250:210);}
 const positions=new Map();
 const cameras=new Map();
+let roomPresentation=null;
 let previewBox=null,drag=null,dragFrame=0,photoRevision=0,resizeFocus=null;
-const state = {font:'Waikiki',fontId:'Waikiki',text:$('#sign-text').value,alignment:'center',lineHeight:.8,axis:'width',valueMm:1000-2*MANUFACTURING_PROFILE.contourMarginMm,color:COLORS[7],wordColors:new Map(),words:[],colorTarget:'all',light:true,dimensions:true,scene:'wall',room:'reception',backing:'contour',mount:'wall-mount',previousRoom:'reception',result:null,sizeValid:true,autoContourNotice:false};
+const state = {font:'Typewriter',fontId:'Typewriter',text:$('#sign-text').value,alignment:'center',lineHeight:.8,axis:'width',valueMm:500-2*MANUFACTURING_PROFILE.contourMarginMm,color:COLORS[7],wordColors:new Map(),words:[],colorTarget:'all',light:true,dimensions:true,scene:'wall',room:'reception',backing:'contour',mount:'wall-mount',previousRoom:'reception',result:null,sizeValid:true,autoContourNotice:false};
 let designRendering=false,compactLineSpacing=false,budgetAdvisor,budgetSelecting=false;
 // Spacing edits retain the physical letter scale, including across an invalid oversized draft.
 let spacingAnchor=null;
@@ -167,11 +174,12 @@ function refreshHistoryButtons(){
   $('#reset-position').disabled=draftApplying||!offset||(!offset.x&&!offset.y);
 }
 function persistDesign(snapshot){
+  if(draftWriteGuard.blocked){$('#draft-status').textContent='Vorhandener Entwurf konnte nicht geladen werden. Dieser neue Entwurf ist noch nicht gespeichert.';return;}
   const serialized=JSON.stringify(snapshot);if(serialized===lastSavedSnapshot)return;
   try{
     const assetIds=designAssetRefs(snapshot);
     if(assetIds.some(id=>!draftAssets.get(id)?.persisted))throw new Error('Datei nicht gespeichert');
-    saveDraft(snapshot);lastSavedSnapshot=serialized;$('#draft-status').textContent='Auf diesem Gerät gespeichert';
+    draftWriteGuard.write(saveDraft,snapshot);lastSavedSnapshot=serialized;$('#draft-status').textContent='Auf diesem Gerät gespeichert';
   }catch{$('#draft-status').textContent='Speichern nicht möglich – diesen Tab geöffnet lassen.';}
 }
 function commitHistory(){
@@ -200,6 +208,7 @@ async function getDraftAsset(id,kind){
   return asset;
 }
 async function applyDesign(value){
+  entryOnboarding.end();
   spacingAnchor=null;
   if(!value||typeof value.text!=='string'||value.text.length>160||!['width','height'].includes(value.axis)||!Number.isFinite(value.valueMm)||value.valueMm<10||value.valueMm>5000||!BACKINGS[value.backing]||!MOUNTS[value.mount]||!['left','center','right'].includes(value.alignment))throw new Error('Der gespeicherte Entwurf ist ungültig.');
   const color=COLORS.find(c=>c.id===value.color);if(!color)throw new Error('Die gespeicherte Farbe ist ungültig.');
@@ -908,11 +917,10 @@ function paint() {
     $('#ar-share-status').textContent='Dein Entwurf hat sich geändert. Erstelle einen neuen QR-Code.';
   }
   const c=state.color;
-  const stage=$('#preview-stage');stage.style.setProperty('--neon',c.color);stage.dataset.scene=state.scene;stage.classList.toggle('is-off',!state.light);
+  const stage=$('#preview-stage');stage.style.setProperty('--neon',c.color);stage.classList.toggle('is-off',!state.light);
   paintColorControls();paintMount();paintFinishControls();
   $('#light-toggle').setAttribute('aria-pressed',state.light);$('#light-toggle span').textContent=state.light?'Licht an':'Licht aus';const mobileLightButton=$('#mobile-light-on');mobileLightButton.setAttribute('aria-pressed',state.light);mobileLightButton.setAttribute('aria-label',state.light?'Licht ausschalten':'Licht einschalten');mobileLightButton.title=state.light?'Licht ausschalten':'Licht einschalten';mobileLightButton.querySelector('.sr-only').textContent=state.light?'Licht an':'Licht aus';
   $('#dimensions-toggle').setAttribute('aria-pressed',state.dimensions);$('#dimensions-toggle span').textContent=state.dimensions?'Maßlinien ausblenden':'Maßlinien anzeigen';
-  for(const button of document.querySelectorAll('.scene-tabs button')){button.setAttribute('aria-pressed',button.dataset.scene===state.scene);button.textContent=button.dataset.scene==='wall'&&state.scene==='technical'?'Zur Raumansicht':button.dataset.scene==='wall'?'Raumansicht':'Detailansicht';}
   for(const button of document.querySelectorAll('[data-backing]'))button.setAttribute('aria-pressed',button.dataset.backing===state.backing);
   $('#backing-description').textContent=BACKINGS[state.backing].description+(state.mount==='table-stand'?' Für den Tischständer wird die Unterkante gerade ausgeführt und erhält zwei Steckschlitze.':'');
   $('#backing-margin').textContent=state.backing==='contour'?'ca. 1 cm Rand um den Schriftzug':state.backing==='square'?'mindestens ca. 1,5 cm Rand':state.backing==='freestanding'?'schmale Streben hinter dem Schriftzug':'ca. 1,5 cm Rand um den Schriftzug';
@@ -946,7 +954,7 @@ function paint() {
   $('#suggest-production-size').hidden=!belowMinimum||!!minimum&&(minimum.widthMm>4000||minimum.heightMm>4000);$('#suggest-production-size').disabled=false;
   $('#suggest-production-size').dataset.suggestedOuterMm=String(minimum?.widthMm||500);
   $('#suggest-production-size').textContent='Auf '+cm(minimum?.widthMm||500)+' cm Mindestbreite vergrößern';
-  const technical=state.scene==='technical';
+  const technical=roomPresentation.technical;
   const design=size.exact.design,backing=plateSize(size);
   syncOuterSize(size);
   $('#backing-size').textContent=dimensions(backing);
@@ -958,7 +966,7 @@ function paint() {
   const room=ROOMS.find(room=>room.id===state.room);
   let centerY=technical?325:sceneSignY(room);
   const standing=state.mount==='table-stand';
-  const pxPerMm=technical?Math.min(760/backing.widthMm,340/backing.heightMm):(room.photoWidth||1000)/previewSpanMm(room);
+  const pxPerMm=technical?roomPresentation.scale:(room.photoWidth||1000)/previewSpanMm(room);
   // The light spill represents a fixed physical distance, independent of sign size.
   const lightScale=pxPerMm/.42;
   const mobileLight=matchMedia('(max-width:760px)').matches;
@@ -1081,11 +1089,9 @@ function paint() {
   const fallback=$('#preview-size-fallback'),v=$('#sign-preview').viewBox.baseVal;
   const dimensionBounds=$('#sign-preview').getBoundingClientRect();
   const dimensionScale=Math.min(dimensionBounds.width/v.width,dimensionBounds.height/v.height);
-  // Judge the fitted mobile labels themselves, not a fixed 90-pixel reserve.
+  // Judge the actual rendered label bounds at every viewport.
   const measureBounds=measures.getBBox(),edge=4/Math.max(.1,dimensionScale);
-  const outside=mobileChoiceMedia.matches
-    ? measureBounds.x+offset.x<v.x+edge||measureBounds.x+measureBounds.width+offset.x>v.x+v.width-edge||measureBounds.y+offset.y<v.y+edge||measureBounds.y+measureBounds.height+offset.y>v.y+v.height-edge
-    : (1000-backing.widthMm*pxPerMm)/2+offset.x<v.x+30||(1000+backing.widthMm*pxPerMm)/2+offset.x>v.x+v.width-100||plateTop+offset.y<v.y+20||plateBottom+offset.y>v.y+v.height-65;
+  const outside=measureBounds.x+offset.x<v.x+edge||measureBounds.x+measureBounds.width+offset.x>v.x+v.width-edge||measureBounds.y+offset.y<v.y+edge||measureBounds.y+measureBounds.height+offset.y>v.y+v.height-edge;
   measures.style.visibility=outside?'hidden':'';
   fallback.hidden=!state.dimensions||!outside;fallback.textContent=`Breite ${cm(backing.widthMm)} cm · Höhe ${cm(backing.heightMm)} cm`;
   const handles=$('#preview-handles');handles.replaceChildren();
@@ -1223,7 +1229,7 @@ function setupBudgetAdvisor(){
         if(Math.abs(size.widthMm-q.size.widthMm)>.5||Math.abs(size.heightMm-q.size.heightMm)>.5||Math.round(gross*100)!==Math.round(q.gross*100)){
           await applyDesign(before);throw new Error('Maße oder Preis haben sich geändert. Bitte die Vorschläge neu berechnen.');
         }
-        history.record(captureDesign());persistDesign(captureDesign());setStep(0,false,{scroll:false});
+        acceptReplacementDraft();history.record(captureDesign());persistDesign(captureDesign());setStep(0,false,{scroll:false});
         regions.forEach(node=>node.inert=false);$('#main').scrollIntoView({block:'start',behavior:'instant'});$('#sign-text').focus({preventScroll:true});
         return {message:`${state.font} ist im Konfigurator ausgewählt. Maße und Preis stimmen mit deinem Vorschlag überein.`};
       }finally{draftApplying=false;budgetSelecting=false;regions.forEach(node=>node.inert=false);refreshHistoryButtons();budgetAdvisor?.refreshContext();}
@@ -1363,7 +1369,7 @@ $('#look-font').addEventListener('click',()=>openFontOverview());
 $('#open-font-upload').addEventListener('click',()=>openFontOverview('upload'));
 $('#tab-1').addEventListener('click',()=>openFontOverview());
 $('#studio-all-fonts').addEventListener('click',()=>openFontOverview());
-const studioFontOrder=[...new Set(['Waikiki','NeonLite','Neontrace',...FONTS])];
+const studioFontOrder=[...new Set(['Typewriter','NeonLite','Neontrace',...FONTS])];
 for(const [index,name] of studioFontOrder.entries()){
   const button=makeFontButton(name);if(index>2)button.classList.add('studio-mobile-font');$('.studio-font-grid').append(button);
 }
@@ -1461,7 +1467,7 @@ $('#light-toggle').addEventListener('click',()=>{state.light=!state.light;paint(
 $('#mobile-light-on').addEventListener('click',()=>{state.light=!state.light;paint();});
 $('#mobile-background').addEventListener('click',()=>$('#scene-dialog').showModal());
 $('#dimensions-toggle').addEventListener('click',()=>{state.dimensions=!state.dimensions;paint();});
-studioFooter.prepend($('#dimensions-toggle'));
+studioFooter.prepend($('#dimensions-toggle'));studioFooter.append($('#camera-controls'));
 
 function paintFinishControls(){
   const finish=state.plateFinish;
@@ -1612,7 +1618,7 @@ function updateChoices(){
   $('#choice-value-4').textContent=BACKINGS[state.backing].name;
   $('#tab-4').title=BACKINGS[state.backing].name+' · '+finishName(state.plateFinish);
 }
-// Start with a wider room; physical design dimensions and uploaded-photo calibration stay unchanged.
+// Legacy camera coordinates are retained for calibrated own photographs.
 function defaultCamera(roomId){
   return {zoom:1,x:500,y:roomId==='tabletop'?245:roomId==='shop'?210:roomId==='studio'?225:185};
 }
@@ -1628,60 +1634,88 @@ function syncScenarioChoice(){
   scenarioSelect.value=state.room;scenarioSelect.title=ROOMS.find(room=>room.id===state.room)?.name||'';
   const sceneLabel=$('#mobile-scene-label');if(sceneLabel)sceneLabel.textContent=(state.outdoor?'Außen':'Innen')+' · '+scenarioSelect.title;
 }
+function stockSignBox(room){
+  const plate=plateSize(state.result.size),scale=1000/previewSpanMm(room),standing=state.mount==='table-stand';
+  const offset=positions.get(room.id)||{x:0,y:0},width=plate.widthMm*scale,height=plate.heightMm*scale;
+  return {x:500+offset.x-width/2,y:standing?(room.standY??276)-height:sceneSignY(room)+offset.y-height/2,width,height:height+(standing?7:0)};
+}
+function stockFrame(room,viewport){return frameRoom({room:room.id,viewport,sign:stockSignBox(room),camera:cameras.get(room.id),standing:state.mount==='table-stand'});}
+function alternativeRoomFits(room,viewport){
+  if(room.id==='custom'||stockFrame(room,viewport).fits)return true;
+  const plate=plateSize(state.result.size),height=Math.max(mobileChoiceMedia.matches?150:240,Math.min(viewport.height,viewport.width/2));
+  return plate.widthMm>plate.heightMm*2&&height<viewport.height&&stockFrame(room,{...viewport,height}).fits;
+}
 function paintRoom(){
   syncScenarioChoice();
-  const room=ROOMS.find(r=>r.id===state.room);
-  const camera=cameras.get(room.id)||defaultCamera(room.id);
-  // A single camera transforms the photograph and sign together.
-  const bounds=$('#room-preview').getBoundingClientRect(),aspect=bounds.width/Math.max(1,bounds.height);
-  const mobile=matchMedia('(max-width:760px)').matches;
-  const roomZoom=room.id==='custom'?camera.zoom:1+(camera.zoom-1)*.35;
-  const mobileRoomHeight=$('#large-room-dialog').open?390:320;
-  let roomWidth=mobile?Math.min(1000,mobileRoomHeight*aspect)/roomZoom:1000/roomZoom,roomHeight=roomWidth/aspect;
-  if(roomHeight>500){roomHeight=500;roomWidth=roomHeight*aspect;}
-  // Mobile frames the whole sign and photograph together, leaving room for controls.
-  // Only the camera changes; geometry, price and uploaded-photo calibration stay intact.
-  let mobileCenterY=null;
-  if(mobile&&state.result&&room.id!=='custom'&&state.scene!=='technical'){
-    const plate=plateSize(state.result.size),scale=(room.photoWidth||1000)/previewSpanMm(room);
-    const offset={x:0,y:0,...positions.get(room.id)};if(state.mount==='table-stand')offset.y=0;
-    mobileCenterY=state.mount==='table-stand'?(room.standY??276)-plate.heightMm*scale/2:sceneSignY(room);
-    roomWidth=Math.max(room.mobileMinWidth??220,plate.widthMm*scale/.62+Math.abs(offset.x)*2,plate.heightMm*scale/.46*aspect+Math.abs(offset.y)*2*aspect)/roomZoom;
-    roomHeight=roomWidth/aspect;
-    // Show a room landmark below the sign; taller designs retain clearance below the menu.
-    const signFraction=plate.heightMm*scale/roomHeight;
-    const signCenter=Math.max(.40,58/Math.max(1,bounds.height)+signFraction/2+.035);
-    mobileCenterY+=offset.y+(0.5-signCenter)*roomHeight;
-  }
-  // Keep large designs inside the frame by widening the shared photo/sign camera.
-  // The lettering keeps its physical size relative to the room; no glyph-only fitting.
-  if(state.result&&room.id!=='custom'&&state.scene!=='technical'){
-    const plate=plateSize(state.result.size),scale=(room.photoWidth||1000)/previewSpanMm(room);
-    const offset={x:0,y:0,...positions.get(room.id)};if(state.mount==='table-stand')offset.y=0;
-    const signY=state.mount==='table-stand'?(room.standY??276)-plate.heightMm*scale/2:sceneSignY(room);
-    const requiredWidth=mobile?plate.widthMm*scale/.76+Math.abs(offset.x)*2:plate.widthMm*scale+Math.abs(offset.x)*2+100;
-    const requiredHeight=mobile?plate.heightMm*scale/.60+Math.abs(offset.y)*2:plate.heightMm*scale+Math.abs(signY+offset.y-250)*2+100;
-    if(requiredWidth>roomWidth||requiredHeight>roomHeight){
-      roomWidth=Math.max(roomWidth,requiredWidth,requiredHeight*aspect);roomHeight=roomWidth/aspect;
+  const room=ROOMS.find(r=>r.id===state.room),stage=$('#preview-stage'),mobile=mobileChoiceMedia.matches;
+  const custom=room.id==='custom',plate=state.result?plateSize(state.result.size):null;
+  const previous=roomPresentation;
+  // Camera and height are stable throughout either kind of pointer drag.
+  let bounds=stage.getBoundingClientRect(),height=bounds.height;
+  const adaptive=!custom&&!$('#large-room-dialog').open&&!document.body.classList.contains('keyboard-editing');
+  if(adaptive){
+    height=drag?.presentation?.stageHeight||(mobile?Math.min(340,Math.round(200+Math.max(0,(plate?.heightMm||0)/(plate?.widthMm||1)-.35)*150)):Math.max(340,Math.min(520,innerHeight-280)));
+    if(stage.style.height!==height+'px')stage.style.height=height+'px';
+    bounds=stage.getBoundingClientRect();
+  }else if(!drag&&stage.style.height){stage.style.removeProperty('height');bounds=stage.getBoundingClientRect();height=bounds.height;}
+  const viewport={width:Math.max(1,bounds.width),height:Math.max(1,bounds.height)};
+  let frame=null,technical=state.scene==='technical',automatic=false,view;
+  if(!custom&&plate&&!technical){
+    frame=stockFrame(room,viewport);
+    // A wide sign can fit the same finite photograph in a wider-shaped viewport.
+    if(!frame.fits&&adaptive&&!drag){
+      const wideHeight=Math.max(mobile?150:240,Math.min(height,viewport.width/2));
+      if(wideHeight<height&&plate.widthMm>plate.heightMm*2){
+        const wideFrame=stockFrame(room,{width:viewport.width,height:wideHeight});
+        if(wideFrame.fits){height=wideHeight;viewport.height=height;frame=wideFrame;stage.style.height=height+'px';}
+      }
     }
+    // Only completed valid geometry may change the automatic presentation mode.
+    automatic=!frame.fits;
+    if(designRendering||!state.sizeValid)automatic=previous?.room===room.id?previous.automatic:false;
+    technical=automatic;
+    view=frame.view;
+    if(document.body.classList.contains('keyboard-editing')&&previous?.room===room.id){technical=previous.technical;automatic=previous.automatic;view=previous.view;}
   }
-  const roomX=roomWidth>1000?(1000-roomWidth)/2:Math.max(0,Math.min(1000-roomWidth,camera.x-roomWidth/2));
-  const roomY=roomHeight>500?(500-roomHeight)/2:Math.max(0,Math.min(500-roomHeight,(mobileCenterY??(camera.y+25))-roomHeight/2));
-  const roomViewBox=state.scene==='technical'?'0 0 1000 650':`${roomX} ${roomY} ${roomWidth} ${roomHeight}`;
-  const signViewBox=roomViewBox;
-  $('#sign-preview').setAttribute('viewBox',signViewBox);
-  $('#sign-preview').setAttribute('preserveAspectRatio','xMidYMid meet');
-  $('#room-preview').setAttribute('viewBox',roomViewBox);
-  $('#camera-controls').hidden=state.scene==='technical';
-  $('#camera-out').disabled=camera.zoom<=1;$('#camera-in').disabled=camera.zoom>=4;
-  $('#selected-room').textContent=room.name;$('#open-scenes').title='Hintergrund ändern · '+room.name+(room.id==='custom'?'':' · Raum als Gestaltungsvorschau, nicht vermessen');$('#scene-caption').textContent=state.scene==='technical'?'Schild im Detail':room.name;
+  if(custom){
+    const camera=cameras.get(room.id)||defaultCamera(room.id),aspect=viewport.width/viewport.height;
+    const mobileRoomHeight=$('#large-room-dialog').open?390:320;
+    let width=(mobile?Math.min(1000,mobileRoomHeight*aspect):1000)/camera.zoom,h=width/aspect;
+    if(h>500){h=500;width=h*aspect;}
+    view={x:Math.max(0,Math.min(1000-width,camera.x-width/2)),y:Math.max(0,Math.min(500-h,camera.y+25-h/2)),width,height:h};
+    frame={camera,zoom:camera.zoom,maxZoom:4};
+  }
+  if(!view)view={x:0,y:0,width:1000,height:500};
+  let scale=null;
+  if(technical){
+    const aspect=viewport.width/viewport.height,w=1000,h=w/aspect;
+    // Keep text, measurements and the top controls in screen-space clearance.
+    view={x:0,y:325-h/2,width:w,height:h};
+    if(plate)scale=Math.min((w-2*(mobile?78:110)*w/viewport.width)/plate.widthMm,(h-116*h/viewport.height)/plate.heightMm);
+    scale=Math.max(.001,scale||1);
+  }
+  roomPresentation=drag?.presentation||{room:room.id,technical,automatic,frame,view,scale,stageHeight:height};
+  ({technical,automatic,view,scale,frame}=roomPresentation);
+  const viewBox=`${view.x} ${view.y} ${view.width} ${view.height}`;
+  $('#sign-preview').setAttribute('viewBox',viewBox);$('#sign-preview').setAttribute('preserveAspectRatio','xMidYMid meet');
+  $('#room-preview').setAttribute('viewBox',viewBox);stage.dataset.scene=technical?'technical':'wall';
+  for(const button of document.querySelectorAll('.scene-tabs button')){button.setAttribute('aria-pressed',button.dataset.scene===(technical?'technical':'wall'));button.textContent=button.dataset.scene==='wall'&&technical?'Zur Raumansicht':button.dataset.scene==='wall'?'Raumansicht':'Detailansicht';}
+  $('#camera-controls').hidden=technical;
+  $('#camera-out').disabled=!frame||frame.zoom<=1.001;$('#camera-in').disabled=!frame||frame.zoom>=frame.maxZoom-.001;
+  const compatibleRooms=automatic?ROOMS.filter(candidate=>sceneAvailable(candidate)&&alternativeRoomFits(candidate,viewport)):[];
+  $('#room-fit-scenes').textContent=compatibleRooms.length?'Passenden Hintergrund wählen':'Eigenes Foto verwenden';
+  $('#room-fit-note').hidden=!automatic;
+  $('#room-fit-note-text').textContent=automatic?'Für dieses Format oder diese Position zeigen wir dein Schild in der Detailansicht. Wähle einen passenden Hintergrund für die Raumvorschau.':'';
+  $('#room-fit-reset').hidden=!automatic||!positions.has(room.id);
+  if(automatic&&!compatibleRooms.length)$('#room-fit-note-text').textContent='Für dieses Format zeigen wir dein Schild in der Detailansicht. Für die Raumvorschau kannst du ein eigenes Foto mit Referenzmaß verwenden.';
+  $('#selected-room').textContent=room.name;$('#open-scenes').title='Hintergrund ändern · '+room.name+(room.id==='custom'?'':' · Raum als Gestaltungsvorschau, nicht vermessen');$('#scene-caption').textContent=technical?'Schild im Detail':room.name;
   $('#scene-note').textContent='';
-  $('#scene-note').title=state.scene==='technical'?'Die Maßangaben gelten für die gesamten Außenmaße des Schilds.':`Angenommene Bildbreite auf Schildhöhe: ${cm(previewSpanMm(room))} cm. Keine vermessene Raumszene.`;
-  for(const button of document.querySelectorAll('[data-room]')){button.setAttribute('aria-pressed',button.dataset.room===room.id);button.hidden=!sceneAvailable(ROOMS.find(item=>item.id===button.dataset.room));}
+  $('#scene-note').title=technical?'Die Maßangaben gelten für die gesamten Außenmaße des Schilds.':`Angenommene Bildbreite auf Schildhöhe: ${cm(previewSpanMm(room))} cm. Keine vermessene Raumszene.`;
+  for(const button of document.querySelectorAll('[data-room]')){button.setAttribute('aria-pressed',button.dataset.room===room.id);const candidate=ROOMS.find(item=>item.id===button.dataset.room);button.hidden=!sceneAvailable(candidate)||(automatic&&!alternativeRoomFits(candidate,viewport));}
   if(room.id==='custom')$('#scene-note').title=room.calibration?'Eigenes Foto mit deinem Referenzmaß':'Eigenes Foto ohne Referenzmaß';
   $('#scene-strip').classList.toggle('is-tabletop',state.mount==='table-stand');
   const group=$('#preview-room');
-  if(state.scene==='technical'){group.replaceChildren();return;}
+  if(technical){group.replaceChildren();return;}
   const roomImage=mobile&&room.mobileImage?room.mobileImage:room.image;
   const roomImageUrl=roomImage?new URL(roomImage,import.meta.url).href:SCENE_IMAGE;
   if(group.dataset.room===room.id&&group.dataset.image===roomImageUrl&&group.children.length)return;
@@ -1707,6 +1741,8 @@ for(const room of ROOMS){
 }
 renderSceneButtons();
 $('#open-scenes').addEventListener('click',()=>$('#scene-dialog').showModal());
+$('#room-fit-scenes').addEventListener('click',()=>$('#scene-dialog').showModal());
+$('#room-fit-reset').addEventListener('click',()=>{positions.delete(state.room);paint();});
 for(const button of document.querySelectorAll('[data-dialog]'))button.addEventListener('click',()=>document.getElementById(button.dataset.dialog).showModal());
 
 for(const button of document.querySelectorAll('[data-close]'))button.addEventListener('click',()=>button.closest('dialog').close());
@@ -2330,7 +2366,7 @@ $('#cart-items').addEventListener('click',async event=>{
   try{
     await applyDesign(item.design);
     if(!state.result)throw new Error('Der gespeicherte Entwurf konnte nicht neu gezeichnet werden. Bitte prüfe Schrift und Größe.');
-    editingCartId=item.id;draftApplying=false;commitHistory();persistDesign(captureDesign());await persistCart();
+    acceptReplacementDraft();editingCartId=item.id;draftApplying=false;commitHistory();persistDesign(captureDesign());await persistCart();
     $('#cart-dialog').close();setStep(0,true);refreshCartButtons();
   }catch(error){$('#cart-storage-status').textContent=error.message;}
   finally{cartEditing=false;draftApplying=false;$('#cart-items').inert=false;$('.editor').inert=false;$('.editor-tabs').inert=false;$('.preview-column').inert=false;$('#cart-dialog').querySelectorAll('[data-close]').forEach(b=>b.disabled=false);refreshHistoryButtons();}
@@ -2416,9 +2452,10 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshCar
 
 window.addEventListener('resize',()=>{paint();revealActiveTab();});
 for(const [id,delta] of [['camera-out',-.2],['camera-in',.2]])$('#'+id).addEventListener('click',()=>{
-  const current=cameras.get(state.room)||defaultCamera(state.room);
+  const current=roomPresentation?.frame?.camera||cameras.get(state.room)||defaultCamera(state.room);
   const offset=positions.get(state.room)||{x:0,y:0};
-  cameras.set(state.room,{zoom:Math.max(1,Math.min(4,Math.round((current.zoom+delta)*10)/10)),x:500+offset.x,y:defaultCamera(state.room).y+offset.y});paint();
+  const zoom=Math.max(1,Math.min(roomPresentation?.frame?.maxZoom||4,(roomPresentation?.frame?.zoom||current.zoom)+delta));
+  cameras.set(state.room,state.room==='custom'?{zoom,x:500+offset.x,y:defaultCamera(state.room).y+offset.y}:{...current,zoom});paint();
 });
 $('#preview-color').addEventListener('click',()=>setStep(2,true));
 for(const button of document.querySelectorAll('[data-canvas-step]'))button.addEventListener('click',()=>{setStep(Number(button.dataset.canvasStep),true);if(matchMedia('(max-width:760px)').matches)window.scrollTo(0,0);});
@@ -2436,32 +2473,32 @@ preview.addEventListener('pointerdown',event=>{
   if(matchMedia('(max-width:760px)').matches)return;
   const target=event.target.closest('[data-edit]');
   $('#preview-stage').classList.toggle('sign-selected',!!target);
-  if(!target||!previewBox||state.scene==='technical'||event.button!==0)return;
+  if(!target||!previewBox||roomPresentation?.technical||event.button!==0)return;
   event.preventDefault();const point=localPoint(event),offset=positions.get(state.room)||{x:0,y:0};
-  drag={id:event.pointerId,kind:target.dataset.edit,start:point,offset:{...offset},box:{...previewBox},width:state.result.size.exact.design.widthMm,sx:Number(target.dataset.sx)||1,sy:Number(target.dataset.sy)||1};
+  drag={presentation:roomPresentation,id:event.pointerId,kind:target.dataset.edit,start:point,offset:{...offset},box:{...previewBox},width:state.result.size.exact.design.widthMm,sx:Number(target.dataset.sx)||1,sy:Number(target.dataset.sy)||1};
   preview.setPointerCapture(event.pointerId);
 });
 preview.addEventListener('pointermove',event=>{
   if(!drag||drag.id!==event.pointerId)return;
   const point=localPoint(event),dx=point.x-drag.start.x,dy=point.y-drag.start.y;
   if(drag.kind==='move'){
-    const onCounter=state.mount==='table-stand'&&state.room!=='custom';
-    const box=drag.box,view=preview.viewBox.baseVal,left=Math.max(view.x+12,onCounter?200:12),right=Math.min(view.x+view.width-12,onCounter?800:988);
-    positions.set(state.room,{
-      x:box.width>right-left?0:drag.offset.x+Math.max(left-box.x,Math.min(right-box.x-box.width,dx)),
-      y:onCounter?0:drag.offset.y+Math.max(view.y+12-box.y,Math.min(view.y+view.height-12-box.y-box.height,dy))
-    });paint();
+    positions.set(state.room,boundedPosition(drag.box,drag.offset,dx,dy));paint();
   }else{
     const vx=drag.sx*(drag.box.width/2+drag.box.pad),vy=drag.sy*(drag.box.height/2+drag.box.pad);
     drag.nextWidth=drag.width*Math.max(.01,1+(dx*vx+dy*vy)/(vx*vx+vy*vy));
     if(!dragFrame)dragFrame=requestAnimationFrame(()=>{dragFrame=0;if(drag)resizeSign(drag.nextWidth);});
   }
 });
+function boundedPosition(box,offset,dx,dy){
+  const v=preview.viewBox.baseVal,standing=state.mount==='table-stand'&&state.room!=='custom';
+  const area=state.room==='custom'?[v.x+12,v.y+12,v.x+v.width-12,v.y+v.height-12]:roomArea(state.room,standing);
+  return moveWithinRoom({area,box:{...box,height:box.height+(standing?7:0)},offset,dx,dy,standing});
+}
 function endDrag(event){
   if(!drag||drag.id!==event.pointerId)return;
   if(dragFrame){cancelAnimationFrame(dragFrame);dragFrame=0;}
   if(drag.kind==='resize'&&drag.nextWidth)resizeSign(drag.nextWidth);
-  drag=null;
+  drag=null;paint();
   if(preview.hasPointerCapture(event.pointerId))preview.releasePointerCapture(event.pointerId);
 }
 preview.addEventListener('pointerup',endDrag);
@@ -2473,10 +2510,8 @@ preview.addEventListener('keydown',event=>{
     resizeFocus=[target.dataset.sx,target.dataset.sy];resizeSign(state.result.size.exact.design.widthMm+delta);
   }else if(target.dataset.edit==='move'&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){
     event.preventDefault();const amount=event.shiftKey?10:2,offset=positions.get(state.room)||{x:0,y:0};
-    const onCounter=state.mount==='table-stand'&&state.room!=='custom';
-    const box=previewBox,view=preview.viewBox.baseVal,left=Math.max(view.x+12,onCounter?200:12),right=Math.min(view.x+view.width-12,onCounter?800:988);
     const dx=event.key==='ArrowLeft'?-amount:event.key==='ArrowRight'?amount:0,dy=event.key==='ArrowUp'?-amount:event.key==='ArrowDown'?amount:0;
-    positions.set(state.room,{x:box.width>right-left?0:offset.x+Math.max(left-box.x,Math.min(right-box.x-box.width,dx)),y:onCounter?0:offset.y+Math.max(view.y+12-box.y,Math.min(view.y+view.height-12-box.y-box.height,dy))});
+    positions.set(state.room,boundedPosition(previewBox,offset,dx,dy));
     paint();$('#preview-handles [data-edit="move"]').focus();
   }
 });
@@ -2537,11 +2572,12 @@ async function bootDraft(){
   $('.editor').inert=true;$('.editor-tabs').inert=true;$('.preview-column').inert=true;
   let restored=false,failure=false;
   try{const saved=readDraft();if(saved){await applyDesign(saved);restored=true;}else await update();}
-  catch{failure=true;await update();$('#draft-status').textContent='Entwurf konnte nicht geladen werden. Neue Änderungen werden gespeichert.';}
+  catch{failure=true;draftWriteGuard.block();entryOnboarding.end();await update();$('#use-replacement-draft').hidden=false;$('#draft-status').textContent='Vorhandener Entwurf konnte nicht geladen werden. Dieser neue Entwurf ist noch nicht gespeichert.';}
   history=new DraftHistory(captureDesign());lastSavedSnapshot=restored?JSON.stringify(captureDesign()):null;draftReady=true;
   if(!restored&&!failure)persistDesign(captureDesign());
   if(!failure)$('#draft-status').textContent=restored?'Entwurf wiederhergestellt':'Wird auf diesem Gerät gespeichert';
   $('.editor').inert=false;$('.editor-tabs').inert=false;$('.preview-column').inert=false;refreshHistoryButtons();
+  entryOnboarding.start(!restored&&!failure&&!location.hash);
   showIncomingDesigns();setupBudgetAdvisor();
 }
 bootDraft();
@@ -2710,6 +2746,7 @@ function showIncomingDesigns(){
  const dialog=$('#shared-design-dialog'),list=$('#shared-design-list');
  list.replaceChildren();$('#shared-design-status').textContent='';
  try{
+  if(location.hash)entryOnboarding.end();
   incomingDesigns=readDesignLink(location.hash,sharePolicy);$('#open-shared-designs').hidden=!incomingDesigns;
   if(!incomingDesigns)return;
   $('#shared-design-title').textContent=incomingDesigns.length===2?'Zwei Entwürfe für dich.':'Ein Entwurf für dich.';
@@ -2718,7 +2755,7 @@ function showIncomingDesigns(){
    title.textContent=(incomingDesigns.length===2?(i?'B · ':'A · '):'')+design.text;info.textContent=design.fontId+' · '+COLORS.find(c=>c.id===design.color).name;
    card.append(title,info,designButton('Als eigene Kopie öffnen',async()=>{
     if(draftApplying)return;commitHistory();const previous=captureDesign();draftApplying=true;card.querySelector('button').disabled=true;
-    try{await applyDesign(design);if(!state.result)throw new Error($('#text-error').textContent||'Dieser Entwurf benötigt eine Korrektur.');history.record(captureDesign());persistDesign(captureDesign());dialog.close();setStep(0);$('#save-design-status').textContent='Geteilte Kopie geöffnet. Vorheriger Entwurf: Rückgängig.';}
+    try{await applyDesign(design);if(!state.result)throw new Error($('#text-error').textContent||'Dieser Entwurf benötigt eine Korrektur.');acceptReplacementDraft();history.record(captureDesign());persistDesign(captureDesign());dialog.close();setStep(0);$('#save-design-status').textContent='Geteilte Kopie geöffnet. Vorheriger Entwurf: Rückgängig.';}
     catch(error){await applyDesign(previous);$('#shared-design-status').textContent=error.message;}
     finally{draftApplying=false;card.querySelector('button').disabled=false;refreshHistoryButtons();}
    }));list.append(card);
@@ -2734,7 +2771,7 @@ function previewImage(record){const img=document.createElement('img');img.src='d
 async function restoreNamed(record,status){
   if(draftApplying)return;
   draftApplying=true;$('.editor').inert=true;
-  try{await applyDesign(record.design);if(!state.result)throw new Error('Dieser Entwurf konnte nicht berechnet werden.');history.record(captureDesign());persistDesign(captureDesign());$('#saved-designs').close();$('#design-comparison').close();$('#cart-dialog').close();setStep(0);}
+  try{await applyDesign(record.design);if(!state.result)throw new Error('Dieser Entwurf konnte nicht berechnet werden.');acceptReplacementDraft();history.record(captureDesign());persistDesign(captureDesign());$('#saved-designs').close();$('#design-comparison').close();$('#cart-dialog').close();setStep(0);}
   catch(error){status.textContent=error.message;}
   finally{draftApplying=false;$('.editor').inert=false;refreshHistoryButtons();}
 }
