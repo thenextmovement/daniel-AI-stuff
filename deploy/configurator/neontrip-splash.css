@@ -7,19 +7,13 @@
 .nt-splash__mark{width:100%;height:auto;display:block;overflow:visible}
 .nt-splash__mark path{fill:#fff}
 .nt-splash__scan{position:absolute;left:0;top:-22%;height:140%;width:1px;background:#fff;box-shadow:0 0 14px 2px #ffffff26;opacity:0;pointer-events:none}
-.nt-splash__skip{position:absolute;top:26px;right:28px;display:flex;align-items:center;gap:8px;border:0;padding:10px 0 10px 14px;background:transparent;color:#ffffff8c;font:inherit;font-size:11px;letter-spacing:.1px;z-index:3;cursor:pointer;transition:color .15s}
-.nt-splash__skip:hover{color:white}
-.nt-configurator .nt-splash .nt-splash__skip:focus-visible{outline:2px solid white;outline-offset:5px}
-.nt-splash__skip svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6}
 .nt-splash[data-active] .nt-splash__mark{animation:nt-splash-scan-reveal 510ms 100ms cubic-bezier(.65,0,.25,1) both}
 .nt-splash[data-active] .nt-splash__scan{animation:nt-splash-scan-edge 540ms 100ms cubic-bezier(.65,0,.25,1) both}
 .nt-splash[data-active] .nt-splash__logo{animation:nt-splash-logo-exit 600ms 900ms cubic-bezier(.76,0,.24,1) both}
 .nt-splash[data-active] .nt-splash__curtain{animation:nt-splash-lift 600ms 900ms cubic-bezier(.76,0,.24,1) both}
-.nt-splash[data-active] .nt-splash__skip{animation:nt-splash-skip-out 150ms 740ms both}
 @keyframes nt-splash-scan-reveal{from{clip-path:inset(-10% 100% -10% 0)}to{clip-path:inset(-10% 0 -10% 0)}}
 @keyframes nt-splash-scan-edge{0%{left:0;opacity:0}10%{opacity:.8}88%{opacity:.8}100%{left:100%;opacity:0}}
 @keyframes nt-splash-logo-exit{from{transform:translate(-50%,-50%)}to{transform:translate(-50%,calc(-50% - 100vh))}}
 @keyframes nt-splash-lift{from{transform:translateY(0)}to{transform:translateY(-101%)}}
-@keyframes nt-splash-skip-out{to{opacity:0;visibility:hidden}}
-@media(max-width:600px){.nt-splash__logo{width:calc(100vw - 48px)}.nt-splash__skip{top:15px;right:18px;font-size:10px}}
-@media(prefers-reduced-motion:reduce){.nt-splash__mark,.nt-splash__curtain,.nt-splash__logo,.nt-splash__skip{animation:none!important}.nt-splash__scan{display:none}}
+@media(max-width:600px){.nt-splash__logo{width:calc(100vw - 48px)}}
+@media(prefers-reduced-motion:reduce){.nt-splash__mark,.nt-splash__curtain,.nt-splash__logo{animation:none!important}.nt-splash__scan{display:none}}

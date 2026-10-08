@@ -5,7 +5,6 @@
   const content = document.querySelector('[data-nt-splash-content]');
   // The overlay must sit outside the page wrapper that becomes temporarily inert.
   if (!content || content.contains(overlay)) { overlay.remove(); return; }
-  const skip = overlay.querySelector('.nt-splash__skip');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const previousFocus = document.activeElement;
   const previousInert = content.inert;
@@ -30,7 +29,6 @@
   }
   function onKey(event) { if (event.key === 'Escape') finish(); }
   function onReducedMotion() { if (reduced.matches) finish(); }
-  skip.addEventListener('click', finish, {once:true});
   addEventListener('keydown', onKey);
   addEventListener('pagehide', finish, {once:true});
   reduced.addEventListener('change', onReducedMotion);
@@ -38,6 +36,6 @@
   htmlStyle.setProperty('overflow', 'hidden');
   overlay.hidden = false;
   overlay.setAttribute('data-active', '');
-  skip.focus({preventScroll:true});
+  overlay.focus({preventScroll:true});
   timer = setTimeout(finish, reduced.matches ? 180 : 1500);
 })();
