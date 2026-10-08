@@ -99,58 +99,86 @@ document.querySelectorAll('.nt-material-chapters details').forEach(chapter => {
   });
 });
 
-// Load only on demand. A deliberate pause survives scrolling and tab changes.
+// Silent demonstration: load at first sight, pause offscreen or for reduced motion.
 const mountingVideo=document.querySelector('#config-mounting-video');
-const mountingToggle=document.querySelector('#mounting-video-toggle');
-if(mountingVideo&&mountingToggle){
+if(mountingVideo){
   const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
-  let visible=false,manualPause=false,manualStart=false,loaded=false,playRevision=0;
+  let visible=false,loaded=false,playRevision=0;
   mountingVideo.muted=true;
-  const updateControl=()=>{
-    const paused=mountingVideo.paused;
-    mountingToggle.querySelector('span').textContent=paused?'Montagevideo abspielen':'Montagevideo pausieren';
-    mountingToggle.querySelector('path').setAttribute('d',paused?'m8 5 11 7-11 7Z':'M8 5v14M16 5v14');
-  };
-  const stop=()=>{playRevision++;mountingVideo.pause();updateControl();};
+  const stop=()=>{playRevision++;mountingVideo.pause();};
   const play=()=>{
-    if(document.hidden||!visible||manualPause||(reducedMotion.matches&&!manualStart))return;
+    if(document.hidden||!visible||reducedMotion.matches)return;
     if(!loaded){const source=mountingVideo.querySelector('source');source.src=source.dataset.src;source.removeAttribute('data-src');mountingVideo.load();loaded=true;}
     const revision=++playRevision;
-    mountingVideo.play().then(()=>{if(revision!==playRevision&&(manualPause||!visible||document.hidden))mountingVideo.pause();updateControl();}).catch(updateControl);
+    mountingVideo.play().then(()=>{if(revision!==playRevision&&(!visible||document.hidden||reducedMotion.matches))mountingVideo.pause();}).catch(()=>{});
   };
-  mountingToggle.addEventListener('click',()=>{
-    if(!mountingVideo.paused){manualPause=true;stop();}
-    else{manualPause=false;manualStart=true;visible=true;play();}
-  });
-  mountingVideo.addEventListener('play',updateControl);
-  mountingVideo.addEventListener('pause',updateControl);
   if('IntersectionObserver' in window){
     const observer=new IntersectionObserver(entries=>{for(const entry of entries){visible=entry.isIntersecting&&entry.intersectionRatio>=.1;if(visible)play();else stop();}},{threshold:[0,.1]});
     observer.observe(mountingVideo);
   }
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else play();});
-  reducedMotion.addEventListener('change',()=>{manualStart=false;if(reducedMotion.matches)stop();else play();});
+  reducedMotion.addEventListener('change',()=>{if(reducedMotion.matches)stop();else play();});
 }
 
-// Reveal only illustrative media/process cards. Copy remains readable without JavaScript.
+// Short, one-time entrances. Content is visible even without JavaScript or observers.
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
-const revealItems = [...document.querySelectorAll('.nt-v2-reveal')];
+const revealItems = [...document.querySelectorAll([
+  '.nt-v2-reveal', '.nt-trust-grid > a', '.nt-content-heading-row > div',
+  '#config-ar .nt-ar-intro', '#config-ar .nt-ar-copy', '#config-ar .nt-ar-photo',
+  '#config-product .nt-product-v2-copy', '#config-product .nt-product-v2-photo',
+  '#config-product .nt-product-v2-facts > div',
+  '#config-customers .nt-proof__heading', '#config-customers .nt-proof__band',
+  '#config-delivery-info .nt-express__heading',
+  '.nt-content-final .nt-content-inner > div', '#config-other-signs .nt-category',
+  '#config-customer-photos .nt-review-wall__header', '#config-customer-photos .nt-review-wall__card'
+].join(','))];
+const activeEntrances = new Set();
+function animateEntrance(element, {distance = 14, duration = 500, delay = 0} = {}) {
+  if (motionPreference.matches || !element.animate || element.contains(document.activeElement)) return;
+  const animation = element.animate([
+    {opacity: 0, transform: `translateY(${distance}px)`},
+    {opacity: 1, transform: 'translateY(0)'}
+  ], {duration, delay, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'backwards'});
+  activeEntrances.add(animation);
+  const cleanup = () => activeEntrances.delete(animation);
+  animation.addEventListener('finish', cleanup, {once: true});
+  animation.addEventListener('cancel', cleanup, {once: true});
+}
 if ('IntersectionObserver' in window && !motionPreference.matches) {
   const observer = new IntersectionObserver(entries => {
     for (const entry of entries) if (entry.isIntersecting) {
-      entry.target.classList.remove('nt-awaiting');
       observer.unobserve(entry.target);
+      // Anchor jumps/back navigation should never fade text already above the viewport.
+      if (entry.boundingClientRect.top < 0) continue;
+      const compact = matchMedia('(max-width: 760px)').matches;
+      const delay = compact ? 0 : parseFloat(getComputedStyle(entry.target).getPropertyValue('--nt-reveal-delay')) || 0;
+      animateEntrance(entry.target, {distance: compact ? 8 : 14, duration: compact ? 400 : 500, delay});
     }
-  }, {threshold: 0.12});
-  revealItems.forEach(item => { item.classList.add('nt-awaiting'); observer.observe(item); });
-  document.documentElement.classList.add('nt-motion-ready');
+  }, {threshold: .08, rootMargin: '0px 0px -24px 0px'});
+  revealItems.forEach(item => observer.observe(item));
   motionPreference.addEventListener('change', event => {
     if (event.matches) {
-      revealItems.forEach(item => item.classList.remove('nt-awaiting'));
       observer.disconnect();
     }
   });
 }
+motionPreference.addEventListener('change', event => {
+  if (event.matches) activeEntrances.forEach(animation => animation.cancel());
+});
+// Keyboard focus stays fully visible, including while a section enters.
+document.addEventListener('focusin', event => {
+  activeEntrances.forEach(animation => {
+    if (animation.effect.target.contains(event.target)) animation.cancel();
+  });
+});
+document.querySelectorAll('#schriftzug-faq .nt-faq-list details').forEach(item => {
+  item.addEventListener('toggle', () => {
+    activeEntrances.forEach(animation => {
+      if (item.contains(animation.effect.target)) animation.cancel();
+    });
+    if (item.open) item.querySelectorAll(':scope > p').forEach(answer => animateEntrance(answer, {distance: 4, duration: 180}));
+  });
+});
 
 // Informational landing-page calendar and chat, specialized for the current sign.
 // The delivery calendar in the cart remains authoritative; this check reserves nothing.

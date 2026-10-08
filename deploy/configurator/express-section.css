@@ -170,8 +170,8 @@
 @media(max-width:600px){.nt-express h2{font-size:clamp(32px,8.2vw,42px)}}
 .nt-express__google-heading img{width:74px;height:28px}
 
-/* Desktop: let wheel scrolling continue to the page at chat boundaries. */
-@media(min-width:1001px){.nt-express__conversation{overscroll-behavior-y:auto}}
+/* Let touch and wheel scrolling continue to the page at both chat boundaries. */
+.nt-express__conversation{overscroll-behavior-y:auto}
 
 /* Original reviewer identity; no invented portraits or review text. */
 .nt-express__review-author{display:flex;align-items:center;gap:10px;margin-bottom:10px}

@@ -25,7 +25,6 @@
   let visible = false;
   let paused = reducedMotion.matches;
   let pointerDown = false;
-  let resumeAt = 0;
   let lastTime = 0;
   let remainder = 0;
   let frame = 0;
@@ -35,15 +34,15 @@
     rail.scrollLeft = 2 * cycle + 3 * step + originals[0].offsetWidth / 2 - rail.clientWidth / 2;
   };
   const normalize = () => {
-    if (!cycle || rail.contains(document.activeElement)) return;
+    if (!cycle || rail.matches(':focus-visible') || rail.querySelector(':focus-visible')) return;
     if (rail.scrollLeft < cycle) rail.scrollLeft += cycle;
     if (rail.scrollLeft >= 3 * cycle) rail.scrollLeft -= cycle;
   };
   const tick = (time) => {
     const delta = lastTime ? Math.min(time - lastTime, 64) : 0;
     lastTime = time;
-    if (!paused && !pointerDown && time > resumeAt && !rail.matches(':hover') &&
-        !rail.contains(document.activeElement) && !root.querySelector('dialog[open]')) {
+    if (!paused && !pointerDown && !rail.matches(':focus-visible') &&
+        !rail.querySelector(':focus-visible') && !root.querySelector('dialog[open]')) {
       remainder += delta * 0.018;
       const pixels = Math.floor(remainder);
       remainder -= pixels;
@@ -60,10 +59,16 @@
   reducedMotion.addEventListener('change', () => { paused = reducedMotion.matches; schedule(); });
   rail.addEventListener('scroll', normalize, {passive: true});
   rail.addEventListener('pointerdown', () => { pointerDown = true; }, {passive: true});
-  window.addEventListener('pointerup', () => { pointerDown = false; resumeAt = performance.now() + 2000; }, {passive: true});
+  window.addEventListener('pointerup', () => { pointerDown = false; }, {passive: true});
   window.addEventListener('pointercancel', () => { pointerDown = false; }, {passive: true});
-  rail.addEventListener('wheel', () => { resumeAt = performance.now() + 2000; }, {passive: true});
   document.addEventListener('visibilitychange', schedule);
+  // Prepare images before entry; animate only while the rail is actually visible.
+  const preloadRail = new IntersectionObserver(([entry]) => {
+    if (!entry.isIntersecting) return;
+    rail.querySelectorAll('img[loading="lazy"]').forEach(image => { image.loading = 'eager'; });
+    preloadRail.disconnect();
+  }, {rootMargin: '200px 0px'});
+  preloadRail.observe(rail);
   new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; schedule(); }).observe(rail);
   new ResizeObserver(position).observe(rail);
   position();

@@ -152,9 +152,6 @@ body.nt-configurator .nt-product-v2-facts dt svg{position:absolute;left:0;top:0}
 body.lichtbuehne.lichtbuehne-v4.designstudio #main #text-help,
 .nt-review-wall__rating>span{color:#57504c}
 .nt-product-v2-photo{position:relative}
-.mounting-video-toggle{position:absolute;right:14px;bottom:48px;display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:10px 14px;border:1px solid #181615;border-radius:999px;background:#fff;color:#181615;font:600 14px/1.3 Inter,sans-serif;cursor:pointer}
-.mounting-video-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}
-.mounting-video-toggle:focus-visible{outline:3px solid #a51261;outline-offset:3px}
 .studio-font-grid{min-height:94px}
 @media(max-width:380px){body.nt-configurator .nt-product-v2-facts>div{padding-left:0}body.nt-configurator .nt-product-v2-facts dt svg{position:static;display:block;margin-bottom:8px}}
 
@@ -167,4 +164,17 @@ body.lichtbuehne.lichtbuehne-v4.designstudio #main #text-help,
 @media(max-width:760px){
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>.studio-context,
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>#usage-note{display:none!important}
+}
+
+/* Legible supporting copy in the existing lower-page sections. */
+body.nt-configurator #config-product .nt-product-v2-facts dd {font-size:16px;line-height:1.5}
+body.nt-configurator #config-delivery-info :is(.nt-express__urgent>p,.nt-express__review blockquote,.nt-express__date-result) {font-size:16px;line-height:1.5}
+body.nt-configurator #config-delivery-info .nt-express__author {font-size:12px;line-height:1.4}
+body.nt-configurator #config-delivery-info :is(.nt-express__review figcaption a,.nt-express__review-author strong,.nt-express__project-label) {font-size:14px;line-height:1.4}
+@media(max-width:760px){
+ #config-product .nt-product-v2-layout {grid-template-columns:minmax(0,1fr)}
+ #config-product .nt-product-v2-facts {grid-template-columns:repeat(2,minmax(0,1fr))}
+ body.nt-configurator #config-product .nt-product-v2-facts>div {display:block;min-width:0;padding-left:0}
+ body.nt-configurator #config-product .nt-product-v2-facts dt svg {position:static;display:block;margin:0 0 8px}
+ #config-product .nt-product-v2-facts dd {hyphens:auto;overflow-wrap:break-word}
 }
