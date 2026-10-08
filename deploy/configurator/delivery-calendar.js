@@ -1,4 +1,4 @@
-import {roundGrossPrice} from './pricing.js?v=20261007-tablet-accessories1-factor26';
+import {roundGrossPrice} from './pricing.js?v=20261008-min189';
 // NEON-only delivery selection. Source: Offers origin/main lib/pricing/delivery.ts
 // and lib/delivery-date.ts; verified against origin/main 9a894c87 on 2026-10-06.
 // Daniel approved unchanged Offers fees on 2026-10-06; no online fee discount.
