@@ -3,17 +3,17 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
+import { printDevice, printWorkerId } from "./arrival_label_print_worker_config.mjs";
+
 const TOKEN_SERVICE = "NEONTRIP_ARRIVAL_LABEL_PRINT_API_TOKEN";
 const CF_SECRET_SERVICE = "NEONTRIP_ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET";
 const CONFIG = {
   label: {
-    workerId: "daniels-mac-arrival-label-a6-01",
     printerKey: "shipping-a6",
     cupsPrinter: "Brother_QL_1110NWB",
     media: "4x6",
   },
   delivery_note: {
-    workerId: "daniels-mac-arrival-delivery-note-a4-01",
     printerKey: "shipping-a4-delivery-note",
     cupsPrinter: "HP_Color_LaserJet_Pro_MFP_3302",
     media: "A4",
@@ -61,9 +61,10 @@ if (!account) fail("Keychain-Account fehlt.", 78);
 const apiUrl = new URL(String(process.env.NEONTRIP_OPS_BASE_URL || "https://ops.neontrip.de"));
 if (apiUrl.protocol !== "https:" || apiUrl.username || apiUrl.password || apiUrl.search || apiUrl.hash) fail("Ops-Basis-URL ist ungueltig.", 78);
 const selected = CONFIG[options.kind];
+const device = printDevice(process.env.NEONTRIP_PRINT_DEVICE || "daniel");
 process.env.ARRIVAL_LABEL_PRINT_API_URL = apiUrl.toString().replace(/\/$/, "");
 process.env.ARRIVAL_LABEL_PRINT_API_TOKEN = keychainSecret(TOKEN_SERVICE, account);
-process.env.ARRIVAL_LABEL_PRINT_WORKER_ID = selected.workerId;
+process.env.ARRIVAL_LABEL_PRINT_WORKER_ID = printWorkerId(device, options.kind);
 process.env.ARRIVAL_LABEL_PRINTER_KEY = selected.printerKey;
 process.env.ARRIVAL_LABEL_CUPS_PRINTER = selected.cupsPrinter;
 process.env.ARRIVAL_LABEL_PRINT_MEDIA = selected.media;

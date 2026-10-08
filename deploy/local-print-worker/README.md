@@ -57,6 +57,21 @@ npm run arrival-labels:print-workers:manage -- status
 
 `self-test` verifies both exact CUPS queue names and their approved media without printing. `install` is accepted only from a clean checkout at the exact `origin/main` commit and installs both queues together. A failed replacement restores the prior plists or leaves newly created plists disabled and recoverable.
 
+### Daniel primary / Rahim fallback
+
+After migration `20261008120000_arrival_print_fallback_priority.sql` is applied, Daniel keeps the existing worker IDs and claims immediately. For the **first installation on Rahim's Mac**, explicitly select the fallback device:
+
+```bash
+NEONTRIP_PRINT_DEVICE=rahim npm run arrival-labels:print-workers:manage -- self-test
+NEONTRIP_PRINT_DEVICE=rahim npm run arrival-labels:print-workers:manage -- install --acknowledge-production-write
+```
+
+The selection is persisted in both LaunchAgents. Updates without an explicit device preserve the installed selection; conflicting selections stop the update. A new or legacy installation defaults to Daniel, so explicitly select Rahim on first installation. The server delays the two exact Rahim worker IDs for five minutes after job creation. This is a head start for Daniel, not an online/offline detector. Active leases cannot be stolen; only still-safe queued or pre-dispatch retry jobs can be claimed. A dispatching, submitted or uncertain job is never automatically taken over. Both computers use the same central queue, their own worker IDs and local Keychain credentials. Laptop and printer must be awake/reachable. The self-test does not prove physical printing or automatic failover; verify a controlled job and its CUPS receipt separately.
+
+The migration changes only the existing claim RPC and preserves its privileges. Rollback SQL is in `supabase/rollbacks/20261008120000_arrival_print_fallback_priority_rollback.sql`. **Unload Rahim's fallback LaunchAgents before rolling back the migration**, otherwise their five-minute delay disappears.
+
+Isolated database regression test (never run the fixture against production): load `tests/sql/arrival-print-fallback-base.sql`, then the migration, then `tests/sql/arrival-print-fallback.test.sql` into a fresh disposable PostgreSQL database. The test checks priority, both printer queues, active/expired leases, retries and the uncertain-dispatch boundary.
+
 ## Exactly-once boundary
 
 The worker downloads and verifies the audited PDF before entering `dispatching`. It then records `dispatching` durably before calling CUPS. A crash or uncertain state after that point is routed to manual review and is never automatically printed again. `printed` is recorded only when CUPS lists the exact job ID as completed.

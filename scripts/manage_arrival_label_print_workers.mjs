@@ -5,6 +5,8 @@ import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { configuredPrintDevice } from "./arrival_label_print_worker_config.mjs";
+
 const SOURCE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TOKEN_SERVICE = "NEONTRIP_ARRIVAL_LABEL_PRINT_API_TOKEN";
 const CF_SECRET_SERVICE = "NEONTRIP_ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET";
@@ -63,6 +65,16 @@ function keychainSecretPresent(service, account) {
   if (result.status !== 0 || String(result.stdout || "").trim().length < 32) throw new ManagerError(`Keychain-Geheimnis fehlt: ${service}`, 78);
 }
 
+function installedPrintDevices() {
+  return WORKERS.flatMap((worker) => {
+    const plist = join(paths().home, "Library", "LaunchAgents", `${worker.label}.plist`);
+    if (!existsSync(plist)) return [];
+    const config = JSON.parse(run("/usr/bin/plutil", ["-convert", "json", "-o", "-", plist]));
+    // Older managed plists have no selector and use the original Daniel identity.
+    return [config.EnvironmentVariables?.NEONTRIP_PRINT_DEVICE ?? "daniel"];
+  });
+}
+
 function runtimeEnvironment() {
   const account = String(process.env.NEONTRIP_KEYCHAIN_ACCOUNT || process.env.USER || "").trim();
   if (!account) throw new ManagerError("Keychain-Account fehlt.", 78);
@@ -74,7 +86,7 @@ function runtimeEnvironment() {
     || opsUrl.username || opsUrl.password || opsUrl.search || opsUrl.hash) {
     throw new ManagerError("Ops-Basis-URL ist nicht freigegeben.", 78);
   }
-  return { account, cfClientId, opsBaseUrl: "https://ops.neontrip.de" };
+  return { account, cfClientId, opsBaseUrl: "https://ops.neontrip.de", printDevice: configuredPrintDevice(process.env.NEONTRIP_PRINT_DEVICE, installedPrintDevices()) };
 }
 
 function backupPlist(target, backupDir) {
@@ -89,7 +101,7 @@ function stageVersion(commit) {
   const versionDir = join(target.runtimeRoot, "versions", commit);
   mkdirSync(join(versionDir, "scripts"), { recursive: true, mode: 0o700 });
   mkdirSync(join(versionDir, "src", "lib", "ops", "arrival-labels"), { recursive: true, mode: 0o700 });
-  for (const filename of ["run_arrival_label_print_worker_launcher.mjs", "run_arrival_label_print_worker.ts"]) {
+  for (const filename of ["run_arrival_label_print_worker_launcher.mjs", "run_arrival_label_print_worker.ts", "arrival_label_print_worker_config.mjs"]) {
     const target = join(versionDir, "scripts", filename);
     if (existsSync(target)) chmodSync(target, 0o700);
     copyFileSync(join(SOURCE_ROOT, "scripts", filename), target);
@@ -101,11 +113,11 @@ function stageVersion(commit) {
   return { versionDir, runnerPath: join(versionDir, "scripts", "run_arrival_label_print_worker_launcher.mjs") };
 }
 
-function renderPlist(template, values) {
+export function renderPlist(template, values) {
   const replacements = {
     "{{LABEL}}": xml(values.worker.label), "{{NODE_PATH}}": xml(process.execPath), "{{RUNNER_PATH}}": xml(values.runnerPath),
     "{{WORKING_DIRECTORY}}": xml(dirname(dirname(values.runnerPath))),
-    "{{KIND}}": xml(values.worker.kind), "{{HOME}}": xml(values.home), "{{OPS_BASE_URL}}": xml(values.opsBaseUrl),
+    "{{PRINT_DEVICE}}": xml(values.printDevice), "{{KIND}}": xml(values.worker.kind), "{{HOME}}": xml(values.home), "{{OPS_BASE_URL}}": xml(values.opsBaseUrl),
     "{{KEYCHAIN_ACCOUNT}}": xml(values.account), "{{CF_CLIENT_ID_ENV}}": values.cfClientId ? `    <key>ARRIVAL_LABEL_PRINT_CF_ACCESS_CLIENT_ID</key>\n    <string>${xml(values.cfClientId)}</string>` : "",
     "{{STDOUT_PATH}}": xml(join(values.logDir, `${values.worker.logName}.log`)), "{{STDERR_PATH}}": xml(join(values.logDir, `${values.worker.logName}.error.log`)),
   };
@@ -147,7 +159,7 @@ function selfTest() {
   const commit = gitState(); const target = paths(); const runtime = runtimeEnvironment(); const staged = stageVersion(commit);
   for (const worker of WORKERS) {
     const result = spawnSync(process.execPath, ["--import", "tsx", staged.runnerPath, "--kind", worker.kind, "--self-test"], {
-      cwd: staged.versionDir, encoding: "utf8", env: { ...process.env, NEONTRIP_KEYCHAIN_ACCOUNT: runtime.account, NEONTRIP_OPS_BASE_URL: runtime.opsBaseUrl, ARRIVAL_LABEL_PRINT_LIVE_ENABLED: "false", ...(runtime.cfClientId ? { ARRIVAL_LABEL_PRINT_CF_ACCESS_CLIENT_ID: runtime.cfClientId } : {}) },
+      cwd: staged.versionDir, encoding: "utf8", env: { ...process.env, NEONTRIP_PRINT_DEVICE: runtime.printDevice, NEONTRIP_KEYCHAIN_ACCOUNT: runtime.account, NEONTRIP_OPS_BASE_URL: runtime.opsBaseUrl, ARRIVAL_LABEL_PRINT_LIVE_ENABLED: "false", ...(runtime.cfClientId ? { ARRIVAL_LABEL_PRINT_CF_ACCESS_CLIENT_ID: runtime.cfClientId } : {}) },
     });
     if (result.status !== 0) throw new ManagerError(`${worker.kind}-Selbsttest fehlgeschlagen: ${String(result.stderr || result.stdout || "").trim().slice(0, 500)}`, result.status || 1);
   }
