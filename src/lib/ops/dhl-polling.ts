@@ -17,9 +17,15 @@ export async function runDhlPollBatch(candidates:DhlCandidate[],state:PollState,
     return !previous;
   });
   const recent=state.attempts.filter(a=>a.at>now-86400000);
-  if(recent.length+due.length>225) return {checked:0,synced:0,issues:[...issues,{code:'dhl_budget_insufficient',trelloUrl:''}]};
+  const capacity=Math.max(0,225-recent.length);
+  if(due.length>capacity) issues.push({code:'dhl_budget_insufficient',trelloUrl:''});
+  // Spend available quota on new and longest-unchecked shipments; retain every
+  // attempt (including failures/checks) for rate accounting and slot deduplication.
+  const lastAttempt=new Map<string,number>();
+  for(const attempt of state.attempts) lastAttempt.set(attempt.tracking,Math.max(lastAttempt.get(attempt.tracking)||0,attempt.at));
+  const selected=due.sort((a,b)=>(lastAttempt.get(a.trackingNumber)||0)-(lastAttempt.get(b.trackingNumber)||0)).slice(0,capacity);
   let checked=0,synced=0;
-  for(const candidate of due) {
+  for(const candidate of selected) {
     const last=Math.max(0,...state.attempts.map(a=>a.at));
     await ports.sleep(Math.max(5100,last+5100-ports.now()));
     const attempt:PollAttempt={tracking:candidate.trackingNumber,slot,at:ports.now(),status:'reserved'};
