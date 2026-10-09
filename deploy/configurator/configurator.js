@@ -2,18 +2,18 @@ import {frameRoom,roomArea,moveWithinRoom} from './room-framing.js?v=20261009-ro
 import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261009-tour1';
 import {initBudgetAdvisor} from './budget-advisor.js?v=20261008-budget-live1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
-import {initDeliveryCalendar,deliveryTierLabel,minimumDeliveryBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261008-min189';
-import {refreshWishDelivery} from './content-experience.js?v=20261008-min189';
+import {initDeliveryCalendar,deliveryTierLabel,minimumDeliveryBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261009-purchase2';
+import {refreshWishDelivery} from './content-experience.js?v=20261009-purchase2';
 import {loadFontCatalog,searchFontCatalog,catalogFontAssetId,validateCatalogFont,FONT_CATALOG_CATEGORIES} from './font-catalog.js?v=20261006-filters1';
 import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufacturing,minimumTextGroupClearance} from './manufacturing-profile.js?v=20261006-stand1';
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
 import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261008-shopping1';
-import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent} from './checkout-client.js?v=20261008-min189';
-import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261006-bridges1';
+import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent} from './checkout-client.js?v=20261009-purchase2';
+import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261009-purchase2';
 import {createColorExample} from './color-examples.js?v=20261005-refine2';
-import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261008-min189';
-import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261006-quantities1';
+import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261009-purchase2';
+import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261009-purchase2';
 const $ = selector => document.querySelector(selector);
 // Generated product entries share the editor and pricing contract. A product entry
 // must never replace the visitor's draft from the ordinary configurator route.
@@ -89,13 +89,13 @@ const BACKINGS = {
   square: {name:'Quadratisch',description:'Gleich lange Seiten. Dein Schriftzug sitzt mittig, mit mindestens ca. 1,5 cm Rand.'},
   freestanding: {name:'Freigestellt',description:'Schmale transparente Stützen hinter den Buchstaben, ohne seitlichen Überstand. Die genaue Statik wird vor Fertigung geprüft.'}
 };
-const PLATE_FINISHES={clear:'Transparent', 'uv-print':'UV-Druck', 'mirror-gold':'Gold verspiegelt', 'mirror-silver':'Silber verspiegelt'};
+const PLATE_FINISHES={clear:'Transparent',solid:'Farbige Rückplatte', 'uv-print':'UV-Druck', 'mirror-gold':'Gold verspiegelt', 'mirror-silver':'Silber verspiegelt'};
 function normalizedFinish(value){
   if(value==null)return {kind:'clear',color:'#FFFFFF'};
-  if(!PLATE_FINISHES[value.kind]||!/^#[0-9a-f]{6}$/i.test(value.color))throw new Error('Die Rückplattenfarbe ist ungültig.');
+  if(!PLATE_FINISHES[value.kind]||!/^#[0-9a-f]{6}$/i.test(value.color)||(value.kind==='solid'&&!['#FFFFFF','#000000','#D4AF37'].includes(value.color.toUpperCase())))throw new Error('Die Rückplattenfarbe ist ungültig.');
   return {kind:value.kind,color:value.kind==='clear'?'#FFFFFF':value.kind==='mirror-gold'?'#D4AF37':value.kind==='mirror-silver'?'#C0C0C0':value.color.toUpperCase()};
 }
-function finishName(value){const finish=normalizedFinish(value);return PLATE_FINISHES[finish.kind]+(finish.kind==='uv-print'?' · '+(finish.color==='#FFFFFF'?'Weiß':finish.color==='#000000'?'Schwarz':finish.color):'');}
+function finishName(value){const finish=normalizedFinish(value);if(finish.kind==='solid')return ({'#FFFFFF':'Weiß','#000000':'Schwarz','#D4AF37':'Gold'})[finish.color];return PLATE_FINISHES[finish.kind]+(finish.kind==='uv-print'?' · '+(finish.color==='#FFFFFF'?'Weiß':finish.color==='#000000'?'Schwarz':finish.color):'');}
 const MOUNTS={
   none:{name:'Ohne Montageset',description:'Du verwendest eigenes Montagezubehör.'},
   'wall-mount':{name:'Wandmontage-Set',image:'wall-mount.webp',description:'Schrauben, Dübel und Abstandshalter zur verschraubten Wandmontage.'},
@@ -165,7 +165,8 @@ let rgbPaused=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let logoSelectionRevision=0;
 const designName=()=>state.mode==='logo'?(state.logo?.name||'Dein Logo'):state.text;
 function designAssetRefs(snapshot){return [snapshot.photo?.assetId,snapshot.fontId?.startsWith('upload-')?snapshot.fontId:null,snapshot.logo?.assetId,snapshot.logo?.originalAssetId].filter(Boolean);}
-let draftReady=false,draftApplying=false,draftTimer,history,lastSavedSnapshot;
+let draftReady=false,draftApplying=false,draftTimer,history,lastSavedSnapshot,historyGesture=null;
+let cartAdding=false,editingCartId=null;
 let shareDesignKey=null;
 function captureDesign(){
   const photo=ROOMS.find(room=>room.id==='custom');
@@ -177,8 +178,8 @@ function captureDesign(){
 function refreshHistoryButtons(){
   if(!history)return;
   const pending=JSON.stringify(captureDesign())!==history.entries[history.index];
-  $('#undo-design').disabled=draftApplying||!(history.canUndo||pending);
-  $('#redo-design').disabled=draftApplying||pending||!history.canRedo;
+  for(const button of document.querySelectorAll('[data-history="undo"]'))button.disabled=draftApplying||!(history.canUndo||pending);
+  for(const button of document.querySelectorAll('[data-history="redo"]'))button.disabled=draftApplying||pending||!history.canRedo;
   const offset=positions.get(state.room);
   $('#reset-position').disabled=draftApplying||!offset||(!offset.x&&!offset.y);
 }
@@ -192,13 +193,13 @@ function persistDesign(snapshot){
   }catch{$('#draft-status').textContent='Speichern nicht möglich – diesen Tab geöffnet lassen.';}
 }
 function commitHistory(){
-  clearTimeout(draftTimer);if(!draftReady||draftApplying)return;
+  clearTimeout(draftTimer);if(!draftReady||draftApplying||historyGesture)return;
   history.record(captureDesign());refreshHistoryButtons();
 }
 function scheduleDraft(){
   if(!draftReady||draftApplying)return;
   persistDesign(captureDesign());refreshHistoryButtons();clearTimeout(draftTimer);
-  draftTimer=setTimeout(commitHistory,400);
+  if(!historyGesture)draftTimer=setTimeout(commitHistory,400);
 }
 async function rememberAsset(id,file,url){
   const asset={file,url,persisted:false};draftAssets.set(id,asset);
@@ -448,7 +449,7 @@ async function refreshCartPrice(){
   else{
     const amounts=prices.map((p,i)=>priceAmounts(p,items[i].quantity));
     const changed=prices.some((p,i)=>{const before=priceAmounts(items[i].previousPrice),after=priceAmounts(p);return before&&after&&Math.abs(before.gross-after.gross)>.01;});
-    $('#checkout-preparation-status').textContent=changed?'Die Preise deiner gespeicherten Entwürfe wurden aktualisiert. Bitte prüfe Einzelpreise und Gesamtpreis.':'';
+    if(!cartSyncing)$('#checkout-preparation-status').textContent=changed?'Die Preise deiner gespeicherten Entwürfe wurden aktualisiert. Bitte prüfe Einzelpreise und Gesamtpreis.':'';
     cartTotals={signNet:Math.round(prices.reduce((sum,p,i)=>sum+p.baseNet*items[i].quantity,0)),subtotalGross:Math.round(amounts.reduce((sum,p)=>sum+p.gross,0)*100)/100};
   }
   refreshDeliverySummary();
@@ -1481,7 +1482,7 @@ function paintFinishControls(){
   $('#plate-custom-color').disabled=state.backing==='freestanding';
   $('#plate-custom-color').value=finish.kind==='uv-print'?finish.color:'#D4AF37';
   $('#plate-finish-name').textContent=finishName(finish);$('#finish-selection').textContent=finishName(finish);$('#finish-preview').dataset.finish=finish.kind;$('#finish-preview').style.setProperty('--finish-color',finish.color);$('#finish-dialog-note').textContent=state.backing==='freestanding'?'Freigestellte Stützstreben bleiben transparent.':'Die Auswahl wird direkt in deinem Entwurf und Gesamtpreis sichtbar.';
-  $('#plate-finish-note').textContent=state.backing==='freestanding'?'Die Acrylstreben bleiben transparent.':finish.kind.startsWith('mirror-')?'Verspiegeltes Acryl. Die Reflexion ist in der Vorschau angenähert.':finish.kind==='uv-print'?'Farbige Rückplatte mit UV-Druck. Bildschirmfarben dienen zur Orientierung.':'Klare Acrylplatte mit dezenter sichtbarer Kante.';
+  $('#plate-finish-note').textContent=state.backing==='freestanding'?'Die Acrylstreben bleiben transparent.':finish.kind.startsWith('mirror-')?'Verspiegeltes Acryl. Die Reflexion ist in der Vorschau angenähert.':finish.kind==='uv-print'?'Farbige Rückplatte mit UV-Druck. Bildschirmfarben dienen zur Orientierung.':finish.kind==='solid'?'Farbige Acrylrückplatte. Bildschirmfarben dienen zur Orientierung.':'Klare Acrylplatte mit dezenter sichtbarer Kante.';
 }
 for(const button of document.querySelectorAll('[data-plate-finish]'))button.addEventListener('click',()=>{state.plateFinish=normalizedFinish({kind:button.dataset.plateFinish,color:button.dataset.plateColor||'#FFFFFF'});paint();});
 $('#plate-custom-color').addEventListener('input',event=>{state.plateFinish=normalizedFinish({kind:'uv-print',color:event.target.value});paint();});
@@ -1831,7 +1832,7 @@ let purchaseScrollFrame=0;
 window.addEventListener('scroll',()=>{if(!purchaseScrollFrame)purchaseScrollFrame=requestAnimationFrame(()=>{purchaseScrollFrame=0;updatePurchaseDockVisibility();});},{passive:true});
 window.addEventListener('resize',updatePurchaseDockVisibility);
 new ResizeObserver(()=>{const height=pagePurchase.getBoundingClientRect().height;if(height)document.documentElement.style.setProperty('--page-purchase-height',`${height}px`);}).observe(pagePurchase);
-$('#page-add-to-cart').addEventListener('click',openOrderReview);
+$('#page-add-to-cart').addEventListener('click',addCurrentDesign);
 for(const link of document.querySelectorAll('[data-resume-design]'))link.addEventListener('click',event=>{
  event.preventDefault();const main=$('#main');main.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
  $('.journey [aria-current=step]').focus({preventScroll:true});
@@ -1879,7 +1880,7 @@ function setStep(index,focus=false,{scroll=true}={}){
   $('#group-title').textContent=['Dein Look','Dein Format','Dein Zubehör'][group];
   $('#group-help').textContent=['Text, Schrift und Farbe machen es zu deinem Schild.','Vergleiche Größen und wähle die passende Rückplatte.','Wähle, wie du dein Schild befestigen möchtest.'][group];
   $('#next-step').disabled=false;
-  $('#next-step-label').textContent=['Weiter zum Format','Weiter zum Zubehör','Entwurf prüfen'][group];
+  $('#next-step-label').textContent=['Weiter zum Format','Weiter zum Zubehör',editingCartId?'Änderungen übernehmen':'In den Warenkorb'][group];
   updateStepNavigation();
   $('#step-count').textContent=mobileChoiceMedia.matches?`${group===2?2:1} von 2`:`${group+1} von 3`;
   $('#editor-step-title').textContent=stepNames[index];$('#editor-step-hint').textContent='';
@@ -1912,7 +1913,7 @@ for(let i=0;i<stepNames.length;i++){
 }
 function updateStepNavigation(){
   const group=Number(document.body.dataset.activeGroup||0);
-  let label=activeStep===3?'Weiter zur Rückplatte':['Weiter zum Format','Weiter zum Zubehör','Entwurf prüfen'][group];
+  let label=activeStep===3?'Weiter zur Rückplatte':['Weiter zum Format','Weiter zum Zubehör',editingCartId?'Änderungen übernehmen':'In den Warenkorb'][group];
   if(mobileChoiceMedia.matches){
     if(group===0){const look=document.body.dataset.mobileLook||'text';label=look==='text'?(state.mode==='logo'?'Weiter zur Farbe':'Weiter zur Schrift'):look==='font'?'Weiter zur Farbe':'Weiter zur Größe';}
     else if(activeStep===3)label='Weiter zur Rückplatte';
@@ -1951,7 +1952,7 @@ $('#next-step').addEventListener('click',()=>{
     }
   }
   if(activeStep===3){setStep(4,true);return;}
-  activeStep===stepNames.length-1?openOrderReview():navigateStep(1);
+  activeStep===stepNames.length-1?addCurrentDesign():navigateStep(1);
 });
 
 function syncDesignMode(){
@@ -1994,7 +1995,7 @@ function captureOrderSnapshot(){
       glyphs:result.layout.glyphs.map(glyph=>({lineIndex:glyph.lineIndex,wordIndex:glyph.wordIndex,
         color:glyphColor(glyph),charIndex:glyph.charIndex,charText:glyph.charText,charLength:glyph.charLength,charMapping:glyph.charMapping,
         centerlineD:glyph.centerlineD,paths:glyph.paths}))},
-    plate:{type:state.backing,name:BACKINGS[state.backing].name,finish:{...state.plateFinish},...plateSize(result.size),path:plateContour(result),
+    plate:{...(state.backing==='contour'?{contourVersion:2}:{}),type:state.backing,name:BACKINGS[state.backing].name,finish:{...state.plateFinish},...plateSize(result.size),path:plateContour(result),
       base:basePlateSize(result.size),marginMm:state.backing==='contour'?CONTOUR_MARGIN_MM:15,
       acrylicThicknessMm:MANUFACTURING_PROFILE.acrylicThicknessMm},
     mount:{id:state.mount,...MOUNTS[state.mount],valid:state.mount==='table-stand'?standFits():state.mount==='hanging-kit'?state.backing!=='freestanding':true},
@@ -2120,7 +2121,7 @@ async function openArPreview(){
     const snapshot=captureOrderSnapshot();
     $('#ar-size').textContent=`Gesamte Außenmaße: ${dimensions(snapshot.plate)} · ${snapshot.plate.name}`;
     if(snapshot.lightMode==='rgb'){$('#ar-size').textContent+=' · RGB als statische Rotphase';snapshot.sign.glyphs.forEach(g=>g.color={...COLORS.find(c=>c.id==='red')});}
-    const {prepareArPreview}=await import('./ar-preview.js?v=20261005-refine1');
+    const {prepareArPreview}=await import('./ar-preview.js?v=20261009-purchase2');
     if(token!==arRevision||!dialog.open)return;
     const controller=await prepareArPreview(snapshot,$('#ar-host'));
     if(token!==arRevision||!dialog.open){controller.dispose();return;}
@@ -2163,7 +2164,7 @@ async function openArShare(){
   const snapshot=captureOrderSnapshot();
   shareDesignKey=JSON.stringify(captureDesign());
   if(snapshot.lightMode==='rgb')snapshot.sign.glyphs.forEach(g=>g.color={...COLORS.find(c=>c.id==='red')});
-  const {createArShare,renderShareQr}=await import('./ar-share.js?v=20261008-anfrage1');
+  const {createArShare,renderShareQr}=await import('./ar-share.js?v=20261009-purchase2');
   if(token!==shareRevision)return;
   const result=await createArShare(snapshot,{signal:shareAbort.signal});if(token!==shareRevision)return;
   await renderShareQr($('#ar-share-qr'),result.shareUrl);if(token!==shareRevision)return;
@@ -2196,7 +2197,7 @@ $('#order-review').addEventListener('click',event=>{
 // Reuse the existing IndexedDB store; this is a local cart, never a paid order.
 const CART_STORAGE_KEY='neontrip-local-cart-v1';
 const cartCompareIds=new Set();
-let cartItems=[],cartReady=false,cartPricesValid=false,cartWriteRevision=0,editingCartId=null,cartEditing=false,cartSyncing=false,cartTotals=null;
+let cartItems=[],cartReady=false,cartPricesValid=false,cartWriteRevision=0,cartEditing=false,cartSyncing=false,cartTotals=null;
 const checkoutApiOrigin=new URL(document.querySelector('meta[name=neontrip-ar-endpoint]')?.content||'/api/public/configurator/ar',window.location.href).origin;
 const checkoutClient=createCheckoutClient({
   apiBaseUrl:checkoutApiOrigin===window.location.origin?'':checkoutApiOrigin,
@@ -2209,8 +2210,9 @@ function refreshCartButtons(){
   const count=cartItems.reduce((n,item)=>n+item.quantity,0);
   $('#cart-count').textContent=String(count);$('#header-cart-count').textContent=String(count);
   $('#header-cart').setAttribute('aria-label',`Warenkorb öffnen, ${count} Artikel`);
-  $('#add-to-cart').disabled=!cartReady;
-  $('#add-to-cart').lastChild.textContent=editingCartId?'Änderungen prüfen':'Entwurf prüfen';
+  $('#add-to-cart').disabled=!cartReady||cartAdding;
+  if(Number(document.body.dataset.activeGroup)===2){$('#next-step').disabled=cartAdding;$('#next-step-label').textContent=cartAdding?'Wird hinzugefügt …':editingCartId?'Änderungen übernehmen':'In den Warenkorb';}
+  $('#add-to-cart').lastChild.textContent=editingCartId?'Änderungen übernehmen':'In den Warenkorb';
   $('#review-add-to-cart').disabled=!cartReady||!orderSnapshot?.mount.valid||orderSnapshot?.price.status!=='calculated';
   $('#cart-request-quote').disabled=!cartReady||!cartItems.length||!cartPricesValid||cartSyncing||cartEditing;
   $('#cart-delivery-open').disabled=!cartReady||!cartItems.length||!cartPricesValid||cartSyncing||cartEditing;
@@ -2233,12 +2235,42 @@ async function persistCart(){
     if(revision===cartWriteRevision)$('#cart-storage-status').textContent='Warenkorb nur in diesem Tab verfügbar. Speichern auf diesem Gerät nicht möglich.';
   }
 }
+async function renderCartAccessories(host,item){
+ const price=await storedPrice(item.design);if(!host.isConnected)return;
+ host.replaceChildren();
+ if(price.status!=='calculated'){host.textContent=price.reasons?.[0]||'Zubehörpreis wird geprüft.';return;}
+ const counts=accessoryCounts(item.design),names={'wall-mount':'Wandmontage-Set','premium-white':'Premium-Netzteil',dimmer:'Dimmer mit Fernbedienung','hanging-kit':'Drahtseil-Abhängeset','adhesive-kit':'3M-Klebeset','table-stand':'Acryl-Steckfüße'};
+ for(const [key,quantity] of Object.entries(counts)){
+  if(!quantity||!names[key])continue;
+  const included=includedAccessoryKeys.includes(key),extra=quantity-(included?1:0),component=price.components.find(c=>c.id===key);
+  const unitNet=component?.unitNet??(key==='wall-mount'?PRICE_RULES.extras.additionalWallMountNet:key==='premium-white'?PRICE_RULES.extras.additionalPremiumNet:PRICE_RULES.extras[key]);
+  const row=document.createElement('div');row.className='cart-accessory-row';
+  const name=document.createElement('strong');name.textContent=names[key];
+  const detail=document.createElement('span');
+  const gross=component?priceAmounts({net:component.net,components:[component]},item.quantity).gross:0;
+  detail.textContent=(included?'1 × kostenlos / inklusive je Schild · 0,00 €'+(extra?' · '+extra+' zusätzlich je Schild':''):quantity+' je Schild · '+priceLabel({net:unitNet})+' pro Stück')+' · Gesamt: '+quantity*item.quantity+' Stück'+(gross?' · '+cartCurrency.format(gross):'');
+  row.append(name,detail);
+  if(included){
+   const actions=document.createElement('div');actions.className='cart-accessory-actions';
+   const add=document.createElement('button');add.type='button';add.dataset.cartAccessory=key;add.dataset.itemId=item.id;add.dataset.delta='1';
+   add.textContent=(item.quantity>1?'Je Schild 1 weiteres kaufen':'Weiteres Exemplar kaufen')+' · +'+priceLabel({net:unitNet});
+   const hint=document.createElement('small');hint.textContent='Zum Warenkorb hinzufügen'+(item.quantity>1?': '+item.quantity+' zusätzliche Stück · +'+cartCurrency.format(priceAmounts({net:unitNet},item.quantity).gross):'')+'.';
+   add.disabled=quantity>=99||cartEditing||cartSyncing;
+   actions.append(add);
+   if(extra){const minus=document.createElement('button');minus.type='button';minus.dataset.cartAccessory=key;minus.dataset.itemId=item.id;minus.dataset.delta='-1';minus.textContent='1 zusätzliches je Schild entfernen';actions.append(minus);}
+   row.append(actions,hint);
+  }
+  host.append(row);
+ }
+ const cable=document.createElement('p');cable.textContent='2 m Anschlusskabel je Schild inklusive.';host.append(cable);
+ const change=document.createElement('button');change.type='button';change.dataset.cartAction='accessories';change.dataset.itemId=item.id;change.textContent='Zubehör / Montage ändern';host.append(change);
+}
 function accessorySummary(design,multiplier=1){
  const names={'wall-mount':'Wandmontage-Set','premium-white':'Premium-Netzteil','hanging-kit':'Abhängeset','adhesive-kit':'Klebeset','table-stand':'Tischständer',dimmer:'Dimmer',extraCable2m:'2 m Zusatzkabel'};
  return Object.entries(accessoryCounts(design)).filter(([,n])=>n>0).map(([key,n])=>(n*multiplier)+' × '+names[key]).join(' · ');
 }
 function renderCart(){
-  $('#checkout-preparation-status').textContent='';
+  if(!cartSyncing)$('#checkout-preparation-status').textContent='';
   for(const id of cartCompareIds)if(!cartItems.some(item=>item.id===id))cartCompareIds.delete(id);
   const list=$('#cart-items');list.replaceChildren();
   for(const item of cartItems){
@@ -2247,15 +2279,14 @@ function renderCart(){
     const body=document.createElement('div'),heading=document.createElement('h3'),summary=document.createElement('p'),colors=document.createElement('p'),price=document.createElement('div');
     heading.textContent=item.snapshot.text;summary.textContent=`${item.snapshot.font.name} · Außenmaße ${dimensions(item.snapshot.plate)} · ${item.snapshot.plate.name} · ${finishName(item.snapshot.plate.finish)} · ${item.snapshot.mount.name}`;
     colors.className='cart-colors';colors.textContent=snapshotColorSummary(item.snapshot);
-    const accessoryLine=document.createElement('p');accessoryLine.className='cart-accessories';accessoryLine.textContent='Je Schild: '+accessorySummary(item.design);
-    if(item.quantity>1){const total=document.createElement('span');total.className='cart-accessory-total';total.textContent='Insgesamt für '+item.quantity+' Schilder: '+accessorySummary(item.design,item.quantity);accessoryLine.append(document.createElement('br'),total);}
+    const accessoryLine=document.createElement('div');accessoryLine.className='cart-accessories';accessoryLine.textContent='Zubehör wird berechnet …';
     price.textContent='Wird berechnet …';price.className='cart-item-price';
     displayStoredPrice(price,item.design,item.quantity,{cartLine:true});
     const controls=document.createElement('div');controls.className='cart-item-controls';
     const label=document.createElement('label'),qty=document.createElement('input');label.textContent='Menge';qty.type='number';qty.min='1';qty.max='99';qty.step='1';qty.value=item.quantity;qty.dataset.cartQuantity=item.id;qty.setAttribute('aria-label',`Menge für ${item.snapshot.text}`);label.append(qty);controls.append(label);
     for(const [action,text] of [['edit','Bearbeiten'],['remove','Entfernen']]){const button=document.createElement('button');button.type='button';button.dataset.cartAction=action;button.dataset.itemId=item.id;button.textContent=text;button.setAttribute('aria-label',`${item.snapshot.text}: ${text}`);controls.append(button);}
     const compareLabel=document.createElement('label'),compareCheck=document.createElement('input');compareLabel.className='cart-compare-choice';compareCheck.type='checkbox';compareCheck.dataset.cartCompare=item.id;compareCheck.checked=cartCompareIds.has(item.id);compareCheck.setAttribute('aria-label',item.snapshot.text+' zum Vergleich auswählen');compareLabel.append(compareCheck,document.createTextNode('Zum Vergleich auswählen'));
-    body.append(heading,summary,colors,accessoryLine,price,controls,compareLabel);card.append(picture,body);list.append(card);
+    body.append(heading,summary,colors,accessoryLine,price,controls,compareLabel);card.append(picture,body);list.append(card);renderCartAccessories(accessoryLine,item);
   }
   updateCartComparison();refreshCartPrice();
   $('#cart-empty').hidden=cartItems.length>0;$('#cart-checkout').hidden=!cartItems.length;refreshCartButtons();
@@ -2265,6 +2296,21 @@ function updateCartComparison(){
  $('#cart-compare').disabled=cartCompareIds.size!==2;
  $('#cart-compare-status').textContent=cartCompareIds.size+' von 2 Entwürfen ausgewählt';
 }
+$('#cart-items').addEventListener('click',async event=>{
+ const button=event.target.closest('[data-cart-accessory]');if(!button||cartEditing||cartSyncing)return;
+ const item=cartItems.find(i=>i.id===button.dataset.itemId),key=button.dataset.cartAccessory;
+ if(!item||!includedAccessoryKeys.includes(key))return;
+ const quantity=accessoryCounts(item.design)[key]+Number(button.dataset.delta);
+ if(!Number.isInteger(quantity)||quantity<1||quantity>99)return;
+ cartEditing=true;$('#cart-items').inert=true;refreshCartButtons();
+ try{
+  const design={...item.design,...priceOptions({...item.design,accessoryQuantities:{...accessoryCounts(item.design),[key]:quantity}})};
+  const price=await storedPrice(design);if(price.status!=='calculated')throw new Error('Bitte den Entwurf erneut öffnen.');
+  item.design=design;item.snapshot={...item.snapshot,...priceOptions(design),price};
+  await persistCart();
+ }catch(error){$('#cart-storage-status').textContent=error.message;}
+ finally{cartEditing=false;$('#cart-items').inert=false;renderCart();}
+});
 $('#cart-items').addEventListener('change',event=>{
  const id=event.target.dataset.cartCompare;if(!id)return;
  if(event.target.checked&&cartCompareIds.size>=2){event.target.checked=false;$('#cart-compare-status').textContent='Bitte zuerst eine Auswahl aufheben.';return;}
@@ -2315,24 +2361,43 @@ function refreshDeliverySummary(){
   $('#cart-net-total').textContent=cartCurrency.format(netCents/100);
   $('#cart-vat-total').textContent=cartCurrency.format((grossCents-netCents)/100);
   $('#cart-tax-breakdown').hidden=false;
-  $('#cart-delivery-open').textContent=selectedDelivery?'Liefertermin ändern':'Liefertermin wählen';
+  $('#cart-delivery-open').textContent='Liefertermin wählen';
   refreshCartButtons();
 }
 const deliveryCalendar=initDeliveryCalendar($('#delivery-calendar-host'),{
   getContext:()=>({signNet:cartTotals?.signNet,subtotalGross:cartTotals?.subtotalGross,selectedDate:selectedDelivery?.dateIso,designs:cartItems.map(item=>item.design)}),
-  onContinue:selection=>{
-    selectedDelivery=selection;persistCart();$('#delivery-dialog').close();
+  checkoutMode:true,
+  onContinue:(selection,{changed=false}={})=>{
+    if(changed){$('#delivery-checkout-status').textContent='Termin oder Preis wurde aktualisiert. Bitte prüfe die Auswahl und klicke erneut auf „Zur Kasse“.';return;}
+    selectedDelivery=selection;persistCart();goToCheckout();
   }
 });
 function openDeliverySelection(){
   if(!cartReady||!cartItems.length||!cartPricesValid||!cartTotals||cartEditing||cartSyncing)return;
-  refreshDeliverySummary();$('#cart-dialog').close();deliveryCalendar.refresh({resetSelection:true});$('#delivery-dialog').showModal();
+  refreshDeliverySummary();$('#cart-dialog').close();$('#delivery-checkout-status').textContent='';deliveryCalendar.refresh({resetSelection:true});$('#delivery-dialog').showModal();
 }
 $('#cart-delivery-open').addEventListener('click',openDeliverySelection);
-$('#delivery-back').addEventListener('click',()=>$('#delivery-dialog').close());
+$('#delivery-back').addEventListener('click',()=>{if(!cartSyncing)$('#delivery-dialog').close();});
+$('#delivery-dialog').addEventListener('cancel',event=>{if(cartSyncing)event.preventDefault();});
 // Escape, close icon and Back all return to the cart without committing a draft choice.
 $('#delivery-dialog').addEventListener('close',()=>{showCart();$('#cart-delivery-open').focus();});
 
+async function addCurrentDesign(){
+ if(cartAdding||!cartReady||cartEditing||cartSyncing)return;
+ cartAdding=true;$('#cart-add-status').textContent='';refreshCartButtons();
+ $('.editor').inert=true;$('.preview-column').inert=true;$('.editor-tabs').inert=true;
+ try{
+  if(!editingCartId&&cartItems.length>=20)throw new Error('Der Warenkorb enthält bereits 20 Entwürfe. Bitte entferne zuerst einen Entwurf.');
+  clearTimeout(timer);await update();
+  const snapshot=captureOrderSnapshot(),design=structuredClone(captureDesign());
+  if(!snapshot.mount.valid||snapshot.price.status!=='calculated'||!Number.isFinite(snapshot.price.net))throw new Error(snapshot.price.reasons?.[0]||'Bitte prüfe Größe und Montage deines Entwurfs.');
+  const old=cartItems.find(item=>item.id===editingCartId);
+  const item={id:old?.id||crypto.randomUUID(),quantity:old?.quantity||1,design,snapshot,previewSvg:new XMLSerializer().serializeToString(orderPreview())};
+  if(old)cartItems[cartItems.indexOf(old)]=item;else cartItems.push(item);
+  editingCartId=null;commitHistory();await persistCart();showCart();
+ }catch(error){$('#cart-add-status').textContent=error.message||'Bitte prüfe deinen Entwurf.';}
+ finally{cartAdding=false;$('.editor').inert=false;$('.preview-column').inert=false;$('.editor-tabs').inert=false;refreshCartButtons();}
+}
 async function addReviewedDesign(){
   if(!orderSnapshot?.mount.valid||!orderDesign||!cartReady||orderSnapshot?.price.status!=='calculated'||!Number.isFinite(orderSnapshot.price.net))return;
   if(!editingCartId&&cartItems.length>=20){$('#order-status').textContent='Der Warenkorb enthält bereits 20 Entwürfe. Bitte entferne zuerst einen Entwurf.';return;}
@@ -2342,7 +2407,7 @@ async function addReviewedDesign(){
   if(old)cartItems[cartItems.indexOf(old)]=item;else cartItems.push(item);
   editingCartId=null;$('#order-review').close();showCart();await persistCart();
 }
-$('#add-to-cart').addEventListener('click',openOrderReview);
+$('#add-to-cart').addEventListener('click',addCurrentDesign);
 $('#review-add-to-cart').addEventListener('click',addReviewedDesign);
 $('#review-quantity').addEventListener('input',()=>{
  const quantity=Number($('#review-quantity').value),valid=Number.isInteger(quantity)&&quantity>=1&&quantity<=99;
@@ -2371,7 +2436,7 @@ $('#cart-items').addEventListener('click',async event=>{
     await applyDesign(item.design);
     if(!state.result)throw new Error('Der gespeicherte Entwurf konnte nicht neu gezeichnet werden. Bitte prüfe Schrift und Größe.');
     acceptReplacementDraft();editingCartId=item.id;draftApplying=false;commitHistory();persistDesign(captureDesign());await persistCart();
-    $('#cart-dialog').close();setStep(0,true);refreshCartButtons();
+    $('#cart-dialog').close();setStep(button.dataset.cartAction==='accessories'?5:0,true);refreshCartButtons();
   }catch(error){$('#cart-storage-status').textContent=error.message;}
   finally{cartEditing=false;draftApplying=false;$('#cart-items').inert=false;$('.editor').inert=false;$('.editor-tabs').inert=false;$('.preview-column').inert=false;$('#cart-dialog').querySelectorAll('[data-close]').forEach(b=>b.disabled=false);refreshHistoryButtons();}
 });
@@ -2391,7 +2456,7 @@ $('#quote-form').addEventListener('submit',async event=>{
  $('#quote-dialog').querySelectorAll('[data-close]').forEach(button=>button.disabled=true);
  const status=$('#quote-status');status.textContent='Deine Entwürfe werden für die Anfrage vorbereitet …';
  try{
-  const {createShareImage}=await import('./design-share.js?v=20261006-quantities1');
+  const {createShareImage}=await import('./design-share.js?v=20261009-purchase2');
   const data=[],previews=[];
   for(const [index,item] of quoteCart.entries()){
    const price=await storedPrice(item.design);if(price.status!=='calculated')throw new Error('Bitte den Entwurf im Warenkorb erneut prüfen.');
@@ -2408,31 +2473,31 @@ $('#quote-form').addEventListener('submit',async event=>{
 });
 $('#quote-dialog').addEventListener('cancel',event=>{if(quoteSubmitting)event.preventDefault();});
 $('#quote-dialog').addEventListener('close',()=>{quoteCart=null;quoteDelivery=null;});
-async function goToCheckout(){
-  const reviewedDelivery=selectedDelivery?{...selectedDelivery}:null;
-  if(cartSyncing||cartEditing||!cartReady||!cartPricesValid||!cartItems.length||cartItems.some(item=>item.snapshot.plate.type==='freestanding'))return;
-  cartSyncing=true;refreshCartButtons();$('#cart-items').inert=true;
-  $('#cart-dialog').querySelectorAll('[data-close]').forEach(button=>button.disabled=true);
-  const status=$('#checkout-preparation-status');status.textContent='Dein Warenkorb wird an die Kasse übergeben …';
-  try{
-    if(!await refreshCartPrice())return;
-    if(!selectedDelivery){status.textContent='Bitte wähle zuerst einen aktuellen Liefertermin.';return;}
-    if(!reviewedDelivery||reviewedDelivery.businessDays!==selectedDelivery.businessDays||reviewedDelivery.feeGross!==selectedDelivery.feeGross){status.textContent='Die Lieferoption oder ihr Preis wurde aktualisiert. Bitte prüfe die Übersicht erneut.';return;}
-    const expectedTotalCents=Math.round((cartTotals.subtotalGross+selectedDelivery.feeGross)*100);
-    const receipt=await checkoutClient.prepare(cartItems,selectedDelivery,expectedTotalCents);
-    if(receipt.status==='CREATED'){
-      status.textContent='Dein Warenkorb ist bereit. Weiter zur sicheren Bezahlung …';
-      window.location.assign(receipt.checkoutUrl);
-    }else status.textContent='Die Kasse ist für diese Konfiguration noch nicht verfügbar. Dein Warenkorb bleibt gespeichert.';
-  }catch(error){status.textContent=error.message||'Die Sicherung konnte nicht bestätigt werden. Dein Warenkorb bleibt auf diesem Gerät erhalten.';}
-  finally{
-    cartSyncing=false;$('#cart-items').inert=false;
-    $('#cart-dialog').querySelectorAll('[data-close]').forEach(button=>button.disabled=false);
-    refreshCartButtons();
-  }
+function setCheckoutBusy(busy){
+ cartSyncing=busy;deliveryCalendar.setBusy(busy);
+ $('#delivery-dialog').setAttribute('aria-busy',String(busy));
+ $('#delivery-dialog').querySelectorAll('[data-close],#delivery-back').forEach(button=>button.disabled=busy);
+ $('#cart-items').inert=busy;refreshCartButtons();
 }
-$('#prepare-checkout').addEventListener('click',goToCheckout);
-$('#cart-pay').addEventListener('click',goToCheckout);
+async function goToCheckout(){
+ if(!$('#delivery-dialog').open||cartSyncing||cartEditing||!cartReady||!cartPricesValid||!selectedDelivery||!cartItems.length)return;
+ const status=$('#delivery-checkout-status');
+ if(cartItems.some(item=>item.snapshot.plate.type==='freestanding')){status.textContent='Für freigestellte Acrylstreben bitte zuerst ein Angebot anfragen.';return;}
+ const reviewedDelivery={...selectedDelivery},reviewedTotal=Math.round((cartTotals.subtotalGross+selectedDelivery.feeGross)*100),reviewedItems=JSON.stringify(cartItems);
+ let navigating=false;setCheckoutBusy(true);status.textContent='Deine sichere Kasse wird vorbereitet …';
+ try{
+  if(!await refreshCartPrice())throw new Error('Bitte prüfe die markierten Entwürfe im Warenkorb.');
+  const expectedTotalCents=Math.round((cartTotals.subtotalGross+(selectedDelivery?.feeGross||0))*100);
+  if(!selectedDelivery||reviewedDelivery.dateIso!==selectedDelivery.dateIso||reviewedDelivery.businessDays!==selectedDelivery.businessDays||reviewedDelivery.feeGross!==selectedDelivery.feeGross||reviewedTotal!==expectedTotalCents||reviewedItems!==JSON.stringify(cartItems)){
+   deliveryCalendar.refresh({resetSelection:true});throw new Error('Termin oder Gesamtpreis wurde aktualisiert. Bitte prüfe deine Auswahl und klicke erneut auf „Zur Kasse“.');
+  }
+  const receipt=await checkoutClient.prepare(cartItems,selectedDelivery,expectedTotalCents);
+  if(receipt.status!=='CREATED')throw new Error('Die Kasse ist für diese Konfiguration noch nicht verfügbar. Dein Warenkorb bleibt gespeichert.');
+  status.textContent='Du wirst zur sicheren Bezahlung weitergeleitet …';window.location.assign(receipt.checkoutUrl);navigating=true;
+ }catch(error){status.textContent=error.message||'Die Übergabe konnte nicht bestätigt werden. Dein Warenkorb bleibt erhalten.';}
+ finally{if(!navigating){deliveryCalendar.refresh();setCheckoutBusy(false);}}
+}
+window.addEventListener('pageshow',event=>{if(event.persisted&&cartSyncing){setCheckoutBusy(false);$('#delivery-checkout-status').textContent='';refreshCartPrice().then(()=>deliveryCalendar.refresh({resetSelection:true}));}});
 async function restoreCart(){
   let removedCable=false;
   try{
@@ -2559,13 +2624,17 @@ $('#remove-background').addEventListener('click',()=>{
 
 for(const button of document.querySelectorAll('[data-width-cm]'))button.addEventListener('click',()=>chooseOuterSize('width',Number(button.dataset.widthCm)*10));
 setupPhotoCalibration({getPhoto:()=>ROOMS.find(r=>r.id==='custom'),onApply:({spanMm,calibration})=>{const room=ROOMS.find(r=>r.id==='custom');if(!room)return;room.spanMm=spanMm;room.calibration=calibration;$('#photo-width').value=Math.round(spanMm)/10;state.room='custom';state.scene='wall';paint();}});
-$('#undo-design').addEventListener('click',()=>moveHistory(-1));
-$('#redo-design').addEventListener('click',()=>moveHistory(1));
+for(const button of document.querySelectorAll('[data-history]'))button.addEventListener('click',()=>moveHistory(button.dataset.history==='undo'?-1:1));
+const historyControls=$('#undo-design').parentElement;
+$('.editor-panels').before(historyControls);historyControls.classList.add('history-controls');$('.draft-tools').prepend($('#reset-position'));
+for(const button of document.querySelectorAll('[data-history]'))button.insertAdjacentHTML('afterbegin','<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="'+(button.dataset.history==='undo'?'M9 5 4 10l5 5M4 10h9a6 6 0 0 1 0 12':'m15 5 5 5-5 5m5-5h-9a6 6 0 0 0 0 12')+'"/></svg>');
 $('#reset-position').addEventListener('click',()=>{positions.delete(state.room);paint();});
 // Finish a typing/drag group before a different button action begins.
 document.addEventListener('click',()=>commitHistory(),true);
 document.addEventListener('focusin',event=>{if(event.target.matches('input,textarea'))commitHistory();});
-document.addEventListener('pointerdown',event=>{if(event.target.closest('input[type=range],#preview-handles'))commitHistory();},true);
+document.addEventListener('pointerdown',event=>{if(event.target.closest('input[type=range],#preview-handles')){commitHistory();historyGesture=event.pointerId;}},true);
+const finishHistoryGesture=event=>{if(historyGesture!==null&&event.pointerId===historyGesture){historyGesture=null;commitHistory();}};
+document.addEventListener('pointerup',finishHistoryGesture,true);document.addEventListener('pointercancel',finishHistoryGesture,true);
 document.addEventListener('keydown',event=>{
   if(document.querySelector('dialog[open]')||!(event.ctrlKey||event.metaKey)||event.altKey||event.target.closest('input,textarea,[contenteditable="true"]'))return;
   if(event.key.toLowerCase()==='z'||(event.ctrlKey&&event.key.toLowerCase()==='y')){event.preventDefault();moveHistory(event.shiftKey||event.key.toLowerCase()==='y'?1:-1);}
@@ -2599,7 +2668,7 @@ async function bootDraft(){
       }
       const original=$('#shopping-original');original.href='/configurator/'+location.search;
       try{original.hidden=!readDraft();}catch{original.hidden=false;}
-      $('#shopping-buy').addEventListener('click',openOrderReview);
+      $('#shopping-buy').addEventListener('click',addCurrentDesign);
       $('#shopping-edit').addEventListener('click',()=>{setStep(0);$('#sign-text').focus();});
       $('#draft-status').textContent='Anpassungen werden auf diesem Gerät gespeichert';
       $('.editor').inert=false;$('.editor-tabs').inert=false;$('.preview-column').inert=false;refreshHistoryButtons();
@@ -2856,7 +2925,7 @@ function showComparison(records){
       const heading=document.createElement('h3');heading.textContent=(i?'B':'A')+' · '+record.name;
       const pic=document.createElement('div');pic.className='comparison-preview';pic.append(previewImage(record));
       const dl=document.createElement('dl');
-      for(const [key,label] of [['size','Breite × Höhe'],['font','Schrift'],['color','Farbe'],['backing','Rückplatte'],['finish','Oberfläche'],['usage','Einsatz'],['accessories','Zubehör pro Schild']]){
+      for(const [key,label] of [['size','Breite × Höhe'],['font','Schrift'],['color','Farbe'],['backing','Rückplatte'],['finish','Farbe der Rückplatte'],['usage','Einsatz'],['accessories','Zubehör pro Schild']]){
         const row=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=record[key];if(record[key]!==compareEntries[1-i][key])row.className='is-different';row.append(dt,dd);dl.append(row);
       }
       const price=document.createElement('p');price.className='comparison-price';displayStoredPrice(price,record.design);const priceNote=document.createElement('p');priceNote.textContent='Preis pro Schild mit ausgewähltem Zubehör';priceNote.className='comparison-unit-note';

@@ -46,3 +46,35 @@
 }
 @media(max-width:370px){.config-dialog.nt-delivery-dialog{width:calc(100vw - 16px);padding:20px 12px}.delivery-calendar-day{padding:12px 10px}}
 @media(prefers-reduced-motion:reduce){.delivery-calendar-day{transition:none}}
+
+/* Checkout calendar: options scroll; selected date, total and next action stay visible. */
+#delivery-dialog[open]{display:flex;flex-direction:column;height:min(860px,calc(100dvh - 24px));max-height:calc(100dvh - 24px);overflow:hidden;padding:24px}
+#delivery-dialog>h2{font-size:24px;margin:4px 0 8px}
+.delivery-checkout-mode{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;padding-top:0}
+.delivery-checkout-mode .delivery-calendar-scroll{overflow:auto;min-height:0;overscroll-behavior:contain;padding:4px}
+.delivery-checkout-mode .delivery-calendar-summary{flex:none;margin:12px 0 0;padding:16px;gap:16px;grid-template-columns:minmax(0,1fr) 230px}
+.delivery-checkout-mode .delivery-calendar-options{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:12px}
+.delivery-checkout-mode .delivery-calendar-day[aria-pressed=true]{border:2px solid #b91176;background:#fff0f8;box-shadow:none}
+.delivery-checkout-mode .delivery-calendar-selected-date{font-size:17px;margin-top:4px}
+.delivery-checkout-mode .delivery-calendar-duration{font-size:12px;margin-top:4px}
+.delivery-checkout-mode .delivery-calendar-price{font-size:26px;margin:3px 0 8px}
+#delivery-checkout-status{font-size:14px;line-height:1.4;margin:8px 0 0}
+#delivery-checkout-status:empty{display:none}
+#delivery-dialog[aria-busy=true] #delivery-checkout-status:before{content:"";display:inline-block;width:16px;height:16px;border:2px solid #e6c9da;border-top-color:#b91176;border-radius:50%;margin-right:8px;vertical-align:-3px;animation:checkout-spin 1s linear infinite}
+#delivery-dialog #delivery-back{min-height:44px;align-self:start;flex:none;margin:4px 0 0}
+@keyframes checkout-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#delivery-dialog[aria-busy=true] #delivery-checkout-status:before{animation:none;border-top-color:#b91176}}
+@media(max-width:760px){
+ #delivery-dialog[open]{width:calc(100vw - 12px);max-width:none;max-height:calc(100dvh - 12px);height:calc(100dvh - 12px);padding:14px 10px}
+ #delivery-dialog .config-kicker{display:none}
+ .delivery-checkout-mode .delivery-calendar-tag{display:none}
+ .delivery-checkout-mode .delivery-calendar-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .delivery-checkout-mode .delivery-calendar-summary{grid-template-columns:minmax(0,1fr);gap:8px;padding:12px;margin-top:8px}
+ .delivery-checkout-mode .delivery-calendar-choice .delivery-calendar-eyebrow{display:none}
+ .delivery-checkout-mode .delivery-calendar-checkout{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;align-items:center}
+ .delivery-checkout-mode .delivery-calendar-checkout>span{grid-column:1}
+ .delivery-checkout-mode .delivery-calendar-price{grid-column:1;margin:0;font-size:24px}
+ .delivery-checkout-mode .delivery-calendar-continue{grid-column:2;grid-row:1 / span 2;min-height:48px;width:100%;padding:10px}
+}
+
+#delivery-dialog .delivery-calendar-continue{background:#bd167a!important;color:#fff!important}

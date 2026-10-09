@@ -1,4 +1,4 @@
-import {roundGrossPrice} from './pricing.js?v=20261008-min189';
+import {roundGrossPrice} from './pricing.js?v=20261009-purchase2';
 // NEON-only delivery selection. Source: Offers origin/main lib/pricing/delivery.ts
 // and lib/delivery-date.ts; verified against origin/main 9a894c87 on 2026-10-06.
 // Daniel approved unchanged Offers fees on 2026-10-06; no online fee discount.
@@ -70,26 +70,28 @@ const checkIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 /** Offers-style date cards. Context prices are local previews, never a reservation.
  * Only onContinue commits a choice; closing the dialog leaves the cart unchanged.
  */
-export function initDeliveryCalendar(host,{getContext=()=>({}),onSelect=()=>{},onContinue=()=>{},previewOnly=false}={}){
+export function initDeliveryCalendar(host,{getContext=()=>({}),onSelect=()=>{},onContinue=()=>{},previewOnly=false,checkoutMode=false}={}){
   if(!host||typeof host.addEventListener!=='function')throw new TypeError('Kalender-Element fehlt.');
   const id=`nt-delivery-${++nextId}`;
-  let options=[],selectedDate=null,context={},destroyed=false;
+  let options=[],selectedDate=null,context={},destroyed=false,busy=false;
+  host.classList.toggle('delivery-checkout-mode',checkoutMode);
+  const orderedOptions=()=>checkoutMode?[...options].sort((a,b)=>Number(b.feeNet===0)-Number(a.feeNet===0)||a.businessDays-b.businessDays):options;
   host.classList.add('delivery-calendar');
   const getSelection=()=>{const selected=options.find(o=>o.available&&o.dateIso===selectedDate);return selected?{...selected}:null;};
   function render(focusDate){
     const selected=getSelection(),priceReady=options.every(o=>o.priceReady);
     const subtotal=Number.isFinite(context.subtotalGross)?context.subtotalGross:null;
     const total=selected&&priceReady&&subtotal!==null?currency.format(Math.round((subtotal+selected.feeGross)*100)/100):selected?'Entwurf prüfen':'Termin wählen';
-    host.innerHTML=`<div class="delivery-calendar-heading"><div><p class="delivery-calendar-eyebrow">Versand und Liefertermin</p><h3 id="${id}-title">Wunschtermin wählen</h3></div><span class="delivery-calendar-tag">${previewOnly?'Für deinen aktuellen Entwurf':'Für deinen gesamten Warenkorb'}</span></div>
+    host.innerHTML=`<div class="delivery-calendar-scroll"><div class="delivery-calendar-heading"><div><p class="delivery-calendar-eyebrow">Versand und Liefertermin</p><h3 id="${id}-title">Wunschtermin wählen</h3></div><span class="delivery-calendar-tag">${previewOnly?'Für deinen aktuellen Entwurf':'Für deinen gesamten Warenkorb'}</span></div>
       <p class="delivery-calendar-intro">Je früher der Termin, desto höher die Priorität. Wochenenden werden übersprungen; ab 15 Werktagen ist die Standardlieferung innerhalb Deutschlands gratis.</p>
       ${minimumDeliveryBusinessDays(context.designs)===7?`<p class="delivery-calendar-restriction" role="status"><strong>Früheste Lieferung: 7 Werktage</strong><br>${DELIVERY_RESTRICTION_NOTE} Das gilt für den gesamten Warenkorb.</p>`:''}
-      <div class="delivery-calendar-options" role="group" aria-labelledby="${id}-title">${options.map(option=>{
+      <div class="delivery-calendar-options" role="group" aria-labelledby="${id}-title">${orderedOptions().map(option=>{
         const active=option.dateIso===selectedDate,isFree=option.feeNet===0;
-        return `<button type="button" class="delivery-calendar-day" data-date="${option.dateIso}" ${option.available?'':'disabled'} aria-pressed="${active}" aria-label="${fullDate.format(parseIso(option.dateIso))}, ${option.businessDays} Werktage, ${option.available?option.label:'nicht verfügbar: RGB und Außen ab 7 Werktagen'}"><span class="delivery-day-top"><span>${option.businessDays} Werktage</span>${active?checkIcon:''}</span><span class="delivery-day-date">${shortDate.format(parseIso(option.dateIso))}</span><span class="delivery-day-fee ${isFree?'is-free':option.feeNet>=350?'is-urgent':''}">${option.available?`${option.priceReady?'':'ab '}${isFree?'Gratis':'+ '+currency.format(option.feeGross)}`:'Nicht verfügbar'}</span><span class="delivery-day-tier">${option.available?deliveryTierLabel(option.businessDays):'RGB / Außen: ab Tag 7'}</span></button>`;
+        return `<button type="button" class="delivery-calendar-day" data-date="${option.dateIso}" ${option.available&&!busy?'':'disabled'} aria-pressed="${active}" aria-label="${fullDate.format(parseIso(option.dateIso))}, ${option.businessDays} Werktage, ${option.available?option.label:'nicht verfügbar: RGB und Außen ab 7 Werktagen'}"><span class="delivery-day-top"><span>${option.businessDays} Werktage</span>${active?checkIcon:''}</span><span class="delivery-day-date">${shortDate.format(parseIso(option.dateIso))}</span><span class="delivery-day-fee ${isFree?'is-free':option.feeNet>=350?'is-urgent':''}">${option.available?`${option.priceReady?'':'ab '}${isFree?'Gratis':'+ '+currency.format(option.feeGross)}`:'Nicht verfügbar'}</span><span class="delivery-day-tier">${option.available?(isFree?'Standardlieferung · kostenlos':deliveryTierLabel(option.businessDays))+(active?' · Ausgewählt':''):'RGB / Außen: ab Tag 7'}</span></button>`;
       }).join('')}</div>
       <p class="delivery-calendar-unit">Aufpreise inkl. 19 % MwSt. für Lieferung innerhalb Deutschlands. Pfeiltasten wechseln zwischen Terminen.</p>
-      <div class="delivery-calendar-summary"><div class="delivery-calendar-choice" aria-live="polite" aria-atomic="true"><p class="delivery-calendar-eyebrow">${selected?'Dein gewählter Liefertermin':'Deine Auswahl'}</p><p class="delivery-calendar-selected-date">${selected?fullDate.format(parseIso(selected.dateIso)):'Welcher Tag passt zu dir?'}</p><p class="delivery-calendar-duration">${selected?`${deliveryTierLabel(selected.businessDays)} · ${selected.businessDays} Werktage · ${selected.feeNet===0?'ohne Aufpreis':'+ '+currency.format(selected.feeGross)}`:(previewOnly?'Wähle einen Termin für die Kostenvorschau.':'Ein gemeinsamer Termin für alle Schilder.')}</p></div><div class="delivery-calendar-checkout"><span>Gesamt inkl. Lieferung</span><strong class="delivery-calendar-price" aria-live="polite">${total}</strong>${previewOnly?'':`<button type="button" class="delivery-calendar-continue" data-continue ${selected&&priceReady?'':'disabled'}>Liefertermin übernehmen</button>`}</div></div>
-      <p class="delivery-calendar-note">Voraussichtliche Termine ab dem Tag nach der Bestellung. Feiertage und aktuelle Verfügbarkeit sind noch nicht berücksichtigt. Die Auswahl reserviert noch keinen Termin.${previewOnly?' Deinen Liefertermin übernimmst du später im Warenkorb.':''}</p>`;
+      <p class="delivery-calendar-note">Voraussichtliche Termine ab dem Tag nach der Bestellung. Feiertage und aktuelle Verfügbarkeit sind noch nicht berücksichtigt. Die Auswahl reserviert noch keinen Termin.${previewOnly?' Deinen Liefertermin übernimmst du später im Warenkorb.':''}</p></div><div class="delivery-calendar-summary"><div class="delivery-calendar-choice" aria-live="polite" aria-atomic="true"><p class="delivery-calendar-eyebrow">${selected?'Dein gewählter Liefertermin':'Deine Auswahl'}</p><p class="delivery-calendar-selected-date">${selected?fullDate.format(parseIso(selected.dateIso)):'Welcher Tag passt zu dir?'}</p><p class="delivery-calendar-duration">${selected?`${deliveryTierLabel(selected.businessDays)} · ${selected.businessDays} Werktage · ${selected.feeNet===0?'ohne Aufpreis':'+ '+currency.format(selected.feeGross)}`:(previewOnly?'Wähle einen Termin für die Kostenvorschau.':'Ein gemeinsamer Termin für alle Schilder.')}</p></div><div class="delivery-calendar-checkout"><span>Gesamt inkl. Lieferung</span><strong class="delivery-calendar-price" aria-live="polite">${total}</strong>${previewOnly?'':`<button type="button" class="delivery-calendar-continue" data-continue ${selected&&priceReady&&!busy?'':'disabled'}>${checkoutMode?'Zur Kasse':'Liefertermin übernehmen'}</button>`}</div></div>
+      `;
     if(focusDate)host.querySelector(`[data-date="${focusDate}"]`)?.focus();
   }
   function refresh({resetSelection=false}={}){
@@ -99,27 +101,30 @@ export function initDeliveryCalendar(host,{getContext=()=>({}),onSelect=()=>{},o
     if(resetSelection)selectedDate=context.selectedDate||null;
     else if(!selectedDate&&options.some(o=>o.available&&o.dateIso===context.selectedDate))selectedDate=context.selectedDate;
     if(!options.some(o=>o.available&&o.dateIso===selectedDate))selectedDate=null;
+    if(checkoutMode&&!selectedDate&&!context.selectedDate)selectedDate=options.find(o=>o.available&&o.priceReady&&o.feeNet===0)?.dateIso||null;
     const focused=host.ownerDocument.activeElement?.dataset?.date;
     render(focused);
     const after=getSelection();
     if(before&&JSON.stringify(before)!==JSON.stringify(after))onSelect(after);
   }
   function select(dateIso,{focus=false}={}){
-    if(destroyed)return false;
+    if(destroyed||busy)return false;
     try{parseIso(dateIso);}catch{return false;}
     if(!options.some(o=>o.available&&o.dateIso===dateIso))return false;
     selectedDate=dateIso;render(focus?dateIso:null);onSelect(getSelection());return true;
   }
   function click(event){
+    if(busy)return;
     const button=event.target.closest('button');if(!button||!host.contains(button)||button.disabled)return;
     if(button.dataset.date){select(button.dataset.date,{focus:true});return;}
     if(button.hasAttribute('data-continue')){
-      refresh();const selection=getSelection();if(selection?.priceReady)onContinue(selection);
+      const before=JSON.stringify({selection:getSelection(),subtotal:context.subtotalGross});
+      refresh();const selection=getSelection();if(selection?.priceReady)onContinue(selection,{changed:before!==JSON.stringify({selection,subtotal:context.subtotalGross})});
     }
   }
   function keydown(event){
     const current=event.target.closest('[data-date]');if(!current)return;
-    const available=options.filter(o=>o.available),index=available.findIndex(o=>o.dateIso===current.dataset.date);
+    const available=orderedOptions().filter(o=>o.available),index=available.findIndex(o=>o.dateIso===current.dataset.date);
     const columns=getComputedStyle(host.querySelector('.delivery-calendar-options')).gridTemplateColumns.split(' ').length;
     let next;
     if(event.key==='ArrowRight')next=index+1;
@@ -130,5 +135,5 @@ export function initDeliveryCalendar(host,{getContext=()=>({}),onSelect=()=>{},o
     event.preventDefault();const option=available[next];if(option)host.querySelector(`[data-date="${option.dateIso}"]`)?.focus();
   }
   host.addEventListener('click',click);host.addEventListener('keydown',keydown);refresh({resetSelection:true});
-  return {refresh,getSelection,select,destroy(){destroyed=true;host.removeEventListener('click',click);host.removeEventListener('keydown',keydown);host.replaceChildren();host.classList.remove('delivery-calendar');}};
+  return {refresh,getSelection,select,setBusy(value){busy=!!value;host.setAttribute('aria-busy',String(busy));render();},destroy(){destroyed=true;host.removeEventListener('click',click);host.removeEventListener('keydown',keydown);host.replaceChildren();host.classList.remove('delivery-calendar');}};
 }

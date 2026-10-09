@@ -39,8 +39,9 @@ export function buildFreestandingSupports(result, { logo = false } = {}) {
 
 /** Rasterize the padded outlines, join adjacent letters and word gaps broadly, then follow the actual
  * exterior. Coordinates are millimetres from the backing's top-left bounding box. */
-export function buildBackingContour(result, marginMm = 12.5) {
-  if (cache.get(result)?.margin === marginMm) return cache.get(result).path;
+export function buildBackingContour(result, marginMm = 12.5, version = 2) {
+  if(version!==1&&version!==2)throw new Error('Unsupported backing contour version.');
+  if (cache.get(result)?.margin === marginMm && cache.get(result)?.version === version) return cache.get(result).path;
   const { layout, size } = result;
   const widthMm = size.exact.design.widthMm + 2 * marginMm;
   const heightMm = size.exact.design.heightMm + 2 * marginMm;
@@ -90,6 +91,18 @@ export function buildBackingContour(result, marginMm = 12.5) {
     return points;
   };
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // Cut-around follows each whole letter silhouette. Open letter counters and
+  // swashes must not leave a narrow tube-shaped carrier, e.g. the left of H.
+  // Keep the original padded strokes underneath: added support cannot remove
+  // their physical margin.
+  if(version===2)for(const glyph of layout.glyphs){
+    const hull=convexHull([...facingPoints(glyph,false),...facingPoints(glyph,true)]);
+    if(hull.length<3)continue;
+    const rounded=softenWordBridge(hull,Infinity,marginMm*2*resolution);
+    ctx.beginPath();ctx.moveTo(...rounded[0]);
+    for(const point of rounded.slice(1))ctx.lineTo(...point);
+    ctx.closePath();ctx.fill();
+  }
   for (let i = 1; i < layout.glyphs.length; i++) {
     const a = layout.glyphs[i - 1], b = layout.glyphs[i];
     if (a.lineIndex !== b.lineIndex) continue;
@@ -116,21 +129,59 @@ export function buildBackingContour(result, marginMm = 12.5) {
     lines.set(glyph.lineIndex, line);
   }
   const bridges = lineBridgePolygons(mask, canvas.width, canvas.height, [...lines.values()]);
-  for (const hull of bridges) {
+  for (const bridge of bridges) {
+    const hull=version===2?softenWordBridge(bridge,Infinity,marginMm*3*resolution):bridge;
     ctx.beginPath(); ctx.moveTo(...hull[0]);
     for (const point of hull.slice(1)) ctx.lineTo(...point);
     ctx.closePath(); ctx.fill();
   }
   if (bridges.length) mask = readMask();
-  const points = contourFromMask(mask, canvas.width, canvas.height, Math.max(2, marginMm * 2 * resolution));
+  const rawPoints = contourFromMask(mask, canvas.width, canvas.height, Math.max(2, marginMm * 2 * resolution));
+  const points = version===2 ? smoothCutAround(rawPoints,marginMm*3*resolution) : rawPoints;
   // Raster cells can extend beyond the nominal outer size by one pixel.
   // Keep the physical contour inside the size shown to the customer and sent to AR.
   const path = points.length ? 'M' + points.map(([x, y]) =>
     `${Math.max(0, Math.min(widthMm, (x - 2) / resolution)).toFixed(2)} ${Math.max(0, Math.min(heightMm, (y - 2) / resolution)).toFixed(2)}`).join('L') + 'Z' : '';
-  cache.set(result, { margin: marginMm, path });
+  cache.set(result, { margin: marginMm, version, path });
   return path;
 }
 
+
+/**
+ * Bounded simplification and concave fillets. Work in the existing raster
+ * coordinate system; preserve all four extrema and never rescale the sign.
+ */
+export function smoothCutAround(points,radius){
+ if(points.length<4)return points;
+ const distance=(p,a,b)=>{
+  const dx=b[0]-a[0],dy=b[1]-a[1],t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy||1)));
+  return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);
+ };
+ const anchors=new Set([0]);
+ for(const axis of [0,1])for(const sign of [-1,1]){
+  let best=0;for(let i=1;i<points.length;i++)if(sign*points[i][axis]>sign*points[best][axis])best=i;anchors.add(best);
+ }
+ const indices=[...anchors].sort((a,b)=>a-b);indices.push(points.length);
+ const keep=new Set(indices.slice(0,-1)),stack=[];
+ for(let i=1;i<indices.length;i++)stack.push([indices[i-1],indices[i]]);
+ while(stack.length){
+  const [a,b]=stack.pop();let maximum=.45,at=-1;
+  for(let i=a+1;i<b;i++){const d=distance(points[i],points[a],points[b%points.length]);if(d>maximum){maximum=d;at=i;}}
+  if(at>=0){keep.add(at);stack.push([a,at],[at,b]);}
+ }
+ const simplified=[...keep].sort((a,b)=>a-b).map(i=>points[i]),out=[];
+ for(let i=0;i<simplified.length;i++){
+  const a=simplified[(i+simplified.length-1)%simplified.length],p=simplified[i],b=simplified[(i+1)%simplified.length];
+  const cross=(p[0]-a[0])*(b[1]-p[1])-(p[1]-a[1])*(b[0]-p[0]);
+  if(cross>=0){out.push(p);continue;}
+  const l1=Math.hypot(a[0]-p[0],a[1]-p[1]),l2=Math.hypot(b[0]-p[0],b[1]-p[1]),trim=Math.min(radius,l1*.4,l2*.4);
+  if(trim<.5){out.push(p);continue;}
+  const entry=p.map((v,j)=>v+(a[j]-v)*trim/l1),exit=p.map((v,j)=>v+(b[j]-v)*trim/l2);
+  const steps=Math.min(10,Math.max(2,Math.ceil(trim/2)));
+  for(let j=0;j<=steps;j++){const t=j/steps;out.push(entry.map((v,k)=>(1-t)**2*v+2*(1-t)*t*p[k]+t*t*exit[k]));}
+ }
+ return out;
+}
 
 /** Add a standing base to a normal M/L/Z preview contour. Width and origin
  * stay unchanged; total height becomes heightMm + supportMm. Slot dimensions

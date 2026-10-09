@@ -7,12 +7,13 @@ const finite=(n)=>typeof n==='number'&&Number.isFinite(n);
 const positive=(n)=>finite(n)&&n>0&&n<=10000;
 const hex=(s)=>typeof s==='string'&&/^#[0-9a-f]{6}$/i.test(s);
 function fail(message){throw new Error(message);}
-const PLATE_FINISHES=new Set(['clear','uv-print','mirror-gold','mirror-silver']);
+const PLATE_FINISHES=new Set(['clear','solid','uv-print','mirror-gold','mirror-silver']);
 function plateFinish(plate){
   // Older locally saved snapshots did not contain a finish selection.
   if(plate.finish===undefined)return {kind:'clear',color:'#FFFFFF'};
   const finish=plate.finish;
   if(!finish||typeof finish!=='object'||!PLATE_FINISHES.has(finish.kind)||!hex(finish.color))fail('Das Material oder die Farbe der Rückplatte ist für AR ungültig.');
+  if(finish.kind==='solid'&&!['#FFFFFF','#000000','#D4AF37'].includes(finish.color.toUpperCase()))fail('Die feste Rückplattenfarbe ist ungültig.');
   return {kind:finish.kind,color:finish.color.toUpperCase()};
 }
 

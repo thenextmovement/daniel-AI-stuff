@@ -1030,3 +1030,14 @@ body.designstudio #main .size-slider-control .width-slider:focus-visible{outline
  body.lichtbuehne.lichtbuehne-v4.designstudio:is([data-active-group="1"],[data-active-group="2"]) #main .editor .workbench-heading{display:none}
  body.lichtbuehne.lichtbuehne-v4.designstudio:is([data-active-group="1"],[data-active-group="2"]) #main .editor>.studio-context{margin-bottom:6px}
 }
+
+/* Purchase flow: history is reachable in the editor and the open color dialog. */
+body.designstudio .history-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+body.designstudio .history-controls button{display:inline-flex!important;align-items:center;min-height:44px;padding:7px 10px;border:1px solid #d8cdd2;border-radius:8px;background:#fff;color:#6f2851;font:500 12px/1.25 Inter,system-ui,sans-serif}
+body.designstudio .history-controls button:disabled{color:#777;opacity:.55;cursor:default}
+body.designstudio #main .editor>.history-controls{order:1;display:flex;justify-content:flex-end;margin:4px 0 6px;gap:6px;flex-shrink:0}
+body.designstudio .history-controls .icon{width:16px;height:16px;margin-right:5px;fill:none;stroke:currentColor;stroke-width:1.8}
+@media(max-width:760px){body.designstudio #main .editor>.history-controls{width:100%;justify-content:flex-start}}
+body.designstudio :is(#undo-design,#redo-design){display:inline-flex!important}
+#cart-add-status:empty{display:none}
+#cart-add-status{margin:4px 0;color:#a12c37;font-size:13px;line-height:1.35}

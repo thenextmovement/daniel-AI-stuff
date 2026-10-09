@@ -1,4 +1,4 @@
-import {minimumDeliveryBusinessDays,deliveryDateIsoForBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261008-min189';
+import {minimumDeliveryBusinessDays,deliveryDateIsoForBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261009-purchase2';
 let wishMinimumDays=2,refreshWishCalendar;
 export function refreshWishDelivery(design){
   const minimum=minimumDeliveryBusinessDays([design]);

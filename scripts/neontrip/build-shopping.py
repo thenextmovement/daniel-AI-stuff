@@ -32,7 +32,7 @@ for p in products:
 <figure class="shopping-media"><img id="shopping-hero" src="{esc(p['image'])}" alt="{esc(p['text'])} – LED-Neon in {esc(p['colorName'])}, Schrift {esc(p['font'])}" width="1254" height="1254" fetchpriority="high"><div class="shopping-gallery" role="group" aria-label="Produktansichten">{gallery}</div><figcaption>Visualisierungen der Ausgangskonfiguration.</figcaption></figure>
 <div><p class="config-kicker">PERSONALISIERTER LED-NEON-SCHRIFTZUG</p><h1 id="shopping-title">{esc(headline)}</h1>
 <div class="shopping-price"><span id="shopping-selection">Preis der Ausgangskonfiguration</span><strong id="shopping-current-price">{price_de}</strong><small>Inkl. 19 % MwSt. und Standardlieferung nach Deutschland.</small></div>
-<div class="shopping-actions"><button id="shopping-buy" type="button" disabled>Auswahl prüfen &amp; kaufen</button><button id="shopping-edit" type="button">Eigenen Text gestalten</button></div>
+<div class="shopping-actions"><button id="shopping-buy" type="button" disabled>In den Warenkorb</button><button id="shopping-edit" type="button">Eigenen Text gestalten</button></div>
 <p>So bestellen oder deinen eigenen Text gestalten. Du siehst den Preis deiner Auswahl direkt im Konfigurator.</p>
 <ul class="shopping-specs"><li>{esc(dimensions)}</li><li>{esc(p['colorName'])}</li><li>{esc(mount)}</li><li>Für innen</li></ul>
 <p><strong>Abgebildete Ausgangskonfiguration:</strong> „{esc(p['text'])}“ in {esc(p['font'])}, transparente Trägerplatte im Formzuschnitt.</p>

@@ -1,5 +1,5 @@
 /** Lazy browser-only AR adapter. No network upload and no automatic camera. */
-import {createArGeometry,exportArGeometry,createOfferArRequest} from './ar-geometry.js?v=20261005-refine1';
+import {createArGeometry,exportArGeometry,createOfferArRequest} from './ar-geometry.js?v=20261009-purchase2';
 import {requestOfferAr} from './offer-ar-client.js?v=20260929-offer1';
 let viewerModule;
 const hostPreparations=new WeakMap();

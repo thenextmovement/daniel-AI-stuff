@@ -1,5 +1,5 @@
 /** Explicit 24-hour model handoff. Reuses OFFER's physical mesh export. */
-import {createOfferArRequest} from './ar-geometry.js?v=20260929-mobile-stage2';
+import {createOfferArRequest} from './ar-geometry.js?v=20261009-purchase2';
 export function arEndpoint(){return document.querySelector('meta[name=neontrip-ar-endpoint]')?.content||'/api/public/configurator/ar';}
 export async function createArShare(snapshot,{signal,endpoint=arEndpoint(),fetchImpl=fetch,viewerOrigin=globalThis.location?.origin}={}){
   if(snapshot.mount?.id==='table-stand')throw new Error('Die Wand-AR ist für den Tischständer noch nicht verfügbar.');
