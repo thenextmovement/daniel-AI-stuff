@@ -378,7 +378,7 @@ function paintPrice(){
   $('.design-price').title=priceDetail(state.price);
   $('.design-price').dataset.priceVersion=PRICE_RULES.version;
   const standPrice=$('[data-accessory-price="table-stand"]');
-  if(standPrice)standPrice.textContent=state.price.status==='pending'?'Wird berechnet …':(state.price.baseNet==null?'ab ':'')+priceLabel({net:mountingNet('table-stand',state.price.baseNet)})+' inkl. MwSt.';
+  if(standPrice)standPrice.textContent=state.price.status==='pending'?'Wird berechnet …':(state.price.baseNet==null?'ab +':'+')+priceLabel({net:mountingNet('table-stand',state.price.baseNet)})+' / Stück';
   $('#share-design').disabled=designRendering||!state.result||!state.sizeValid;
   $('#stage-ar').disabled=designRendering||!state.result||!state.sizeValid;
   $('#stage-ar span').textContent=state.mount==='table-stand'?'3D ansehen':'An deiner Wand ansehen';
@@ -451,7 +451,7 @@ function clearResult(message='',error=false,status='invalid-text') {
   designRendering=false;lastBackingExampleResult=null;presetKey='';presetRevision++;
   if(!$('#freestanding-example img'))$('#freestanding-example').replaceChildren();
   $('#preview-size-fallback').hidden=true;$('#preview-handles').replaceChildren();previewBox=null;
-  state.result=null;$('#stage-width').textContent='—';$('#stage-height').textContent='—';$('#design-summary-size').textContent='Maße prüfen';$('#save-design').disabled=true;$('#suggest-production-size').hidden=true;$('#production-note').textContent='Für die Fertigungsprüfung ist ein gültiger Entwurf erforderlich.';$('#size-plate-total').textContent='—';for(const b of document.querySelectorAll('[data-width-cm]'))b.setAttribute('aria-pressed','false');paintMount(); $('#preview-art').replaceChildren();$('#preview-dimensions').replaceChildren();
+  state.result=null;$('#stage-width').textContent='—';$('#stage-height').textContent='—';$('#design-summary-size').textContent='Maße prüfen';$('#save-design').disabled=true;$('#suggest-production-size').hidden=true;$('#production-note').textContent='Für die Fertigungsprüfung ist ein gültiger Entwurf erforderlich.';for(const b of document.querySelectorAll('[data-width-cm]'))b.setAttribute('aria-pressed','false');paintMount(); $('#preview-art').replaceChildren();$('#preview-dimensions').replaceChildren();
   state.price={status,net:null,reasons:[message]};renderPriceValue($('.design-price strong'),state.price);
   refreshFontQuotes();
   updatePagePurchase();$('.design-price small').textContent=priceCorrectionHint(state.price);$('.design-price').title=message;
@@ -600,7 +600,7 @@ function syncOuterSize(size){
   const minimumWidth=(minimum?.widthMm||500)/10;
   const minimumHeight=(state.backing==='rectangle'||state.backing==='square'?40:state.backing==='contour'?30:10)+(state.mount==='table-stand'?STAND_SUPPORT_MM:0);
   $('#sign-width').min=String(minimumWidth);$('#width-slider').min=String(minimumWidth);
-  $('#sign-width').max=String(Math.round(range?.maximum.widthMm||4000)/10);$('#width-slider').max=$('#sign-width').max;$('#sign-height').max=String(Math.round(range?.maximum.heightMm||4000)/10);
+  $('#sign-width').max=String(Math.floor((range?.maximum.widthMm||4000)+1e-7)/10);$('#width-slider').max=$('#sign-width').max;$('#sign-height').max=String(Math.floor((range?.maximum.heightMm||4000)+1e-7)/10);
   $('#width-slider-max').textContent=$('#sign-width').max+' cm';
   $('#width-slider-min').textContent=`${minimumWidth.toLocaleString('de-DE')} cm`;
   $('#sign-height').min=String(Math.round(minimum?.heightMm||minimumHeight)/10);
@@ -626,8 +626,8 @@ function chooseOuterSize(axis,outerMm){
   const range=sizeRangeForResult(state,state.result),minimum=range?.minimum;
   const minimumMm=axis==='width'?(minimum?.widthMm||500):(minimum?.heightMm||10);
   const maximumMm=axis==='width'?(range?.maximum.widthMm||4000):(range?.maximum.heightMm||4000);
-  const belowMinimum=Number.isFinite(outerMm)&&outerMm<minimumMm;
-  const aboveMaximum=Number.isFinite(outerMm)&&outerMm>maximumMm;
+  const belowMinimum=Number.isFinite(outerMm)&&outerMm<minimumMm-1e-7;
+  const aboveMaximum=Number.isFinite(outerMm)&&outerMm>maximumMm+1e-7;
   if(belowMinimum||aboveMaximum||!Number.isFinite(outerMm)||outerMm<=0){
     state.sizeValid=false;state.requestedOuter=null;revision++;clearTimeout(timer);
     const message=belowMinimum?`Für diesen Entwurf mindestens ${cm(minimumMm)} cm ${axis==='width'?'Breite':'Höhe'}. Bitte ein größeres Maß eingeben.`:aboveMaximum?`Für diesen Entwurf höchstens ${cm(maximumMm)} cm ${axis==='width'?'Breite':'Höhe'}. Die längste Seite darf 400 cm nicht überschreiten.`:'Bitte eine positive Zahl für das Maß eingeben.';
@@ -742,8 +742,8 @@ for(const product of accessoryProducts){
  const copy=document.createElement('div');copy.className='accessory-copy';
  const name=document.createElement('h4');name.textContent=product.name;copy.append(name);
  const price=document.createElement('p');price.className='accessory-price';price.dataset.accessoryPrice=key;
- if(included){const badge=document.createElement('span');badge.className='accessory-included-badge';badge.textContent='1 inklusive';copy.append(badge);price.textContent='Weitere: '+priceLabel({net:product.extraNet})+' / Stück';}
- else price.textContent=(key==='table-stand'?'ab ':'')+priceLabel({net:mountingNet(key)})+' inkl. MwSt.';
+ if(included){const badge=document.createElement('span');badge.className='accessory-included-badge';badge.textContent='1 × kostenlos';copy.append(badge);price.textContent='Weitere: +'+priceLabel({net:product.extraNet})+' / Stück';}
+ else price.textContent=(key==='table-stand'?'ab +':'+')+priceLabel({net:mountingNet(key)})+' / Stück';
  copy.append(price);
  const actions=document.createElement('div');actions.className='accessory-actions';
  const add=document.createElement('button');add.type='button';add.className='accessory-add';add.textContent=included?'+ Weitere':'Hinzufügen';
@@ -948,13 +948,6 @@ function paint() {
   if(state.mount==='table-stand'&&!plateCheck.standHeightFits)$('#production-note').textContent=TABLE_STAND_HEIGHT_MESSAGE;
   if(state.mode==='logo')$('#production-note').textContent='Automatisch abgeleiteter Logo-Linienentwurf. Bitte mit dem Original vergleichen; Flächen und kleine Details können sich verändern. '+$('#production-note').textContent;
   if(state.backing==='freestanding')$('#production-note').textContent='Freigestellte Acrylstreben: Anzahl und Lage sind eine Vorschau. Buchstabenbefestigung, mehrzeilige Motive und Montage müssen vor Fertigung geprüft werden. '+$('#production-note').textContent;
-  const sizeTechnicalDetails=$('#size-technical-details');
-  const needsProductionReview=issues.length>0||state.mode==='logo'||state.backing==='freestanding';
-  sizeTechnicalDetails.classList.toggle('has-warning',needsProductionReview);
-  sizeTechnicalDetails.querySelector('summary').textContent=needsProductionReview?'Fertigungshinweis ansehen':'Maße und Fertigungshinweise';
-  const profile=MANUFACTURING_PROFILE;
-  $('#production-assumptions').textContent=`Arbeitswerte: ${profile.tubeMm} mm Neon · mindestens ${profile.minBendRadiusMm} mm Biegeradius · ${profile.cutPitchMm} mm Schnittabstand · ${profile.acrylicThicknessMm} mm Acryl. Geschätzt; keine bestätigten Lieferantendaten.`;
-  if(state.mount==='table-stand')$('#production-assumptions').textContent+=` Steckschlitze: ${new Intl.NumberFormat('de-DE').format(plateCheck.slotWidthMm)} mm breit, ${profile.standSlotDepthMm} mm tief, ${profile.standInsetMm} mm vom Rand. Standfestigkeit noch nicht nachgewiesen.`;
   const minimum=minimumSizeForResult(state,state.result),belowMinimum=minimum&&plateSize(size).widthMm<minimum.widthMm-.1;
   $('#suggest-production-size').hidden=!belowMinimum||!!minimum&&(minimum.widthMm>4000||minimum.heightMm>4000);$('#suggest-production-size').disabled=false;
   $('#suggest-production-size').dataset.suggestedOuterMm=String(minimum?.widthMm||500);
@@ -963,7 +956,6 @@ function paint() {
   const design=size.exact.design,backing=plateSize(size);
   syncOuterSize(size);
   $('#backing-size').textContent=dimensions(backing);
-  $('#size-plate-total').textContent=dimensions(backing);
   for(const button of document.querySelectorAll('[data-width-cm]'))button.setAttribute('aria-pressed',Math.abs(Number(button.dataset.widthCm)*10-backing.widthMm)<.6);$('#choice-plate-size').textContent=dimensions(backing);
   $('#choice-value-3').textContent=dimensions(backing);
   $('#choice-value-4').textContent=BACKINGS[state.backing].name;
@@ -1895,7 +1887,7 @@ function setStep(index,focus=false,{scroll=true}={}){
   if(index===0)requestAnimationFrame(fitTextField);
   if(scroll&&!mobileChoiceMedia.matches)requestAnimationFrame(()=>{
     const panel=$('#panel-'+activeStep).getBoundingClientRect(),nav=$('.journey').getBoundingClientRect();
-    if(panel.top<nav.bottom+8||panel.top>window.innerHeight-120){
+    if((group>0&&matchMedia('(max-width:950px)').matches)||panel.top<nav.bottom+8||panel.top>window.innerHeight-120){
       window.scrollTo({top:Math.max(0,$('.editor').getBoundingClientRect().top+window.scrollY-12),behavior:'instant'});
     }
   });
@@ -1965,8 +1957,6 @@ function syncDesignMode(){
   $('#tab-3 .choice-label').textContent='Größe';
   $('#tab-3').setAttribute('aria-label','Gesamte Außenmaße ändern');
   $('#size-motif-label').textContent='Beliebte Größen · inkl. MwSt.';
-  $('label[for="width-slider"]').textContent='Gesamte Außenbreite des Schilds';
-  $('#size-calculation-help').textContent='Die Außenmaße umfassen Motiv, Träger und gegebenenfalls Tischständer. Die zweite Seite wird proportional berechnet.';
   const asset=state.logo&&draftAssets.get(state.logo.assetId);
   $('#logo-original').hidden=!asset;
   if(asset){$('#logo-original').src=asset.url;$('#logo-original').alt='Originaldatei: '+state.logo.name;$('#logo-file-name').textContent=state.logo.name;}

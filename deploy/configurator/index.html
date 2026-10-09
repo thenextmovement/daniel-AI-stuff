@@ -50,7 +50,7 @@
   <link rel="preload" as="image" type="image/webp" href="assets/scenes/reception-detail-mobile-v1.webp" media="(max-width: 760px)" fetchpriority="high">
   <link rel="preload" as="image" type="image/webp" href="assets/scenes/reception-detail-desktop-v1.webp" media="(min-width: 760.01px)" fetchpriority="high">
   <!-- Discover the configurator module graph before parsing the long content below. -->
-  <link rel="modulepreload" href="configurator.js?v=20261009-tour-perf1" fetchpriority="low">
+  <link rel="modulepreload" href="configurator.js?v=20261009-size-options1" fetchpriority="low">
   <link rel="modulepreload" href="pricing-data.js?v=20261008-min189">
   <link rel="modulepreload" href="pricing-model.js?v=20261007-factor26">
   <link rel="stylesheet" href="../shared/tokens.css">
@@ -75,7 +75,7 @@
 <link rel="stylesheet" href="usability.css?v=20261005-ux1">
 <link rel="stylesheet" href="share.css?v=20261005-share2">
 <link rel="stylesheet" href="lichtbuehne-v4.css?v=20261005-refine6">
-<link rel="stylesheet" href="designstudio.css?v=20261007-tablet-accessories2">
+<link rel="stylesheet" href="designstudio.css?v=20261009-size-options1">
 <link rel="stylesheet" href="font-filters.css?v=20261006-filters2">
 <link rel="stylesheet" href="cart-brand.css?v=20261008-trust1">
 <link rel="stylesheet" href="trust-signals.css?v=20261008-trust1">
@@ -142,14 +142,11 @@
       </div>
       <div class="editor-block size-block" id="panel-3" role="tabpanel" aria-labelledby="tab-3" hidden="">
         <div class="block-heading"><h2><span>04</span> Deine Größe</h2><svg class="icon linked" viewBox="0 0 24 24" aria-label="Breite und Höhe werden gemeinsam berechnet"><path d="m9 15 6-6M8 17l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2-1 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0"></path></svg></div>
-        <section class="custom-size-entry" aria-labelledby="custom-size-title"><h3 id="custom-size-title">Dein Wunschmaß eingeben</h3><p id="custom-size-help">Breite oder Höhe eingeben – das andere Maß passt sich an.</p><div class="size-fields"><label for="sign-width">Breite eingeben<div class="measurement-input"><input id="sign-width" type="number" min="1" max="400" step="0.1" value="50" inputmode="decimal" aria-describedby="custom-size-help minimum-size-note"><span>cm</span></div></label><span class="times" aria-hidden="true">×</span><label for="sign-height">Höhe eingeben<div class="measurement-input"><input id="sign-height" type="number" min="1" max="400" step="0.1" inputmode="decimal" aria-describedby="custom-size-help minimum-size-note"><span>cm</span></div></label></div></section><p id="minimum-size-note" class="minimum-size-note" role="status"></p><p class="size-help" id="size-motif-label">Beliebte Größen · inkl. MwSt.</p><div id="size-presets" class="size-presets" role="group" aria-label="Beliebte Schildbreiten"><button type="button" data-width-cm="50" aria-pressed="true">50 cm</button><button type="button" data-width-cm="75" aria-pressed="false">75 cm</button><button type="button" data-width-cm="100" aria-pressed="false">100 cm</button><button type="button" data-width-cm="125" aria-pressed="false">125 cm</button><button type="button" data-width-cm="150" aria-pressed="false">150 cm</button><button type="button" data-width-cm="200" aria-pressed="false">200 cm</button><button type="button" data-width-cm="300" aria-pressed="false">300 cm</button><button type="button" data-width-cm="400" aria-pressed="false">400 cm</button></div>
+        <section class="custom-size-entry" aria-labelledby="custom-size-title"><h3 id="custom-size-title">Dein Wunschmaß eingeben</h3><p id="custom-size-help">Breite oder Höhe eingeben – das andere Maß passt sich an.</p><div class="size-fields"><label for="sign-width">Breite eingeben<div class="measurement-input"><input id="sign-width" type="number" min="1" max="400" step="0.1" value="50" inputmode="decimal" aria-describedby="custom-size-help minimum-size-note"><span>cm</span></div></label><span class="times" aria-hidden="true">×</span><label for="sign-height">Höhe eingeben<div class="measurement-input"><input id="sign-height" type="number" min="1" max="400" step="0.1" inputmode="decimal" aria-describedby="custom-size-help minimum-size-note"><span>cm</span></div></label></div><div class="size-slider-control"><label for="width-slider">Breite mit Regler anpassen</label><input id="width-slider" class="width-slider" type="range" min="50" max="400" step="0.1" value="50" aria-describedby="minimum-size-note"><div class="slider-labels"><span id="width-slider-min">50 cm</span><span id="width-slider-max">400 cm</span></div></div></section><p id="minimum-size-note" class="minimum-size-note" role="status"></p><p class="size-help" id="size-motif-label">Beliebte Größen · inkl. MwSt.</p><div id="size-presets" class="size-presets" role="group" aria-label="Beliebte Schildbreiten"><button type="button" data-width-cm="50" aria-pressed="true">50 cm</button><button type="button" data-width-cm="75" aria-pressed="false">75 cm</button><button type="button" data-width-cm="100" aria-pressed="false">100 cm</button><button type="button" data-width-cm="125" aria-pressed="false">125 cm</button><button type="button" data-width-cm="150" aria-pressed="false">150 cm</button><button type="button" data-width-cm="200" aria-pressed="false">200 cm</button><button type="button" data-width-cm="300" aria-pressed="false">300 cm</button><button type="button" data-width-cm="400" aria-pressed="false">400 cm</button></div>
         <p id="size-error" class="config-error" role="alert" hidden=""></p>
         <button id="suggest-production-size" class="own-photo-button" type="button" hidden="">Größeres Maß prüfen</button>
-        <details id="size-technical-details" class="choice-details"><summary>Maße und Fertigungshinweise</summary>
-          <label for="width-slider" class="sr-only">Gesamte Außenbreite des Schilds</label><input id="width-slider" class="width-slider" type="range" min="1" max="400" step="0.1" value="75"><div class="slider-labels"><span id="width-slider-min">3 cm</span><span id="width-slider-max">400 cm</span></div>
-          <p class="size-help" id="size-calculation-help">Die Außenmaße umfassen Schriftzug, Träger und gegebenenfalls Tischständer. Die zweite Seite wird proportional berechnet.</p>
-          <p class="size-plate">Gesamte Außenmaße: <strong id="size-plate-total">—</strong></p><p id="production-note" class="production-note" role="status">8 mm Neonlinie. Die Fertigungseignung wird geprüft.</p><details class="production-assumptions"><summary>Materialannahmen</summary><p id="production-assumptions"></p></details>
-        </details>
+        <!-- Keep the calculated note for the existing order review, outside the size controls. -->
+        <p id="production-note" hidden></p>
       </div>
       <div class="editor-block" id="panel-4" role="tabpanel" aria-labelledby="tab-4" hidden="">
         <div class="block-heading"><h2><span>05</span> Deine Rückplatte</h2></div>
@@ -162,7 +159,7 @@
         <details class="choice-details" open=""><summary>Maße und Hinweise zur Rückplatte</summary><div class="backing-summary"><span>Außenmaße des Schilds <small id="backing-margin">ca. 1 cm Rand um den Schriftzug</small></span><strong id="backing-size">—</strong></div><p class="size-help" id="backing-description">Folgt eng der Schriftkontur. Getrennte Wörter werden durch breite Übergänge verbunden.</p><p id="plate-finish-note" class="size-help">Klare Acrylplatte mit dezenter sichtbarer Kante.</p></details>
       </div>
       <div class="editor-block" id="panel-5" role="tabpanel" aria-labelledby="tab-5" hidden="">
-        <p class="accessory-intro">Mengen gelten je Schild. 2 m Anschlusskabel sind bereits dabei.</p>
+        <p class="accessory-intro">Je Schild ist von den ersten drei Artikeln 1 Stück kostenlos dabei. Alle Aufpreise inkl. MwSt. · 2 m Anschlusskabel inklusive.</p>
         <p id="mount-warning" class="mount-warning" role="status" hidden=""></p>
         <h3 class="accessory-heading">Im Preis enthalten</h3>
         <div id="included-accessories" class="accessory-list"></div>
@@ -703,7 +700,7 @@
 <aside id="page-purchase" class="page-purchase" aria-label="Dein aktueller Entwurf" hidden=""><div class="page-purchase-copy"><strong>Dein Leuchtschild</strong><span id="page-purchase-design"></span><a href="#main">Entwurf bearbeiten</a></div><div class="page-purchase-amount"><strong id="page-purchase-price" aria-live="polite">Wird berechnet …</strong><small>Inkl. 19 % MwSt.</small></div><div class="trust-purchase-action"><button type="button" id="page-add-to-cart" aria-haspopup="dialog" aria-controls="order-review" disabled="">In den Warenkorb <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-6-6 6 6-6 6"></path></svg></button><div class="trust-payments" role="group" aria-label="Zahlungsarten je nach Land und Verfügbarkeit"><img class="trust-paypal" src="assets/trust/paypal.svg" width="76" height="18" alt="PayPal" decoding="async"><img class="trust-klarna" src="assets/trust/klarna.svg" width="48" height="30" alt="Klarna" decoding="async"></div></div></aside>
 <noscript><p class="no-script">Bitte aktiviere JavaScript, um deinen Schriftzug zu gestalten und die Maße zu berechnen.</p></noscript>
 <script src="trust-signals.js?v=20261008-trust1" defer></script>
-<script type="module" src="configurator.js?v=20261009-tour-perf1"></script>
+<script type="module" src="configurator.js?v=20261009-size-options1"></script>
 <script type="module" src="content-experience.js?v=20261008-min189"></script>
 <script src="customer-brand-section.js?v=20261008-perf-content1" defer=""></script>
 
