@@ -1,4 +1,4 @@
-import {frameRoom,roomArea,moveWithinRoom} from './room-framing.js?v=20261008-entry-room1';
+import {frameRoom,roomArea,moveWithinRoom} from './room-framing.js?v=20261009-room-context1';
 import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261008-entry-room1';
 import {initBudgetAdvisor} from './budget-advisor.js?v=20261008-budget-live1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
@@ -118,9 +118,9 @@ const ROOMS = [
   {id:'tabletop',spanMm:3300,name:'Event · Podest',image:'./assets/scenes/optimized-20261008/event-podium.webp'}
 ];
 const SCENE_IMAGE = new URL('./assets/scenes/neontrip-scenarios-wide.png',import.meta.url).href;
-// Indoor rooms keep their shared display scale; outdoor scenes use their own framing.
-// Uploaded photos retain their calibrated scale. This does not change sign dimensions.
-function previewSpanMm(room){return room.id==='custom'||room.id==='tabletop'||room.outdoor?room.spanMm:4800;}
+// Stock rooms are unmeasured examples with a fixed six-metre display span.
+// Keep this independent of sign size; uploaded photos retain their calibrated span.
+function previewSpanMm(room){return room.id==='custom'?room.spanMm:6000;}
 const lastWallRooms={indoor:'reception',outdoor:'outdoor-shop'};
 function sceneAvailable(room){
   if(!room)return false;

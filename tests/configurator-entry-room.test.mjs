@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {frameRoom,ROOM_FRAMES,roomArea,moveWithinRoom} from '../deploy/configurator/room-framing.js';
 import {createDraftWriteGuard} from '../deploy/configurator/entry-onboarding.js';
-const sign=(widthMm,heightMm=widthMm*.172,y=250)=>({x:500-widthMm/9.6,y:y-heightMm/9.6,width:widthMm/4.8,height:heightMm/4.8});
+const sign=(widthMm,heightMm=widthMm*.172,y=250)=>({x:500-widthMm/12,y:y-heightMm/12,width:widthMm/6,height:heightMm/6});
 test('reception retains common photo camera from 50 to 75 cm and physical 1.5 ratio',()=>{
  for(const viewport of [{width:752,height:440},{width:390,height:200},{width:320,height:200}]){
   const a=frameRoom({room:'reception',viewport,sign:sign(500)}),b=frameRoom({room:'reception',viewport,sign:sign(750)});
@@ -13,13 +13,31 @@ test('reception retains common photo camera from 50 to 75 cm and physical 1.5 ra
   assert.ok(closer.view.width<a.view.width);assert.equal(closer.camera.y,a.camera.y);
  }
 });
-test('photo limits, wall limits, vertical padding and fit zoom limit are respected',()=>{
+test('50 cm retains room context; broad signs pull back without a false wall-area fallback',()=>{
+ for(const viewport of [{width:912,height:520},{width:390,height:200},{width:320,height:200}]){
+  const initial=frameRoom({room:'reception',viewport,sign:sign(500)});
+  assert.ok(initial.view.width>=650); // Both side walls and the reception counter remain recognizable.
+  let previous=initial.view.width;
+  for(const width of [2000,3000,4000]){
+   const box=sign(width),frame=frameRoom({room:'reception',viewport,sign:box});
+   assert.equal(frame.fits,true,`${viewport.width}px / ${width}mm`);
+   assert.ok(frame.view.width>=previous);previous=frame.view.width;
+   const sx=frame.view.width/viewport.width,sy=frame.view.height/viewport.height;
+   assert.ok(box.x-frame.view.x>=18*sx-.01);
+   assert.ok(frame.view.x+frame.view.width-box.x-box.width>=(viewport.width<=760?64:110)*sx-.01);
+   assert.ok(box.y-frame.view.y>=58*sy-.01);
+   assert.ok(frame.view.y+frame.view.height-box.y-box.height>=48*sy-.01);
+   // Wider signs never reduce the amount of photo width visible at the initial framing.
+   assert.ok(Math.min(1000,frame.view.x+frame.view.width)-Math.max(0,frame.view.x)>=Math.min(650,frame.view.width)-.01);
+  }
+ }
+});
+test('large signs retain their photo; detached positions, manual zoom and input remain stable',()=>{
  const viewport={width:390,height:200};
- const tooWide=frameRoom({room:'reception',viewport,sign:sign(3000)});assert.equal(tooWide.fits,false);
- const tooTall=frameRoom({room:'reception',viewport,sign:sign(500,2000)});assert.equal(tooTall.fits,false);
+ assert.equal(frameRoom({room:'reception',viewport,sign:sign(500,4000)}).fits,false);
+ assert.equal(frameRoom({room:'reception',viewport,sign:{...sign(500),x:1100}}).fits,false);
  const fitted=frameRoom({room:'reception',viewport,sign:sign(1500),camera:{x:500,y:275,zoom:4}});
  assert.ok(fitted.fits);assert.equal(fitted.zoom,fitted.maxZoom);
- assert.ok(fitted.view.x>=0&&fitted.view.y>=0&&fitted.view.x+fitted.view.width<=1000&&fitted.view.y+fitted.view.height<=500);
  const input={room:'reception',viewport,sign:sign(500),camera:{x:400,y:230,zoom:2}};const before=JSON.stringify(input);frameRoom(input);assert.equal(JSON.stringify(input),before);
 });
 test('all inspected room profiles define finite in-photo surfaces and shared move bounds',()=>{
@@ -37,8 +55,16 @@ test('failed restoration prevents every write until a conscious replacement',()=
  assert.equal(writes,0);assert.equal(last,'original');guard.release();assert.equal(guard.write(save,'replacement'),true);assert.equal(writes,1);assert.equal(last,'replacement');
 });
 
-test('a broad sign uses a wider viewport shape before discarding a compatible room',()=>{
+test('a broad sign keeps the photograph at both normal and wide viewport shapes',()=>{
  const input={room:'studio',sign:sign(3000)};
- assert.equal(frameRoom({...input,viewport:{width:320,height:200}}).fits,false);
+ assert.equal(frameRoom({...input,viewport:{width:320,height:200}}).fits,true);
  assert.equal(frameRoom({...input,viewport:{width:320,height:160}}).fits,true);
+});
+
+test('all stock scenes keep 2 to 4 m signs at the same fixed example scale',()=>{
+ for(const room of Object.keys(ROOM_FRAMES))for(const viewport of [{width:912,height:520},{width:390,height:200},{width:320,height:200}])for(const widthMm of [2000,3000,4000]){
+  const span=6000;
+  const width=widthMm*1000/span,height=width*.22,box={x:500-width/2,y:220-height/2,width,height};
+  assert.equal(frameRoom({room,viewport,sign:box}).fits,true,`${room} / ${viewport.width}px / ${widthMm}mm`);
+ }
 });

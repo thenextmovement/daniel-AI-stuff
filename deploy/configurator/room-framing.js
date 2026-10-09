@@ -1,5 +1,5 @@
 // Coordinates refer to each existing photo rendered into its 1000 x 500 scene.
-// Conservative free wall / standing rectangles, inspected against the actual photos.
+// Conservative free wall / standing rectangles guide dragging, not photo visibility.
 export const ROOM_FRAMES={
  reception:{area:[325,80,675,297],near:340,y:250},
  office:{area:[300,65,690,310],near:450,y:210},
@@ -26,17 +26,22 @@ export function containsSign(area,sign){return sign.x>=area[0]-.01&&sign.y>=area
 export function frameRoom({room,viewport,sign,camera,standing=false,padding}){
  const profile=ROOM_FRAMES[room],aspect=viewport.width/viewport.height;
  const widest=Math.min(1000,500*aspect);
- const base=camera||{zoom:clamp(widest/profile.near,1,4),x:500,y:profile.y+20};
+ const base=camera||{zoom:clamp(widest/Math.max(650,profile.near),1,4),x:500,y:profile.y+20};
  const pad=padding||{left:18,right:viewport.width<=760?64:110,top:58,bottom:48};
  const required=Math.max(sign.width/(1-(pad.left+pad.right)/viewport.width),sign.height*aspect/(1-(pad.top+pad.bottom)/viewport.height));
  const maxZoom=clamp(widest/required,1,4),zoom=Math.min(base.zoom,maxZoom);
  const width=Math.max(widest/zoom,required),height=width/aspect;
  const sx=width/viewport.width,sy=height/viewport.height;
- // The crop must contain both the photograph and the full sign with screen-space labels.
- const left=Math.max(0,sign.x+sign.width+pad.right*sx-width),right=Math.min(1000-width,sign.x-pad.left*sx);
- const top=Math.max(0,sign.y+sign.height+pad.bottom*sy-height),bottom=Math.min(500-height,sign.y-pad.top*sy);
- const fits=containsSign(roomArea(room,standing),sign)&&required<=widest+.01&&left<=right+.01&&top<=bottom+.01;
- return {fits,camera:{...base},zoom,maxZoom,view:{x:clamp(base.x-width/2,left,right),y:clamp(base.y-height/2,top,bottom),width,height}};
+ // A stock scene is a visual example, not a measured installation boundary.
+ // Keep the photo for signs outside its conservative free-wall rectangle.
+ // At the widest view, reserve an outer gutter instead of dropping the photo.
+ // The sign itself stays inside the photograph; only label padding may extend outside.
+ const left=sign.x+sign.width+pad.right*sx-width,right=sign.x-pad.left*sx;
+ const top=sign.y+sign.height+pad.bottom*sy-height,bottom=sign.y-pad.top*sy;
+ const x=clamp(base.x-width/2,Math.min(0,1000-width),Math.max(0,1000-width));
+ const y=clamp(base.y-height/2,Math.min(0,500-height),Math.max(0,500-height));
+ const fits=containsSign([0,0,1000,500],sign)&&left<=right+.01&&top<=bottom+.01;
+ return {fits,camera:{...base},zoom,maxZoom,view:{x:clamp(x,left,right),y:clamp(y,top,bottom),width,height}};
 }
 export function moveWithinRoom({area,box,offset,dx,dy,standing=false}){
  const x=box.width>area[2]-area[0]?offset.x:offset.x+clamp(dx,area[0]-box.x,area[2]-box.x-box.width);
