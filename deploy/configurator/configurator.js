@@ -1,5 +1,5 @@
 import {frameRoom,roomArea,moveWithinRoom} from './room-framing.js?v=20261009-room-context1';
-import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261008-entry-room1';
+import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261009-tour1';
 import {initBudgetAdvisor} from './budget-advisor.js?v=20261008-budget-live1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
 import {initDeliveryCalendar,deliveryTierLabel,minimumDeliveryBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261008-min189';
@@ -16,7 +16,12 @@ import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,
 import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261006-quantities1';
 const $ = selector => document.querySelector(selector);
 const draftWriteGuard=createDraftWriteGuard();
-const entryOnboarding=initEntryOnboarding({field:$('#sign-text'),help:$('#entry-help'),label:$('#entry-label')});
+const entryOnboarding=initEntryOnboarding({
+  field:$('#sign-text'),label:$('#entry-label'),
+  getView:()=>({step:activeStep,look:document.body.dataset.mobileLook||'text'}),
+  navigate:step=>{setStep(step===2?3:0,false,{scroll:false});if(mobileChoiceMedia.matches&&step!==2)selectMobileLook('text',false);},
+  restore:view=>{setStep(view.step,false,{scroll:false});if(mobileChoiceMedia.matches)selectMobileLook(view.look,false);}
+});
 function acceptReplacementDraft(){draftWriteGuard.release();$('#use-replacement-draft').hidden=true;}
 $('#use-replacement-draft').addEventListener('click',()=>{if(designRendering||!state.result||!state.sizeValid)return;acceptReplacementDraft();persistDesign(captureDesign());});
 // The initial editor structure is rendered in HTML; only interaction is bound here.
@@ -731,7 +736,7 @@ for(const product of accessoryProducts){
  const row=document.createElement('article');row.className='accessory-item';row.dataset.accessory=key;
  const photo=document.createElement('button');photo.type='button';photo.className='accessory-photo';
  photo.setAttribute('aria-label',product.name+' – Foto vergrößern');photo.setAttribute('aria-haspopup','dialog');photo.setAttribute('aria-controls','accessory-photo-dialog');
- const img=document.createElement('img');img.src='./assets/mounts/'+product.image;img.alt=product.description;img.width=96;img.height=96;
+ const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.src='./assets/mounts/'+product.image;img.alt=product.description;img.width=96;img.height=96;
  photo.append(img);photo.insertAdjacentHTML('beforeend','<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg>');
  photo.addEventListener('click',()=>{accessoryPhotoTrigger=photo;accessoryPhoto.querySelector('img').src=img.src;accessoryPhoto.querySelector('img').alt=product.description;$('#accessory-photo-title').textContent=product.name;accessoryPhoto.showModal();});
  const copy=document.createElement('div');copy.className='accessory-copy';

@@ -1,13 +1,6 @@
 /* Bounded entry and room presentation additions; product pricing stays in existing modules. */
-.designstudio .entry-help{position:relative;padding:14px 48px 14px 14px;margin:0 0 14px;border:1px solid #eac4dc;border-radius:12px;background:#fff3fa;color:#242124}
-.designstudio .entry-help[hidden]{display:none}
-.designstudio .entry-help strong{display:block;font-size:17px;line-height:1.3}
-.designstudio .entry-help p{font-size:14px;line-height:1.45;margin:6px 0 8px}
-.designstudio .entry-help [data-entry-start]{min-height:44px;padding:6px 0;border:0;background:none;color:#b71177;font-weight:700;text-decoration:underline;text-underline-offset:3px}
-.designstudio .entry-help [data-entry-close]{position:absolute;right:0;top:0;width:44px;height:44px;border:0;background:none;display:grid;place-items:center;color:#494149}
 .designstudio #use-replacement-draft{font-size:13px;min-height:44px;text-decoration:underline;color:#b71177}
 .designstudio .draft-tools:has(#use-replacement-draft:not([hidden])) #draft-status{display:block;color:#792550;line-height:1.4}
-@media(max-width:760px){.designstudio .entry-help{padding-top:10px;padding-bottom:10px;margin-bottom:10px}.designstudio .entry-help strong{font-size:15px}.designstudio .entry-help p{font-size:13px;margin:4px 0}.designstudio .entry-help [data-entry-start]{font-size:14px}}
 .designstudio .room-fit-note{padding:12px 14px;border:1px solid #ded7db;border-radius:10px;background:#faf7f9;color:#494149;font-size:14px;line-height:1.45}
 .designstudio .room-fit-note[hidden]{display:none}
 .designstudio .room-fit-note p{margin:0 0 4px}
@@ -22,4 +15,49 @@ body.designstudio .studio-preview-footer .camera-controls button:focus-visible{o
 @media(max-width:760px){body.designstudio .studio-preview-footer .camera-controls{margin:auto}body.designstudio .studio-preview-footer .camera-controls button{font-size:14px}}
 
 body.designstudio #main #use-replacement-draft{min-height:44px}
-@media(max-width:760px){body.designstudio:not([data-mobile-look="text"]) .entry-help{display:none}}
+
+/* Guided entry floats above the workspace and never takes space from the price. */
+body.designstudio .studio-motif-heading{gap:8px}
+body.designstudio #entry-tour-restart{display:grid;place-items:center;flex:none;width:26px;height:22px;min-height:0;padding:0;border:0;background:none;color:#685e64;border-radius:50%;margin-left:auto}
+#entry-tour-restart svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+#entry-tour-restart:focus-visible{outline:2px solid #b7267e;outline-offset:3px}
+#entry-tour[hidden]{display:none!important}
+#entry-tour{position:fixed;inset:0;z-index:10000;pointer-events:none;font-family:inherit;color:#1b181a}
+.entry-tour-shade{position:absolute;background:rgb(24 22 24 / 48%);pointer-events:auto;touch-action:none}
+.entry-tour-spot{position:absolute;border:1.5px solid #c12b85;border-radius:12px;box-shadow:0 0 0 3px #f578bd26;pointer-events:none}
+.entry-tour-card{position:absolute;padding:20px 24px 22px;background:#fff;border:1px solid #d84699;border-radius:16px;box-shadow:0 14px 50px #0003;pointer-events:auto;outline:none;max-height:calc(100dvh - 24px);overflow:visible;box-sizing:border-box}
+.entry-tour-card:before{content:'';position:absolute;width:14px;height:14px;background:#fff;transform:rotate(45deg)}
+.entry-tour-card[data-arrow=left]:before{left:-8px;top:calc(var(--arrow-position) - 7px);border-left:1px solid #d84699;border-bottom:1px solid #d84699}
+.entry-tour-card[data-arrow=top]:before{top:-8px;left:calc(var(--arrow-position) - 7px);border-top:1px solid #d84699;border-left:1px solid #d84699}
+.entry-tour-card[data-arrow=bottom]:before{bottom:-8px;left:calc(var(--arrow-position) - 7px);border-bottom:1px solid #d84699;border-right:1px solid #d84699}
+.entry-tour-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+#entry-tour-progress{font-size:11px;font-weight:650;letter-spacing:.06em;color:#655e68}
+#entry-tour button{font-family:inherit;cursor:pointer}
+#entry-tour [data-tour-close]{display:grid;place-items:center;width:44px;height:44px;margin:-12px -12px -12px 0;padding:0;border:0;border-radius:8px;background:transparent;color:#766b78}
+#entry-tour svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#entry-tour-title{margin:0 0 10px;font-size:25px;line-height:1.15;letter-spacing:-.04em;font-weight:700}
+#entry-tour-copy{margin:0;color:#5d5861;font-size:16px;line-height:1.5;max-width:34ch}
+.entry-tour-actions{display:flex;align-items:center;gap:12px;margin-top:22px}
+#entry-tour [data-tour-skip],#entry-tour [data-tour-back]{min-height:44px;border:0;padding:4px 0;background:none;font-size:13px;color:#625964;text-decoration:underline;text-underline-offset:3px}
+#entry-tour [data-tour-back][hidden]{display:none}
+.entry-tour-dots{display:flex;gap:7px;margin:auto}
+.entry-tour-dots i{width:8px;height:8px;border-radius:50%;background:#c9c4cc}
+.entry-tour-dots i.is-current{background:#b7267e}
+#entry-tour [data-tour-next]{min-height:44px;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 17px;border:0;border-radius:9px;background:#b7267e;color:#fff;font-size:15px;font-weight:650;white-space:nowrap}
+#entry-tour button:focus-visible{outline:2px solid #982364;outline-offset:3px}
+#entry-tour [data-tour-next]:hover{background:#972168}
+@media(max-width:760px){
+ .entry-tour-card{padding:16px 18px;border-radius:13px}
+ #entry-tour-title{font-size:23px}
+ #entry-tour-copy{font-size:15px;line-height:1.4}
+ .entry-tour-actions{gap:10px;margin-top:14px}
+ #entry-tour [data-tour-next]{padding:9px 12px;font-size:14px;gap:6px}
+ #entry-tour [data-tour-skip],#entry-tour [data-tour-back]{font-size:12px}
+ .entry-tour-dots{gap:5px}
+ .entry-tour-dots i{width:6px;height:6px}
+}
+@media(max-width:360px){.entry-tour-dots{display:none}.entry-tour-actions{justify-content:space-between}}
+
+/* Match the initial stock-room height to paintRoom while its module loads. */
+body.lichtbuehne.lichtbuehne-v4.designstudio #main .preview-column[inert] #preview-stage{height:clamp(340px,calc(100vh - 280px),520px)}
+@media(max-width:760px){body.lichtbuehne.lichtbuehne-v4.designstudio #main .preview-column[inert] #preview-stage{height:200px}}
