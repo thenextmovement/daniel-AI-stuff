@@ -19,6 +19,8 @@ import type { Identity, JsonValue, Scope, ToolEnvelope } from "./types.js";
 import { NeontripApi } from "./upstream.js";
 
 const uuid = z.string().uuid();
+// Prisma uses CUID v1 for Offer, OfferItem and OfferImage; retain UUID clients.
+const offerEntityId = z.union([z.string().regex(/^c[a-z0-9]{24}$/), uuid]);
 const idempotencyKey = z.string().trim().min(8).max(200).regex(/^[A-Za-z0-9:_\-.]+$/);
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/i);
 const safeText = (max: number) => z.string().trim().max(max).refine((value) => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(value), "Kontrollzeichen sind nicht erlaubt.");
@@ -53,7 +55,7 @@ const offerPatchSchema = z.object({
     projectTitle: safeText(500).nullable().optional(),
   }).strict().optional(),
   items: z.array(z.object({
-    id: uuid,
+    id: offerEntityId,
     section: safeText(200).nullable().optional(),
     title: safeText(500).optional(),
     description: safeText(5_000).nullable().optional(),
@@ -69,7 +71,7 @@ const offerPatchSchema = z.object({
     sortOrder: z.number().int().min(-100_000).max(100_000).optional(),
   }).strict()).max(500).optional(),
   images: z.array(z.object({
-    id: uuid,
+    id: offerEntityId,
     sourceUrl: z.string().url().max(2_048).optional(),
     title: safeText(500).nullable().optional(),
     enabled: z.boolean().optional(),
@@ -383,12 +385,12 @@ export function createNeontripMcpServer(input: {
   register({
     name: "offers_get", title: "Angebot lesen",
     description: "Liest ein Angebot über seine unveränderliche ID.", scope: "offers:read",
-    schema: z.object({ offerId: uuid }).strict(), readOnly: true, destructive: false,
+    schema: z.object({ offerId: offerEntityId }).strict(), readOnly: true, destructive: false,
     run: ({ offerId }) => input.api.getOffer(offerId),
   });
 
   const offerUpdateInput = z.object({
-    offerId: uuid,
+    offerId: offerEntityId,
     expectedUpdatedAt: z.string().datetime({ offset: true }),
     reason: safeText(500).min(3),
     revisionReason: safeText(500).optional(),
@@ -422,7 +424,7 @@ export function createNeontripMcpServer(input: {
     name: "offers_send", title: "Angebot versenden",
     description: "Versendet ein Angebot nach unmittelbarer Versionsprüfung und mit Idempotenzschlüssel.", scope: "offers:send",
     schema: z.object({
-      offerId: uuid,
+      offerId: offerEntityId,
       expectedUpdatedAt: z.string().datetime({ offset: true }),
       recipientEmail: z.string().trim().email().max(254),
       cc: z.array(z.string().trim().email().max(254)).max(20).default([]),
