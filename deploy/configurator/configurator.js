@@ -138,7 +138,7 @@ const positions=new Map();
 const cameras=new Map();
 let roomPresentation=null;
 let previewBox=null,drag=null,dragFrame=0,photoRevision=0,resizeFocus=null;
-const state = {font:'Typewriter',fontId:'Typewriter',text:$('#sign-text').value,alignment:'center',lineHeight:.8,axis:'width',valueMm:500-2*MANUFACTURING_PROFILE.contourMarginMm,color:COLORS[7],wordColors:new Map(),words:[],colorTarget:'all',light:true,dimensions:true,scene:'wall',room:'reception',backing:'contour',mount:'wall-mount',previousRoom:'reception',result:null,sizeValid:true,autoContourNotice:false};
+const state = {font:'Alexa',fontId:'Alexa',text:$('#sign-text').value,alignment:'center',lineHeight:.8,axis:'width',valueMm:500-2*MANUFACTURING_PROFILE.contourMarginMm,color:COLORS[7],wordColors:new Map(),words:[],colorTarget:'all',light:true,dimensions:true,scene:'wall',room:'reception',backing:'contour',mount:'wall-mount',previousRoom:'reception',result:null,sizeValid:true,autoContourNotice:false};
 let designRendering=false,compactLineSpacing=false,budgetAdvisor,budgetSelecting=false;
 // Spacing edits retain the physical letter scale, including across an invalid oversized draft.
 let spacingAnchor=null;
@@ -1369,7 +1369,7 @@ $('#look-font').addEventListener('click',()=>openFontOverview());
 $('#open-font-upload').addEventListener('click',()=>openFontOverview('upload'));
 $('#tab-1').addEventListener('click',()=>openFontOverview());
 $('#studio-all-fonts').addEventListener('click',()=>openFontOverview());
-const studioFontOrder=[...new Set(['Typewriter','NeonLite','Neontrace',...FONTS])];
+const studioFontOrder=[...new Set(['Alexa','NeonLite','Neontrace',...FONTS])];
 for(const [index,name] of studioFontOrder.entries()){
   const button=makeFontButton(name);if(index>2)button.classList.add('studio-mobile-font');$('.studio-font-grid').append(button);
 }
