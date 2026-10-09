@@ -89,7 +89,7 @@ export function calculatePrice({text,fontId,widthMm,heightMm,ledMeters,backing='
  if(!Object.hasOwn(rules.extras.powerSupply,powerSupply))return {...result,status:'invalid-option',reasons:['Bitte ein verfügbares Netzteil wählen.']};
  if(rules.unpriced[backing])reasons.push(rules.unpriced[backing]);
  if(rules.unpriced[finish])reasons.push(rules.unpriced[finish]);
- if(!['contour','rectangle','square','freestanding'].includes(backing)||!['clear','uv-print','mirror-gold','mirror-silver'].includes(finish)||!Object.hasOwn(rules.extras,mount)||!['static','rgb'].includes(lightMode))reasons.push('Ausstattung ohne Preisregel.');
+ if(!['contour','rectangle','square','freestanding'].includes(backing)||!['clear','solid','uv-print','mirror-gold','mirror-silver'].includes(finish)||!Object.hasOwn(rules.extras,mount)||!['static','rgb'].includes(lightMode))reasons.push('Ausstattung ohne Preisregel.');
  if(reasons.length)return {...result,status:'invalid-option',reasons:['Bitte eine verfügbare Rückplatte, Oberfläche und Montage wählen.']};
  const metrics={longCm,shortCm,areaCm2:target.widthCm*target.heightCm,ledMeters,aspect:longCm/shortCm};
  const coverageNames={longCm:'längste Seite',shortCm:'kurze Seite',areaCm2:'Schildfläche',ledMeters:'LED-Länge',aspect:'Seitenverhältnis'};
@@ -102,7 +102,7 @@ export function calculatePrice({text,fontId,widthMm,heightMm,ledMeters,backing='
  result.costs={productionUsd:selling.productionUsd,shippingUsd:selling.shippingUsd,supplierUsd:selling.supplierUsd,supplierEur:selling.supplierEur,reserveUsd:0,longCm,method:rules.costModel.method};
  const components=[{id:'sign',label:'Neon-LED-Schild inkl. Lieferantenversand',net:baseNet}];
  for(const key of ['rgb','outdoor'])if(key==='rgb'?lightMode==='rgb':outdoor)components.push({id:key,label:key==='rgb'?'RGB':'Outdoor',net:cents(Math.max(baseNet*rules.extras[key].fraction,rules.extras[key].minimumNet))});
- if(finish!=='clear')components.push({id:finish,label:finish==='uv-print'?'Bedruckte Rückplatte':'Verspiegelte Rückplatte',net:cents(rules.extras.finishGross[finish]/(1+rules.vatRate))});
+ if(finish!=='clear')components.push({id:finish,label:finish==='uv-print'?'Rückplatte mit UV-Druck':finish==='solid'?'Farbige Rückplatte':'Verspiegelte Rückplatte',net:cents(rules.extras.finishGross[finish==='solid'?'uv-print':finish]/(1+rules.vatRate))});
  if(backing==='freestanding'){
   components.push({id:'freestanding',label:'Freigestellte Stützstreben',net:cents(interpolateSupplement(rules.extras.freestanding.anchors,longCm))});
   projectionReasons.push('Strebenaufpreis aus dem Altshop-Feinzuschnitt hochgerechnet.');

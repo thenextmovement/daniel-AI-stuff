@@ -1,4 +1,4 @@
-import {minimumDeliveryBusinessDays,deliveryDateIsoForBusinessDays,deliveryOptionForDate} from './delivery-calendar.js?v=20261008-min189';
+import {minimumDeliveryBusinessDays,deliveryDateIsoForBusinessDays,deliveryOptionForDate} from './delivery-calendar.js?v=20261009-purchase2';
 // Same-origin checkout preparation. Only a verified server receipt can navigate.
 export const CHECKOUT_SESSION_KEY='neontrip-checkout-session-v1';
 const MAX_JSON_BYTES=2_000_000;
@@ -85,7 +85,7 @@ export function checkoutPayload(cartItems,delivery){
     snapshot.sign=pick(s.sign,['widthMm','heightMm','tubeMm']);
     if(!Array.isArray(s.sign?.glyphs))throw new CheckoutClientError('INVALID_DESIGN');
     snapshot.sign.glyphs=s.sign.glyphs.map(g=>({...pick(g,['lineIndex','wordIndex','charIndex','charText','charLength','charMapping']),color:pick(g.color,['id']),paths:g.paths?.map(p=>({points:p.points,closed:p.closed}))}));
-    snapshot.plate=pick(s.plate,['type','widthMm','heightMm','path','finish']);
+    snapshot.plate=pick(s.plate,['type','widthMm','heightMm','path','finish','contourVersion']);
     snapshot.mount=pick(s.mount,['id']);
     return {quantity:item.quantity,design,snapshot};
   });
