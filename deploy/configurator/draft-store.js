@@ -37,9 +37,9 @@ export async function saveAssetIfMissing(id,value){
     tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
   });
 }
-export function saveDraft(value){localStorage.setItem(KEY,JSON.stringify({version:1,savedAt:Date.now(),design:value}));}
-export function readDraft(){
-  const raw=localStorage.getItem(KEY);if(!raw)return null;
+export function saveDraft(value,key=KEY){localStorage.setItem(key,JSON.stringify({version:1,savedAt:Date.now(),design:value}));}
+export function readDraft(key=KEY){
+  const raw=localStorage.getItem(key);if(!raw)return null;
   const draft=JSON.parse(raw);
   if(draft.version!==1||!draft.design||typeof draft.design.text!=='string')throw new Error('Unbekanntes Entwurfsformat.');
   return draft.design;
