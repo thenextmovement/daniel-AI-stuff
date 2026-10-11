@@ -104,3 +104,46 @@ test('supplemental carrier instructions survive normalization as a private-safe 
     assert.equal(allow([arrival,clearance,{...update,[key]:'   '},movement]),true);
   }
 });
+
+
+const deliveredShipment=()=>({id:'s1',tracking_number:number,trello_card_id:'card1',status:'delivered',status_reason:null,
+  delivered_at:'2026-10-06T12:00:00Z',last_checked_at:'2026-10-07T12:00:00Z',
+  tracking_provider:'dhl-unified',response_provider:'dhl-unified',response_id:number,response_service:'express'});
+const completedCase=()=>({incoming_dhl_tracking_number:number,trello_card_id:'card1',status:'completed',manual_review_reason:null,
+  delivery_note_required:false,delivery_note_status:'not_required',purchase_jobs:[{status:'completed'}],print_jobs:[{status:'printed'}]});
+
+test('confirmed DHL deliveries stop polling only after matching label work is complete',()=>{
+  const result=planDhlChecks([card()],[deliveredShipment()],[completedCase()]);
+  assert.equal(result.candidates.length,0);assert.equal(result.completedCount,1);assert.deepEqual(result.issues,[]);
+});
+
+test('legacy delivery flags, mismatched responses and incomplete evidence keep polling',()=>{
+  for(const change of [
+    {status:'in_transit'}, {status_reason:'tracking_api_error:dhl_http_429'}, {delivered_at:null}, {delivered_at:'invalid'},
+    {delivered_at:'2026-10-08T12:00:00Z'}, {last_checked_at:null}, {last_checked_at:'2999-01-01T00:00:00Z'},
+    {tracking_provider:'17track'}, {response_provider:'17track'}, {response_id:'9912345678'}, {response_service:null},
+  ]) {
+    const result=planDhlChecks([card()],[{...deliveredShipment(),...change}],[completedCase()]);
+    assert.equal(result.candidates.length,1,JSON.stringify(change));assert.equal(result.completedCount,0);
+  }
+});
+
+test('reopened, ambiguous or unfinished downstream work retains fresh DHL checks',()=>{
+  for(const change of [
+    {status:'existing_label'}, {status:'manual_review'}, {manual_review_reason:'review'}, {trello_card_id:'different'},
+    {incoming_dhl_tracking_number:'9912345678'}, {delivery_note_required:true},
+    {purchase_jobs:[{status:'completed'},{status:'queued'}]}, {print_jobs:[{status:'printed'},{status:'submitted'}]},
+    {purchase_jobs:undefined}, {print_jobs:[]},
+  ]) assert.equal(planDhlChecks([card()],[deliveredShipment()],[{...completedCase(),...change}]).candidates.length,1,JSON.stringify(change));
+  assert.equal(planDhlChecks([card()],[deliveredShipment()],[]).candidates.length,1);
+  assert.equal(planDhlChecks([card()],[deliveredShipment()],[completedCase(),{...completedCase(),status:'manual_review'}]).candidates.length,1);
+});
+
+test('completion cannot hide a conflicting card or shipment identity',()=>{
+  for(const cards of [[card(),card('card2')],[{...card(),trackingField:'9912345678'}]]) {
+    const result=planDhlChecks(cards,[deliveredShipment()],[completedCase()]);
+    assert.equal(result.completedCount,0);assert.ok(result.issues.length);
+  }
+  const result=planDhlChecks([card()],[{...deliveredShipment(),trello_card_id:'old'}],[completedCase()]);
+  assert.equal(result.completedCount,0);assert.equal(result.issues[0].code,'shipment_card_mismatch');
+});

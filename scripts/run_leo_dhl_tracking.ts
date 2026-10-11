@@ -3,7 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createTrelloClient } from '../src/lib/ops/arrival-labels/clients';
 import { supabaseRequest,supabaseRpc } from '../src/lib/quotes/supabase-rest';
-import { fetchDhlUnified,planDhlChecks,type DhlShipmentLink } from '../src/lib/ops/dhl-unified';
+import { fetchDhlUnified,planDhlChecks,type DhlShipmentLink,type DhlLabelCompletion } from '../src/lib/ops/dhl-unified';
 import { runDhlPollBatch,type PollState } from '../src/lib/ops/dhl-polling';
 
 export async function main(args=process.argv.slice(2)) {
@@ -15,11 +15,24 @@ export async function main(args=process.argv.slice(2)) {
   const shipments:DhlShipmentLink[]=[];
   // Pagination prevents silently losing historical mappings at the API row limit.
   for(let offset=0;;offset+=500) {
-    const rows=await supabaseRequest<DhlShipmentLink[]>('inbound_shipments',undefined,{select:'id,tracking_number,trello_card_id',carrier:'eq.dhl',order:'id.asc',limit:500,offset});
+    const rows=await supabaseRequest<DhlShipmentLink[]>('inbound_shipments',undefined,{select:'id,tracking_number,trello_card_id,status,status_reason,delivered_at,last_checked_at,tracking_provider:metadata->>tracking_provider,response_provider:carrier_last_response->>provider,response_id:carrier_last_response->>id,response_service:carrier_last_response->>service',carrier:'eq.dhl',order:'id.asc',limit:500,offset});
     shipments.push(...rows);if(rows.length<500) break;if(offset>=49500) throw new Error('leo_mapping_scan_truncated');
   }
-  const plan=planDhlChecks(cards,shipments);
-  if(mode==='plan') return {mode,candidateCount:plan.candidates.length,candidates:plan.candidates.map(c=>({tracking:c.trackingNumber,trelloUrl:c.card.url,registered:!!c.shipmentId})),issues:plan.issues};
+  const initial=planDhlChecks(cards,shipments),labelCases:DhlLabelCompletion[]=[];
+  // Read only the candidates' completion evidence. Nested jobs keep pending extra
+  // parcels and prints eligible; pagination must not silently hide a reopened case.
+  for(let start=0;start<initial.candidates.length;start+=100) {
+    const numbers=initial.candidates.slice(start,start+100).map(c=>c.trackingNumber);
+    for(let offset=0;;offset+=500) {
+      const rows=await supabaseRequest<DhlLabelCompletion[]>('arrival_label_cases',undefined,{
+        select:'incoming_dhl_tracking_number,trello_card_id,status,manual_review_reason,delivery_note_required,delivery_note_status,purchase_jobs:arrival_label_browser_purchase_jobs!arrival_label_browser_purchase_jobs_case_id_fkey(status),print_jobs:arrival_label_print_jobs!arrival_label_print_jobs_case_id_fkey(status)',
+        incoming_dhl_tracking_number:`in.(${numbers.join(',')})`,order:'id.asc',limit:500,offset,
+      });
+      labelCases.push(...rows);if(rows.length<500) break;if(offset>=49500) throw new Error('leo_completion_scan_truncated');
+    }
+  }
+  const plan=planDhlChecks(cards,shipments,labelCases);
+  if(mode==='plan') return {mode,candidateCount:plan.candidates.length,completedCount:plan.completedCount,candidates:plan.candidates.map(c=>({tracking:c.trackingNumber,trelloUrl:c.card.url,registered:!!c.shipmentId})),issues:plan.issues};
   // One persistent state directory on one designated server; never a replicated/local laptop job.
   if(!process.env.LEO_DHL_STATE_DIR||!path.isAbsolute(process.env.LEO_DHL_STATE_DIR)) throw new Error('leo_state_dir_missing');
   const dir=process.env.LEO_DHL_STATE_DIR;
@@ -47,7 +60,7 @@ export async function main(args=process.argv.slice(2)) {
         await supabaseRpc('inbound_record_dhl_unified_response',{p_payload:{...payload,trelloBoardId:c.boardId,trelloCardId:c.id,trelloCardName:c.name,trelloCardUrl:c.url,trelloListId:c.listId,trelloListName:c.listName}});
       },
     },mode==='sync');
-    const report={mode,at:new Date().toISOString(),...result,issues:[...plan.issues,...result.issues]};
+    const report={mode,at:new Date().toISOString(),completedCount:plan.completedCount,...result,issues:[...plan.issues,...result.issues]};
     await writeFile(path.join(dir,'latest-report.json'),JSON.stringify(report,null,2),{mode:0o600});
     return report;
   } finally {await handle.close();await unlink(lock);}
