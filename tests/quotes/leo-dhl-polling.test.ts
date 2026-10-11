@@ -129,3 +129,24 @@ test('quota wait is bounded across the whole batch and leaves unattempted shipme
   assert.equal(h.state.attempts.length,226);
   assert.equal(result.dueCount,2);assert.equal(result.attempted,1);assert.equal(result.deferredCount,1);
 });
+
+
+for(const oversleep of [false,true]) test(`slot rollover after ${oversleep?'quota wait':'pacing'} defers work before another reservation`,async()=>{
+  const start=Date.parse('2026-10-07T15:59:40Z'),boundary=Date.parse('2026-10-07T16:00:00Z');
+  const attempts:PollState['attempts']=Array.from({length:223},(_,i)=>({tracking:String(i),slot:'old',at:start-3600000,status:'checked'}));
+  attempts.push({tracking:'old-first',slot:'old',at:start-86400000+15000,status:'checked'},
+    {tracking:'old-second',slot:'old',at:start-86400000+20000,status:'checked'});
+  const h=harness({attempts});let clock=start,sleeps=0;
+  h.ports.now=()=>clock;
+  h.ports.sleep=async(ms:number)=>{clock+=ms;if(oversleep&&++sleeps===2)clock+=6000;};
+  h.ports.fetch=async()=>{h.calls.push(clock);return response;};
+  const result=await runDhlPollBatch([candidate(),candidate('9912345678')],h.state,h.ports,true);
+  assert.equal(result.attempted,oversleep?0:1);assert.equal(result.synced,oversleep?0:1);
+  assert.equal(result.dueCount,2);assert.equal(result.deferredCount,oversleep?2:1);
+  assert.deepEqual(result.issues.map(i=>i.code),['dhl_poll_slot_changed']);
+  assert.ok(h.state.attempts.slice(225).every(a=>a.at<boundary&&a.slot==='2026-10-07/09'));
+  const next=await runDhlPollBatch([candidate('9912345678')],h.state,h.ports,true);
+  assert.equal(next.attempted,1);assert.equal(h.state.attempts.at(-1)!.slot,'2026-10-07/18');
+  const replay=await runDhlPollBatch([candidate('9912345678')],h.state,h.ports,true);
+  assert.equal(replay.attempted,0);
+});

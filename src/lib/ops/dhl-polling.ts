@@ -31,6 +31,9 @@ export async function runDhlPollBatch(candidates:DhlCandidate[],state:PollState,
     // in total for quota, never until the next scheduled slot or the following day.
     while(true) {
       const current=ports.now();
+      if(berlinPollSlot(current)!==slot) {
+        issues.push({code:'dhl_poll_slot_changed',trelloUrl:''});break candidates;
+      }
       const recent=state.attempts.filter(a=>a.at>current-86400000).sort((a,b)=>a.at-b.at);
       if(recent.length<225) break;
       const wait=recent[recent.length-225].at+86400000-current;
