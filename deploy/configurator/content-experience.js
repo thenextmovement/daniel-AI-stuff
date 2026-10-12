@@ -297,13 +297,20 @@ if(videoRail){
 // Native lazy-loading still fetches distant proof images on slow connections.
 // Wait until their section approaches the viewport, including cloned video cards.
 function initDeferredContentImages(){
-  const images=[...document.querySelectorAll('img[data-deferred-src]')];
-  const load=image=>{image.src=image.dataset.deferredSrc;delete image.dataset.deferredSrc;};
+  const images=[...document.querySelectorAll('img[data-deferred-src],svg image[data-deferred-src],video[data-deferred-poster]')];
+  const load=image=>{
+    if(image.dataset.deferredPoster){image.poster=image.dataset.deferredPoster;delete image.dataset.deferredPoster;}
+    else{image.setAttribute(image.namespaceURI==='http://www.w3.org/2000/svg'?'href':'src',image.dataset.deferredSrc);delete image.dataset.deferredSrc;}
+  };
   if(!('IntersectionObserver' in window)){images.forEach(load);return;}
   const observer=new IntersectionObserver(entries=>{
-    for(const entry of entries)if(entry.isIntersecting){load(entry.target);observer.unobserve(entry.target);}
+    for(const entry of entries)if(entry.isIntersecting){
+      const media=entry.target.matches('svg')?entry.target.querySelectorAll('image[data-deferred-src]'):[entry.target];
+      media.forEach(load);observer.unobserve(entry.target);
+    }
   },{rootMargin:'300px 0px'});
-  images.forEach(image=>observer.observe(image));
+  // Safari gives an SVG image without href no observable box; observe its frame.
+  images.forEach(image=>observer.observe(image.ownerSVGElement||image));
 }
 if(document.readyState==='complete')initDeferredContentImages();
 else addEventListener('DOMContentLoaded',initDeferredContentImages,{once:true});

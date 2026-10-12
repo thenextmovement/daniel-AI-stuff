@@ -3,7 +3,7 @@ import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v
 import {initBudgetAdvisor} from './budget-advisor.js?v=20261008-budget-live1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
 import {initDeliveryCalendar,deliveryTierLabel,minimumDeliveryBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261009-purchase2';
-import {refreshWishDelivery} from './content-experience.js?v=20261009-purchase2';
+import {refreshWishDelivery} from './content-experience.js?v=20261012-deferred-media1';
 import {loadFontCatalog,searchFontCatalog,catalogFontAssetId,validateCatalogFont,FONT_CATALOG_CATEGORIES} from './font-catalog.js?v=20261006-filters1';
 import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufacturing,minimumTextGroupClearance} from './manufacturing-profile.js?v=20261006-stand1';
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
@@ -15,8 +15,14 @@ import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261009-purchase2';
 import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261009-purchase2';
 import {createFailureReporter,createFailureAttemptId} from './failure-reporting.js';
+import {createConfiguratorTracker} from './funnel-tracking.js?v=20261012-funnel1';
 const $ = selector => document.querySelector(selector);
 const failureReporter=createFailureReporter();
+const trackConfigurator=createConfiguratorTracker(window);
+// First real editor interaction, not restoration, a render or tutorial autoplay.
+for(const name of ['input','click'])$('.editor').addEventListener(name,event=>{
+  if(event.isTrusted&&!$('.editor').inert&&event.target.closest('button,input,textarea,select'))trackConfigurator('configurator_engaged');
+});
 let calculationFailureAttemptId=null,cartStorageFailureAttemptId=null;
 // Generated product entries share the editor and pricing contract. A product entry
 // must never replace the visitor's draft from the ordinary configurator route.
@@ -1453,7 +1459,7 @@ dialogPriceContext.innerHTML='<strong>Schildpreise für deinen Text und deine Gr
 $('#font-dialog-tabs').before(dialogPriceContext);
 $('.studio-font-grid').addEventListener('mouseleave',applyQuickFontSuggestions);
 $('.studio-font-grid').addEventListener('focusout',()=>requestAnimationFrame(applyQuickFontSuggestions));
-const fontSwipeHint=document.createElement('p');fontSwipeHint.className='studio-font-hint';fontSwipeHint.textContent='37 Schriften · nach rechts wischen';$('.studio-font-grid').after(fontSwipeHint);
+const fontSwipeHint=document.createElement('p');fontSwipeHint.className='studio-font-hint';fontSwipeHint.textContent='37 beliebte Schriften · nach rechts wischen';$('.studio-font-grid').after(fontSwipeHint);
 $('#studio-all-colors').addEventListener('click',()=>{
   const multicolor=state.lightMode!=='rgb'&&state.mode!=='logo';
   if(multicolor){
@@ -2476,6 +2482,7 @@ function openDeliverySelection(){
   if(legacyItem){void editCartItem(legacyItem);return;}
   if(!cartPricesValid||!cartTotals)return;
   refreshDeliverySummary();$('#cart-dialog').close();$('#delivery-checkout-status').textContent='';deliveryCalendar.refresh({resetSelection:true});$('#delivery-dialog').showModal();
+  trackConfigurator('configurator_delivery_opened');
 }
 $('#cart-delivery-open').addEventListener('click',openDeliverySelection);
 $('#delivery-back').addEventListener('click',()=>{if(!cartSyncing)$('#delivery-dialog').close();});
@@ -2496,6 +2503,7 @@ async function addCurrentDesign(){
   const item={id:old?.id||crypto.randomUUID(),quantity:old?.quantity||1,design,snapshot,previewSvg:new XMLSerializer().serializeToString(orderPreview())};
   if(old)cartItems[cartItems.indexOf(old)]=item;else cartItems.push(item);
   editingCartId=null;commitHistory();await persistCart();showCart();
+  if(!old)trackConfigurator('add_to_cart',{quantity:item.quantity,key:item.id});
  }catch(error){$('#cart-add-status').textContent=error.message||'Bitte prüfe deinen Entwurf.';}
  finally{cartAdding=false;$('.editor').inert=false;$('.preview-column').inert=false;$('.editor-tabs').inert=false;refreshCartButtons();}
 }
@@ -2507,6 +2515,7 @@ async function addReviewedDesign(){
   const item={id:old?.id||crypto.randomUUID(),quantity,design:structuredClone(orderDesign),snapshot:structuredClone(orderSnapshot),previewSvg:new XMLSerializer().serializeToString($('#order-preview svg'))};
   if(old)cartItems[cartItems.indexOf(old)]=item;else cartItems.push(item);
   editingCartId=null;$('#order-review').close();showCart();await persistCart();
+  if(!old)trackConfigurator('add_to_cart',{quantity,key:item.id});
 }
 $('#add-to-cart').addEventListener('click',addCurrentDesign);
 $('#review-add-to-cart').addEventListener('click',addReviewedDesign);
@@ -2599,8 +2608,10 @@ async function goToCheckout(){
   if(!selectedDelivery||reviewedDelivery.dateIso!==selectedDelivery.dateIso||reviewedDelivery.businessDays!==selectedDelivery.businessDays||reviewedDelivery.feeGross!==selectedDelivery.feeGross||reviewedTotal!==expectedTotalCents||reviewedItems!==JSON.stringify(cartItems)){
    deliveryCalendar.refresh({resetSelection:true});throw new Error('Termin oder Gesamtpreis wurde aktualisiert. Bitte prüfe deine Auswahl und klicke erneut auf „Zur Kasse“.');
   }
+  trackConfigurator('begin_checkout',{quantity:cartItems.reduce((sum,item)=>sum+item.quantity,0)});
   checkoutRequested=true;const receipt=await checkoutClient.prepare(cartItems,selectedDelivery,expectedTotalCents);
   if(receipt.status!=='CREATED')throw Object.assign(new Error('Die Kasse ist für diese Konfiguration noch nicht verfügbar. Dein Warenkorb bleibt gespeichert.'),{code:'PRICE_RULE_NOT_APPROVED',attemptId:receipt.attemptId});
+  trackConfigurator('configurator_checkout_ready',{key:receipt.id});
   status.textContent='Du wirst zur sicheren Bezahlung weitergeleitet …';window.location.assign(receipt.checkoutUrl);navigating=true;
  }catch(error){
   status.textContent=error.message||'Die Übergabe konnte nicht bestätigt werden. Dein Warenkorb bleibt erhalten.';
