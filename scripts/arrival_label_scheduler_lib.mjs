@@ -100,6 +100,10 @@ export function resolveConfig(argv = [], env = process.env) {
     throw new SchedulerError("Intervall muss zwischen 60 und 86400 Sekunden liegen.", 64);
   }
 
+  const token = String(env.ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN || "").trim();
+  const cfClientSecret = String(env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET || "").trim();
+  if (token && token.length < 24) throw new SchedulerError("Scheduler-Token ist zu kurz.", 78);
+  if (cfClientSecret && cfClientSecret.length < 24) throw new SchedulerError("Cloudflare-Token ist zu kurz.", 78);
   const account = env.NEONTRIP_KEYCHAIN_ACCOUNT || env.USER;
   if (!account) throw new SchedulerError("Keychain-Account fehlt.", 64);
   return {
@@ -112,6 +116,8 @@ export function resolveConfig(argv = [], env = process.env) {
     timeoutMs: parsePositiveInteger(env.ARRIVAL_LABEL_SCHEDULER_TIMEOUT_MS, 55_000, "Timeout"),
     lockPath: args.lockPath || env.ARRIVAL_LABEL_SCHEDULER_LOCK_PATH || join(homedir(), "Library", "Application Support", "NEONTRIP", "arrival-label-scheduler.lock"),
     keychainAccount: account,
+    token,
+    cfClientSecret,
     tokenService: env.NEONTRIP_ARRIVAL_LABEL_TOKEN_KEYCHAIN_SERVICE || DEFAULT_TOKEN_SERVICE,
     cfClientId: String(env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID || "").trim(),
     cfSecretService: env.NEONTRIP_ARRIVAL_LABEL_CF_SECRET_KEYCHAIN_SERVICE || DEFAULT_CF_SECRET_SERVICE,
@@ -243,7 +249,7 @@ export async function runScheduler(config, dependencies = {}) {
   const readSecret = dependencies.readSecret || readKeychainSecret;
   const release = (dependencies.acquireLockImpl || acquireLock)(config.lockPath);
   try {
-    const token = readSecret(config.tokenService, config.keychainAccount);
+    const token = config.token || readSecret(config.tokenService, config.keychainAccount);
     const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -252,7 +258,7 @@ export async function runScheduler(config, dependencies = {}) {
     };
     if (config.cfClientId) {
       headers["CF-Access-Client-Id"] = config.cfClientId;
-      headers["CF-Access-Client-Secret"] = readSecret(config.cfSecretService, config.keychainAccount);
+      headers["CF-Access-Client-Secret"] = config.cfClientSecret || readSecret(config.cfSecretService, config.keychainAccount);
     }
     const body = { mode: config.mode, persist: true, triggerType: "local_schedule" };
     if (config.localDate) body.localDate = config.localDate;

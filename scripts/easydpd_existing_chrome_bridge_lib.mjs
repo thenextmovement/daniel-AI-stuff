@@ -50,14 +50,18 @@ export function validateBridgeConfig(raw) {
   if (apiBaseUrl.origin !== "https://ops.neontrip.de" || apiBaseUrl.pathname !== "/") {
     throw new ExistingChromeBridgeError("Ops-Basis-URL ist nicht auf ops.neontrip.de gepinnt.", 78);
   }
-  const downloadRoot = resolve(String(raw.downloadRoot || `${homedir()}/Downloads`));
+  const runtime = raw.runtime || "mac";
+  if (!["mac", "linux-server"].includes(runtime)) throw new ExistingChromeBridgeError("Bridge-Laufzeit ist ungueltig.", 78);
+  if (runtime === "linux-server" && process.platform !== "linux") throw new ExistingChromeBridgeError("Server-Bridge benoetigt Linux.", 78);
+  const server = runtime === "linux-server";
+  const downloadRoot = resolve(String(raw.downloadRoot || `${homedir()}/${server ? "labels" : "Downloads"}`));
   const statusPath = resolve(cleanString(raw.statusPath, "Bridge-Statuspfad", 1000));
   const activeJobPath = resolve(cleanString(raw.activeJobPath, "Bridge-Auftragspfad", 1000));
-  if (downloadRoot !== resolve(homedir(), "Downloads")) throw new ExistingChromeBridgeError("Download-Verzeichnis ist nicht exakt auf den Benutzer-Downloads-Ordner gepinnt.", 78);
-  if (statusPath !== resolve(homedir(), "Library/Logs/NEONTRIP/easydpd-existing-chrome-bridge/status.json")) {
+  if (downloadRoot !== resolve(homedir(), server ? "labels" : "Downloads")) throw new ExistingChromeBridgeError("Download-Verzeichnis ist nicht exakt auf den Benutzer-Downloads-Ordner gepinnt.", 78);
+  if (statusPath !== resolve(homedir(), server ? "state/bridge-status.json" : "Library/Logs/NEONTRIP/easydpd-existing-chrome-bridge/status.json")) {
     throw new ExistingChromeBridgeError("Bridge-Statuspfad ist nicht freigegeben.", 78);
   }
-  if (activeJobPath !== resolve(homedir(), "Library/Application Support/NEONTRIP/easydpd-existing-chrome-bridge/active-job.json")) {
+  if (activeJobPath !== resolve(homedir(), server ? "state/active-job.json" : "Library/Application Support/NEONTRIP/easydpd-existing-chrome-bridge/active-job.json")) {
     throw new ExistingChromeBridgeError("Bridge-Auftragspfad ist nicht freigegeben.", 78);
   }
   const tokenService = cleanString(raw.tokenService, "Token-Keychain-Service", 200);
@@ -67,6 +71,7 @@ export function validateBridgeConfig(raw) {
   }
   return {
     version: 1,
+    runtime,
     mode,
     liveEnabled: mode === "live" && raw.liveEnabled === true,
     extensionId: EXPECTED_EXTENSION_ID,
@@ -92,6 +97,10 @@ export function workerConfiguration(config) {
   return resolveWorkerConfig(
     { mode: config.mode },
     {
+      ...(config.runtime === "linux-server" ? {
+        ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN: process.env.ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN,
+        ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET: process.env.ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET,
+      } : {}),
       NEONTRIP_OPS_BASE_URL: config.opsBaseUrl,
       NEONTRIP_KEYCHAIN_ACCOUNT: config.keychainAccount,
       ARRIVAL_LABEL_BROWSER_WORKER_ID: config.workerId,

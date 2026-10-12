@@ -206,3 +206,27 @@ test("Microsoft Graph secret rotation preserves the prior Coolify value as rollb
   assert.match(clients, /MICROSOFT_GRAPH_CLIENT_ID_NEXT/);
   assert.match(clients, /\|\| requiredEnv\("MICROSOFT_GRAPH_CLIENT_SECRET"\)/);
 });
+
+
+test("server scheduler uses scoped environment credentials without Keychain and keeps secrets out of results", async () => {
+  const token = "server-scheduler-token-at-least-24";
+  const cfSecret = "server-cf-secret-at-least-24";
+  const config = resolveConfig([], { ...baseEnvironment,
+    ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN: token,
+    ARRIVAL_LABEL_CF_ACCESS_CLIENT_ID: "client-id",
+    ARRIVAL_LABEL_CF_ACCESS_CLIENT_SECRET: cfSecret,
+  });
+  const result = await runScheduler(config, {
+    acquireLockImpl: () => () => {},
+    readSecret: () => { throw new Error("must not access Keychain"); },
+    fetchImpl: async (_url: string, init: RequestInit) => {
+      const headers = init.headers as Record<string,string>;
+      assert.equal(headers.Authorization, `Bearer ${token}`);
+      assert.equal(headers["CF-Access-Client-Secret"], cfSecret);
+      return Response.json({ok:true,result:{summary:{}}});
+    },
+  });
+  assert.equal(JSON.stringify(result).includes(token),false);
+  assert.equal(JSON.stringify(result).includes(cfSecret),false);
+  assert.throws(() => resolveConfig([], {...baseEnvironment, ARRIVAL_LABEL_LOCAL_SCHEDULER_API_TOKEN:"short"}), /Token/);
+});
