@@ -22,6 +22,7 @@ test('replayed slots and uncertain reservations do not poll again',async()=>{
 test('auth/quota failure stops the batch, records a safe error, and never sends customer messages',async()=>{
   const h=harness(fresh(),true);const r=await runDhlPollBatch([candidate(),candidate('9912345678')],h.state,h.ports,true);
   assert.equal(h.calls.length,1);assert.equal(h.writes.length,1);assert.equal(r.issues[0].code,'dhl_http_429');assert.equal(h.state.attempts[0].status,'failed');
+  assert.equal(r.candidateCount,2);assert.equal(r.dueCount,2);assert.equal(r.attempted,1);assert.equal(r.deferredCount,1);
 });
 test('rolling quota uses remaining capacity and explicitly reports incomplete coverage',async()=>{
   const h=harness({attempts:Array.from({length:224},(_,i)=>({tracking:String(i),slot:'old',at:at-3600000,status:'checked'}))} as PollState);
@@ -83,4 +84,69 @@ test('exhausted budget reserves nothing; expired usage becomes available without
   h.state.attempts[0].at=at-86400001;
   const next=await runDhlPollBatch([candidate()],h.state,h.ports,true);
   assert.equal(next.synced,1);assert.equal(next.issues.length,0);assert.equal(h.state.attempts.length,226);
+});
+
+
+test('same-time daily batches reuse quota as prior reservations expire during polling',async()=>{
+  const attempts:PollState['attempts']=[];
+  for(const hour of [7,16,21]) for(let i=0;i<75;i++) attempts.push({
+    tracking:String(i).padStart(10,'0'),slot:`2026-10-06/${hour+2}`,
+    at:Date.parse(`2026-10-06T${String(hour).padStart(2,'0')}:00:00Z`)+(i+1)*5100,status:'synced',
+  });
+  const h=harness({attempts}),original=JSON.stringify(attempts);
+  const result=await runDhlPollBatch(Array.from({length:75},(_,i)=>candidate(String(i).padStart(10,'0'))),h.state,h.ports,true);
+  assert.equal(result.checked,75);assert.equal(result.synced,75);assert.deepEqual(result.issues,[]);
+  assert.equal(JSON.stringify(h.state.attempts.slice(0,225)),original);
+  for(const saved of h.saved) {
+    const entries=(JSON.parse(saved) as PollState).attempts,last=entries.at(-1)!;
+    assert.ok(entries.filter(a=>a.at>last.at-86400000).length<=225);
+  }
+  assert.ok(h.calls.every((time,i)=>i===0||time-h.calls[i-1]>=5100));
+  const replay=await runDhlPollBatch(Array.from({length:75},(_,i)=>candidate(String(i).padStart(10,'0'))),h.state,h.ports,true);
+  assert.equal(replay.checked,0);assert.equal(h.calls.length,75);
+  assert.equal(result.candidateCount,75);assert.equal(result.dueCount,75);assert.equal(result.attempted,75);assert.equal(result.deferredCount,0);
+  assert.equal(replay.candidateCount,75);assert.equal(replay.dueCount,0);assert.equal(replay.attempted,0);assert.equal(replay.deferredCount,0);
+});
+
+test('quota becoming free shortly after pacing is awaited before reserving',async()=>{
+  const attempts:PollState['attempts']=Array.from({length:224},(_,i)=>({tracking:String(i),slot:'old',at:at-3600000,status:'checked'}));
+  attempts.push({tracking:'older',slot:'old',at:at-86400000+20000,status:'failed'});
+  const h=harness({attempts});
+  const result=await runDhlPollBatch([candidate()],h.state,h.ports,false);
+  assert.equal(result.checked,1);assert.deepEqual(result.issues,[]);
+  assert.equal(h.calls[0],at+20000);
+});
+
+test('quota wait is bounded across the whole batch and leaves unattempted shipments deferred',async()=>{
+  const attempts:PollState['attempts']=Array.from({length:223},(_,i)=>({tracking:String(i),slot:'old',at:at-3600000,status:'checked'}));
+  attempts.push({tracking:'first',slot:'old',at:at-86400000+300000,status:'reserved'},
+    {tracking:'second',slot:'old',at:at-86400000+650000,status:'record_uncertain'});
+  const h=harness({attempts});
+  const result=await runDhlPollBatch([candidate(),candidate('9912345678')],h.state,h.ports,true);
+  assert.equal(result.checked,1);assert.equal(result.synced,1);
+  assert.equal(h.calls[0],at+300000);assert.ok(h.ports.now()<at+650000);
+  assert.deepEqual(result.issues.map(i=>i.code),['dhl_budget_insufficient']);
+  assert.equal(h.state.attempts.length,226);
+  assert.equal(result.dueCount,2);assert.equal(result.attempted,1);assert.equal(result.deferredCount,1);
+});
+
+
+for(const oversleep of [false,true]) test(`slot rollover after ${oversleep?'quota wait':'pacing'} defers work before another reservation`,async()=>{
+  const start=Date.parse('2026-10-07T15:59:40Z'),boundary=Date.parse('2026-10-07T16:00:00Z');
+  const attempts:PollState['attempts']=Array.from({length:223},(_,i)=>({tracking:String(i),slot:'old',at:start-3600000,status:'checked'}));
+  attempts.push({tracking:'old-first',slot:'old',at:start-86400000+15000,status:'checked'},
+    {tracking:'old-second',slot:'old',at:start-86400000+20000,status:'checked'});
+  const h=harness({attempts});let clock=start,sleeps=0;
+  h.ports.now=()=>clock;
+  h.ports.sleep=async(ms:number)=>{clock+=ms;if(oversleep&&++sleeps===2)clock+=6000;};
+  h.ports.fetch=async()=>{h.calls.push(clock);return response;};
+  const result=await runDhlPollBatch([candidate(),candidate('9912345678')],h.state,h.ports,true);
+  assert.equal(result.attempted,oversleep?0:1);assert.equal(result.synced,oversleep?0:1);
+  assert.equal(result.dueCount,2);assert.equal(result.deferredCount,oversleep?2:1);
+  assert.deepEqual(result.issues.map(i=>i.code),['dhl_poll_slot_changed']);
+  assert.ok(h.state.attempts.slice(225).every(a=>a.at<boundary&&a.slot==='2026-10-07/09'));
+  const next=await runDhlPollBatch([candidate('9912345678')],h.state,h.ports,true);
+  assert.equal(next.attempted,1);assert.equal(h.state.attempts.at(-1)!.slot,'2026-10-07/18');
+  const replay=await runDhlPollBatch([candidate('9912345678')],h.state,h.ports,true);
+  assert.equal(replay.attempted,0);
 });

@@ -9,27 +9,41 @@ type Ports={now:()=>number;sleep:(ms:number)=>Promise<void>;save:(state:PollStat
 // leaves capacity for controlled connection tests within DHL's initial 250/day allowance.
 export async function runDhlPollBatch(candidates:DhlCandidate[],state:PollState,ports:Ports,sync:boolean) {
   const now=ports.now(),slot=berlinPollSlot(now),issues:DhlIssue[]=[];
-  if(!slot) return {checked:0,synced:0,issues};
   const unique=[...new Map(candidates.map(c=>[c.trackingNumber,c])).values()];
+  const candidateCount=unique.length;
+  if(!slot) return {candidateCount,dueCount:0,attempted:0,deferredCount:0,checked:0,synced:0,quotaWaitMs:0,issues};
   const due=unique.filter(c=>{
     const previous=state.attempts.find(a=>a.tracking===c.trackingNumber&&a.slot===slot);
     if(previous&&['reserved','record_uncertain'].includes(previous.status)) issues.push({code:'previous_poll_incomplete',trelloUrl:c.card.url});
     return !previous;
   });
-  const recent=state.attempts.filter(a=>a.at>now-86400000);
-  const capacity=Math.max(0,225-recent.length);
-  if(due.length>capacity) issues.push({code:'dhl_budget_insufficient',trelloUrl:''});
   // Spend available quota on new and longest-unchecked shipments; retain every
   // attempt (including failures/checks) for rate accounting and slot deduplication.
   const lastAttempt=new Map<string,number>();
   for(const attempt of state.attempts) lastAttempt.set(attempt.tracking,Math.max(lastAttempt.get(attempt.tracking)||0,attempt.at));
-  const selected=due.sort((a,b)=>(lastAttempt.get(a.trackingNumber)||0)-(lastAttempt.get(b.trackingNumber)||0)).slice(0,capacity);
-  let checked=0,synced=0;
-  for(const candidate of selected) {
+  const selected=due.sort((a,b)=>(lastAttempt.get(a.trackingNumber)||0)-(lastAttempt.get(b.trackingNumber)||0));
+  let checked=0,synced=0,attempted=0,quotaWaitMs=0;
+  candidates: for(const candidate of selected) {
     const last=Math.max(0,...state.attempts.map(a=>a.at));
     await ports.sleep(Math.max(5100,last+5100-ports.now()));
+    // Yesterday's same-time batch expires gradually while this batch runs.
+    // Recheck after pacing and before every reservation; wait at most ten minutes
+    // in total for quota, never until the next scheduled slot or the following day.
+    while(true) {
+      const current=ports.now();
+      if(berlinPollSlot(current)!==slot) {
+        issues.push({code:'dhl_poll_slot_changed',trelloUrl:''});break candidates;
+      }
+      const recent=state.attempts.filter(a=>a.at>current-86400000).sort((a,b)=>a.at-b.at);
+      if(recent.length<225) break;
+      const wait=recent[recent.length-225].at+86400000-current;
+      if(quotaWaitMs+wait>600000||berlinPollSlot(current+wait)!==slot) {
+        issues.push({code:'dhl_budget_insufficient',trelloUrl:''});break candidates;
+      }
+      await ports.sleep(wait);quotaWaitMs+=wait;
+    }
     const attempt:PollAttempt={tracking:candidate.trackingNumber,slot,at:ports.now(),status:'reserved'};
-    state.attempts.push(attempt);await ports.save(state);
+    state.attempts.push(attempt);await ports.save(state);attempted++;
     let payload:unknown;
     try {payload=await ports.fetch(candidate.trackingNumber);checked++;}
     catch(error) {
@@ -51,5 +65,5 @@ export async function runDhlPollBatch(candidates:DhlCandidate[],state:PollState,
     } else attempt.status='checked';
     await ports.save(state);
   }
-  return {checked,synced,issues};
+  return {candidateCount,dueCount:due.length,attempted,deferredCount:due.length-attempted,checked,synced,quotaWaitMs,issues};
 }

@@ -7,7 +7,12 @@ import { ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID, type TrelloCardEvidence } from '
 type Obj = Record<string, any>;
 const obj = (v: unknown): Obj => v && typeof v === 'object' && !Array.isArray(v) ? v as Obj : {};
 const text = (v: unknown) => typeof v === 'string' ? v.trim() : '';
-export type DhlShipmentLink = {id:string;tracking_number:string;trello_card_id:string|null};
+export type DhlShipmentLink = {id:string;tracking_number:string;trello_card_id:string|null;
+  status?:string;status_reason?:string|null;delivered_at?:string|null;last_checked_at?:string|null;
+  tracking_provider?:string|null;response_provider?:string|null;response_id?:string|null;response_service?:string|null};
+export type DhlLabelCompletion = {incoming_dhl_tracking_number:string;trello_card_id:string|null;status:string;
+  manual_review_reason:string|null;delivery_note_required:boolean;delivery_note_status:string;
+  purchase_jobs?:{status:string}[];print_jobs?:{status:string}[]};
 export type DhlCandidate = {trackingNumber:string;shipmentId:string|null;card:TrelloCardEvidence};
 export type DhlIssue = {code:string;trelloUrl:string};
 // Only unambiguous local time zones used on the known inbound route. Unknown/multi-zone
@@ -80,8 +85,9 @@ export function berlinPollSlot(now=Date.now()):string|null {
   return `${local.toPlainDate()}/${local.hour>=23?'23':local.hour>=18?'18':'09'}`;
 }
 
-export function planDhlChecks(cards:TrelloCardEvidence[],shipments:DhlShipmentLink[]) {
+export function planDhlChecks(cards:TrelloCardEvidence[],shipments:DhlShipmentLink[],labelCases:DhlLabelCompletion[]=[],now=Date.now()) {
   const candidates:DhlCandidate[]=[],issues:DhlIssue[]=[];
+  let completedCount=0;
   const groups=new Map<string,TrelloCardEvidence[]>();
   const blockedNumbers=new Set<string>();
   const shipped='6347e09cb326e6014856bc3b';
@@ -101,7 +107,23 @@ export function planDhlChecks(cards:TrelloCardEvidence[],shipments:DhlShipmentLi
     const existing=shipments.filter(s=>s.tracking_number===trackingNumber);
     if(existing.length>1||(existing.length===1&&existing[0].trello_card_id!==card.id)) {issues.push({code:'shipment_card_mismatch',trelloUrl:card.url});continue;}
     if(!LEO_INTAKE_LISTS.has(card.listId||'')&&!(card.listId===shipped&&existing.length===1)) continue;
-    candidates.push({trackingNumber,shipmentId:existing[0]?.id||null,card});
+    // Delivery alone cannot retire polling: pending label/extra-parcel dispatch
+    // still requires fresh carrier evidence. Missing or ambiguous proof keeps polling.
+    const shipment=existing[0],cases=labelCases.filter(c=>c.incoming_dhl_tracking_number===trackingNumber);
+    const completed=cases.length===1&&cases[0].trello_card_id===card.id?cases[0]:null;
+    const delivered=Date.parse(shipment?.delivered_at||''),checked=Date.parse(shipment?.last_checked_at||'');
+    if(shipment?.status==='delivered'&&shipment.status_reason===null
+      &&shipment.tracking_provider==='dhl-unified'&&shipment.response_provider==='dhl-unified'
+      &&shipment.response_id===trackingNumber&&shipment.response_service==='express'
+      &&Number.isFinite(delivered)&&delivered<=checked&&checked<=now
+      &&completed?.status==='completed'&&completed.manual_review_reason===null
+      &&(!completed.delivery_note_required||completed.delivery_note_status==='printed')
+      &&Array.isArray(completed.purchase_jobs)&&completed.purchase_jobs.every(j=>['completed','cancelled'].includes(j.status))
+      &&Array.isArray(completed.print_jobs)&&completed.print_jobs.some(j=>j.status==='printed')
+      &&completed.print_jobs.every(j=>['printed','cancelled'].includes(j.status))) {
+      completedCount++;continue;
+    }
+    candidates.push({trackingNumber,shipmentId:shipment?.id||null,card});
   }
-  return {candidates,issues};
+  return {candidates,completedCount,issues};
 }
