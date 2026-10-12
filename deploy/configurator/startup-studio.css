@@ -1627,6 +1627,10 @@ body.designstudio :is(#undo-design,#redo-design){display:inline-flex!important}
 #cart-add-status:empty{display:none}
 #cart-add-status{margin:4px 0;color:#a12c37;font-size:13px;line-height:1.35}
 
+/* Keep the stock-room scale explanation outside the photograph and its controls. */
+body.designstudio .room-presentation-note{margin:6px 2px 0;color:#655d56;font:400 11px/1.4 Inter,sans-serif}
+@media(max-width:760px){body.designstudio .room-presentation-note{margin-left:16px;margin-right:16px}}
+
 
 /* Source: font-filters.css */
 /* Font discovery only: keep selection, previews, quotes and upload controls unchanged. */
@@ -1973,6 +1977,7 @@ body.designstudio .trust-rating-header:focus-visible{outline-color:#fff}
  .trust-rating-compact>img{width:15px;height:15px}
  .trust-rating-compact .trust-star{width:11px;height:11px}
 }
+@media(max-width:760px){body.designstudio #main .design-summary:has(#previous-step:not([hidden])) .trust-rating-compact{display:none}}
 @media(max-width:350px){body.designstudio #main .trust-rating-compact{left:12px;max-width:calc(100% - 144px);gap:4px;font-size:10.5px}}
 .trust-payments{display:flex;align-items:center;justify-content:center;gap:16px;min-height:30px}
 .trust-payments img{display:block;flex:none;object-fit:contain}

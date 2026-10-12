@@ -21,6 +21,13 @@ export const ROOM_FRAMES={
  tabletop:{area:[200,25,800,285],standing:[200,25,800,285],near:420,y:250}
 };
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+// Stock photos are presentation scenes. Small signs start at a readable size;
+// larger physical dimensions grow gently, without changing the ordered geometry.
+export function stockPresentationScale(widthMm,heightMm){
+ if(!(widthMm>0&&heightMm>0))return 1/6;
+ const displayWidth=clamp(250+100*Math.log2(widthMm/500),220,550);
+ return Math.min(displayWidth/widthMm,230/heightMm);
+}
 export function roomArea(room,standing=false){const p=ROOM_FRAMES[room];return standing&&p.standing?p.standing:p.area;}
 export function containsSign(area,sign){return sign.x>=area[0]-.01&&sign.y>=area[1]-.01&&sign.x+sign.width<=area[2]+.01&&sign.y+sign.height<=area[3]+.01;}
 export function frameRoom({room,viewport,sign,camera,standing=false,padding}){

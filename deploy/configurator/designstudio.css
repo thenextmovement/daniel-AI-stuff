@@ -1041,3 +1041,7 @@ body.designstudio .history-controls .icon{width:16px;height:16px;margin-right:5p
 body.designstudio :is(#undo-design,#redo-design){display:inline-flex!important}
 #cart-add-status:empty{display:none}
 #cart-add-status{margin:4px 0;color:#a12c37;font-size:13px;line-height:1.35}
+
+/* Keep the stock-room scale explanation outside the photograph and its controls. */
+body.designstudio .room-presentation-note{margin:6px 2px 0;color:#655d56;font:400 11px/1.4 Inter,sans-serif}
+@media(max-width:760px){body.designstudio .room-presentation-note{margin-left:16px;margin-right:16px}}

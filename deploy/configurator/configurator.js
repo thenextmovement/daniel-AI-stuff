@@ -1,4 +1,4 @@
-import {frameRoom,roomArea,moveWithinRoom} from './room-framing.js?v=20261009-room-context1';
+import {frameRoom,roomArea,moveWithinRoom,stockPresentationScale} from './room-framing.js?v=20261012-presentation1';
 import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261009-tour1';
 import {initBudgetAdvisor} from './budget-advisor.js?v=20261008-budget-live1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
@@ -108,7 +108,7 @@ const MOUNTS={
 };
 const STAND_SUPPORT_MM=MANUFACTURING_PROFILE.standSupportMm;
 // Assumed photo widths for room metadata; example-room display framing is normalized below.
-// Uploaded photos keep their calibrated width. Changing sign size must never refit it to the photo.
+// Uploaded photos keep their calibrated width; stock photos use presentation sizing.
 const ROOMS = [
   {id:'reception',spanMm:6000,name:'Empfang',image:'./assets/scenes/reception-detail-desktop-v1.webp',mobileImage:'./assets/scenes/reception-detail-mobile-v1.webp'},
   {id:'office',spanMm:5500,name:'Büro',image:'./assets/scenes/office-detail.webp'},
@@ -130,9 +130,13 @@ const ROOMS = [
   {id:'tabletop',spanMm:3300,name:'Event · Podest',image:'./assets/scenes/optimized-20261008/event-podium.webp'}
 ];
 const SCENE_IMAGE = new URL('./assets/scenes/neontrip-scenarios-wide.png',import.meta.url).href;
-// Stock rooms are unmeasured examples with a fixed six-metre display span.
-// Keep this independent of sign size; uploaded photos retain their calibrated span.
-function previewSpanMm(room){return room.id==='custom'?room.spanMm:6000;}
+// This display scale never enters pricing, manufacturing dimensions or AR.
+function previewSpanMm(room){
+ if(room.id==='custom')return room.spanMm;
+ if(drag?.presentation?.room===room.id&&drag.presentation.scale)return 1000/drag.presentation.scale;
+ const plate=state.result?plateSize(state.result.size):null;
+ return plate?1000/stockPresentationScale(plate.widthMm,plate.heightMm):6000;
+}
 const lastWallRooms={indoor:'reception',outdoor:'outdoor-shop'};
 function sceneAvailable(room){
   if(!room)return false;
@@ -150,10 +154,11 @@ const positions=new Map();
 const cameras=new Map();
 let roomPresentation=null;
 let previewBox=null,drag=null,dragFrame=0,photoRevision=0,resizeFocus=null;
-const state = {font:'Alexa',fontId:'Alexa',text:$('#sign-text').value,alignment:'center',lineHeight:.8,axis:'width',valueMm:500-2*MANUFACTURING_PROFILE.contourMarginMm,color:COLORS[7],wordColors:new Map(),words:[],colorTarget:'all',light:true,dimensions:true,scene:'wall',room:'reception',backing:'contour',mount:'wall-mount',previousRoom:'reception',result:null,sizeValid:true,autoContourNotice:false};
+const state = {font:'Amsterdam',fontId:'Amsterdam',text:$('#sign-text').value,alignment:'center',lineHeight:.8,axis:'width',valueMm:500-2*MANUFACTURING_PROFILE.contourMarginMm,color:COLORS[7],wordColors:new Map(),words:[],colorTarget:'all',light:true,dimensions:true,scene:'wall',room:'reception',backing:'contour',mount:'wall-mount',previousRoom:'reception',result:null,sizeValid:true,autoContourNotice:false};
 let designRendering=false,compactLineSpacing=false,budgetAdvisor,budgetSelecting=false;
 // Spacing edits retain the physical letter scale, including across an invalid oversized draft.
 let spacingAnchor=null;
+let backingSizeAdjustment=null;
 const spacingContent=text=>String(text).replace(/[^\S\r\n]/gu,'');
 const storedPriceCache=new Map(),storedPriceFailureAttempts=new Map();
 Object.assign(state,priceOptions());
@@ -221,6 +226,7 @@ async function getDraftAsset(id,kind){
   return asset;
 }
 async function applyDesign(value){
+  backingSizeAdjustment=null;
   entryOnboarding.end();
   spacingAnchor=null;
   if(!value||typeof value.text!=='string'||value.text.length>160||!['width','height'].includes(value.axis)||!Number.isFinite(value.valueMm)||value.valueMm<10||value.valueMm>5000||!BACKINGS[value.backing]||!MOUNTS[value.mount]||!['left','center','right'].includes(value.alignment))throw new Error('Der gespeicherte Entwurf ist ungültig.');
@@ -993,6 +999,11 @@ function paint() {
   $('#dimensions-toggle').setAttribute('aria-pressed',state.dimensions);$('#dimensions-toggle span').textContent=state.dimensions?'Maßlinien ausblenden':'Maßlinien anzeigen';
   for(const button of document.querySelectorAll('[data-backing]'))button.setAttribute('aria-pressed',button.dataset.backing===state.backing);
   $('#backing-description').textContent=BACKINGS[state.backing].description+(state.mount==='table-stand'?' Für den Tischständer wird die Unterkante gerade ausgeführt und erhält zwei Steckschlitze.':'');
+  if(backingSizeAdjustment&&state.backing==='rectangle'&&state.result){
+    const outer=plateSize(state.result.size);
+    if(Math.abs(outer.widthMm-backingSizeAdjustment.widthMm)<.1&&Math.abs(outer.heightMm-backingSizeAdjustment.heightMm)<.1)$('#backing-description').textContent+=' Außenmaß an den Rechteckrand angepasst.';
+    else backingSizeAdjustment=null;
+  }
   $('#backing-margin').textContent=state.backing==='contour'?'ca. 1 cm Rand um den Schriftzug':state.backing==='square'?'mindestens ca. 1,5 cm Rand':state.backing==='freestanding'?'schmale Streben hinter dem Schriftzug':'ca. 1,5 cm Rand um den Schriftzug';
   $('#freestanding-note').hidden=state.backing!=='freestanding';
   for(const button of document.querySelectorAll('[data-backing="square"]'))button.hidden=state.backing!=='square';
@@ -1047,7 +1058,7 @@ function paint() {
   const x=(1000-width)/2,y=standing?plateTop+(basePlateSize(size).heightMm-design.heightMm)*pxPerMm/2:centerY-height/2;
   const scale=size.scale*pxPerMm;
   const art=$('#preview-art');art.replaceChildren();
-  const savedOffset=positions.get(state.room)||{x:0,y:0};
+  const savedOffset=room.id==='custom'?(positions.get(state.room)||{x:0,y:0}):stockSignBox(room).offset;
   const offset=technical?{x:0,y:0}:{x:savedOffset.x,y:standing&&room.id!=='custom'?0:savedOffset.y};
   const firstRailTop=state.backing==='freestanding'?Number(railPath(state.result).match(/^M[\d.]+ ([\d.]+)/)?.[1]||0)*pxPerMm:0;
   art.setAttribute('transform',`translate(${offset.x} ${offset.y})`);
@@ -1432,7 +1443,7 @@ $('#look-font').addEventListener('click',()=>openFontOverview());
 $('#open-font-upload').addEventListener('click',()=>openFontOverview('upload'));
 $('#tab-1').addEventListener('click',()=>openFontOverview());
 $('#studio-all-fonts').addEventListener('click',()=>openFontOverview());
-const studioFontOrder=[...new Set(['Alexa','NeonLite','Neontrace',...FONTS])];
+const studioFontOrder=[...new Set(['Amsterdam','NeonLite','Neontrace',...FONTS])];
 for(const [index,name] of studioFontOrder.entries()){
   const button=makeFontButton(name);if(index>2)button.classList.add('studio-mobile-font');$('.studio-font-grid').append(button);
 }
@@ -1545,6 +1556,8 @@ $('#plate-custom-color').addEventListener('input',event=>{state.plateFinish=norm
 $('#plate-custom-color').addEventListener('change',commitHistory);
 for(const button of document.querySelectorAll('[data-backing]'))button.addEventListener('click',()=>{
   const outer=state.result?plateSize(state.result.size):null;
+  const previousBacking=state.backing,wasValid=!designRendering&&state.sizeValid&&state.price?.status==='calculated';
+  backingSizeAdjustment=null;
   state.backing=button.dataset.backing;
   state.autoContourNotice=false;
   if(state.backing==='freestanding'){
@@ -1553,6 +1566,16 @@ for(const button of document.querySelectorAll('[data-backing]'))button.addEventL
       if(state.mount==='table-stand')state.room=state.previousRoom;
       state.mount='wall-mount';
       if(state.room==='shop')state.room='reception';
+    }
+  }
+  if(outer&&wasValid&&state.mode==='text'&&previousBacking==='contour'&&state.backing==='rectangle'){
+    const range=sizeRangeForResult(state,state.result),expanded=plateSize(state.result.size);
+    const missingWidth=(range?.minimum.widthMm||0)-outer.widthMm;
+    // At the old minimum, retain the neon geometry and allow the extra 5 mm
+    // of rectangular backing on each side. No manufacturing tolerance changes.
+    if(range?.fits&&missingWidth>.1&&missingWidth<=10.1&&expanded.widthMm>=range.minimum.widthMm-.1&&expanded.widthMm<=range.maximum.widthMm+.01&&expanded.heightMm<=range.maximum.heightMm+.01){
+      state.requestedOuter=null;state.sizeValid=true;backingSizeAdjustment=expanded;
+      update();return;
     }
   }
   if(outer)chooseOuterSize(state.axis,outer[state.axis+'Mm']);else paint();
@@ -1699,8 +1722,13 @@ function syncScenarioChoice(){
 }
 function stockSignBox(room){
   const plate=plateSize(state.result.size),scale=1000/previewSpanMm(room),standing=state.mount==='table-stand';
-  const offset=positions.get(room.id)||{x:0,y:0},width=plate.widthMm*scale,height=plate.heightMm*scale;
-  return {x:500+offset.x-width/2,y:standing?(room.standY??276)-height:sceneSignY(room)+offset.y-height/2,width,height:height+(standing?7:0)};
+  const saved=positions.get(room.id)||{x:0,y:0},width=plate.widthMm*scale,height=plate.heightMm*scale;
+  // Prefer the free wall when the sign fits it; otherwise retain the full photo.
+  // Apply the same bounds before rendering and moving to avoid a first-drag jump.
+  const area=roomArea(room.id,standing),left=width<=area[2]-area[0]?area[0]:24,right=width<=area[2]-area[0]?area[2]:976;
+  const top=height<=area[3]-area[1]?area[1]:24,bottom=height<=area[3]-area[1]?area[3]:476;
+  const offset={x:Math.max(left+width/2-500,Math.min(right-width/2-500,saved.x)),y:standing?0:Math.max(top+height/2-sceneSignY(room),Math.min(bottom-height/2-sceneSignY(room),saved.y))};
+  return {x:500+offset.x-width/2,y:standing?(room.standY??276)-height:sceneSignY(room)+offset.y-height/2,width,height:height+(standing?7:0),offset};
 }
 function stockFrame(room,viewport){return frameRoom({room:room.id,viewport,sign:stockSignBox(room),camera:cameras.get(room.id),standing:state.mount==='table-stand'});}
 function alternativeRoomFits(room,viewport){
@@ -1749,7 +1777,7 @@ function paintRoom(){
     frame={camera,zoom:camera.zoom,maxZoom:4};
   }
   if(!view)view={x:0,y:0,width:1000,height:500};
-  let scale=null;
+  let scale=(room.photoWidth||1000)/previewSpanMm(room);
   if(technical){
     const aspect=viewport.width/viewport.height,w=1000,h=w/aspect;
     // Keep text, measurements and the top controls in screen-space clearance.
@@ -1773,7 +1801,10 @@ function paintRoom(){
   if(automatic&&!compatibleRooms.length)$('#room-fit-note-text').textContent='Für dieses Format zeigen wir dein Schild in der Detailansicht. Für die Raumvorschau kannst du ein eigenes Foto mit Referenzmaß verwenden.';
   $('#selected-room').textContent=room.name;$('#open-scenes').title='Hintergrund ändern · '+room.name+(room.id==='custom'?'':' · Raum als Gestaltungsvorschau, nicht vermessen');$('#scene-caption').textContent=technical?'Schild im Detail':room.name;
   $('#scene-note').textContent='';
-  $('#scene-note').title=technical?'Die Maßangaben gelten für die gesamten Außenmaße des Schilds.':`Angenommene Bildbreite auf Schildhöhe: ${cm(previewSpanMm(room))} cm. Keine vermessene Raumszene.`;
+  $('#room-presentation-note').hidden=custom||technical;
+  $('#scene-note').title=technical?'Die Maßangaben gelten für die gesamten Außenmaße des Schilds.':'Gestaltungsvorschau, nicht maßstabsgetreu. Die Maßangaben zeigen deine tatsächliche Bestellgröße.';
+  $('#open-scenes').setAttribute('aria-label',`Hintergrund ändern · ${room.name}${custom?'':' · Gestaltungsvorschau, nicht maßstabsgetreu'}`);
+  $('#camera-controls').title=custom?'Bildausschnitt ändern, Schildmaße bleiben gleich':'Gestaltungsvorschau, nicht maßstabsgetreu. Schildmaße bleiben unverändert.';
   for(const button of document.querySelectorAll('[data-room]')){button.setAttribute('aria-pressed',button.dataset.room===room.id);const candidate=ROOMS.find(item=>item.id===button.dataset.room);button.hidden=!sceneAvailable(candidate)||(automatic&&!alternativeRoomFits(candidate,viewport));}
   if(room.id==='custom')$('#scene-note').title=room.calibration?'Eigenes Foto mit deinem Referenzmaß':'Eigenes Foto ohne Referenzmaß';
   $('#scene-strip').classList.toggle('is-tabletop',state.mount==='table-stand');
@@ -2623,7 +2654,7 @@ preview.addEventListener('pointerdown',event=>{
   const target=event.target.closest('[data-edit]');
   $('#preview-stage').classList.toggle('sign-selected',!!target);
   if(!target||!previewBox||roomPresentation?.technical||event.button!==0)return;
-  event.preventDefault();const point=localPoint(event),offset=positions.get(state.room)||{x:0,y:0};
+  event.preventDefault();const point=localPoint(event),room=ROOMS.find(r=>r.id===state.room),offset=room.id==='custom'?(positions.get(state.room)||{x:0,y:0}):stockSignBox(room).offset;
   drag={presentation:roomPresentation,id:event.pointerId,kind:target.dataset.edit,start:point,offset:{...offset},box:{...previewBox},width:state.result.size.exact.design.widthMm,sx:Number(target.dataset.sx)||1,sy:Number(target.dataset.sy)||1};
   preview.setPointerCapture(event.pointerId);
 });
@@ -2658,7 +2689,7 @@ preview.addEventListener('keydown',event=>{
     event.preventDefault();const delta=['-','ArrowDown'].includes(event.key)?-10:10;
     resizeFocus=[target.dataset.sx,target.dataset.sy];resizeSign(state.result.size.exact.design.widthMm+delta);
   }else if(target.dataset.edit==='move'&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){
-    event.preventDefault();const amount=event.shiftKey?10:2,offset=positions.get(state.room)||{x:0,y:0};
+    event.preventDefault();const amount=event.shiftKey?10:2,room=ROOMS.find(r=>r.id===state.room),offset=room.id==='custom'?(positions.get(state.room)||{x:0,y:0}):stockSignBox(room).offset;
     const dx=event.key==='ArrowLeft'?-amount:event.key==='ArrowRight'?amount:0,dy=event.key==='ArrowUp'?-amount:event.key==='ArrowDown'?amount:0;
     positions.set(state.room,boundedPosition(previewBox,offset,dx,dy));
     paint();$('#preview-handles [data-edit="move"]').focus();

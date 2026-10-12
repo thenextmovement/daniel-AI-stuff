@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {frameRoom,ROOM_FRAMES,roomArea,moveWithinRoom} from '../deploy/configurator/room-framing.js';
+import {frameRoom,ROOM_FRAMES,roomArea,moveWithinRoom,stockPresentationScale} from '../deploy/configurator/room-framing.js';
 import {createDraftWriteGuard} from '../deploy/configurator/entry-onboarding.js';
 const sign=(widthMm,heightMm=widthMm*.172,y=250)=>({x:500-widthMm/12,y:y-heightMm/12,width:widthMm/6,height:heightMm/6});
 test('reception retains common photo camera from 50 to 75 cm and physical 1.5 ratio',()=>{
@@ -66,5 +66,40 @@ test('all stock scenes keep 2 to 4 m signs at the same fixed example scale',()=>
   const span=6000;
   const width=widthMm*1000/span,height=width*.22,box={x:500-width/2,y:220-height/2,width,height};
   assert.equal(frameRoom({room,viewport,sign:box}).fits,true,`${room} / ${viewport.width}px / ${widthMm}mm`);
+ }
+});
+
+test('presentation makes 50 cm readable and grows gently through 75, 200 and 400 cm',()=>{
+ for(const viewport of [{width:912,height:520},{width:390,height:200},{width:320,height:200}]){
+  let previous=0;
+  for(const widthMm of [500,750,2000,4000]){
+   const heightMm=widthMm*.172,scale=stockPresentationScale(widthMm,heightMm);
+   const box={x:500-widthMm*scale/2,y:250-heightMm*scale/2,width:widthMm*scale,height:heightMm*scale};
+   const framed=frameRoom({room:'reception',viewport,sign:box});
+   const displayed=box.width/framed.view.width*viewport.width;
+   assert.ok(framed.fits);
+   assert.ok(displayed>previous,`${viewport.width}px / ${widthMm}mm grows`);
+   assert.ok(displayed<=viewport.width-82,`${viewport.width}px / ${widthMm}mm remains in frame`);
+   if(widthMm===500){
+    const old=frameRoom({room:'reception',viewport,sign:sign(500)});
+    assert.ok(displayed>=2.9*(sign(500).width/old.view.width*viewport.width));
+    assert.ok(displayed>=viewport.width*.3);
+   }
+   previous=displayed;
+  }
+ }
+});
+
+test('presentation retains photo and label clearance for broad, square and tall signs in every scene',()=>{
+ for(const room of Object.keys(ROOM_FRAMES))for(const viewport of [{width:912,height:520},{width:390,height:200},{width:320,height:260}])for(const [widthMm,heightMm] of [[500,75],[750,250],[2000,500],[4000,700],[1000,1000],[500,4000]]){
+  const scale=stockPresentationScale(widthMm,heightMm),width=widthMm*scale,height=heightMm*scale;
+  const box={x:500-width/2,y:250-height/2,width,height},frame=frameRoom({room,viewport,sign:box});
+  assert.ok(frame.fits,`${room} / ${viewport.width}px / ${widthMm}x${heightMm}`);
+  assert.ok(Math.abs(width/height-widthMm/heightMm)<1e-10);
+  const sx=frame.view.width/viewport.width,sy=frame.view.height/viewport.height;
+  assert.ok(box.x>=frame.view.x+18*sx-.01);
+  assert.ok(box.y>=frame.view.y+58*sy-.01);
+  assert.ok(box.x+box.width<=frame.view.x+frame.view.width-64*sx+.01);
+  assert.ok(box.y+box.height<=frame.view.y+frame.view.height-48*sy+.01);
  }
 });

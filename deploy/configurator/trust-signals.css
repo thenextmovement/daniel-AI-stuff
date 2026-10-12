@@ -20,6 +20,7 @@ body.designstudio .trust-rating-header:focus-visible{outline-color:#fff}
  .trust-rating-compact>img{width:15px;height:15px}
  .trust-rating-compact .trust-star{width:11px;height:11px}
 }
+@media(max-width:760px){body.designstudio #main .design-summary:has(#previous-step:not([hidden])) .trust-rating-compact{display:none}}
 @media(max-width:350px){body.designstudio #main .trust-rating-compact{left:12px;max-width:calc(100% - 144px);gap:4px;font-size:10.5px}}
 .trust-payments{display:flex;align-items:center;justify-content:center;gap:16px;min-height:30px}
 .trust-payments img{display:block;flex:none;object-fit:contain}
