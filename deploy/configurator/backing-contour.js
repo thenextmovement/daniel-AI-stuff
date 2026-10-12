@@ -1,3 +1,4 @@
+import {createRasterMask,flattenSvgPath} from './deterministic-raster.js';
 /** Preview contour only; not a routed or strength-checked manufacturing drawing. */
 const cache = new WeakMap();
 
@@ -47,13 +48,20 @@ export function buildBackingContour(result, marginMm = 12.5, version = 2) {
   const heightMm = size.exact.design.heightMm + 2 * marginMm;
   const resolution = Math.min(1200 / widthMm, 600 / heightMm);
   const scale = size.scale * resolution, pad = marginMm * resolution + 2;
-  const canvas = document.createElement('canvas');
+  const deterministic=result.rasterVersion===2;
+  const canvas = deterministic?{}:document.createElement('canvas');
   canvas.width = Math.ceil(widthMm * resolution) + 4;
   canvas.height = Math.ceil(heightMm * resolution) + 4;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.fillStyle = ctx.strokeStyle = '#000';
-  ctx.lineJoin = ctx.lineCap = 'round';
+  const raster=deterministic?createRasterMask(canvas.width,canvas.height):null;
+  const ctx = deterministic?null:canvas.getContext('2d', { willReadFrequently: true });
+  if(ctx){ctx.fillStyle = ctx.strokeStyle = '#000';ctx.lineJoin = ctx.lineCap = 'round';}
+  const fillPolygon=points=>{if(raster){raster.polygon(points);return;}ctx.beginPath();ctx.moveTo(...points[0]);for(const point of points.slice(1))ctx.lineTo(...point);ctx.closePath();ctx.fill();};
   const drawGlyph = glyph => {
+    if(raster){
+      if(glyph.centerlineD)raster.stroke(flattenSvgPath(glyph.centerlineD,([x,y])=>[pad+x*scale,pad+y*scale]),(layout.tubeMm/2+marginMm)*resolution);
+      else{const paths=flattenSvgPath(glyph.d,([x,y])=>[pad+(x+glyph.x)*scale,pad+(-y+glyph.y)*scale]);raster.fill(paths);raster.stroke(paths,marginMm*resolution);}
+      return;
+    }
     if(glyph.centerlineD){
       ctx.setTransform(scale,0,0,scale,pad,pad);
       ctx.lineWidth=(layout.tubeMm+2*marginMm)/size.scale;
@@ -70,7 +78,7 @@ export function buildBackingContour(result, marginMm = 12.5, version = 2) {
   // Bridge every adjacent pair on a line, including letters in the same word.
   // Facing halves keep the exposed outer sides while filling the narrow necks
   // between letters with the same broad acrylic used across word gaps.
-  const initial = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const initial = raster?raster.mask.slice():ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   const facingPoints = (glyph, right) => {
     const b = glyph.bounds;
     const left = pad + (right ? (b.minX + b.maxX) / 2 : b.minX) * scale;
@@ -82,7 +90,7 @@ export function buildBackingContour(result, marginMm = 12.5, version = 2) {
     const y1 = Math.min(canvas.height - 2, Math.ceil(pad + b.maxY * scale + marginMm * resolution));
     for (let x = x0; x <= x1; x++) {
       let top = -1, bottom = -1;
-      for (let y = y0; y <= y1; y++) if (initial[(y * canvas.width + x) * 4 + 3] > 127) {
+      for (let y = y0; y <= y1; y++) if (raster?initial[y*canvas.width+x]:initial[(y * canvas.width + x) * 4 + 3] > 127) {
         if (top < 0) top = y;
         bottom = y + 1;
       }
@@ -90,7 +98,7 @@ export function buildBackingContour(result, marginMm = 12.5, version = 2) {
     }
     return points;
   };
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx?.setTransform(1, 0, 0, 1, 0, 0);
   // Cut-around follows each whole letter silhouette. Open letter counters and
   // swashes must not leave a narrow tube-shaped carrier, e.g. the left of H.
   // Keep the original padded strokes underneath: added support cannot remove
@@ -98,10 +106,8 @@ export function buildBackingContour(result, marginMm = 12.5, version = 2) {
   if(version===2)for(const glyph of layout.glyphs){
     const hull=convexHull([...facingPoints(glyph,false),...facingPoints(glyph,true)]);
     if(hull.length<3)continue;
-    const rounded=softenWordBridge(hull,Infinity,marginMm*2*resolution);
-    ctx.beginPath();ctx.moveTo(...rounded[0]);
-    for(const point of rounded.slice(1))ctx.lineTo(...point);
-    ctx.closePath();ctx.fill();
+    const rounded=softenWordBridge(hull,Infinity,marginMm*2*resolution,deterministic);
+    fillPolygon(rounded);
   }
   for (let i = 1; i < layout.glyphs.length; i++) {
     const a = layout.glyphs[i - 1], b = layout.glyphs[i];
@@ -109,12 +115,11 @@ export function buildBackingContour(result, marginMm = 12.5, version = 2) {
     const hull = convexHull([...facingPoints(a, true), ...facingPoints(b, false)]);
     if (hull.length < 3) continue;
     const seamX = pad + (a.bounds.maxX + b.bounds.minX) * scale / 2;
-    const rounded = softenWordBridge(hull, seamX, marginMm * 3 * resolution);
-    ctx.beginPath(); ctx.moveTo(...rounded[0]);
-    for (const point of rounded.slice(1)) ctx.lineTo(...point);
-    ctx.closePath(); ctx.fill();
+    const rounded = softenWordBridge(hull, seamX, marginMm * 3 * resolution,deterministic);
+    fillPolygon(rounded);
   }
   const readMask = () => {
+    if(raster)return raster.mask;
     const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     return Uint8Array.from({ length: canvas.width * canvas.height }, (_, i) => pixels[i * 4 + 3] > 127 ? 1 : 0);
   };
@@ -130,14 +135,12 @@ export function buildBackingContour(result, marginMm = 12.5, version = 2) {
   }
   const bridges = lineBridgePolygons(mask, canvas.width, canvas.height, [...lines.values()]);
   for (const bridge of bridges) {
-    const hull=version===2?softenWordBridge(bridge,Infinity,marginMm*3*resolution):bridge;
-    ctx.beginPath(); ctx.moveTo(...hull[0]);
-    for (const point of hull.slice(1)) ctx.lineTo(...point);
-    ctx.closePath(); ctx.fill();
+    const hull=version===2?softenWordBridge(bridge,Infinity,marginMm*3*resolution,deterministic):bridge;
+    fillPolygon(hull);
   }
   if (bridges.length) mask = readMask();
   const rawPoints = contourFromMask(mask, canvas.width, canvas.height, Math.max(2, marginMm * 2 * resolution));
-  const points = version===2 ? smoothCutAround(rawPoints,marginMm*3*resolution) : rawPoints;
+  const points = version===2 ? smoothCutAround(rawPoints,marginMm*3*resolution,deterministic) : rawPoints;
   // Raster cells can extend beyond the nominal outer size by one pixel.
   // Keep the physical contour inside the size shown to the customer and sent to AR.
   const path = points.length ? 'M' + points.map(([x, y]) =>
@@ -151,11 +154,12 @@ export function buildBackingContour(result, marginMm = 12.5, version = 2) {
  * Bounded simplification and concave fillets. Work in the existing raster
  * coordinate system; preserve all four extrema and never rescale the sign.
  */
-export function smoothCutAround(points,radius){
+export function smoothCutAround(points,radius,deterministic=false){
+ const norm=deterministic?(x,y)=>Math.sqrt(x*x+y*y):Math.hypot;
  if(points.length<4)return points;
  const distance=(p,a,b)=>{
   const dx=b[0]-a[0],dy=b[1]-a[1],t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy||1)));
-  return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);
+  return norm(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);
  };
  const anchors=new Set([0]);
  for(const axis of [0,1])for(const sign of [-1,1]){
@@ -174,7 +178,7 @@ export function smoothCutAround(points,radius){
   const a=simplified[(i+simplified.length-1)%simplified.length],p=simplified[i],b=simplified[(i+1)%simplified.length];
   const cross=(p[0]-a[0])*(b[1]-p[1])-(p[1]-a[1])*(b[0]-p[0]);
   if(cross>=0){out.push(p);continue;}
-  const l1=Math.hypot(a[0]-p[0],a[1]-p[1]),l2=Math.hypot(b[0]-p[0],b[1]-p[1]),trim=Math.min(radius,l1*.4,l2*.4);
+  const l1=norm(a[0]-p[0],a[1]-p[1]),l2=norm(b[0]-p[0],b[1]-p[1]),trim=Math.min(radius,l1*.4,l2*.4);
   if(trim<.5){out.push(p);continue;}
   const entry=p.map((v,j)=>v+(a[j]-v)*trim/l1),exit=p.map((v,j)=>v+(b[j]-v)*trim/l2);
   const steps=Math.min(10,Math.max(2,Math.ceil(trim/2)));
@@ -241,7 +245,9 @@ export function tabletopContour(path, widthMm, heightMm, {
 
 /** Round word-bridge shoulders and bow the two long facing edges gently
  * inward. This changes only added acrylic; the padded glyphs stay underneath. */
-export function softenWordBridge(input, seamX, radius) {
+export function softenWordBridge(input, seamX, radius, deterministic=false) {
+  const norm=deterministic?(x,y)=>Math.sqrt(x*x+y*y):Math.hypot;
+  const sine=deterministic?t=>Math.round(Math.sin(t)*1e12)/1e12:Math.sin;
   const hull = input.map(point => [...point]);
   // Raster hulls contain many nearly-collinear vertices. Removing these first
   // permits a real shoulder radius instead of tiny per-pixel corner rounding.
@@ -250,7 +256,7 @@ export function softenWordBridge(input, seamX, radius) {
     changed = false;
     for (let i = 0; i < hull.length && hull.length > 4; i++) {
       const a = hull[(i + hull.length - 1) % hull.length], b = hull[i], c = hull[(i + 1) % hull.length];
-      const distance = Math.abs((c[0] - a[0]) * (a[1] - b[1]) - (a[0] - b[0]) * (c[1] - a[1])) / (Math.hypot(c[0] - a[0], c[1] - a[1]) || 1);
+      const distance = Math.abs((c[0] - a[0]) * (a[1] - b[1]) - (a[0] - b[0]) * (c[1] - a[1])) / (norm(c[0] - a[0], c[1] - a[1]) || 1);
       if (distance < radius * .09) { hull.splice(i--, 1); changed = true; }
     }
   }
@@ -263,8 +269,8 @@ export function softenWordBridge(input, seamX, radius) {
   const depth = crossingYs.length > 1 ? Math.max(...crossingYs) - Math.min(...crossingYs) : 0;
   const corners = hull.map((point, i) => {
     const a = hull[(i + hull.length - 1) % hull.length], b = hull[(i + 1) % hull.length];
-    const before = Math.hypot(a[0] - point[0], a[1] - point[1]);
-    const after = Math.hypot(b[0] - point[0], b[1] - point[1]);
+    const before = norm(a[0] - point[0], a[1] - point[1]);
+    const after = norm(b[0] - point[0], b[1] - point[1]);
     const trim = Math.min(radius, before * .45, after * .45, depth * .25 || radius);
     const toward = (other, length) => point.map((v, axis) => v + (other[axis] - v) * trim / (length || 1));
     return { point, entry: toward(a, before), exit: toward(b, after) };
@@ -278,10 +284,10 @@ export function softenWordBridge(input, seamX, radius) {
     }
     const crosses = Math.min(exit[0], next[0]) <= seamX && Math.max(exit[0], next[0]) >= seamX;
     const bow = crosses ? depth * .1 * Math.sign(next[0] - exit[0]) : 0;
-    const steps = Math.max(2, Math.ceil(Math.hypot(next[0] - exit[0], next[1] - exit[1]) / 3));
+    const steps = Math.max(2, Math.ceil(norm(next[0] - exit[0], next[1] - exit[1]) / 3));
     for (let j = 1; j < steps; j++) {
       const t = j / steps;
-      points.push([exit[0] + (next[0] - exit[0]) * t, exit[1] + (next[1] - exit[1]) * t + bow * Math.sin(Math.PI * t) ** 2]);
+      points.push([exit[0] + (next[0] - exit[0]) * t, exit[1] + (next[1] - exit[1]) * t + bow * sine(Math.PI * t) ** 2]);
     }
   }
   return points;

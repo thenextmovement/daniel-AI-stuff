@@ -1,3 +1,4 @@
+import {createRasterMask,flattenSvgPath} from './deterministic-raster.js';
 import {evaluateTubeManufacturing} from './manufacturing-profile.js?v=20261005-spacing2';
 import { parseFont } from './vendor/fontkit.js';
 import { layoutText } from './geometry.js?v=20261005-spacing2';
@@ -17,22 +18,29 @@ function finishNeonLayout(layout,routes,data){
   const refined=refineTubeRoutes(raw.layout,{connectScript:isConnectedScriptFont(fonts.get(data.fontId),data.fontId),outlineGlyphs:layout.glyphs});
   if(refined.routes.reduce((n,g)=>n+g.paths.reduce((sum,p)=>sum+p.points.length,0),0)>80000)throw new Error('Dieser Entwurf enthält zu viele Neonsegmente. Bitte vereinfachen Sie das Motiv.');
   const result=physicalTubeLayout(raw.layout,refined.routes,{axis:data.axis,valueMm:data.valueMm,marginMm:15});
-  return {...result,production:{...inspectTubeLayout(result.layout),adaptation:refined.adaptation,...evaluateTubeManufacturing(result.layout)}};
+  return {...result,...(data.rasterVersion===2?{rasterVersion:2}:{}),production:{...inspectTubeLayout(result.layout),adaptation:refined.adaptation,...evaluateTubeManufacturing(result.layout)}};
 }
-function glyphRoutes(glyph,fontId){
-  const key=`${fontId}:${glyph.glyphId}`;
+function glyphRoutes(glyph,fontId,rasterVersion){
+  const key=`${fontId}:${glyph.glyphId}:${rasterVersion===2?2:1}`;
   let route=routeCache.get(key);
   if(!route){
-    if(typeof OffscreenCanvas==='undefined'||typeof Path2D==='undefined')throw new Error('Die Neonpfad-Vorschau benötigt einen aktuellen Browser.');
     const b=glyph.bounds,w=b.maxX-b.minX,h=b.maxY-b.minY,resolution=384/Math.max(w,h),pad=4;
-    const canvas=new OffscreenCanvas(Math.ceil(w*resolution)+pad*2,Math.ceil(h*resolution)+pad*2);
-    const ctx=canvas.getContext('2d',{willReadFrequently:true});
-    ctx.setTransform(resolution,0,0,-resolution,pad+(glyph.x-b.minX)*resolution,pad+(glyph.y-b.minY)*resolution);
-    ctx.fill(new Path2D(glyph.d));
-    const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
-    const mask=Uint8Array.from({length:canvas.width*canvas.height},(_,i)=>pixels[i*4+3]>127?1:0);
-    const distances=boundaryDistances(mask,canvas.width,canvas.height);
-    const traced=pruneRasterSpurs(collapseRasterJunctions(traceMask(thinMask(mask,canvas.width,canvas.height),canvas.width,canvas.height),distances,canvas.width),distances,canvas.width);
+    const width=Math.ceil(w*resolution)+pad*2,height=Math.ceil(h*resolution)+pad*2;
+    let mask;
+    if(rasterVersion===2){
+      const raster=createRasterMask(width,height);
+      raster.fill(flattenSvgPath(glyph.d,([x,y])=>[pad+(x+glyph.x-b.minX)*resolution,pad+(-y+glyph.y-b.minY)*resolution]));
+      mask=raster.mask;
+    }else{
+      if(typeof OffscreenCanvas==='undefined'||typeof Path2D==='undefined')throw new Error('Die Neonpfad-Vorschau benötigt einen aktuellen Browser.');
+      const canvas=new OffscreenCanvas(width,height),ctx=canvas.getContext('2d',{willReadFrequently:true});
+      ctx.setTransform(resolution,0,0,-resolution,pad+(glyph.x-b.minX)*resolution,pad+(glyph.y-b.minY)*resolution);
+      ctx.fill(new Path2D(glyph.d));
+      const pixels=ctx.getImageData(0,0,width,height).data;
+      mask=Uint8Array.from({length:width*height},(_,i)=>pixels[i*4+3]>127?1:0);
+    }
+    const distances=boundaryDistances(mask,width,height);
+    const traced=pruneRasterSpurs(collapseRasterJunctions(traceMask(thinMask(mask,width,height),width,height),distances,width),distances,width);
     const local=([x,y])=>[(x-pad)/resolution,(y-pad)/resolution];
     route={paths:traced.paths.map(p=>{const smoothed=smoothRoute(p,3,traced.junctions);return {...smoothed,points:smoothed.points.map(local)};}),junctions:traced.junctions.map(local)};
     // Bounded cache: uploaded fonts cannot retain an unlimited number of raster routes.
@@ -79,7 +87,7 @@ self.onmessage = async ({ data }) => {
       }
       const routes=[];let pointCount=0;
       for(const glyph of layout.glyphs){
-        const route=glyphRoutes(glyph,data.fontId);pointCount+=route.paths.reduce((count,path)=>count+path.points.length,0);
+        const route=glyphRoutes(glyph,data.fontId,data.rasterVersion);pointCount+=route.paths.reduce((count,path)=>count+path.points.length,0);
         if(pointCount>80000)throw new Error('Diese Schrift enthält zu viele feine Details. Bitte wählen Sie eine einfachere Schrift oder kürzen Sie den Text.');
         routes.push(route);
       }

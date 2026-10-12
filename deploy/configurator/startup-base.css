@@ -83,6 +83,13 @@
 .backing-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.backing-options button{display:flex;flex-direction:column;align-items:center;gap:9px;padding:14px 5px;border:1px solid var(--config-border);border-radius:10px;background:#fff;min-width:0;font-size:11px}.backing-options button svg{width:64px;height:42px;fill:#f4f5f6;stroke:#777e88;stroke-width:1.3}.backing-options button[aria-pressed=true]{border-color:var(--pink);box-shadow:inset 0 0 0 1px var(--pink);background:#fff8fc}.backing-options button[aria-pressed=true] svg{stroke:#c52180;fill:#fbe5f2}.backing-options button:hover{border-color:#b0b3ba}.backing-options button[aria-pressed=true]:hover{border-color:var(--pink)}
 @media(max-width:360px){.backing-options{gap:5px}.backing-options button{font-size:10px;padding-inline:2px}.backing-options button svg{width:54px}}
 
+/* A failed calculation stays actionable inside the short mobile preview. */
+.preview-state.is-error{top:50%;transform:translateY(-50%);max-height:calc(100% - 24px);overflow:auto;z-index:8}
+#preview-state-message{display:block}
+#retry-calculation{display:block;margin:8px auto 0;min-height:44px;padding:8px 16px;border:0;border-radius:999px;background:#bd0078;color:#fff;font:inherit;font-weight:700;cursor:pointer}
+#retry-calculation[hidden]{display:none}
+#retry-calculation:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+
 
 /* Source: workspace.css */
 /* Compact configurator, using the approved NEONTRIP navigation and type system. */

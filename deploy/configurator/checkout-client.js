@@ -1,4 +1,5 @@
 import {minimumDeliveryBusinessDays,deliveryDateIsoForBusinessDays,deliveryOptionForDate} from './delivery-calendar.js?v=20261009-purchase2';
+import {createFailureAttemptId} from './failure-reporting.js';
 // Same-origin checkout preparation. Only a verified server receipt can navigate.
 export const CHECKOUT_SESSION_KEY='neontrip-checkout-session-v1';
 const MAX_JSON_BYTES=2_000_000;
@@ -77,9 +78,9 @@ export function checkoutPayload(cartItems,delivery){
   const items=cartItems.map(item=>{
     if(!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>99||!item.design||!item.snapshot)throw new CheckoutClientError('INVALID_DESIGN');
     const d=item.design,s=item.snapshot;
-    const design=pick(d,['text','mode','fontId','fontSource','lightMode','alignment','lineHeight','backing','mount','axis','valueMm','plateFinish','outdoor','dimmer','extraCable2m','powerSupply','accessoryQuantities']);
+    const design=pick(d,['text','mode','fontId','fontSource','rasterVersion','lightMode','alignment','lineHeight','backing','mount','axis','valueMm','plateFinish','outdoor','dimmer','extraCable2m','powerSupply','accessoryQuantities']);
     design.logo=d.mode==='logo'?pick(d.logo,['assetId','name']):null;
-    const snapshot=pick(s,['text','mode','lightMode','alignment','lineHeight','outdoor','dimmer','extraCable2m','powerSupply','accessoryQuantities']);
+    const snapshot=pick(s,['text','mode','rasterVersion','lightMode','alignment','lineHeight','outdoor','dimmer','extraCable2m','powerSupply','accessoryQuantities']);
     snapshot.logo=s.mode==='logo'?pick(s.logo,['assetId','name']):null;
     snapshot.font=pick(s.font,['id','source']);
     snapshot.sign=pick(s.sign,['widthMm','heightMm','tubeMm']);
@@ -155,6 +156,7 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
   function prepare(cartItems,delivery,expectedTotalCents){
     if(pending)return pending;
     let payload;try{payload=checkoutPayload(cartItems,delivery);}catch(error){return Promise.reject(error);}
+    const attemptId=createFailureAttemptId(cryptoApi);
     pending=(async()=>{
       const refs=requiredCheckoutAssets(payload);
       // Reserve the reference length before uploading any bytes.
@@ -166,10 +168,10 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
       if(visitorConsent!==undefined)payload.visitorConsent={...visitorConsent};
       const body=JSON.stringify(payload);
       if(new TextEncoder().encode(body).length>MAX_JSON_BYTES)throw new CheckoutClientError('PAYLOAD_TOO_LARGE');
-      const {status,result}=await request('/api/public/configurator/checkout',body,{'Content-Type':'application/json','X-Neontrip-Cart-Token':token});
+      const {status,result}=await request('/api/public/configurator/checkout',body,{'Content-Type':'application/json','X-Neontrip-Cart-Token':token,...(attemptId?{'X-Neontrip-Attempt-ID':attemptId}:{})});
       const known=['PRICE_RULE_NOT_APPROVED','SERVER_GEOMETRY_NOT_VERIFIED','MANUFACTURING_NOT_VERIFIED','TAX_SHIPPING_NOT_VERIFIED'];
       const deliveryMatches=result?.delivery?.dateIso===payload.delivery.dateIso&&result.delivery.businessDays===payload.delivery.businessDays&&result.delivery.countryCode===payload.delivery.countryCode;
-      if(status===409&&deliveryMatches&&HEX64.test(result?.id)&&result.status==='BLOCKED'&&result.checkoutUrl===null&&result.priceVersion==='unapproved'&&Array.isArray(result.blockers)&&result.blockers.length&&result.blockers.every(code=>known.includes(code)))return {id:result.id,status:'BLOCKED',blockers:result.blockers,delivery:payload.delivery};
+      if(status===409&&deliveryMatches&&HEX64.test(result?.id)&&result.status==='BLOCKED'&&result.checkoutUrl===null&&result.priceVersion==='unapproved'&&Array.isArray(result.blockers)&&result.blockers.length&&result.blockers.every(code=>known.includes(code)))return {id:result.id,status:'BLOCKED',blockers:result.blockers,delivery:payload.delivery,attemptId};
       if(status===200&&deliveryMatches&&HEX64.test(result?.id)&&result.status==='CREATED'&&typeof result.priceVersion==='string'&&/^[a-zA-Z0-9._-]{1,100}$/.test(result.priceVersion)&&result.priceVersion!=='unapproved'&&result.currency==='EUR'&&Number.isSafeInteger(result.subtotalCents)&&result.subtotalCents>0&&Array.isArray(result.blockers)&&result.blockers.length===0){
         if(consentKey(readVisitorConsent())!==sentConsentKey)throw new CheckoutClientError('CONSENT_CHANGED');
         // An older backend must not silently ignore a supplied privacy choice.
@@ -180,7 +182,7 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
       }
       if((status===200||status===202)&&HEX64.test(result?.id)&&['CREATING','UNKNOWN'].includes(result.status))throw new CheckoutClientError('CHECKOUT_UNCONFIRMED');
       throw new CheckoutClientError(result?.error?.code||'INVALID_RESPONSE');
-    })().finally(()=>{pending=null;});
+    })().catch(error=>{if(error&&typeof error==='object')error.attemptId=attemptId;throw error;}).finally(()=>{pending=null;});
     return pending;
   }
   return {prepare};

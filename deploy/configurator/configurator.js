@@ -9,12 +9,15 @@ import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufactur
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
 import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261008-shopping1';
-import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent} from './checkout-client.js?v=20261009-purchase2';
-import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261009-purchase2';
+import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent} from './checkout-client.js?v=20261012-purchase-repair';
+import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261012-purchase-repair';
 import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261009-purchase2';
 import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261009-purchase2';
+import {createFailureReporter,createFailureAttemptId} from './failure-reporting.js';
 const $ = selector => document.querySelector(selector);
+const failureReporter=createFailureReporter();
+let calculationFailureAttemptId=null,cartStorageFailureAttemptId=null;
 // Generated product entries share the editor and pricing contract. A product entry
 // must never replace the visitor's draft from the ordinary configurator route.
 const shoppingOffer=JSON.parse($('#shopping-offer')?.textContent||'null');
@@ -152,7 +155,7 @@ let designRendering=false,compactLineSpacing=false,budgetAdvisor,budgetSelecting
 // Spacing edits retain the physical letter scale, including across an invalid oversized draft.
 let spacingAnchor=null;
 const spacingContent=text=>String(text).replace(/[^\S\r\n]/gu,'');
-const storedPriceCache=new Map();
+const storedPriceCache=new Map(),storedPriceFailureAttempts=new Map();
 Object.assign(state,priceOptions());
 let presetKey='',presetRevision=0,lastBackingExampleResult=null;
 let revision = 0, fontSelectionRevision = 0, requestId = 0, timer, uploadedFace, fontFile;
@@ -170,7 +173,7 @@ let cartAdding=false,editingCartId=null;
 let shareDesignKey=null;
 function captureDesign(){
   const photo=ROOMS.find(room=>room.id==='custom');
-  return {text:$('#sign-text').value,mode:state.mode,logo:state.logo?{...state.logo}:null,font:state.font,fontId:state.fontId,fontSource:state.mode==='logo'?null:state.fontSource,retainedFontSource:state.mode==='logo'?state.fontSource:null,alignment:state.alignment,lineHeight:state.lineHeight,
+  return {...(state.rasterVersion===2?{rasterVersion:2}:{}),text:$('#sign-text').value,mode:state.mode,logo:state.logo?{...state.logo}:null,font:state.font,fontId:state.fontId,fontSource:state.mode==='logo'?null:state.fontSource,retainedFontSource:state.mode==='logo'?state.fontSource:null,alignment:state.alignment,lineHeight:state.lineHeight,
     axis:state.axis,valueMm:state.valueMm,color:state.color.id,wordColors:[...state.wordColors].map(([key,color])=>[key,color.id]),charColors:[...state.charColors].map(([key,color])=>[key,color.id]),lightMode:state.lightMode,
     ...priceOptions(state),light:state.light,dimensions:state.dimensions,scene:state.scene,room:state.room,backing:state.backing,plateFinish:{...state.plateFinish},mount:state.mount,previousRoom:state.previousRoom,
     positions:[...positions],cameras:[...cameras],photo:photo?{assetId:photo.assetId,spanMm:photo.spanMm,photoWidth:photo.photoWidth,photoHeight:photo.photoHeight,calibration:photo.calibration||null}:null};
@@ -284,41 +287,52 @@ async function moveHistory(delta){
 
 
 function startWorker() {
-  worker = new Worker(new URL('./font-worker.js?v=20261005-spacing2',import.meta.url), {type:'module'});
+  worker = new Worker(new URL('./font-worker.js?v=20261012-purchase-repair',import.meta.url), {type:'module'});
+  const instance=worker;
   worker.onmessage = ({data}) => {
+    if(worker!==instance)return;
     const request = pending.get(data.requestId);
     if (!request) return;
     clearTimeout(request.timeout); pending.delete(data.requestId);
     data.ok ? request.resolve(data) : request.reject(Object.assign(new Error(data.error),{code:data.code}));
   };
-  worker.onerror = () => resetWorker('Die Schriftverarbeitung wurde unterbrochen. Bitte wähle die Schrift erneut.');
+  worker.onerror = () => {if(worker===instance)resetWorker(Object.assign(new Error('Die Schriftverarbeitung wurde unterbrochen.'),{code:'WORKER_INTERRUPTED'}));};
 }
-function resetWorker(message) {
+function resetWorker(error) {
+  error.workerRestarted=true;
   worker.terminate(); loaded.clear();
-  for (const request of pending.values()) {clearTimeout(request.timeout);request.reject(new Error(message));}
+  for (const request of pending.values()) {clearTimeout(request.timeout);request.reject(error);}
   pending.clear(); startWorker();
 }
-function callWorker(data) {
+function callWorker(data,{activeRevision=null}={}) {
   return new Promise((resolve,reject) => {
     const id = ++requestId;
-    const timeout = setTimeout(() => resetWorker('Die Schrift konnte nicht rechtzeitig verarbeitet werden. Bitte wähle eine andere Schrift.'),12000);
+    const timeout = setTimeout(() => {
+      if(!pending.has(id))return;
+      const error=Object.assign(new Error('Die Berechnung wurde unterbrochen.'),{code:'WORKER_TIMEOUT'});
+      // A comparison, size preset or superseded design must never abort the
+      // newer active design. Only its own deadline may restart the worker.
+      if(activeRevision!==null&&activeRevision===revision)resetWorker(error);
+      else{pending.delete(id);reject(error);}
+    },12000);
     pending.set(id,{resolve,reject,timeout}); worker.postMessage({...data,requestId:id});
   });
 }
-function ensureFont() {
+function ensureFont(activeRevision) {
   const id = state.fontId;
   if (!loaded.has(id)) {
     const input = id.startsWith('upload-') ? {bytes:fontFile} : {url:new URL(`./assets/fonts/${id}.ttf`,import.meta.url).href};
-    loaded.set(id,callWorker({type:'load',fontId:id,...input}).catch(error => {loaded.delete(id);throw error;}));
+    const loading=callWorker({type:'load',fontId:id,...input},{activeRevision}).catch(error => {if(loaded.get(id)===loading)loaded.delete(id);throw error;});
+    loaded.set(id,loading);
   }
   return loaded.get(id);
 }
-async function ensureLogo(){
+async function ensureLogo(activeRevision){
   if(!state.logo)throw new Error('Bitte lade zuerst dein Logo hoch.');
   const id=state.logo.assetId,asset=await getDraftAsset(id,'logo');
   if(!asset.raster)asset.raster=await decodeLogoFile(asset.file);
   // Worker owns its bounded cache; repeat load so an evicted logo can be edited.
-  return callWorker({type:'load-logo',logoId:id,mask:asset.raster.mask,width:asset.raster.width,height:asset.raster.height});
+  return callWorker({type:'load-logo',logoId:id,mask:asset.raster.mask,width:asset.raster.width,height:asset.raster.height},{activeRevision});
 }
 const cm = mm => new Intl.NumberFormat('de-DE',{minimumFractionDigits:0,maximumFractionDigits:1}).format(mm/10);
 const inputCm = mm => String(Math.round(mm)/10);
@@ -352,7 +366,7 @@ function priceCorrectionHint(price){
   if(price?.status==='missing-font')return 'Bitte die Schrift erneut auswählen.';
   if(price?.status==='invalid-mount')return price.reasons?.includes(TABLE_STAND_HEIGHT_MESSAGE)?'Tischständer nur bis 50 cm Außenhöhe.':'Bitte eine passende Montage wählen.';
   if(price?.status==='invalid-option')return 'Bitte die Ausstattung anpassen.';
-  if(price?.status==='calculation-error')return 'Bitte erneut versuchen oder neu laden.';
+  if(price?.status==='calculation-error')return 'Bitte „Erneut berechnen“ in der Vorschau wählen.';
   return 'Bitte den Text im Textfeld anpassen.';
 }
 function updatePagePurchase(){
@@ -410,10 +424,23 @@ async function storedPrice(design){
         if(design.fontId.startsWith('upload-')){const asset=await getDraftAsset(design.fontId,'font');await callWorker({type:'load',fontId:design.fontId,bytes:asset.file});}
         else if(FONTS.includes(design.fontId))await callWorker({type:'load',fontId:design.fontId,url:new URL('./assets/fonts/'+design.fontId+'.ttf',import.meta.url).href});
         else throw new Error('Schrift fehlt.');
-      }catch{throw Object.assign(new Error('Bitte den gespeicherten Entwurf öffnen und seine Schrift erneut auswählen oder hochladen.'),{code:'MISSING_FONT'});}
-      const result=await callWorker({type:'render',fontId:design.fontId,text:design.text,alignment:design.alignment,lineHeight:design.lineHeight,axis:design.axis,valueMm:design.valueMm});
+      }catch(error){if(['WORKER_TIMEOUT','WORKER_INTERRUPTED','FONT_ERROR'].includes(error.code))throw error;throw Object.assign(new Error('Bitte den gespeicherten Entwurf öffnen und seine Schrift erneut auswählen oder hochladen.'),{code:'MISSING_FONT'});}
+      const result=await callWorker({type:'render',...(design.rasterVersion===2?{rasterVersion:2}:{}),fontId:design.fontId,text:design.text,alignment:design.alignment,lineHeight:design.lineHeight,axis:design.axis,valueMm:design.valueMm});
+      storedPriceFailureAttempts.delete(key);
       return priceForResult(design,result);
-    })().catch(error=>{storedPriceCache.delete(key);return {status:priceStatusForError(error),net:null,reasons:[errorMessage(error)]};});
+    })().catch(error=>{
+      storedPriceCache.delete(key);
+      const status=priceStatusForError(error);
+      if(status==='calculation-error'){
+        if(!storedPriceFailureAttempts.has(key)){
+          if(storedPriceFailureAttempts.size>=100)storedPriceFailureAttempts.delete(storedPriceFailureAttempts.keys().next().value);
+          storedPriceFailureAttempts.set(key,createFailureAttemptId());
+        }
+        const code=error.code==='WORKER_TIMEOUT'?'WORKER_TIMEOUT':error.code==='WORKER_INTERRUPTED'?'WORKER_UNAVAILABLE':error.code==='MISSING_FONT'?'FONT_LOAD_FAILED':'CALCULATION_FAILED';
+        void failureReporter.report({stage:'calculation',code,attemptId:storedPriceFailureAttempts.get(key)});
+      }
+      return {status,net:null,reasons:[errorMessage(error)]};
+    });
     if(storedPriceCache.size>100)storedPriceCache.delete(storedPriceCache.keys().next().value);
     storedPriceCache.set(key,calculation);
   }
@@ -456,6 +483,21 @@ async function refreshCartPrice(){
   total.dataset.priceVersion=PRICE_RULES.version;
   refreshCartButtons();return cartPricesValid;
 }
+// Existing generated Shopping pages share this module and may still contain
+// the plain status node. Upgrade it without discarding their product markup.
+if(!$('#preview-state-message')){
+  const message=document.createElement('span');message.id='preview-state-message';message.textContent=$('#preview-state').textContent;
+  const retry=document.createElement('button');retry.id='retry-calculation';retry.type='button';retry.hidden=true;retry.textContent='Erneut berechnen';
+  $('#preview-state').replaceChildren(message,retry);
+}
+function showPreviewState(message,{error=false,retry=false}={}){
+  $('#preview-state-message').textContent=message;
+  $('#retry-calculation').hidden=!retry;
+  $('#retry-calculation').disabled=designRendering;
+  $('#preview-state').hidden=!message;
+  $('#preview-state').classList.toggle('is-error',error);
+}
+$('#retry-calculation').addEventListener('click',()=>{if(!designRendering){if(shoppingOffer&&!draftReady)bootDraft();else update();}});
 function clearResult(message='',error=false,status='invalid-text') {
   invalidatePrice(false);
   designRendering=false;lastBackingExampleResult=null;presetKey='';presetRevision++;
@@ -467,7 +509,7 @@ function clearResult(message='',error=false,status='invalid-text') {
   updatePagePurchase();$('.design-price small').textContent=priceCorrectionHint(state.price);$('.design-price').title=message;
   $('#minimum-size-note').textContent='';for(const b of document.querySelectorAll('[data-width-cm]')){b.disabled=true;const price=b.querySelector('.preset-price');if(price)price.textContent=priceLabel(state.price);}
   $('#summary-size').textContent='—';$('#choice-value-3').textContent='Größe prüfen';$('#choice-plate-size').textContent='—';$('#backing-size').textContent='—';
-  $('#preview-state').textContent=error?priceLabel(state.price)+'. '+priceCorrectionHint(state.price):message;$('#preview-state').hidden=!message;$('#preview-state').classList.toggle('is-error',error);
+  showPreviewState(status==='calculation-error'?'Die Berechnung wurde unterbrochen. Dein Entwurf bleibt in diesem Tab erhalten.':message,{error,retry:status==='calculation-error'});
   $('#sign-preview').setAttribute('aria-label',message || 'Keine Vorschau');
   clearArIllustration();
 }
@@ -478,10 +520,10 @@ function priceStatusForError(error){
 function errorMessage(error) {
   if (error.code === 'EMPTY_TEXT') return 'Gib deinen Text ein, um die Vorschau zu sehen.';
   if (error.code === 'UNSUPPORTED_GLYPH') return error.message;
-  if(!error.code&&!error.priceStatus)return 'Die Vorschau konnte nicht vollständig berechnet werden. Bitte erneut versuchen oder die Seite neu laden.';
+  if(!error.code&&!error.priceStatus)return 'Die Vorschau konnte nicht vollständig berechnet werden. Bitte „Erneut berechnen“ in der Vorschau wählen.';
   return error.message;
 }
-async function update(sizeNotice='') {
+async function update(sizeNotice='',recoveryAttempt=0) {
   // A direct change supersedes a pending text update; cancelled renders keep the fit request.
   clearTimeout(timer);
   const rev=++revision,fitLines=compactLineSpacing;designRendering=true;invalidatePrice();$('#save-design').disabled=true;
@@ -504,13 +546,16 @@ async function update(sizeNotice='') {
   if(state.mode==='text'&&!text.trim()) {clearResult('Gib deinen Text ein.',false,'empty');return;}
   if(state.mode==='text'&&text.length>160) {clearResult('Bitte verwende höchstens 160 Zeichen.',true);return;}
   if(state.mode==='logo'&&!state.logo){clearResult('Wähle „Text gestalten“, um einen Schriftzug zu erstellen.',false,'unsupported-mode');return;}
-  $('#preview-state').textContent='Vorschau wird aktualisiert …';$('#preview-state').classList.remove('is-error');$('#preview-state').hidden=false;
+  showPreviewState(recoveryAttempt?'Berechnung wird erneut gestartet …':'Vorschau wird aktualisiert …');
+  let calculationPhase='font';
   try {
-    if(state.mode==='logo')await ensureLogo();else await ensureFont();
+    if(state.mode==='logo')await ensureLogo(rev);else await ensureFont(rev);
     if(rev!==revision)return;
+    calculationPhase='render';
     let lineHeight=state.lineHeight;
-    const renderAt=valueMm=>callWorker(state.mode==='logo'?{type:'render-logo',logoId:state.logo.assetId,axis:state.axis,valueMm}:{type:'render',fontId:state.fontId,text,alignment:state.alignment,lineHeight,axis:state.axis,valueMm});
+    const renderAt=valueMm=>callWorker(state.mode==='logo'?{type:'render-logo',rasterVersion:2,logoId:state.logo.assetId,axis:state.axis,valueMm}:{type:'render',rasterVersion:2,fontId:state.fontId,text,alignment:state.alignment,lineHeight,axis:state.axis,valueMm},{activeRevision:rev});
     let result=await renderAt(state.valueMm);
+    if(rev!==revision)return;
     const keepSpacing=spacingAnchor&&spacingAnchor.fontId===state.fontId&&spacingAnchor.content===spacingContent(text)&&spacingAnchor.lineHeight===lineHeight;
     if(keepSpacing){
       const tube=MANUFACTURING_PROFILE.tubeMm;
@@ -560,7 +605,7 @@ async function update(sizeNotice='') {
         $('#text-error').textContent=$('#size-error').textContent;$('#text-error').hidden=false;
       }
     }
-    compactLineSpacing=false;state.result=result;syncColorCharacters();
+    compactLineSpacing=false;state.result=result;state.rasterVersion=result.rasterVersion;syncColorCharacters();
     if(typeof sizeNotice==='string'&&sizeNotice&&$('#size-error').hidden){$('#size-error').textContent=sizeNotice;$('#size-error').hidden=false;}
     syncOuterSize(result.size);
     $('#backing-size').textContent=dimensions(result.size.backing);
@@ -569,11 +614,21 @@ async function update(sizeNotice='') {
     $('#summary-font').textContent=state.mode==='logo'?'Eigenes Logo':state.font;
     $('#preview-state').hidden=true;
     
-    designRendering=false;paint();$('#save-design').disabled=false;
+    calculationPhase='paint';designRendering=false;paint();$('#save-design').disabled=false;calculationFailureAttemptId=null;
   } catch(error) {
     if(rev!==revision)return;
+    // Recover one interrupted local calculation, never a cart or checkout request.
+    if(recoveryAttempt===0&&['WORKER_TIMEOUT','WORKER_INTERRUPTED'].includes(error.code)){
+      if(!error.workerRestarted)resetWorker(error);
+      return update(sizeNotice,1);
+    }
     const message=errorMessage(error);designRendering=false;
     clearResult(message,true,priceStatusForError(error));$('#text-error').textContent=message;$('#text-error').hidden=false;
+    if(priceStatusForError(error)==='calculation-error'){
+      calculationFailureAttemptId??=createFailureAttemptId();
+      const code=error.code==='WORKER_TIMEOUT'?'WORKER_TIMEOUT':error.code==='WORKER_INTERRUPTED'?'WORKER_UNAVAILABLE':calculationPhase==='font'?'FONT_LOAD_FAILED':calculationPhase==='render'||calculationPhase==='paint'?'RENDER_FAILED':'CALCULATION_FAILED';
+      void failureReporter.report({stage:'calculation',code,attemptId:calculationFailureAttemptId});
+    }
   }
 }
 // Preview contour, in physical mm. Manufacturing still requires a separate check.
@@ -1179,11 +1234,12 @@ async function calculateFontQuote(context,id,entry,key,isCurrent=()=>key===fontQ
   if(!loaded.has(id)){
     const input=entry?{bytes:(await getCatalogSource(entry)).bytes}:{url:new URL(`./assets/fonts/${id}.ttf`,import.meta.url).href};
     if(!isCurrent())return null;
-    loaded.set(id,callWorker({type:'load',fontId:id,...input}).catch(error=>{loaded.delete(id);throw error;}));
+    const loading=callWorker({type:'load',fontId:id,...input}).catch(error=>{if(loaded.get(id)===loading)loaded.delete(id);throw error;});
+    loaded.set(id,loading);
   }
   await loaded.get(id);if(!isCurrent())return null;
   const design={...context,fontId:id};
-  const render=()=>callWorker({type:'render',fontId:id,text:design.text,alignment:design.alignment,lineHeight:design.lineHeight,axis:design.axis,valueMm:design.valueMm});
+  const render=()=>callWorker({type:'render',rasterVersion:2,fontId:id,text:design.text,alignment:design.alignment,lineHeight:design.lineHeight,axis:design.axis,valueMm:design.valueMm});
   let result=await render();
   if(design.text.includes('\n')){
     const lineGap=()=>minimumTextGroupClearance({...result.layout,glyphs:result.layout.glyphs.map(g=>({...g,wordIndex:0}))}).distanceMm;
@@ -1581,7 +1637,7 @@ async function selectCatalogFont(entry){
     const fontId=catalogFontAssetId(entry),{bytes,licenseText}=await getCatalogSource(entry,controller.signal);
     if(token!==fontSelectionRevision)return;
     await callWorker({type:'load',fontId,bytes});if(token!==fontSelectionRevision)return;
-    await callWorker({type:'render',fontId,text:$('#sign-text').value.trim()?$('#sign-text').value:'Neon',alignment:state.alignment,lineHeight:state.lineHeight,axis:state.axis,valueMm:state.valueMm});if(token!==fontSelectionRevision)return;
+    await callWorker({type:'render',rasterVersion:2,fontId,text:$('#sign-text').value.trim()?$('#sign-text').value:'Neon',alignment:state.alignment,lineHeight:state.lineHeight,axis:state.axis,valueMm:state.valueMm});if(token!==fontSelectionRevision)return;
     const face=new FontFace('NT-Uploaded',bytes);await face.load();if(token!==fontSelectionRevision)return;
     await rememberAsset(fontId,bytes);if(token!==fontSelectionRevision)return;
     if(uploadedFace)document.fonts.delete(uploadedFace);uploadedFace=face;document.fonts.add(face);fontFile=bytes;loaded.set(fontId,Promise.resolve());
@@ -1989,6 +2045,7 @@ function captureOrderSnapshot(){
   const words=state.words.map(word=>({...word,color:{...wordColor(word)}}));
   const characterSummary=new Map();if(state.mode!=='logo')for(const glyph of result.layout.glyphs){const target=state.characters.find(c=>c.key===glyph.colorKey);if(!target)continue;const color=glyphColor(glyph),fallback=glyph.charMapping==='line-fallback',word=state.words.find(w=>w.lineIndex===glyph.lineIndex&&w.wordIndex===glyph.wordIndex);characterSummary.set(glyph.colorKey+':'+(fallback?glyph.wordIndex:'')+':'+color.id,{...target,text:fallback?(word?.text||target.text):target.text,color:{...color}});}
   return structuredClone({
+    ...(result.rasterVersion===2?{rasterVersion:2}:{}),
     text:designName(),mode:state.mode,lightMode:state.lightMode,characters:[...characterSummary.values()],logo:state.logo?{...state.logo}:null,font:{id:state.fontId,name:state.mode==='logo'?'Eigenes Logo':state.font,source:state.mode==='logo'?null:state.fontSource,uploaded:state.mode!=='logo'&&state.fontId.startsWith('upload-')},
     alignment:state.alignment,lineHeight:state.lineHeight,words,
     sign:{...result.size.exact.design,tubeMm:result.layout.tubeMm,
@@ -2206,7 +2263,9 @@ const checkoutClient=createCheckoutClient({
   readVisitorConsent:()=>cookiebotVisitorConsent(window.Cookiebot),
   readFile:async(id,kind)=>(await getDraftAsset(id,kind)).file
 });
+function cartItemNeedsUpdate(item){return item.design.rasterVersion!==2||item.snapshot.rasterVersion!==2;}
 function refreshCartButtons(){
+  const needsUpdate=cartItems.some(cartItemNeedsUpdate);
   const count=cartItems.reduce((n,item)=>n+item.quantity,0);
   $('#cart-count').textContent=String(count);$('#header-cart-count').textContent=String(count);
   $('#header-cart').setAttribute('aria-label',`Warenkorb öffnen, ${count} Artikel`);
@@ -2215,11 +2274,10 @@ function refreshCartButtons(){
   $('#add-to-cart').lastChild.textContent=editingCartId?'Änderungen übernehmen':'In den Warenkorb';
   $('#review-add-to-cart').disabled=!cartReady||!orderSnapshot?.mount.valid||orderSnapshot?.price.status!=='calculated';
   $('#cart-request-quote').disabled=!cartReady||!cartItems.length||!cartPricesValid||cartSyncing||cartEditing;
-  $('#cart-delivery-open').disabled=!cartReady||!cartItems.length||!cartPricesValid||cartSyncing||cartEditing;
-  const hasUnapprovedCarrier=cartItems.some(item=>item.snapshot.plate.type==='freestanding');
-  $('#prepare-checkout').disabled=!cartReady||!cartItems.length||!cartPricesValid||cartSyncing||cartEditing||hasUnapprovedCarrier||!selectedDelivery;
+  $('#cart-delivery-open').textContent=needsUpdate?'Entwurf aktualisieren':'Liefertermin wählen';
+  $('#cart-delivery-open').disabled=!cartReady||!cartItems.length||(!needsUpdate&&!cartPricesValid)||cartSyncing||cartEditing;
+  $('#prepare-checkout').disabled=!cartReady||!cartItems.length||needsUpdate||!cartPricesValid||cartSyncing||cartEditing||!selectedDelivery;
   $('#cart-pay').disabled=$('#prepare-checkout').disabled;
-  if(hasUnapprovedCarrier)$('#checkout-preparation-status').textContent='Freigestellte Acrylstreben können erst nach technischer Prüfung an die Angebotserstellung übergeben werden. Der Entwurf bleibt auf diesem Gerät gespeichert.';
 }
 async function persistCart(){
   const revision=++cartWriteRevision;
@@ -2230,9 +2288,12 @@ async function persistCart(){
     for(const [id,kind] of refs){const asset=await getDraftAsset(id,kind);if(!asset.persisted){await saveAsset(id,asset.file);asset.persisted=true;}}
     if(revision!==cartWriteRevision)return;
     await saveAsset(CART_STORAGE_KEY,saved);
-    if(revision===cartWriteRevision)$('#cart-storage-status').textContent='Auf diesem Gerät gespeichert. Noch keine Bestellung.';
+    if(revision===cartWriteRevision){$('#cart-storage-status').textContent='Auf diesem Gerät gespeichert. Noch keine Bestellung.';cartStorageFailureAttemptId=null;}
   }catch{
-    if(revision===cartWriteRevision)$('#cart-storage-status').textContent='Warenkorb nur in diesem Tab verfügbar. Speichern auf diesem Gerät nicht möglich.';
+    if(revision===cartWriteRevision){
+      $('#cart-storage-status').textContent='Warenkorb nur in diesem Tab verfügbar. Speichern auf diesem Gerät nicht möglich.';
+      cartStorageFailureAttemptId??=createFailureAttemptId();void failureReporter.report({stage:'cart',code:'CART_STORAGE_FAILED',attemptId:cartStorageFailureAttemptId});
+    }
   }
 }
 async function renderCartAccessories(host,item){
@@ -2270,7 +2331,7 @@ function accessorySummary(design,multiplier=1){
  return Object.entries(accessoryCounts(design)).filter(([,n])=>n>0).map(([key,n])=>(n*multiplier)+' × '+names[key]).join(' · ');
 }
 function renderCart(){
-  if(!cartSyncing)$('#checkout-preparation-status').textContent='';
+  if(!cartSyncing)$('#checkout-preparation-status').textContent=cartItems.some(cartItemNeedsUpdate)?'Bitte aktualisiere die markierten Entwürfe vor der Bestellung. Prüfe danach Vorschau, Maße und Preis und übernimm die Änderungen.':'';
   for(const id of cartCompareIds)if(!cartItems.some(item=>item.id===id))cartCompareIds.delete(id);
   const list=$('#cart-items');list.replaceChildren();
   for(const item of cartItems){
@@ -2284,9 +2345,15 @@ function renderCart(){
     displayStoredPrice(price,item.design,item.quantity,{cartLine:true});
     const controls=document.createElement('div');controls.className='cart-item-controls';
     const label=document.createElement('label'),qty=document.createElement('input');label.textContent='Menge';qty.type='number';qty.min='1';qty.max='99';qty.step='1';qty.value=item.quantity;qty.dataset.cartQuantity=item.id;qty.setAttribute('aria-label',`Menge für ${item.snapshot.text}`);label.append(qty);controls.append(label);
-    for(const [action,text] of [['edit','Bearbeiten'],['remove','Entfernen']]){const button=document.createElement('button');button.type='button';button.dataset.cartAction=action;button.dataset.itemId=item.id;button.textContent=text;button.setAttribute('aria-label',`${item.snapshot.text}: ${text}`);controls.append(button);}
+    for(const [action,text] of [['edit',cartItemNeedsUpdate(item)?'Entwurf aktualisieren':'Bearbeiten'],['remove','Entfernen']]){const button=document.createElement('button');button.type='button';button.dataset.cartAction=action;button.dataset.itemId=item.id;button.textContent=text;button.setAttribute('aria-label',`${item.snapshot.text}: ${text}`);controls.append(button);}
     const compareLabel=document.createElement('label'),compareCheck=document.createElement('input');compareLabel.className='cart-compare-choice';compareCheck.type='checkbox';compareCheck.dataset.cartCompare=item.id;compareCheck.checked=cartCompareIds.has(item.id);compareCheck.setAttribute('aria-label',item.snapshot.text+' zum Vergleich auswählen');compareLabel.append(compareCheck,document.createTextNode('Zum Vergleich auswählen'));
-    body.append(heading,summary,colors,accessoryLine,price,controls,compareLabel);card.append(picture,body);list.append(card);renderCartAccessories(accessoryLine,item);
+    body.append(heading,summary,colors,accessoryLine);
+    if(cartItemNeedsUpdate(item)){
+      const notice=document.createElement('p');notice.className='cart-draft-update-note';
+      notice.textContent='Bisheriger Preisstand: Dieser gespeicherte Entwurf verwendet eine ältere Vorschau. Bitte aktualisiere ihn vor der Bestellung. Dein bisheriger Entwurf bleibt bis zur Übernahme erhalten.';
+      body.append(notice);
+    }
+    body.append(price,controls,compareLabel);card.append(picture,body);list.append(card);renderCartAccessories(accessoryLine,item);
   }
   updateCartComparison();refreshCartPrice();
   $('#cart-empty').hidden=cartItems.length>0;$('#cart-checkout').hidden=!cartItems.length;refreshCartButtons();
@@ -2353,7 +2420,7 @@ function refreshDeliverySummary(){
   const amount=cartTotals.subtotalGross+(selectedDelivery?.feeGross||0);
   $('#cart-subtotal').textContent=cartCurrency.format(cartTotals.subtotalGross);
   $('#cart-delivery-fee').textContent=selectedDelivery?(selectedDelivery.feeNet===0?'Gratis':cartCurrency.format(selectedDelivery.feeGross)):'Bitte Termin wählen';
-  $('#cart-total-label').textContent=selectedDelivery?'Gesamtpreis inkl. Lieferung':'Zwischensumme';
+  $('#cart-total-label').textContent=cartItems.some(cartItemNeedsUpdate)?(selectedDelivery?'Bisheriger Gesamtpreis inkl. Lieferung':'Bisherige Zwischensumme'):(selectedDelivery?'Gesamtpreis inkl. Lieferung':'Zwischensumme');
   $('#cart-total-price').textContent=cartCurrency.format(Math.round(amount*100)/100);
   // Informational breakdown of the displayed German gross total, including
   // delivery when selected. Rounding reconciles net + VAT exactly to that total.
@@ -2373,7 +2440,10 @@ const deliveryCalendar=initDeliveryCalendar($('#delivery-calendar-host'),{
   }
 });
 function openDeliverySelection(){
-  if(!cartReady||!cartItems.length||!cartPricesValid||!cartTotals||cartEditing||cartSyncing)return;
+  if(!cartReady||!cartItems.length||cartEditing||cartSyncing)return;
+  const legacyItem=cartItems.find(cartItemNeedsUpdate);
+  if(legacyItem){void editCartItem(legacyItem);return;}
+  if(!cartPricesValid||!cartTotals)return;
   refreshDeliverySummary();$('#cart-dialog').close();$('#delivery-checkout-status').textContent='';deliveryCalendar.refresh({resetSelection:true});$('#delivery-dialog').showModal();
 }
 $('#cart-delivery-open').addEventListener('click',openDeliverySelection);
@@ -2428,7 +2498,12 @@ $('#cart-items').addEventListener('click',async event=>{
   if(button.dataset.cartAction==='remove'){
     cartItems=cartItems.filter(candidate=>candidate.id!==item.id);if(!cartItems.length)selectedDelivery=null;if(editingCartId===item.id)editingCartId=null;renderCart();await persistCart();return;
   }
-  cartEditing=true;commitHistory();draftApplying=true;
+  await editCartItem(item,button.dataset.cartAction);
+});
+async function editCartItem(item,action='edit'){
+  if(cartEditing||cartSyncing)return;
+  const needsUpdate=cartItemNeedsUpdate(item);
+  cartEditing=true;commitHistory();draftApplying=true;refreshCartButtons();
   $('#cart-items').inert=true;$('.editor').inert=true;$('.editor-tabs').inert=true;$('.preview-column').inert=true;
   $('#cart-dialog').querySelectorAll('[data-close]').forEach(b=>b.disabled=true);
   $('#cart-storage-status').textContent='Entwurf wird geladen …';
@@ -2436,10 +2511,11 @@ $('#cart-items').addEventListener('click',async event=>{
     await applyDesign(item.design);
     if(!state.result)throw new Error('Der gespeicherte Entwurf konnte nicht neu gezeichnet werden. Bitte prüfe Schrift und Größe.');
     acceptReplacementDraft();editingCartId=item.id;draftApplying=false;commitHistory();persistDesign(captureDesign());await persistCart();
-    $('#cart-dialog').close();setStep(button.dataset.cartAction==='accessories'?5:0,true);refreshCartButtons();
+    $('#cart-add-status').textContent=needsUpdate?`Bisher ${priceLabel(item.snapshot.price)} pro Schild. Der oben angezeigte Preis gilt für den aktualisierten Entwurf. Prüfe Vorschau, Maße und Preis. Erst mit „Änderungen übernehmen“ ersetzt du die gespeicherte Position.`:'';
+    $('#cart-dialog').close();setStep(needsUpdate||action==='accessories'?5:0,true);refreshCartButtons();
   }catch(error){$('#cart-storage-status').textContent=error.message;}
-  finally{cartEditing=false;draftApplying=false;$('#cart-items').inert=false;$('.editor').inert=false;$('.editor-tabs').inert=false;$('.preview-column').inert=false;$('#cart-dialog').querySelectorAll('[data-close]').forEach(b=>b.disabled=false);refreshHistoryButtons();}
-});
+  finally{cartEditing=false;draftApplying=false;$('#cart-items').inert=false;$('.editor').inert=false;$('.editor-tabs').inert=false;$('.preview-column').inert=false;$('#cart-dialog').querySelectorAll('[data-close]').forEach(b=>b.disabled=false);refreshHistoryButtons();refreshCartButtons();}
+}
 $('#cart-dialog').addEventListener('cancel',event=>{if(cartEditing||cartSyncing)event.preventDefault();});
 const quoteClient=createQuoteClient({readAttempt:readAsset,saveAttempt:saveAsset,claimAttempt:saveAssetIfMissing});
 let quoteCart=null,quoteSubmitting=false,quoteDelivery=null;
@@ -2480,21 +2556,25 @@ function setCheckoutBusy(busy){
  $('#cart-items').inert=busy;refreshCartButtons();
 }
 async function goToCheckout(){
- if(!$('#delivery-dialog').open||cartSyncing||cartEditing||!cartReady||!cartPricesValid||!selectedDelivery||!cartItems.length)return;
+ if(!$('#delivery-dialog').open||cartSyncing||cartEditing||!cartReady||!cartItems.length)return;
+ if(cartItems.some(cartItemNeedsUpdate)){$('#delivery-dialog').close();showCart();return;}
+ if(!cartPricesValid||!selectedDelivery)return;
  const status=$('#delivery-checkout-status');
- if(cartItems.some(item=>item.snapshot.plate.type==='freestanding')){status.textContent='Für freigestellte Acrylstreben bitte zuerst ein Angebot anfragen.';return;}
  const reviewedDelivery={...selectedDelivery},reviewedTotal=Math.round((cartTotals.subtotalGross+selectedDelivery.feeGross)*100),reviewedItems=JSON.stringify(cartItems);
- let navigating=false;setCheckoutBusy(true);status.textContent='Deine sichere Kasse wird vorbereitet …';
+ let navigating=false,checkoutRequested=false;setCheckoutBusy(true);status.textContent='Deine sichere Kasse wird vorbereitet …';
  try{
   if(!await refreshCartPrice())throw new Error('Bitte prüfe die markierten Entwürfe im Warenkorb.');
   const expectedTotalCents=Math.round((cartTotals.subtotalGross+(selectedDelivery?.feeGross||0))*100);
   if(!selectedDelivery||reviewedDelivery.dateIso!==selectedDelivery.dateIso||reviewedDelivery.businessDays!==selectedDelivery.businessDays||reviewedDelivery.feeGross!==selectedDelivery.feeGross||reviewedTotal!==expectedTotalCents||reviewedItems!==JSON.stringify(cartItems)){
    deliveryCalendar.refresh({resetSelection:true});throw new Error('Termin oder Gesamtpreis wurde aktualisiert. Bitte prüfe deine Auswahl und klicke erneut auf „Zur Kasse“.');
   }
-  const receipt=await checkoutClient.prepare(cartItems,selectedDelivery,expectedTotalCents);
-  if(receipt.status!=='CREATED')throw new Error('Die Kasse ist für diese Konfiguration noch nicht verfügbar. Dein Warenkorb bleibt gespeichert.');
+  checkoutRequested=true;const receipt=await checkoutClient.prepare(cartItems,selectedDelivery,expectedTotalCents);
+  if(receipt.status!=='CREATED')throw Object.assign(new Error('Die Kasse ist für diese Konfiguration noch nicht verfügbar. Dein Warenkorb bleibt gespeichert.'),{code:'PRICE_RULE_NOT_APPROVED',attemptId:receipt.attemptId});
   status.textContent='Du wirst zur sicheren Bezahlung weitergeleitet …';window.location.assign(receipt.checkoutUrl);navigating=true;
- }catch(error){status.textContent=error.message||'Die Übergabe konnte nicht bestätigt werden. Dein Warenkorb bleibt erhalten.';}
+ }catch(error){
+  status.textContent=error.message||'Die Übergabe konnte nicht bestätigt werden. Dein Warenkorb bleibt erhalten.';
+  if(checkoutRequested)void failureReporter.report({stage:'checkout',code:error.code||'INVALID_RESPONSE',attemptId:error.attemptId});
+ }
  finally{if(!navigating){deliveryCalendar.refresh();setCheckoutBusy(false);}}
 }
 window.addEventListener('pageshow',event=>{if(event.persisted&&cartSyncing){setCheckoutBusy(false);$('#delivery-checkout-status').textContent='';refreshCartPrice().then(()=>deliveryCalendar.refresh({resetSelection:true}));}});
@@ -2511,7 +2591,7 @@ async function restoreCart(){
       if(cartItems.length){try{selectedDelivery=rollingCheckoutDelivery({businessDays:saved.deliveryBusinessDays},{designs:cartItems.map(item=>item.design)});}catch{selectedDelivery=null;}}
     }
     cartReady=true;renderCart();$('#cart-storage-status').textContent=removedCable?retiredCableMessage:cartItems.length?'Warenkorb auf diesem Gerät wiederhergestellt. Noch keine Bestellung.':'Dein Warenkorb wird auf diesem Gerät gespeichert.';
-  }catch(error){cartReady=false;$('#cart-storage-status').textContent=error.message||'Der lokale Warenkorb ist derzeit nicht verfügbar.';refreshCartButtons();}
+  }catch(error){cartReady=false;$('#cart-storage-status').textContent=error.message||'Der lokale Warenkorb ist derzeit nicht verfügbar.';refreshCartButtons();void failureReporter.report({stage:'cart',code:'CART_RESTORE_FAILED',attemptId:createFailureAttemptId()});}
 }
 restoreCart();
 function refreshCartDeliveryDate(){if(cartReady&&!cartSyncing&&selectedDelivery){refreshDeliverySummary();refreshCartButtons();}}
@@ -2673,7 +2753,7 @@ async function bootDraft(){
       $('#draft-status').textContent='Anpassungen werden auf diesem Gerät gespeichert';
       $('.editor').inert=false;$('.editor-tabs').inert=false;$('.preview-column').inert=false;refreshHistoryButtons();
       showIncomingDesigns();setupBudgetAdvisor();
-    }catch(error){$('#shopping-status').textContent=error.message;$('#shopping-buy').disabled=true;$('#shopping-edit').disabled=true;}
+    }catch(error){$('#shopping-status').textContent=error.message;$('#shopping-buy').disabled=true;$('#shopping-edit').disabled=true;$('.preview-column').inert=false;}
     return;
   }
   let restored=false,failure=false;
@@ -2735,20 +2815,20 @@ for(const chapter of document.querySelectorAll('details[name="config-material-ch
 // Only the field currently being edited changes the authoritative design.
 function presetSignature(){return JSON.stringify([state.mode,state.logo?.assetId,state.fontId,state.text,state.alignment,state.lineHeight,state.backing,state.mount,state.plateFinish,state.lightMode,priceOptions(state)]);}
 async function refreshPresetSizes(){
-  if(!state.result||!state.sizeValid)return;
+  if(designRendering||!state.result||!state.sizeValid)return;
   const key=presetSignature();
   if(key===presetKey)return;
   presetKey=key;const rev=++presetRevision;
-  const requestBase=state.mode==='logo'?{type:'render-logo',logoId:state.logo.assetId}:{type:'render',fontId:state.fontId,text:state.text,alignment:state.alignment,lineHeight:state.lineHeight};
+  const requestBase=state.mode==='logo'?{type:'render-logo',rasterVersion:2,logoId:state.logo.assetId}:{type:'render',rasterVersion:2,fontId:state.fontId,text:state.text,alignment:state.alignment,lineHeight:state.lineHeight};
   for(const b of document.querySelectorAll('[data-width-cm]')){
     b.disabled=true;b.replaceChildren();const size=document.createElement('strong'),price=document.createElement('span');
     size.textContent=b.dataset.widthCm+' × … cm';price.textContent='— €';price.className='preset-price';b.append(size,price);b.setAttribute('aria-label',b.dataset.widthCm+' cm Breite, Höhe wird berechnet, Preis folgt');
   }
   for(const b of document.querySelectorAll('[data-width-cm]')){
-    if(rev!==presetRevision||presetKey!==key)return;
+    if(designRendering||rev!==presetRevision||presetKey!==key){if(rev===presetRevision)presetKey='';return;}
     try{
       const result=await callWorker({...requestBase,axis:'width',valueMm:innerSizeForOuter('width',Number(b.dataset.widthCm)*10)});
-      if(rev!==presetRevision||presetKey!==key)return;
+      if(designRendering||rev!==presetRevision||presetKey!==key){if(rev===presetRevision)presetKey='';return;}
       const outer=plateSize(result.size);
       b.querySelector('strong').textContent=dimensions(outer);
       const price=priceForResult(state,result);b.disabled=price.net==null;if(b.disabled)b.querySelector('.preset-price').textContent=price.status==='below-minimum'?'Zu klein':price.status==='above-maximum'?'Zu groß':priceLabel(price);else renderPriceValue(b.querySelector('.preset-price'),price,1,{compact:true});

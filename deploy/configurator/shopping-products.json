@@ -53,10 +53,11 @@
       "previousRoom": "studio",
       "positions": [],
       "cameras": [],
-      "photo": null
+      "photo": null,
+      "rasterVersion": 2
     },
-    "heightMm": 199.2,
-    "priceCents": 23225,
+    "heightMm": 199.4,
+    "priceCents": 23220,
     "priceVersion": "neontrip-led-20261008-min189",
     "image": "assets/shopping/nt-cfg-emma-60-warmweiss-main.png",
     "additionalImages": [
@@ -118,10 +119,11 @@
       "previousRoom": "event",
       "positions": [],
       "cameras": [],
-      "photo": null
+      "photo": null,
+      "rasterVersion": 2
     },
     "heightMm": 258.1,
-    "priceCents": 50480,
+    "priceCents": 50430,
     "priceVersion": "neontrip-led-20261008-min189",
     "image": "assets/shopping/nt-cfg-forever-together-120-warmweiss-main.png",
     "additionalImages": [
@@ -183,10 +185,11 @@
       "previousRoom": "cafe",
       "positions": [],
       "cameras": [],
-      "photo": null
+      "photo": null,
+      "rasterVersion": 2
     },
-    "heightMm": 325.1,
-    "priceCents": 41365,
+    "heightMm": 325.0,
+    "priceCents": 41335,
     "priceVersion": "neontrip-led-20261008-min189",
     "image": "assets/shopping/nt-cfg-kaffee-80-warmweiss-main.png",
     "additionalImages": [
@@ -248,10 +251,11 @@
       "previousRoom": "podcast",
       "positions": [],
       "cameras": [],
-      "photo": null
+      "photo": null,
+      "rasterVersion": 2
     },
     "heightMm": 179.2,
-    "priceCents": 38270,
+    "priceCents": 38265,
     "priceVersion": "neontrip-led-20261008-min189",
     "image": "assets/shopping/nt-cfg-im-gespraech-100-warmweiss-main.png",
     "additionalImages": [
@@ -313,7 +317,8 @@
       "previousRoom": "physio",
       "positions": [],
       "cameras": [],
-      "photo": null
+      "photo": null,
+      "rasterVersion": 2
     },
     "heightMm": 152.9,
     "priceCents": 37355,
@@ -378,10 +383,11 @@
       "previousRoom": "studio",
       "positions": [],
       "cameras": [],
-      "photo": null
+      "photo": null,
+      "rasterVersion": 2
     },
-    "heightMm": 392.6,
-    "priceCents": 43950,
+    "heightMm": 392.8,
+    "priceCents": 43940,
     "priceVersion": "neontrip-led-20261008-min189",
     "image": "assets/shopping/nt-cfg-stay-golden-80-warmweiss-main.png",
     "additionalImages": [
