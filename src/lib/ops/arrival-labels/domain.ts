@@ -253,17 +253,7 @@ function isSpecialEuTerritory(address: ShopifyShippingAddressEvidence) {
   return false;
 }
 
-function hasCompleteDeliveryAddress(address: ShopifyShippingAddressEvidence) {
-  return Boolean(
-    (String(address.name || "").trim() || String(address.company || "").trim())
-    && String(address.address1 || "").trim()
-    && String(address.zip || "").trim()
-    && String(address.city || "").trim()
-    && String(address.countryCodeV2 || "").trim(),
-  );
-}
-
-export function assessDestinationGate(order: ShopifyOrderEvidence, config: ProductConfig | null): DestinationGate {
+export function assessDestinationGate(order: ShopifyOrderEvidence, _config: ProductConfig | null): DestinationGate {
   const address = order.shippingAddress;
   const country = String(address?.countryCodeV2 || "").trim().toUpperCase() || null;
   if (!address || !country || !/^[A-Z]{2}$/.test(country)) {
@@ -321,47 +311,14 @@ export function assessDestinationGate(order: ShopifyOrderEvidence, config: Produ
       reason: `Sendungen nach ${country} werden nicht automatisch gebucht oder gedruckt.`,
     };
   }
-  if (!hasCompleteDeliveryAddress(address)) {
-    return {
-      blocked: true,
-      destinationCountryCode: country,
-      destinationClass: "eu",
-      deliveryNoteRequired: true,
-      deliveryNoteStatus: "manual_review",
-      reasonCode: "delivery_note_address_incomplete",
-      reason: "Die EU-Lieferadresse ist fuer einen belastbaren Lieferschein unvollstaendig.",
-    };
-  }
-  if (!config?.deliveryNotePrinterKey || String(config.deliveryNotePrintMedia || "").toUpperCase() !== "A4") {
-    return {
-      blocked: true,
-      destinationCountryCode: country,
-      destinationClass: "eu",
-      deliveryNoteRequired: true,
-      deliveryNoteStatus: "manual_review",
-      reasonCode: "delivery_note_printer_not_configured",
-      reason: "Fuer EU-Sendungen ist kein freigegebener A4-Lieferscheindrucker konfiguriert.",
-    };
-  }
-  if (!config.printerKey || config.deliveryNotePrinterKey === config.printerKey) {
-    return {
-      blocked: true,
-      destinationCountryCode: country,
-      destinationClass: "eu",
-      deliveryNoteRequired: true,
-      deliveryNoteStatus: "manual_review",
-      reasonCode: "delivery_note_printer_not_separate",
-      reason: "Der A4-Lieferscheindrucker muss physisch und logisch vom A6-Etikettendrucker getrennt sein.",
-    };
-  }
   return {
-    blocked: false,
+    blocked: true,
     destinationCountryCode: country,
     destinationClass: "eu",
     deliveryNoteRequired: true,
-    deliveryNoteStatus: "planned",
-    reasonCode: null,
-    reason: null,
+    deliveryNoteStatus: "manual_review",
+    reasonCode: "destination_eu_manual",
+    reason: `Sendungen nach ${country} einschliesslich Lieferscheinen werden vorerst manuell bearbeitet.`,
   };
 }
 

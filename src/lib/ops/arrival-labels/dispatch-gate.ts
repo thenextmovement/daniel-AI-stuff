@@ -1,6 +1,6 @@
 import { carrierReleaseEnabled, assertCarrierReleaseForCase } from "./carrier-release";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
-import { assessShopifyAutomationGate } from "./domain";
+import { assessDestinationGate, assessShopifyAutomationGate } from "./domain";
 import { fetchShopifyDispatchEvidence } from "./clients";
 
 export class ArrivalDispatchHeldError extends Error {
@@ -25,11 +25,14 @@ export async function assertArrivalDispatchAllowed(kind: "browser" | "print", jo
   if (carrierReleaseEnabled()) await assertCarrierReleaseForCase(job.case_id);
   const order = await fetchShopifyDispatchEvidence(orderId || "");
   const gate = assessShopifyAutomationGate(order);
+  // Recheck the current destination even for a previously prepared/queued job.
+  const destination = assessDestinationGate(order, null);
   if (!(Date.parse(job.lease_expires_at) > Date.now())) throw new Error("Reservierung waehrend Shopify-Pruefung abgelaufen.");
-  if (!gate.blocked) return;
+  if (!gate.blocked && !destination.blocked) return;
   await supabaseRpc("arrival_labels_hold_before_dispatch", {
     p_job_kind: kind, p_job_id: jobId, p_worker_id: workerId,
-    p_reason: gate.reason, p_reason_codes: gate.reasonCodes,
+    p_reason: [gate.reason, destination.reason].filter(Boolean).join(" "),
+    p_reason_codes: [...gate.reasonCodes, ...(destination.reasonCode ? [destination.reasonCode] : [])],
   });
   throw new ArrivalDispatchHeldError();
 }

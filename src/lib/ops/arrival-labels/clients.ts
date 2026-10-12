@@ -425,6 +425,7 @@ export async function fetchShopifyDispatchEvidence(id: string): Promise<ShopifyO
     body: JSON.stringify({ query: `query ArrivalDispatchOrder($id: ID!) {
       order(id: $id) {
         id name displayFinancialStatus note tags customAttributes { key value }
+        shippingAddress { name company address1 address2 zip city provinceCode country countryCodeV2 }
         shippingLines(first: 100) { nodes { title code } pageInfo { hasNextPage } }
       }
     }`, variables: { id } }),

@@ -11,7 +11,7 @@ const WORKER = "test-worker-01";
 const TOKEN = "test-only-dispatch-token-32-characters-long";
 const keys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ARRIVAL_LABEL_PRINT_API_TOKEN", "ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN", "SHOPIFY_SHOP_DOMAIN", "SHOPIFY_ADMIN_API_ACCESS_TOKEN", "SHOPIFY_ADMIN_API_VERSION"] as const;
 
-async function scenario(kind: "print" | "browser", options: { note?: string | null; pickup?: boolean; missingOrder?: boolean; malformed?: boolean; wrongOwner?: boolean; holdFails?: boolean; result?: string; parcelKind?: string; shopDomain?: string; held?: boolean; auditedHold?: boolean } = {}) {
+async function scenario(kind: "print" | "browser", options: { country?: string | null; note?: string | null; pickup?: boolean; missingOrder?: boolean; malformed?: boolean; wrongOwner?: boolean; holdFails?: boolean; result?: string; parcelKind?: string; shopDomain?: string; held?: boolean; auditedHold?: boolean } = {}) {
   const previous = keys.map(key => process.env[key]);
   const beforeFetch = globalThis.fetch;
   Object.assign(process.env, { SUPABASE_URL: "https://database.example.invalid", SUPABASE_SERVICE_ROLE_KEY: "test-only", ARRIVAL_LABEL_PRINT_API_TOKEN: TOKEN, ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN: TOKEN, SHOPIFY_SHOP_DOMAIN: options.shopDomain || "galaxybuzzdk.myshopify.com", SHOPIFY_ADMIN_API_ACCESS_TOKEN: "test-only", SHOPIFY_ADMIN_API_VERSION: "2026-07" });
@@ -29,9 +29,11 @@ async function scenario(kind: "print" | "browser", options: { note?: string | nu
     if (url.pathname.endsWith("graphql.json")) {
       const body = JSON.parse(String(init?.body));
       assert.equal(body.variables.id, GID);
+      assert.match(body.query, /shippingAddress\s*\{[^}]*countryCodeV2/);
       assert.equal(init?.cache, "no-store");
       return Response.json({ data: { order: options.missingOrder ? null : {
         id: GID, name: "#TEST", displayFinancialStatus: "PAID", note: options.note ?? null,
+        shippingAddress: options.country === null ? null : { countryCodeV2: options.country ?? "DE" },
         tags: [], customAttributes: [], shippingLines: { nodes: [{ title: options.pickup ? "Abholung" : "Standard", code: null }], pageInfo: { hasNextPage: false } },
         lineItems: { nodes: [{ title: "Acryl LED-Tischgerät", quantity: 1 }] },
         ...(options.malformed ? { customAttributes: null } : {}),
@@ -83,6 +85,12 @@ for (const kind of ["print", "browser"] as const) {
     assert.equal(result.response.status, 500);
     assert.equal(result.calls.some(path => path.includes("rpc/arrival_labels_update_")), false);
     assert.doesNotMatch(JSON.stringify(result.payload), /private failure/);
+  });
+  for (const country of ["AT", "FR", "CH", "GB", null]) test(`${kind}: current destination ${country} prevents automatic dispatch`, async () => {
+    const result = await scenario(kind, { country });
+    assert.equal(result.response.status, 409);
+    assert.ok(result.hold);
+    assert.equal(result.calls.some(path => path.includes("rpc/arrival_labels_update_")), false);
   });
   test(`${kind}: a different Shopify store fails closed`, async () => {
     const result = await scenario(kind, { shopDomain: "offerstudio.myshopify.com" });

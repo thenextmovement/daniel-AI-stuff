@@ -40,6 +40,10 @@ Fehlt eine Bedingung oder widersprechen sich Quellen, ist der Fall manuell.
 - Der Trigger besitzt eine explizite Aktivierung. Maßgeblich ist die aktuelle Listenmitgliedschaft, nicht `dateLastActivity`; wiederholte Läufe bleiben durch bestehende Label- und Idempotenzprüfungen geschützt.
 - Bereits behandelte Fälle behalten auch außerhalb von `Sign SHIPPED` den nachgelagerten Zustell- und Mailabgleich. Sie werden ausschließlich als `existing_label` verarbeitet und erlauben keinen erneuten Kauf oder Druck.
 
+## Ziellandregel ab Release dieses Kandidaten (Auftrag 12.10.2026)
+
+Automatischer Labelkauf und Druck bleiben ausschliesslich fuer Deutschland erlaubt. Alle anderen Lieferlaender, einschliesslich Oesterreich, restlicher EU und Schweiz, sowie deren Lieferscheine werden vorerst manuell bearbeitet. Die Regel wird sowohl bei der Vorbereitung als auch unmittelbar vor Kauf-/Druckdispatch anhand der frisch per Shopify-API gelesenen Lieferadresse geprueft. Bestehende Sondergebiets-, Abhol- und Sonderhinweissperren bleiben bestehen; Abschlussquittungen bereits gestarteter Drucke werden weiterhin erfasst. Der HP wird nicht umgestellt.
+
 ## Harte Stopper
 
 Ohne Kauf, Download oder Druck in die manuelle Prüfung gehen:
@@ -51,7 +55,7 @@ Ohne Kauf, Download oder Druck in die manuelle Prüfung gehen:
 - bereits erfüllte Bestellung, altes Versandtracking, Ersatz-, Reklamations- oder Nachlieferungsfall, solange kein aktuelles und unbenutztes Label für genau diesen Eingang belegt ist;
 - vollständig erstattete, stornierte oder abgelaufene Shopify-Bestellung (`refunded`, `voided`, `expired`); diese Zustände sind keine bloß offene Zahlung;
 - Schweiz, sonstiges Nicht-EU-Land, fehlendes Land oder bekannte EU-Zoll-/Umsatzsteuer-Sondergebiete;
-- EU außerhalb Deutschlands ohne vollständige Adresse, freigegebenes EU-DPD-Produkt oder vor dem Labelkauf bestätigten, preisfreien A4-Lieferschein;
+- alle EU-Lieferlaender ausserhalb Deutschlands, unabhaengig von Adresse, Produktfreigabe oder bereits gedrucktem Lieferschein;
 - ein A4-Lieferschein, der nicht ausdrücklich an den separaten HP-Bürodrucker statt an den Brother-Etikettendrucker geroutet ist;
 - Express-/Eilanforderung ohne exakt freigegebene Produktzuordnung;
 - der Dimmer-Sonderfall `100 pieces single color dimmers` ohne erwartete Shopify-Bestellung;

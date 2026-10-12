@@ -872,45 +872,18 @@ test("missing Shopify destination country fails closed before any existing-label
   assert.ok(decision.reasons.includes("destination_country_missing"));
 });
 
-test("EU destinations require a complete address, an explicit EU DPD product and an A4 delivery-note printer", () => {
-  const austria: ShopifyOrderEvidence = {
-    ...standardOrder,
-    shippingAddress: {
-      ...standardOrder.shippingAddress!,
-      zip: "1010",
-      city: "Wien",
-      provinceCode: "9",
-      country: "Oesterreich",
-      countryCodeV2: "AT",
-    },
-  };
-  const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [austria], productConfig: config });
-  assert.equal(decision.status, "label_planned");
-  assert.equal(decision.destinationClass, "eu");
-  assert.equal(decision.deliveryNoteRequired, true);
-  assert.equal(decision.deliveryNoteStatus, "planned");
-  assert.equal(decision.selectedDpdProduct, "DPD_EU_CLASSIC_TEST");
-
-  const noA4 = decideArrivalCase({
-    arrival: arrival(), trelloCards: [card()], shopifyOrders: [austria],
-    productConfig: { ...config, deliveryNotePrinterKey: null },
-  });
-  assert.equal(noA4.status, "manual_review");
-  assert.ok(noA4.reasons.includes("delivery_note_printer_not_configured"));
-
-  const samePrinter = decideArrivalCase({
-    arrival: arrival(), trelloCards: [card()], shopifyOrders: [austria],
-    productConfig: { ...config, deliveryNotePrinterKey: config.printerKey },
-  });
-  assert.equal(samePrinter.status, "manual_review");
-  assert.ok(samePrinter.reasons.includes("delivery_note_printer_not_separate"));
-
-  const noEuProduct = decideArrivalCase({
-    arrival: arrival(), trelloCards: [card()], shopifyOrders: [austria],
-    productConfig: { ...config, euProductMapping: {} },
-  });
-  assert.equal(noEuProduct.status, "manual_review");
-  assert.match(noEuProduct.manualReviewReason || "", /EU-DPD-Produkt/);
+test("all non-German EU destinations remain manual even with configured A4 and EU products", () => {
+  for (const countryCodeV2 of ["AT", "FR", "NL", "ES", "IT", "PL"]) {
+    const order = { ...standardOrder, shippingAddress: { ...standardOrder.shippingAddress!, countryCodeV2, zip: "1010", city: "Test" } };
+    for (const productConfig of [config, { ...config, deliveryNotePrinterKey: null }]) {
+      const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [order], productConfig });
+      assert.equal(decision.status, "manual_review", countryCodeV2);
+      assert.equal(decision.destinationClass, "eu");
+      assert.equal(decision.deliveryNoteStatus, "manual_review");
+      assert.equal(decision.selectedDpdProduct, null);
+      assert.ok(decision.reasons.includes("destination_eu_manual"));
+    }
+  }
 });
 
 test("EU tax and customs special territories remain manual even with an EU country code", () => {
