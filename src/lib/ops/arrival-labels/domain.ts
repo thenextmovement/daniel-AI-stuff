@@ -161,6 +161,7 @@ export type DestinationGateReason =
   | "destination_country_missing"
   | "destination_switzerland_manual"
   | "destination_non_eu_manual"
+  | "destination_eu_manual"
   | "destination_special_territory_manual"
   | "delivery_note_address_incomplete"
   | "delivery_note_printer_not_configured"
