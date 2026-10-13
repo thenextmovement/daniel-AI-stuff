@@ -74,9 +74,11 @@ export function initBudgetAdvisor(root,api){
    const change=document.createElement('button');change.type='button';change.className='nt-budget-action';change.textContent='Wünsche ändern';change.addEventListener('click',()=>{editing(true);form.elements[minimum!==null?'budget':'width'].focus({preventScroll:true});});empty.append(text,change);grid.append(empty);
   }
  }
- async function calculate(){
+ function measure(outcome){try{api.track?.(outcome);}catch{}}
+ async function calculate(userInitiated=false){
   const text=form.elements.text.value.trim();form.elements.text.setCustomValidity(!text?'Bitte gib deinen Wunschtext ein.':text.split('\n').length>5?'Bitte höchstens fünf Zeilen verwenden.':'');
   if(!form.reportValidity())return;
+  if(userInitiated)measure('started');
   const input={text,width:Number(form.elements.width.value),budget:Number(form.elements.budget.value),color:form.elements.color.value};
   contextKey=api.contextKey();const quoteContextKey=contextKey;
   const id=++revision,isCurrent=()=>id===revision&&quoteContextKey===api.contextKey();started=true;root.dataset.state='pending';search.disabled=true;grid.querySelectorAll('button').forEach(b=>b.disabled=true);status.textContent='Wir berechnen deine Schriftvorschläge …';
@@ -92,22 +94,23 @@ export function initBudgetAdvisor(root,api){
    if(!isCurrent())return;
    if(!quotes.length&&failures)throw new Error('Schriften konnten nicht geladen werden. Bitte erneut versuchen.');
    resultContextKey=quoteContextKey;committed=input;summary();showQuotes(quotes,input);root.dataset.state='ready';
+   if(userInitiated)measure(results.length?'results':'empty');
    if(failures)status.textContent+=' Einige Schriften konnten nicht geladen werden.';
    const wasEditing=root.dataset.editing==='true';root.dataset.editing='false';wishes.setAttribute('aria-expanded','false');if(wasEditing&&matchMedia('(max-width:760px)').matches){document.activeElement?.blur();wishes.focus({preventScroll:true});root.scrollIntoView({block:'start',behavior:'instant'});}
-  }catch(error){if(isCurrent()){root.dataset.state='error';status.textContent=error.message||'Die Berechnung ist gerade nicht verfügbar. Bitte erneut versuchen.';}}
+  }catch(error){if(isCurrent()){if(userInitiated)measure('error');root.dataset.state='error';status.textContent=error.message||'Die Berechnung ist gerade nicht verfügbar. Bitte erneut versuchen.';}}
   finally{if(isCurrent())search.disabled=false;}
  }
- form.addEventListener('submit',event=>{event.preventDefault();calculate();});
+ form.addEventListener('submit',event=>{event.preventDefault();calculate(event.isTrusted);});
  form.addEventListener('input',()=>{form.elements.text.setCustomValidity('');stale();});
  form.addEventListener('change',()=>{if(root.dataset.state!=='stale')stale();});
  wishes.addEventListener('click',()=>editing(true));
- $('.nt-budget-back').addEventListener('click',()=>{restore();editing(false);calculate();});
+ $('.nt-budget-back').addEventListener('click',event=>{restore();editing(false);calculate(event.isTrusted);});
  grid.addEventListener('click',async event=>{
   const button=event.target.closest('[data-budget-choose]');if(!button||button.disabled||root.dataset.state!=='ready')return;
   if(resultContextKey!==api.contextKey()){refreshContext();return;}
   const q=results[Number(button.dataset.budgetChoose)],id=revision;root.dataset.state='applying';grid.querySelectorAll('button').forEach(b=>b.disabled=true);status.textContent='Dein Look wird in den Konfigurator übernommen …';
-  try{const selection=await api.choose(q);if(revision===id){root.dataset.state='ready';status.textContent=selection?.message||`${q.design.fontId} ist im Konfigurator ausgewählt.`;}}
-  catch(error){if(revision===id){root.dataset.state='ready';status.textContent=error.message;}}
+  try{const selection=await api.choose(q);if(revision===id){measure('applied');root.dataset.state='ready';status.textContent=selection?.message||`${q.design.fontId} ist im Konfigurator ausgewählt.`;}}
+  catch(error){if(revision===id){measure('error');root.dataset.state='ready';status.textContent=error.message;}}
   finally{if(revision===id)grid.querySelectorAll('button').forEach(b=>b.disabled=false);}
  });
  function refreshContext(){

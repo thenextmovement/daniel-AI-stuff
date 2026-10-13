@@ -92,7 +92,7 @@
 
   <script>
     function openFormPopup(product) {
-      if (typeof gtag === 'function') {
+      if (!window.ntCro && typeof gtag === 'function') {
         gtag('event', 'cta_click', { event_category: 'engagement', event_label: 'anfrage_' + product, value: 50 });
       }
       if ({{USE_LOCAL_FORM_CTA}}) {

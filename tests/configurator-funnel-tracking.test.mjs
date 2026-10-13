@@ -24,7 +24,7 @@ test('local, preview and shared-design pages cannot emit funnel events',()=>{
 test('only allowlisted funnel events go to GA4 and Clarity; no purchase or revenue',()=>{
  const r=fixture();assert.equal(r.track('purchase'),false);assert.equal(r.track('conversion'),false);
  assert.equal(r.track('add_to_cart',{quantity:2,key:'private-cart-id',value:189,text:'PRIVATE TEXT',checkoutUrl:'PRIVATE URL'}),true);
- assert.deepEqual(r.google,[['event','add_to_cart',{send_to:'G-NEEVFC08VX',page_type:'configurator',items:[{item_id:'neontrip-led-text',item_name:'LED-Neon-Schriftzug',quantity:2}]}]]);
+ assert.deepEqual(r.google,[['event','add_to_cart',{send_to:'G-NEEVFC08VX',page_type:'configurator',measurement_version:'cro_v1',ui_layout:'desktop_grouped',items:[{item_id:'neontrip-led-text',item_name:'LED-Neon-Schriftzug',quantity:2}]}]]);
  assert.deepEqual(r.clarity,[['event','add_to_cart']]);
  assert.equal(JSON.stringify(r.google).includes('PRIVATE'),false);
 });

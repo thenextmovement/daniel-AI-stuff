@@ -1,6 +1,6 @@
 import {frameRoom,roomArea,moveWithinRoom,stockPresentationScale} from './room-framing.js?v=20261013-clearance1';
 import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261009-tour1';
-import {initBudgetAdvisor} from './budget-advisor.js?v=20261008-budget-live1';
+import {initBudgetAdvisor} from './budget-advisor.js?v=20261013-cro1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
 import {initDeliveryCalendar,deliveryTierLabel,minimumDeliveryBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261009-purchase2';
 import {refreshWishDelivery} from './content-experience.js?v=20261012-deferred-media1';
@@ -15,7 +15,7 @@ import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261009-purchase2';
 import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261009-purchase2';
 import {createFailureReporter,createFailureAttemptId} from './failure-reporting.js';
-import {createConfiguratorTracker} from './funnel-tracking.js?v=20261012-funnel1';
+import {createConfiguratorTracker} from './funnel-tracking.js?v=20261013-cro1';
 const $ = selector => document.querySelector(selector);
 const failureReporter=createFailureReporter();
 const trackConfigurator=createConfiguratorTracker(window);
@@ -465,6 +465,7 @@ async function storedPrice(design){
           storedPriceFailureAttempts.set(key,createFailureAttemptId());
         }
         const code=error.code==='WORKER_TIMEOUT'?'WORKER_TIMEOUT':error.code==='WORKER_INTERRUPTED'?'WORKER_UNAVAILABLE':error.code==='MISSING_FONT'?'FONT_LOAD_FAILED':'CALCULATION_FAILED';
+        window.ntCro?.error('calculation',{code},storedPriceFailureAttempts.get(key));
         void failureReporter.report({stage:'calculation',code,attemptId:storedPriceFailureAttempts.get(key)});
       }
       return {status,net:null,reasons:[errorMessage(error)]};
@@ -659,6 +660,7 @@ async function update(sizeNotice='',recoveryAttempt=0) {
     if(priceStatusForError(error)==='calculation-error'){
       calculationFailureAttemptId??=createFailureAttemptId();
       const code=error.code==='WORKER_TIMEOUT'?'WORKER_TIMEOUT':error.code==='WORKER_INTERRUPTED'?'WORKER_UNAVAILABLE':calculationPhase==='font'?'FONT_LOAD_FAILED':calculationPhase==='render'||calculationPhase==='paint'?'RENDER_FAILED':'CALCULATION_FAILED';
+      window.ntCro?.error('calculation',{code},calculationFailureAttemptId);
       void failureReporter.report({stage:'calculation',code,attemptId:calculationFailureAttemptId});
     }
   }
@@ -1328,6 +1330,7 @@ function setupBudgetAdvisor(){
     fonts:FONTS,colors:AVAILABLE_COLORS,logoUrl:'../assets/brand/logo-white.svg',priceVersion:PRICE_RULES.version,
     initial:{text:state.text.trim()||'Stay golden',width:state.result?Math.round(plateSize(state.result.size).widthMm)/10:100,budget:400,color:state.lightMode==='rgb'?'rgb':state.color.id},
     contextKey:budgetContextKey,
+    track:outcome=>{window.ntCro?.feature('budget',outcome);if(outcome==='error')window.ntCro?.error('budget',{});},
     async quote(input,font,isCurrent){
       const contextKey=budgetContextKey();
       const context={...fontPriceContext(),mode:'text',text:input.text,axis:'width',valueMm:input.width*10-20,outerMm:input.width*10,
@@ -2259,6 +2262,7 @@ async function openOrderReview({overview=false}={}){
 }
 $('#open-order-review').addEventListener('click',openOrderReview);
 let arController=null,arRevision=0;
+let arCroAttempt=0;
 async function openArPreview(){
   const token=++arRevision,dialog=$('#ar-dialog');arController?.dispose();arController=null;
   $('#ar-host').replaceChildren();$('#ar-status').textContent='Dein Schild wird in Originalmaßen für 3D und AR vorbereitet …';$('#ar-start').disabled=true;$('#ar-size').textContent='';
@@ -2272,21 +2276,22 @@ async function openArPreview(){
     if(token!==arRevision||!dialog.open)return;
     const controller=await prepareArPreview(snapshot,$('#ar-host'));
     if(token!==arRevision||!dialog.open){controller.dispose();return;}
-    arController=controller;$('#ar-status').textContent=controller.availabilityMessage;$('#ar-start').disabled=!controller.canActivateAR;
+    window.ntCro?.feature('ar','ready');arController=controller;$('#ar-status').textContent=controller.availabilityMessage;$('#ar-start').disabled=!controller.canActivateAR;
     controller.element.addEventListener('ar-status',event=>{
       if(token!==arRevision)return;
       const status=event.detail?.status;
-      if(status==='failed')$('#ar-status').textContent='AR konnte nicht gestartet werden. Dein Entwurf bleibt erhalten.';
+      if(status==='failed'){window.ntCro?.feature('ar','error',arCroAttempt);window.ntCro?.error('ar',{},arCroAttempt);$('#ar-status').textContent='AR konnte nicht gestartet werden. Dein Entwurf bleibt erhalten.';}
       if(status==='object-placed')$('#ar-status').textContent='Schild platziert. Die konfigurierte Größe bleibt fest eingestellt.';
       if(status==='not-presenting')$('#ar-status').textContent=controller.availabilityMessage;
     });
-  }catch(error){if(token===arRevision)$('#ar-status').textContent=error.message||'Die 3D-Vorschau ist derzeit nicht verfügbar.';}
+  }catch(error){if(token===arRevision){window.ntCro?.feature('ar','error',arCroAttempt);window.ntCro?.error('ar',error,arCroAttempt);$('#ar-status').textContent=error.message||'Die 3D-Vorschau ist derzeit nicht verfügbar.';}}
 }
 let shareRevision=0,shareAbort,sharePending=false,shareExpiresAt=0;
 const mobileAr=/iPhone|iPad|iPod|Android/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const arSharePanel=$('#ar-share-panel');
 function openCurrentDesignAr(){
  if($('#stage-ar').disabled)return;
+ arCroAttempt++;window.ntCro?.feature('ar','requested');
  mobileTools.open=false;
  if(mobileAr||state.mount==='table-stand'){openArPreview();return;}
  const dialog=$('#ar-share-dialog');$('#ar-share-dialog-content').append(arSharePanel);
@@ -2295,14 +2300,14 @@ function openCurrentDesignAr(){
 }
 $('#stage-ar').addEventListener('click',openCurrentDesignAr);
 $('#config-ar-start').addEventListener('click',openCurrentDesignAr);
-$('#ar-share-retry').addEventListener('click',openArShare);
+$('#ar-share-retry').addEventListener('click',()=>{arCroAttempt++;window.ntCro?.feature('ar','requested');openArShare();});
 $('#ar-share-dialog').addEventListener('close',()=>{
  if(sharePending){shareRevision++;shareAbort?.abort();sharePending=false;shareDesignKey=null;arSharePanel.hidden=true;}
 });
 async function openArShare(){
  $('#ar-share-panel').hidden=false;
  if(sharePending)return;
- if(shareDesignKey===JSON.stringify(captureDesign())&&shareExpiresAt>Date.now()&&!$('#ar-share-qr').hidden)return;
+ if(shareDesignKey===JSON.stringify(captureDesign())&&shareExpiresAt>Date.now()&&!$('#ar-share-qr').hidden){window.ntCro?.feature('ar','ready');return;}
  sharePending=true;shareExpiresAt=0;$('#ar-share-retry').hidden=true;
  const token=++shareRevision;shareAbort?.abort();shareAbort=new AbortController();shareDesignKey=null;
  $('#ar-share-status').textContent='Dein aktueller Entwurf wird vorbereitet …';$('#ar-share-qr').hidden=true;$('#ar-share-placeholder').hidden=false;$('#ar-share-link').hidden=true;
@@ -2315,15 +2320,16 @@ async function openArShare(){
   if(token!==shareRevision)return;
   const result=await createArShare(snapshot,{signal:shareAbort.signal});if(token!==shareRevision)return;
   await renderShareQr($('#ar-share-qr'),result.shareUrl);if(token!==shareRevision)return;
-  shareExpiresAt=Date.parse(result.expiresAt);
+  window.ntCro?.feature('ar','ready');shareExpiresAt=Date.parse(result.expiresAt);
   $('#ar-share-link').href=result.shareUrl;$('#ar-share-link').hidden=false;$('#ar-share-qr').hidden=false;$('#ar-share-placeholder').hidden=true;
   $('#ar-share-status').textContent='Bereit. Gültig bis '+new Intl.DateTimeFormat('de-DE',{dateStyle:'short',timeStyle:'short'}).format(new Date(result.expiresAt))+(snapshot.lightMode==='rgb'?' · RGB wird als statische Rotphase gezeigt.':'');
- }catch(error){if(token===shareRevision){shareDesignKey=null;$('#ar-share-status').textContent=error.message||'Die Modellfreigabe konnte nicht erstellt werden. Bitte versuche es erneut.';$('#ar-share-retry').hidden=false;}}
+ }catch(error){if(token===shareRevision){window.ntCro?.feature('ar','error',arCroAttempt);window.ntCro?.error('ar',error,arCroAttempt);shareDesignKey=null;$('#ar-share-status').textContent=error.message||'Die Modellfreigabe konnte nicht erstellt werden. Bitte versuche es erneut.';$('#ar-share-retry').hidden=false;}}
  finally{if(token===shareRevision){sharePending=false;}}
 }
 $('#ar-start').addEventListener('click',()=>{
   if(!arController?.canActivateAR)return;
-  const token=arRevision;arController.activateAR().catch(error=>{if(token===arRevision)$('#ar-status').textContent=error.message||'AR konnte nicht gestartet werden.';});
+  arCroAttempt++;window.ntCro?.feature('ar','launch_requested');
+  const token=arRevision;arController.activateAR().catch(error=>{if(token===arRevision){window.ntCro?.feature('ar','error',arCroAttempt);window.ntCro?.error('ar',error,arCroAttempt);$('#ar-status').textContent=error.message||'AR konnte nicht gestartet werden.';}});
 });
 $('#ar-dialog').addEventListener('close',()=>{arRevision++;arController?.dispose();arController=null;$('#ar-host').replaceChildren();$('#ar-start').disabled=true;});
 $('#order-review').addEventListener('close',()=>{orderReviewRevision++;orderSnapshot=null;orderDesign=null;});
@@ -2627,6 +2633,7 @@ $('#cart-request-quote').addEventListener('click',async()=>{
 });
 $('#quote-form').addEventListener('submit',async event=>{
  event.preventDefault();if(quoteSubmitting||!quoteCart?.length||!$('#quote-form').reportValidity())return;
+ window.ntCro?.startForm($('#quote-form'));
  quoteSubmitting=true;$('#quote-submit').disabled=true;$('#quote-form').inert=true;
  $('#quote-dialog').querySelectorAll('[data-close]').forEach(button=>button.disabled=true);
  const status=$('#quote-status');status.textContent='Deine Entwürfe werden für die Anfrage vorbereitet …';
@@ -2642,8 +2649,9 @@ $('#quote-form').addEventListener('submit',async event=>{
   const description='Konfigurator Angebot\nBitte ein Angebot für die folgenden Neon-LED-Schilder erstellen.\nMengen beim Zubehör gelten jeweils PRO SCHILD. Die genannten Preise sind lokale Kalkulationswerte, keine Lieferantenbestätigung oder Fertigungsfreigabe. Kein zweiter Rabatt.\n\n'+JSON.stringify(data,null,2);
   status.textContent='Anfrage wird übertragen …';
   const receipt=await quoteClient.submit({contact:{firstName:$('#quote-first-name').value,lastName:$('#quote-last-name').value,email:$('#quote-email').value},description,previews,usage:data.some(d=>d.einsatz==='Außen')?'aussen':'innen',delivery:quoteDelivery?.dateIso||'Termin noch offen',size:data.map(d=>d.anzahlSchilder+' × '+dimensions({widthMm:d.aussenmasseMm.breite,heightMm:d.aussenmasseMm.hoehe})).join('; '),color:[...new Set(data.map(d=>d.farbe))].join('; ')});
+  window.ntCro?.lead($('#quote-form'),receipt);
   $('#quote-form').hidden=true;status.textContent='Deine Anfrage ist bei NEONTRIP eingegangen. Wir prüfen deine Entwürfe und melden uns per E-Mail. Referenz: '+receipt.lead_request_id.slice(0,8)+'.';
- }catch(error){status.textContent=error.message||'Der Eingang konnte nicht bestätigt werden. Dein Warenkorb bleibt erhalten.';}
+ }catch(error){window.ntCro?.error('quote',error,error.attemptId);status.textContent=error.message||'Der Eingang konnte nicht bestätigt werden. Dein Warenkorb bleibt erhalten.';}
  finally{quoteSubmitting=false;$('#quote-submit').disabled=false;$('#quote-form').inert=false;$('#quote-dialog').querySelectorAll('[data-close]').forEach(button=>button.disabled=false);}
 });
 $('#quote-dialog').addEventListener('cancel',event=>{if(quoteSubmitting)event.preventDefault();});
@@ -2674,6 +2682,7 @@ async function goToCheckout(){
   status.textContent='Du wirst zur sicheren Bezahlung weitergeleitet …';window.location.assign(receipt.checkoutUrl);navigating=true;
  }catch(error){
   status.textContent=error.message||'Die Übergabe konnte nicht bestätigt werden. Dein Warenkorb bleibt erhalten.';
+  if(checkoutRequested)window.ntCro?.error('checkout',error,error.attemptId);
   if(checkoutRequested)void failureReporter.report({stage:'checkout',code:error.code||'INVALID_RESPONSE',attemptId:error.attemptId});
  }
  finally{if(!navigating){deliveryCalendar.refresh();setCheckoutBusy(false);}}
@@ -3066,13 +3075,14 @@ $('#save-design').addEventListener('click',async()=>{
   const button=$('#save-design'),status=$('#save-design-status');
   if(designRendering||!state.result||!state.sizeValid){status.textContent='Bitte zuerst die gültige Vorschau abwarten.';return;}
   button.disabled=true;
+  window.ntCro?.feature('save','started');
   try{
     const design=captureDesign();
     if(designAssetRefs(design).some(id=>!draftAssets.get(id)?.persisted))throw new Error('Eine Datei ist noch nicht gespeichert. Bitte erneut versuchen.');
     const snapshot=captureOrderSnapshot();
     const record={version:1,name:designName(),design,size:dimensions(snapshot.plate),widthMm:snapshot.plate.widthMm,heightMm:snapshot.plate.heightMm,font:state.mode==='logo'?'Eigenes Logo':state.font,color:snapshotColorSummary(snapshot),backing:BACKINGS[state.backing].name,finish:finishName(state.plateFinish),mount:MOUNTS[state.mount].name,preview:new XMLSerializer().serializeToString(orderPreview())};
-    await saveNamedDesign(record);status.textContent='Design gespeichert';refreshSavedCount();if($('#saved-designs').open)await openSavedDesigns();
-  }catch(error){status.textContent=error.message||'Speichern nicht möglich. Bitte diesen Tab geöffnet lassen.';}
+    await saveNamedDesign(record);window.ntCro?.feature('save','saved');status.textContent='Design gespeichert';refreshSavedCount();if($('#saved-designs').open)await openSavedDesigns();
+  }catch(error){window.ntCro?.feature('save','error');window.ntCro?.error('save',error);status.textContent=error.message||'Speichern nicht möglich. Bitte diesen Tab geöffnet lassen.';}
   finally{button.disabled=designRendering||!state.result;}
 });
 function updateComparisonAction(){const n=selectedDesignIds.size;$('#start-comparison').disabled=n!==2;$('#start-comparison').textContent=n===2?'Diese 2 Designs vergleichen':`${n} von 2 Designs ausgewählt`;}
@@ -3113,13 +3123,13 @@ function showComparison(records){
       card.append(heading,pic,dl,priceNote,price,designButton('Mit diesem Design weiter',()=>restoreNamed(record,$('#comparison-status'))));content.append(card);
     }
     $('#comparison-status').textContent='Unterschiede sind farbig hinterlegt. Die Vorschauen passen sich jeweils an die Bildfläche an; maßgeblich sind Breite und Höhe.';
-    $('#saved-designs').close();$('#design-comparison').dataset.active='0';$('#design-comparison').showModal();
+    $('#saved-designs').close();$('#design-comparison').dataset.active='0';$('#design-comparison').showModal();window.ntCro?.feature('compare','opened');
     for(const b of document.querySelectorAll('[data-comparison-index]'))b.setAttribute('aria-pressed',b.dataset.comparisonIndex==='0');
 }
 $('#start-comparison').addEventListener('click',async()=>{
  if(selectedDesignIds.size!==2)return;
  try{showComparison(await Promise.all([...selectedDesignIds].map(readNamedDesign)));}
- catch(error){$('#saved-designs-status').textContent=error.message;}
+ catch(error){window.ntCro?.feature('compare','error');window.ntCro?.error('compare',error);$('#saved-designs-status').textContent=error.message;}
 });
 for(const b of document.querySelectorAll('[data-comparison-index]'))b.addEventListener('click',()=>{
   $('#design-comparison').dataset.active=b.dataset.comparisonIndex;

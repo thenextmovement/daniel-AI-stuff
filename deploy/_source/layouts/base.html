@@ -655,7 +655,8 @@
   pintrk('load', '2614194923903');
   pintrk('page');
   </script>
-<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=efd2b0ffba35"></script></head>
+<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=efd2b0ffba35"></script>  <script type="module" src="/js/nt-cro-page.js?v=20261013-cro1"></script>
+</head>
 <body class="bg-white text-dark">
 
 <!-- Announcement Bar -->
@@ -928,7 +929,7 @@
         convData.user_data = userData;
       }
       try { gtag('event', 'conversion', convData); } catch(e) {}
-      try { gtag('event', 'generate_lead', { currency: 'EUR', value: 280 }); } catch(e) {}
+      try { if (!window.ntCro) gtag('event', 'generate_lead', { currency: 'EUR', value: 280 }); } catch(e) {}
       try { gtag('event', 'nerdy form submitted', { event_category: 'lead', event_label: label, value: 280 }); } catch(e) {}
       // Pinterest lead tracking (mit Enhanced Matching) — guarded
       try {
@@ -1695,6 +1696,7 @@
       return recovery;
     };
     window.ntSubmitForm = function(form, formData, formName) {
+      try { window.ntCro?.startForm(form); } catch(e) {}
       var submitId = window.ntEnsureClientSubmitId(formData);
       var action = form && form.getAttribute('action') ? form.getAttribute('action') : '/api/c';
       var url = new URL(action, window.location.href);
@@ -1756,6 +1758,7 @@
       }).then(function(result) {
         result = result || {};
         result.submit_id = submitId;
+        try { window.ntCro?.lead(form, result); } catch(e) {}
         return result;
       }).catch(function(err) {
         var message = (err && err.message) || String(err || 'unknown');
@@ -1766,6 +1769,7 @@
         err.elapsedMs = Date.now() - startedAt;
         err.message = message + ' | form=' + formName + ' | submit_id=' + submitId + ' | attempts=' + attempts + ' | phase=' + phase + ' | network_retry=' + networkRetryAttempted + ' | elapsed_ms=' + err.elapsedMs;
         err.clientSubmitId = err.clientSubmitId || submitId;
+        try { window.ntCro?.error('form', err, submitId); } catch(e) {}
         throw err;
       });
     };

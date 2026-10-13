@@ -590,7 +590,8 @@
   <!-- ClickCease Click Fraud Protection -->
   <script>function loadCC(){var s=document.createElement('script');s.src='https://ob.brilliantchap.com/i/281092490251912af433a9e3a26f799f.js';s.className='ct_clicktrue';document.head.appendChild(s);}if('requestIdleCallback' in window){setTimeout(function(){requestIdleCallback(loadCC,{timeout:8000});},8000);}else{setTimeout(loadCC,8000);}</script>
   <noscript><iframe src="https://ob.brilliantchap.com/ns/281092490251912af433a9e3a26f799f.html?ch=" width="0" height="0" style="display:none" title="Click Fraud Protection"></iframe></noscript>
-<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=efd2b0ffba35"></script></head>
+<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=efd2b0ffba35"></script>  <script type="module" src="/js/nt-cro-page.js?v=20261013-cro1"></script>
+</head>
 <body>
 
 
@@ -1653,7 +1654,7 @@
       convData.user_data = userData;
     }
     gtag('event', 'conversion', convData);
-    gtag('event', 'generate_lead', { currency: 'EUR', value: 280 });
+    if (!window.ntCro) gtag('event', 'generate_lead', { currency: 'EUR', value: 280 });
     gtag('event', 'nerdy form submitted', { event_category: 'lead', event_label: label, value: 280 });
   }
 
@@ -1944,8 +1945,10 @@
       state.data.uploadedFiles.forEach(file => formData.append('datei', file));
     }
 
+    try { window.ntCro?.startForm(document.querySelector('main')); } catch(e) {}
     window.ntSubmitStandaloneForm(formData, 'anfrage_wizard')
       .then(function(result) {
+        try { window.ntCro?.lead(document.querySelector('main'), result); } catch(e) {}
         const successState = document.getElementById('successState');
         document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
         successState.classList.add('active');
@@ -1973,6 +1976,7 @@
         else launchConfetti();
       })
       .catch(function(err) {
+        try { window.ntCro?.error('form', err, err.clientSubmitId); } catch(e) {}
         const successState = document.getElementById('successState');
         document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
         successState.classList.add('active');
