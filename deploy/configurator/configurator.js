@@ -164,6 +164,7 @@ let roomPresentation=null;
 let previewBox=null,drag=null,dragFrame=0,photoRevision=0,resizeFocus=null;
 const state = {font:'Amsterdam',fontId:'Amsterdam',text:$('#sign-text').value,alignment:'center',lineHeight:.8,axis:'width',valueMm:500-2*MANUFACTURING_PROFILE.contourMarginMm,color:COLORS[7],wordColors:new Map(),words:[],colorTarget:'all',light:true,dimensions:true,scene:'wall',room:'reception',backing:'contour',mount:'wall-mount',previousRoom:'reception',result:null,sizeValid:true,autoContourNotice:false};
 let designRendering=false,compactLineSpacing=false,budgetAdvisor,budgetSelecting=false;
+let lastCalculatedPrice=null,lastSizeReference=null;
 // Spacing edits retain the physical letter scale, including across an invalid oversized draft.
 let spacingAnchor=null;
 let backingSizeAdjustment=null;
@@ -364,9 +365,19 @@ function renderPriceValue(element,price,quantity=1,{compact=false,unit=false}={}
   if(!amounts){element.textContent=priceLabel(price);return;}
   const before=document.createElement('del'),current=document.createElement('span');
   before.className='price-before';before.textContent=priceLabel({gross:amounts.regularGross});before.setAttribute('aria-label','Preis ohne Rabatt: '+before.textContent);
-  current.className='price-current';current.textContent=priceLabel({gross:amounts.gross});element.append(before,current);
+  current.className='price-current';current.textContent=priceLabel({gross:amounts.gross});
+  before.dataset.clarityUnmask='true';current.dataset.clarityUnmask='true';element.append(before,current);
   if(!compact){const discount=document.createElement('span');discount.className='price-discount';discount.textContent=`−${INCLUDED_DISCOUNT_PERCENT} % Rabatt`;element.append(discount);}
   if(unit){const note=document.createElement('small');note.className='price-tax';note.textContent='Inkl. 19 % MwSt.';element.append(note);}
+}
+function renderCurrentPrice(element){
+  element.setAttribute('aria-busy',String(state.price?.status==='pending'));
+  if(state.price?.status==='pending'&&lastCalculatedPrice){
+    const label=document.createElement('span'),amount=document.createElement('span');
+    label.className='price-pending-label';label.textContent='Zuletzt berechnet';
+    amount.className='price-current';amount.textContent=priceLabel(lastCalculatedPrice);amount.dataset.clarityUnmask='true';
+    element.replaceChildren(label,amount);
+  }else renderPriceValue(element,state.price);
 }
 function priceDetail(price){
   if(price?.net==null)return price?.status==='pending'?'Maße und Preis werden aktualisiert.':price?.reasons?.join(' ')||'Bitte einen gültigen Entwurf erstellen.';
@@ -385,7 +396,7 @@ function priceCorrectionHint(price){
 }
 function updatePagePurchase(){
   const dock=$('#page-purchase');if(!dock)return;
-  renderPriceValue($('#page-purchase-price'),state.price);
+  renderCurrentPrice($('#page-purchase-price'));
   $('#page-purchase-design').textContent=!designRendering&&state.result?`${designName()} · ${dimensions(plateSize(state.result.size))}`:'Entwurf wird aktualisiert';
   $('#page-add-to-cart').disabled=designRendering||!state.result||!state.sizeValid||state.price?.status!=='calculated';
 }
@@ -396,15 +407,17 @@ function invalidatePrice(pending=true){
   invalidateFontQuotes();
   updatePagePurchase();
   const standPrice=$('[data-accessory-price="table-stand"]');if(standPrice)standPrice.textContent=pending?'Wird berechnet …':'Entwurf prüfen';
-  const label=$('.design-price strong');if(label)label.textContent=pending?'Wird berechnet …':'Entwurf prüfen';
+  const label=$('.design-price strong');if(label)renderCurrentPrice(label);
   if($('.design-price small'))$('.design-price small').textContent=pending?'Maße und Preis werden aktualisiert.':'Gültigen Entwurf erstellen';
   presetKey='';presetRevision++;
   for(const price of document.querySelectorAll('.preset-price')){price.textContent='Wird berechnet …';price.closest('button').disabled=true;}
+  refreshCartButtons();
 }
 function paintPrice(){
   if(!budgetSelecting)budgetAdvisor?.refreshContext();
   state.price=designRendering?{status:'pending',net:null}:state.result?priceForResult(state,state.result):state.price;
-  renderPriceValue($('.design-price strong'),state.price);
+  if(state.price?.status==='calculated')lastCalculatedPrice=state.price;
+  renderCurrentPrice($('.design-price strong'));
   if(shoppingOffer){
     $('#shopping-current-price').textContent=priceLabel(state.price);
     $('#shopping-buy').disabled=designRendering||!state.result||!state.sizeValid||state.price?.status!=='calculated';
@@ -428,6 +441,7 @@ function paintPrice(){
   $('#config-ar-instructions').textContent=state.mount==='table-stand'?'Deinen Entwurf in der 3D-Vorschau von allen Seiten ansehen.':mobileAr?'Vorschau öffnen und die Wandansicht starten.':'QR-Code öffnen und mit deiner Handykamera scannen.';
   $('#config-ar-note').textContent=state.mount==='table-stand'?'Wand-AR ist für Tischständer noch nicht verfügbar.':'Ohne App-Installation auf unterstützten Smartphones.';
   paintAccessoryQuantities();
+  refreshCartButtons();
 }
 async function storedPrice(design){
   const key=PRICE_RULES.version+JSON.stringify(design);
@@ -472,6 +486,7 @@ async function displayStoredPrice(element,design,quantity=1,{cartLine=false}={})
     const totalRow=document.createElement('div'),totalLabel=document.createElement('span'),totalValue=document.createElement('strong');
     totalRow.className='cart-line-total';totalLabel.textContent='Positionssumme';totalValue.textContent=priceLabel({gross:total.gross});totalRow.append(totalLabel,totalValue);
     const tax=document.createElement('small');tax.className='cart-line-tax';tax.textContent='Inkl. 19 % MwSt. · Rabatt bereits enthalten';
+    for(const node of [unitRow,calculation,totalRow,tax])node.dataset.clarityUnmask='true';
     element.append(unitRow,calculation,totalRow,tax);
   }else renderPriceValue(element,price,quantity,{unit:true});
   element.title=priceDetail(price);element.dataset.priceVersion=PRICE_RULES.version;
@@ -518,7 +533,8 @@ function clearResult(message='',error=false,status='invalid-text') {
   if(!$('#freestanding-example img'))$('#freestanding-example').replaceChildren();
   $('#preview-size-fallback').hidden=true;$('#preview-handles').replaceChildren();previewBox=null;
   state.result=null;$('#stage-width').textContent='—';$('#stage-height').textContent='—';$('#design-summary-size').textContent='Maße prüfen';$('#save-design').disabled=true;$('#suggest-production-size').hidden=true;$('#production-note').textContent='Für die Fertigungsprüfung ist ein gültiger Entwurf erforderlich.';for(const b of document.querySelectorAll('[data-width-cm]'))b.setAttribute('aria-pressed','false');paintMount(); $('#preview-art').replaceChildren();$('#preview-dimensions').replaceChildren();
-  state.price={status,net:null,reasons:[message]};renderPriceValue($('.design-price strong'),state.price);
+  if(status==='invalid-size')state.sizeValid=false;
+  state.price={status,net:null,reasons:[message]};renderCurrentPrice($('.design-price strong'));
   refreshFontQuotes();
   updatePagePurchase();$('.design-price small').textContent=priceCorrectionHint(state.price);$('.design-price').title=message;
   $('#minimum-size-note').textContent='';for(const b of document.querySelectorAll('[data-width-cm]')){b.disabled=true;const price=b.querySelector('.preset-price');if(price)price.textContent=priceLabel(state.price);}
@@ -526,6 +542,7 @@ function clearResult(message='',error=false,status='invalid-text') {
   showPreviewState(status==='calculation-error'?'Die Berechnung wurde unterbrochen. Dein Entwurf bleibt in diesem Tab erhalten.':message,{error,retry:status==='calculation-error'});
   $('#sign-preview').setAttribute('aria-label',message || 'Keine Vorschau');
   clearArIllustration();
+  refreshCartButtons();
 }
 function priceStatusForError(error){
   if(error.priceStatus)return error.priceStatus;
@@ -594,7 +611,7 @@ async function update(sizeNotice='',recoveryAttempt=0) {
     if(requested){
       let actual=plateSize(result.size)[requested.axis+'Mm'];
       let low=actual<requested.valueMm?state.valueMm:10,high=actual<requested.valueMm?5000:state.valueMm;
-      for(let i=0;i<13&&Math.abs(actual-requested.valueMm)>.5&&rev===revision;i++){
+      for(let i=0;i<24&&Math.abs(actual-requested.valueMm)>1e-5&&rev===revision;i++){
         const next=(low+high)/2,candidate=await renderAt(next);
         if(rev!==revision)return;
         const measured=plateSize(candidate.size)[requested.axis+'Mm'];
@@ -603,7 +620,6 @@ async function update(sizeNotice='',recoveryAttempt=0) {
       }
     }
     if(rev!==revision)return;
-    state.requestedOuter=null;
     if(state.mode==='text'){
       const range=sizeRangeForResult(state,result),outer=plateSize(result.size);
       if(range?.minimum.layoutConflict)throw Object.assign(new Error('Getrennte Wörter oder Zeilen überschneiden sich. Bitte mehr Leerzeichen oder einen größeren Zeilenabstand wählen.'),{priceStatus:'overlapping-text'});
@@ -619,7 +635,9 @@ async function update(sizeNotice='',recoveryAttempt=0) {
         $('#text-error').textContent=$('#size-error').textContent;$('#text-error').hidden=false;
       }
     }
+    state.requestedOuter=null;
     compactLineSpacing=false;state.result=result;state.rasterVersion=result.rasterVersion;syncColorCharacters();
+    lastSizeReference={key:sizeReferenceKey(),result};
     if(typeof sizeNotice==='string'&&sizeNotice&&$('#size-error').hidden){$('#size-error').textContent=sizeNotice;$('#size-error').hidden=false;}
     syncOuterSize(result.size);
     $('#backing-size').textContent=dimensions(result.size.backing);
@@ -673,13 +691,25 @@ function basePlateSize(size) {
   return {widthMm:side,heightMm:side-extra};
 }
 function plateSize(size){const base=basePlateSize(size);return {...base,heightMm:base.heightMm+(state.mount==='table-stand'?STAND_SUPPORT_MM:0)};}
+function sizeReferenceKey(){return JSON.stringify([state.mode,state.fontId,state.logo?.assetId,$('#sign-text').value,state.alignment,state.lineHeight]);}
+function sizeInputRange(){
+  return sizeRangeForResult(state,state.result||(lastSizeReference?.key===sizeReferenceKey()?lastSizeReference.result:null));
+}
+// Inputs show tenths of a centimetre. A displayed boundary maps back to the
+// exact valid boundary, never to geometry outside the manufacturing range.
+function normalizeOuterInput(value,minimum,maximum){
+  if(!Number.isFinite(value)||value<=0||minimum>maximum)return null;
+  if(value<Math.round(minimum)-1e-7||value>Math.round(maximum)+1e-7)return null;
+  const inset=Math.min(.002,(maximum-minimum)/2);
+  return Math.max(minimum+inset,Math.min(maximum-inset,value));
+}
 function syncOuterSize(size){
   const outer=plateSize(size);
   const range=sizeRangeForResult(state,state.result),minimum=range?.minimum;
   const minimumWidth=(minimum?.widthMm||500)/10;
   const minimumHeight=(state.backing==='rectangle'||state.backing==='square'?40:state.backing==='contour'?30:10)+(state.mount==='table-stand'?STAND_SUPPORT_MM:0);
   $('#sign-width').min=String(minimumWidth);$('#width-slider').min=String(minimumWidth);
-  $('#sign-width').max=String(Math.floor((range?.maximum.widthMm||4000)+1e-7)/10);$('#width-slider').max=$('#sign-width').max;$('#sign-height').max=String(Math.floor((range?.maximum.heightMm||4000)+1e-7)/10);
+  $('#sign-width').max=inputCm(range?.maximum.widthMm||4000);$('#width-slider').max=$('#sign-width').max;$('#sign-height').max=inputCm(range?.maximum.heightMm||4000);
   $('#width-slider-max').textContent=$('#sign-width').max+' cm';
   $('#width-slider-min').textContent=`${minimumWidth.toLocaleString('de-DE')} cm`;
   $('#sign-height').min=String(Math.round(minimum?.heightMm||minimumHeight)/10);
@@ -702,16 +732,24 @@ function innerSizeForOuter(axis,outerMm){
   return outerMm-margin-(axis==='height'?mountExtra:0);
 }
 function chooseOuterSize(axis,outerMm){
-  const range=sizeRangeForResult(state,state.result),minimum=range?.minimum;
+  const range=sizeInputRange(),minimum=range?.minimum;
   const minimumMm=axis==='width'?(minimum?.widthMm||500):(minimum?.heightMm||10);
   const maximumMm=axis==='width'?(range?.maximum.widthMm||4000):(range?.maximum.heightMm||4000);
-  const belowMinimum=Number.isFinite(outerMm)&&outerMm<minimumMm-1e-7;
-  const aboveMaximum=Number.isFinite(outerMm)&&outerMm>maximumMm+1e-7;
-  if(belowMinimum||aboveMaximum||!Number.isFinite(outerMm)||outerMm<=0){
+  const normalized=normalizeOuterInput(outerMm,minimumMm,maximumMm);
+  const belowMinimum=Number.isFinite(outerMm)&&outerMm<Math.round(minimumMm)-1e-7;
+  const aboveMaximum=Number.isFinite(outerMm)&&outerMm>Math.round(maximumMm)+1e-7;
+  if(normalized===null){
     state.sizeValid=false;state.requestedOuter=null;revision++;clearTimeout(timer);
     const message=belowMinimum?`Für diesen Entwurf mindestens ${cm(minimumMm)} cm ${axis==='width'?'Breite':'Höhe'}. Bitte ein größeres Maß eingeben.`:aboveMaximum?`Für diesen Entwurf höchstens ${cm(maximumMm)} cm ${axis==='width'?'Breite':'Höhe'}. Die längste Seite darf 400 cm nicht überschreiten.`:'Bitte eine positive Zahl für das Maß eingeben.';
-    $('#size-error').textContent=message;$('#size-error').hidden=false;clearResult(message,true,'invalid-size');return false;
+    $('#size-error').textContent=message;$('#size-error').hidden=false;clearResult(message,true,'invalid-size');
+    if(range?.fits&&(belowMinimum||aboveMaximum)){
+      const target=belowMinimum?minimumMm:maximumMm,button=$('#suggest-production-size');
+      button.dataset.suggestedAxis=axis;button.dataset.suggestedOuterMm=String(target);
+      button.textContent='Auf '+cm(target)+' cm '+(axis==='width'?'Breite':'Höhe')+' anpassen';button.disabled=false;button.hidden=false;
+    }
+    return false;
   }
+  outerMm=normalized;
   const inner=innerSizeForOuter(axis,outerMm);
   state.sizeValid=true;spacingAnchor=null;state.axis=axis;state.valueMm=inner;state.requestedOuter={axis,valueMm:outerMm};$('#size-error').hidden=true;clearTimeout(timer);update();return true;
 }
@@ -1035,6 +1073,7 @@ function paint() {
   const minimum=minimumSizeForResult(state,state.result),belowMinimum=minimum&&plateSize(size).widthMm<minimum.widthMm-.1;
   $('#suggest-production-size').hidden=!belowMinimum||!!minimum&&(minimum.widthMm>4000||minimum.heightMm>4000);$('#suggest-production-size').disabled=false;
   $('#suggest-production-size').dataset.suggestedOuterMm=String(minimum?.widthMm||500);
+  $('#suggest-production-size').dataset.suggestedAxis='width';
   $('#suggest-production-size').textContent='Auf '+cm(minimum?.widthMm||500)+' cm Mindestbreite vergrößern';
   const technical=roomPresentation.technical;
   const design=size.exact.design,backing=plateSize(size);
@@ -1999,6 +2038,7 @@ function setStep(index,focus=false,{scroll=true}={}){
   }
 
   revealActiveTab();
+  refreshCartButtons();
   if(group===1&&state.result)refreshPresetSizes();
   if(index===0)requestAnimationFrame(fitTextField);
   if(scroll&&!mobileChoiceMedia.matches)requestAnimationFrame(()=>{
@@ -2319,8 +2359,9 @@ function refreshCartButtons(){
   const count=cartItems.reduce((n,item)=>n+item.quantity,0);
   $('#cart-count').textContent=String(count);$('#header-cart-count').textContent=String(count);
   $('#header-cart').setAttribute('aria-label',`Warenkorb öffnen, ${count} Artikel`);
-  $('#add-to-cart').disabled=!cartReady||cartAdding;
-  if(Number(document.body.dataset.activeGroup)===2){$('#next-step').disabled=cartAdding;$('#next-step-label').textContent=cartAdding?'Wird hinzugefügt …':editingCartId?'Änderungen übernehmen':'In den Warenkorb';}
+  const ready=!designRendering&&state.sizeValid&&state.result&&state.price?.status==='calculated';
+  $('#add-to-cart').disabled=!cartReady||cartAdding||!ready;
+  if(Number(document.body.dataset.activeGroup)===2){$('#next-step').disabled=!cartReady||cartAdding||!ready;$('#next-step-label').textContent=cartAdding?'Wird hinzugefügt …':designRendering?'Preis wird aktualisiert …':editingCartId?'Änderungen übernehmen':'In den Warenkorb';}
   $('#add-to-cart').lastChild.textContent=editingCartId?'Änderungen übernehmen':'In den Warenkorb';
   $('#review-add-to-cart').disabled=!cartReady||!orderSnapshot?.mount.valid||orderSnapshot?.price.status!=='calculated';
   $('#cart-request-quote').disabled=!cartReady||!cartItems.length||!cartPricesValid||cartSyncing||cartEditing;
@@ -2350,6 +2391,7 @@ async function renderCartAccessories(host,item){
  const price=await storedPrice(item.design);if(!host.isConnected)return;
  host.replaceChildren();
  if(price.status!=='calculated'){host.textContent=price.reasons?.[0]||'Zubehörpreis wird geprüft.';return;}
+ host.dataset.clarityUnmask='true';
  const counts=accessoryCounts(item.design),names={'wall-mount':'Wandmontage-Set','premium-white':'Premium-Netzteil',dimmer:'Dimmer mit Fernbedienung','hanging-kit':'Drahtseil-Abhängeset','adhesive-kit':'3M-Klebeset','table-stand':'Acryl-Steckfüße'};
  for(const [key,quantity] of Object.entries(counts)){
   if(!quantity||!names[key])continue;
@@ -2395,7 +2437,7 @@ function renderCart(){
     displayStoredPrice(price,item.design,item.quantity,{cartLine:true});
     const controls=document.createElement('div');controls.className='cart-item-controls';
     const label=document.createElement('label'),qty=document.createElement('input');label.textContent='Menge';qty.type='number';qty.min='1';qty.max='99';qty.step='1';qty.value=item.quantity;qty.dataset.cartQuantity=item.id;qty.setAttribute('aria-label',`Menge für ${item.snapshot.text}`);label.append(qty);controls.append(label);
-    for(const [action,text] of [['edit',cartItemNeedsUpdate(item)?'Entwurf aktualisieren':'Bearbeiten'],['remove','Entfernen']]){const button=document.createElement('button');button.type='button';button.dataset.cartAction=action;button.dataset.itemId=item.id;button.textContent=text;button.setAttribute('aria-label',`${item.snapshot.text}: ${text}`);controls.append(button);}
+    for(const [action,text] of [['edit',cartItemNeedsUpdate(item)?'Entwurf aktualisieren':'Bearbeiten'],['remove','Entfernen']]){const button=document.createElement('button');button.type='button';button.dataset.cartAction=action;button.dataset.itemId=item.id;button.textContent=text;button.setAttribute('aria-label',`Entwurf ${cartItems.indexOf(item)+1}: ${text}`);button.dataset.clarityUnmask='true';controls.append(button);}
     const compareLabel=document.createElement('label'),compareCheck=document.createElement('input');compareLabel.className='cart-compare-choice';compareCheck.type='checkbox';compareCheck.dataset.cartCompare=item.id;compareCheck.checked=cartCompareIds.has(item.id);compareCheck.setAttribute('aria-label',item.snapshot.text+' zum Vergleich auswählen');compareLabel.append(compareCheck,document.createTextNode('Zum Vergleich auswählen'));
     body.append(heading,summary,colors,accessoryLine);
     if(cartItemNeedsUpdate(item)){
@@ -2505,11 +2547,15 @@ $('#delivery-dialog').addEventListener('close',()=>{showCart();$('#cart-delivery
 
 async function addCurrentDesign(){
  if(cartAdding||!cartReady||cartEditing||cartSyncing)return;
+ if(designRendering||!state.sizeValid||!state.result||state.price?.status!=='calculated'){
+  $('#cart-add-status').textContent=designRendering?'Bitte warte, bis Maße und Preis aktualisiert sind.':'Bitte korrigiere zuerst die angezeigten Maße oder Optionen.';return;
+ }
  cartAdding=true;$('#cart-add-status').textContent='';refreshCartButtons();
  $('.editor').inert=true;$('.preview-column').inert=true;$('.editor-tabs').inert=true;
  try{
   if(!editingCartId&&cartItems.length>=20)throw new Error('Der Warenkorb enthält bereits 20 Entwürfe. Bitte entferne zuerst einen Entwurf.');
-  clearTimeout(timer);await update();
+  // Buy precisely the result the customer has seen. Re-rendering here could
+  // silently correct a failed size request and put different dimensions in cart.
   const snapshot=captureOrderSnapshot(),design=structuredClone(captureDesign());
   if(!snapshot.mount.valid||snapshot.price.status!=='calculated'||!Number.isFinite(snapshot.price.net))throw new Error(snapshot.price.reasons?.[0]||'Bitte prüfe Größe und Montage deines Entwurfs.');
   const old=cartItems.find(item=>item.id===editingCartId);
@@ -2823,7 +2869,7 @@ async function bootDraft(){
 }
 bootDraft();
 
-$('#suggest-production-size').addEventListener('click',()=>chooseOuterSize('width',Number($('#suggest-production-size').dataset.suggestedOuterMm)));
+$('#suggest-production-size').addEventListener('click',()=>chooseOuterSize($('#suggest-production-size').dataset.suggestedAxis||'width',Number($('#suggest-production-size').dataset.suggestedOuterMm)));
 
 // The editing area follows the visible viewport when the phone keyboard opens.
 function updateEditingViewport(){
