@@ -16,12 +16,13 @@ body.designstudio .trust-rating-header:focus-visible{outline-color:#fff}
  body.designstudio #main .trust-rating-compact{display:inline-flex;grid-column:1/-1;grid-row:4;justify-self:start}
 }
 @media(max-width:760px){
- body.designstudio #main .trust-rating-compact{display:inline-flex;position:absolute;left:16px;bottom:calc(10px + env(safe-area-inset-bottom));min-height:34px;max-width:calc(100% - 152px);gap:5px;font-size:11px}
+ /* Reserve the second row instead of floating over the price while the dock scrolls. */
+ body.designstudio #main .trust-rating-compact{display:inline-flex;position:static;grid-column:1;grid-row:2;align-self:start;justify-self:start;min-height:30px;min-width:0;max-width:100%;margin:4px 0 0;gap:5px;font-size:11px;white-space:normal}
  .trust-rating-compact>img{width:15px;height:15px}
- .trust-rating-compact .trust-star{width:11px;height:11px}
+ .trust-rating-compact .trust-star{width:11px;height:11px;flex:none}
 }
 @media(max-width:760px){body.designstudio #main .design-summary:has(#previous-step:not([hidden])) .trust-rating-compact{display:none}}
-@media(max-width:350px){body.designstudio #main .trust-rating-compact{left:12px;max-width:calc(100% - 144px);gap:4px;font-size:10.5px}}
+@media(max-width:350px){body.designstudio #main .trust-rating-compact{gap:4px;font-size:10.5px}}
 .trust-payments{display:flex;align-items:center;justify-content:center;gap:16px;min-height:30px}
 .trust-payments img{display:block;flex:none;object-fit:contain}
 .trust-payments .trust-paypal{width:76px;height:18px}

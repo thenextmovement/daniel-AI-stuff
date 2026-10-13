@@ -105,3 +105,19 @@ test('presentation retains photo and label clearance for broad, square and tall 
   assert.ok(box.y+box.height<=frame.view.y+frame.view.height-48*sy+.01);
  }
 });
+
+test('three-line signs respect measured controls even with a restored close camera',()=>{
+ for(const viewport of [{width:320,height:219},{width:390,height:219},{width:430,height:219},{width:732,height:195}])for(const widthMm of [500,2985,4000])for(const zoom of [1,4])for(const controlsBottom of [54,78]){
+  const padding={left:18,right:64,top:controlsBottom+12,bottom:48};
+  const heightMm=widthMm*.478,scale=stockPresentationScale(widthMm,heightMm,viewport,padding);
+  const box={x:500-widthMm*scale/2,y:250-heightMm*scale/2,width:widthMm*scale,height:heightMm*scale};
+  const input={room:'reception',viewport,sign:box,camera:{x:500,y:270,zoom},padding};
+  const before=JSON.stringify(input),frame=frameRoom(input),pixels=viewport.height/frame.view.height;
+  assert.ok(frame.fits);
+  assert.ok((box.y-frame.view.y)*pixels>=controlsBottom+12-.01);
+  assert.ok((frame.view.y+frame.view.height-box.y-box.height)*pixels>=48-.01);
+  assert.ok(frame.zoom<=frame.maxZoom);
+  assert.ok(frame.view.width<=Math.min(1000,500*viewport.width/viewport.height)+.01,'Photo fills the width of compact previews');
+  assert.equal(JSON.stringify(input),before);
+ }
+});

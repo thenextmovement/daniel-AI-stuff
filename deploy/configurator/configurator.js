@@ -1,4 +1,4 @@
-import {frameRoom,roomArea,moveWithinRoom,stockPresentationScale} from './room-framing.js?v=20261013-wide1';
+import {frameRoom,roomArea,moveWithinRoom,stockPresentationScale} from './room-framing.js?v=20261013-clearance1';
 import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261009-tour1';
 import {initBudgetAdvisor} from './budget-advisor.js?v=20261008-budget-live1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
@@ -137,11 +137,13 @@ const ROOMS = [
 ];
 const SCENE_IMAGE = new URL('./assets/scenes/neontrip-scenarios-wide.png',import.meta.url).href;
 // This display scale never enters pricing, manufacturing dimensions or AR.
-function previewSpanMm(room){
+function previewSpanMm(room,viewport){
  if(room.id==='custom')return room.spanMm;
  if(drag?.presentation?.room===room.id&&drag.presentation.scale)return 1000/drag.presentation.scale;
  const plate=state.result?plateSize(state.result.size):null;
- return plate?1000/stockPresentationScale(plate.widthMm,plate.heightMm):6000;
+ if(!plate)return 6000;
+ viewport=viewport||$('#preview-stage').getBoundingClientRect();
+ return 1000/stockPresentationScale(plate.widthMm,plate.heightMm,viewport,stockFramePadding(viewport));
 }
 const lastWallRooms={indoor:'reception',outdoor:'outdoor-shop'};
 function sceneAvailable(room){
@@ -1726,8 +1728,8 @@ function syncScenarioChoice(){
   scenarioSelect.value=state.room;scenarioSelect.title=ROOMS.find(room=>room.id===state.room)?.name||'';
   const sceneLabel=$('#mobile-scene-label');if(sceneLabel)sceneLabel.textContent=(state.outdoor?'Außen':'Innen')+' · '+scenarioSelect.title;
 }
-function stockSignBox(room){
-  const plate=plateSize(state.result.size),scale=1000/previewSpanMm(room),standing=state.mount==='table-stand';
+function stockSignBox(room,viewport){
+  const plate=plateSize(state.result.size),scale=1000/previewSpanMm(room,viewport),standing=state.mount==='table-stand';
   const saved=positions.get(room.id)||{x:0,y:0},width=plate.widthMm*scale,height=plate.heightMm*scale;
   // Prefer the free wall when the sign fits it; otherwise retain the full photo.
   // Apply the same bounds before rendering and moving to avoid a first-drag jump.
@@ -1736,7 +1738,18 @@ function stockSignBox(room){
   const offset={x:Math.max(left+width/2-500,Math.min(right-width/2-500,saved.x)),y:standing?0:Math.max(top+height/2-sceneSignY(room),Math.min(bottom-height/2-sceneSignY(room),saved.y))};
   return {x:500+offset.x-width/2,y:standing?(room.standY??276)-height:sceneSignY(room)+offset.y-height/2,width,height:height+(standing?7:0),offset};
 }
-function stockFrame(room,viewport){return frameRoom({room:room.id,viewport,sign:stockSignBox(room),camera:cameras.get(room.id),standing:state.mount==='table-stand'});}
+function stockFramePadding(viewport){
+  const stage=$('#preview-stage').getBoundingClientRect();
+  const controlsBottom=Math.max(0,...['#stage-ar','.studio-mobile-tools>summary'].map(selector=>{
+    const bounds=$(selector).getBoundingClientRect();
+    return bounds.width&&bounds.height?bounds.bottom-stage.top:0;
+  }));
+  // Use the rendered controls, including wrapped labels, for both fresh and restored cameras.
+  return {left:18,right:viewport.width<=760?64:110,top:Math.max(58,controlsBottom+12),bottom:48};
+}
+function stockFrame(room,viewport){
+  return frameRoom({room:room.id,viewport,sign:stockSignBox(room,viewport),camera:cameras.get(room.id),standing:state.mount==='table-stand',padding:stockFramePadding(viewport)});
+}
 function alternativeRoomFits(room,viewport){
   if(room.id==='custom'||stockFrame(room,viewport).fits)return true;
   const plate=plateSize(state.result.size),height=Math.max(mobileChoiceMedia.matches?150:240,Math.min(viewport.height,viewport.width/2));
