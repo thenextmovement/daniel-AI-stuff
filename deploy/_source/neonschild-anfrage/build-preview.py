@@ -105,8 +105,9 @@ live_css = re.sub(r'url\([\'"]?[^)]*grain-texture\.png[\'"]?\)', 'none', live_cs
 tailwind = (ROOT / 'assets/live/assets/css/tailwind.min.css').read_text()
 # Live global resets must not restyle the exact approved hero/express modules.
 (ROOT / 'live-scoped.css').write_text(minify('@scope (.live-scope) {\n' + tailwind + '\n' + live_css + '\n}\n', 'css', style_content))
-# The hero and facts are needed for the first paint; later sections can load
-# without blocking it. Keep the original cascade order around composition.css.
+# Keep section styles separate for editing, then inline the compact production
+# styles in their original cascade order. Async media-switch styles postpone
+# the first rendered frame and can race the intro and font layout.
 first_screen_css = minify('\n'.join(css[:2]), 'css', style_content)
 (ROOT / 'modules.css').write_text(minify('\n'.join(css[2:]), 'css', style_content))
 (ROOT / 'modules.js').write_text(minify('\n'.join(js), 'js'))
@@ -155,12 +156,9 @@ structured_data = {'@context': 'https://schema.org', '@graph': [
 ]}
 head += '<script type="application/ld+json">' + json.dumps(structured_data, ensure_ascii=False).replace('<', '\\u003c') + '</script>\n'
 head += '<style data-style="splash">' + (ROOT / 'neontrip-splash.css').read_text() + '</style>\n'
-for file in ('live-scoped.css',):
-    head += f'<link rel="stylesheet" href="{file}?v={version(file)}" media="print" onload="this.media=\'all\'">\n'
-    head += f'<noscript><link rel="stylesheet" href="{file}?v={version(file)}"></noscript>\n'
+head += '<style data-style="live-scoped">' + (ROOT / 'live-scoped.css').read_text() + '</style>\n'
 head += '<style data-style="first-screen">' + first_screen_css + '</style>\n'
-head += f'<link rel="stylesheet" href="modules.css?v={version("modules.css")}" media="print" onload="this.media=\'all\'">\n'
-head += f'<noscript><link rel="stylesheet" href="modules.css?v={version("modules.css")}"></noscript>\n'
+head += '<style data-style="modules">' + (ROOT / 'modules.css').read_text() + '</style>\n'
 head += '<style data-style="composition">' + minify((ROOT / 'composition.css').read_text(), 'css', style_content) + '</style>\n'
 head += '<noscript><style>img[data-near-src]{display:none!important}</style></noscript>\n'
 sequence = ('hero', 'facts', 'gallery4', 'inquiry', 'process', 'material', 'videos', 'express', 'faq')
