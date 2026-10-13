@@ -1970,14 +1970,11 @@ body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calenda
   body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calendar-continue, #next-step, #page-add-to-cart)::before { transition: none; }
 }
 
-/* 8 Oct 2026: keep the mobile Back control clear of the 48px Cookiebot widget.
-   The widget stays available in its existing position; consent behavior is unchanged. */
+/* Keep mobile price/navigation controls clear. Cookie settings remain in the
+   footer; the consent dialog and desktop widget retain their normal behavior. */
 @media (max-width: 760px) {
-  body.lichtbuehne.lichtbuehne-v4.designstudio:has(#CookiebotWidget) #main #previous-step {
-    margin-inline-start: 56px;
-    width: calc(100% - 56px);
-    min-width: 0;
-    white-space: normal;
+  body.nt-configurator #CookiebotWidget {
+    display: none !important;
   }
 }
 
