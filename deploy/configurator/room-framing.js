@@ -36,10 +36,10 @@ export function stockPresentationScale(widthMm,heightMm,viewport,padding){
 }
 export function roomArea(room,standing=false){const p=ROOM_FRAMES[room];return standing&&p.standing?p.standing:p.area;}
 export function containsSign(area,sign){return sign.x>=area[0]-.01&&sign.y>=area[1]-.01&&sign.x+sign.width<=area[2]+.01&&sign.y+sign.height<=area[3]+.01;}
-export function frameRoom({room,viewport,sign,camera,standing=false,padding}){
+export function frameRoom({room,viewport,sign,camera,standing=false,padding,defaultZoom=1}){
  const profile=ROOM_FRAMES[room],aspect=viewport.width/viewport.height;
  const widest=Math.min(1000,500*aspect);
- const base=camera||{zoom:1,x:500,y:profile.y+20};
+ const base=camera||{zoom:defaultZoom,x:500,y:profile.y+20};
  const pad=padding||{left:18,right:viewport.width<=760?64:110,top:58,bottom:48};
  const required=Math.max(sign.width/(1-(pad.left+pad.right)/viewport.width),sign.height*aspect/(1-(pad.top+pad.bottom)/viewport.height));
  const maxZoom=clamp(widest/required,1,4),zoom=Math.min(base.zoom,maxZoom);

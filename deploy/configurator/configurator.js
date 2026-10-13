@@ -1,4 +1,4 @@
-import {frameRoom,roomArea,moveWithinRoom,stockPresentationScale} from './room-framing.js?v=20261013-clearance1';
+import {frameRoom,roomArea,moveWithinRoom,stockPresentationScale} from './room-framing.js?v=20261013-mobile-framing1';
 import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261009-tour1';
 import {initBudgetAdvisor} from './budget-advisor.js?v=20261013-cro1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
@@ -1790,7 +1790,9 @@ function stockFramePadding(viewport){
   return {left:18,right:viewport.width<=760?64:110,top:Math.max(58,controlsBottom+12),bottom:48};
 }
 function stockFrame(room,viewport){
-  return frameRoom({room:room.id,viewport,sign:stockSignBox(room,viewport),camera:cameras.get(room.id),standing:state.mount==='table-stand',padding:stockFramePadding(viewport)});
+  // Start closer on phones without enlarging the preview panel or the ordered sign.
+  // The existing fit limit still reserves space for controls and dimension labels.
+  return frameRoom({room:room.id,viewport,sign:stockSignBox(room,viewport),camera:cameras.get(room.id),standing:state.mount==='table-stand',padding:stockFramePadding(viewport),defaultZoom:mobileChoiceMedia.matches?1.8:1});
 }
 function alternativeRoomFits(room,viewport){
   if(room.id==='custom'||stockFrame(room,viewport).fits)return true;
