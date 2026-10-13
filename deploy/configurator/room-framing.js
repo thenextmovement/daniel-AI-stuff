@@ -33,7 +33,7 @@ export function containsSign(area,sign){return sign.x>=area[0]-.01&&sign.y>=area
 export function frameRoom({room,viewport,sign,camera,standing=false,padding}){
  const profile=ROOM_FRAMES[room],aspect=viewport.width/viewport.height;
  const widest=Math.min(1000,500*aspect);
- const base=camera||{zoom:clamp(widest/Math.max(650,profile.near),1,4),x:500,y:profile.y+20};
+ const base=camera||{zoom:1,x:500,y:profile.y+20};
  const pad=padding||{left:18,right:viewport.width<=760?64:110,top:58,bottom:48};
  const required=Math.max(sign.width/(1-(pad.left+pad.right)/viewport.width),sign.height*aspect/(1-(pad.top+pad.bottom)/viewport.height));
  const maxZoom=clamp(widest/required,1,4),zoom=Math.min(base.zoom,maxZoom);

@@ -69,8 +69,8 @@ test('all stock scenes keep 2 to 4 m signs at the same fixed example scale',()=>
  }
 });
 
-test('presentation makes 50 cm readable and grows gently through 75, 200 and 400 cm',()=>{
- for(const viewport of [{width:912,height:520},{width:390,height:200},{width:320,height:200}]){
+test('wide initial presentation keeps 50 cm readable and grows through 75, 200 and 400 cm',()=>{
+ for(const viewport of [{width:912,height:520},{width:732,height:195},{width:440,height:230},{width:390,height:200},{width:320,height:200}]){
   let previous=0;
   for(const widthMm of [500,750,2000,4000]){
    const heightMm=widthMm*.172,scale=stockPresentationScale(widthMm,heightMm);
@@ -83,7 +83,9 @@ test('presentation makes 50 cm readable and grows gently through 75, 200 and 400
    if(widthMm===500){
     const old=frameRoom({room:'reception',viewport,sign:sign(500)});
     assert.ok(displayed>=2.9*(sign(500).width/old.view.width*viewport.width));
-    assert.ok(displayed>=viewport.width*.3);
+    // Approved wider framing shows more of the room; the sign still occupies at least a quarter.
+    assert.equal(framed.camera.zoom,1);
+    assert.ok(displayed>=viewport.width*.25);
    }
    previous=displayed;
   }

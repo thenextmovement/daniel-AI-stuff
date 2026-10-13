@@ -1631,6 +1631,74 @@ body.designstudio :is(#undo-design,#redo-design){display:inline-flex!important}
 body.designstudio .room-presentation-note{margin:6px 2px 0;color:#655d56;font:400 11px/1.4 Inter,sans-serif}
 @media(max-width:760px){body.designstudio .room-presentation-note{margin-left:16px;margin-right:16px}}
 
+/* Tablet: the actual text, font and color controls stay visible together. */
+@media(min-width:761px) and (max-width:1199px){
+ body.lichtbuehne.lichtbuehne-v4.designstudio[data-active-group="0"] #main .editor{height:auto;max-height:none;min-height:0;position:static;overflow:visible;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .workbench-heading{display:none;}
+ body.designstudio #main .studio-mobile-look{display:none!important;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>.journey{position:static;margin-bottom:6px;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>.studio-context{margin:0 0 4px;}
+ body.designstudio #main .editor>.history-controls{min-height:32px;margin:0 0 5px;}
+ body.designstudio #main .history-controls button{min-height:32px;padding:4px 10px;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio[data-active-group="0"] #main .editor .editor-panels{flex:none;min-height:0;max-height:none;overflow:visible;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio[data-active-group="0"] #main #panel-0{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto auto auto;column-gap:20px;row-gap:0;align-items:start;}
+ body.designstudio #main #panel-0>.studio-motif-heading{grid-column:1;grid-row:1;min-height:30px;margin:0;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main #panel-0>#text-settings{grid-column:1;grid-row:2;display:flex;flex-direction:column;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main #sign-text{min-height:54px;height:54px;max-height:110px;font-size:22px;padding:9px 12px 3px;}
+ body.designstudio #main .studio-text-tools{min-height:34px;padding-bottom:3px;gap:4px;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .text-options{position:static;max-width:none;grid-area:auto;justify-self:start;margin:3px 0 0;}
+ body.designstudio #main #panel-0>.studio-colors{grid-column:2;grid-row:1/3;margin:0;}
+ body.designstudio #main #panel-0>.studio-fonts{grid-column:1/-1;grid-row:3;margin-top:4px;}
+ body.designstudio #main .studio-choice-heading{min-height:30px;margin-bottom:2px;}
+ body.designstudio #main .studio-choice-heading button{min-height:30px;}
+ body.designstudio #main .studio-fonts .font-price-context{margin:0 0 4px;font-size:12px;line-height:1.3;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .studio-font-grid .font-option{height:112px;min-height:112px;padding:2px 5px 4px;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .studio-font-grid .font-sample{min-height:42px;line-height:1.4;font-size:24px;padding:0 4px;}
+ body.designstudio #main .studio-palette{grid-template-columns:repeat(6,minmax(0,1fr));gap:0;}
+ body.designstudio #main .studio-palette button,body.designstudio #main .studio-palette .studio-rgb{min-height:40px;height:40px;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio[data-active-group="0"] #main .editor .design-summary{position:static;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2px 16px;margin:6px 0 0;padding:6px 0;min-height:0;background:transparent;}
+ body.designstudio[data-active-group="0"] #main .design-summary .summary-size-row{grid-column:1/-1;grid-row:1;padding-block:2px;}
+ body.designstudio[data-active-group="0"] #main .design-summary .design-price{grid-column:1!important;grid-row:2!important;margin:0;}
+ body.designstudio[data-active-group="0"] #main .design-summary .step-navigation{grid-column:2!important;grid-row:2!important;margin:0;align-self:center;}
+ body.designstudio[data-active-group="0"] #main .design-summary #summary-price-details{grid-column:2!important;grid-row:3!important;justify-self:end;margin:0;}
+ body.designstudio[data-active-group="0"] #main .design-summary .trust-rating-compact{grid-column:1!important;grid-row:3!important;min-height:28px;}
+ body.designstudio #main #text-count{white-space:nowrap;flex:none;}
+ body.designstudio #main .text-options{order:2;}
+ body.designstudio #main .studio-text-frame{order:1;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio[data-active-group="0"] #main .design-summary .step-navigation{height:48px;min-height:48px;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio[data-active-group="0"] #main .design-summary #next-step{height:48px;min-height:48px!important;}
+ body.designstudio #main .design-tools-help{display:none;}
+ body.designstudio #main .studio-toolbar{min-height:40px;margin-bottom:4px;}
+ body.designstudio #main .studio-toolbar button{min-height:40px;font-size:13px;}
+ body.designstudio #main .studio-preview-footer button{min-height:40px;font-size:13px;}
+}
+@media(min-width:761px) and (max-width:1000px){
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .config-workspace{gap:10px;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .preview-column{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto auto;height:auto;gap:4px 8px;}
+ body.designstudio #main .studio-toolbar{grid-column:1/-1;grid-row:1;}
+ body.designstudio #main #preview-stage{grid-column:1/-1;grid-row:2;}
+ body.designstudio #main .studio-preview-footer{grid-column:1;grid-row:3;flex-wrap:nowrap;gap:8px;min-height:44px;margin-bottom:0!important;padding-block:0;}
+ body.designstudio #main .studio-variant-tools{grid-column:2;grid-row:3;align-self:center;margin:0!important;padding:2px 6px;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main #preview-stage{height:clamp(155px,19svh,210px)!important;min-height:0;}
+ body.designstudio #main .design-tools{min-height:40px;padding:0;gap:6px;}
+ body.designstudio #main .design-tools button{min-height:36px;padding:5px 10px;font-size:13px;}
+ body.designstudio #main .studio-palette{grid-template-columns:repeat(9,minmax(0,1fr));}
+}
+@media(min-width:1001px) and (max-width:1199px){
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .config-workspace{grid-template-columns:minmax(510px,1.2fr) minmax(0,1fr);gap:20px;align-items:start;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main #preview-stage{height:clamp(210px,30svh,290px)!important;}
+ body.designstudio #main .studio-context{grid-template-columns:max-content minmax(0,1fr);}
+ body.designstudio #main .studio-context .studio-scenario{grid-column:auto;}
+ body.designstudio #main .studio-preview-footer{margin-bottom:8px!important;}
+ body.designstudio #main .proof-preview{grid-template-columns:1fr;padding:12px;gap:10px;}
+ body.designstudio #main .proof-projects{border-left:0;padding-left:0;border-top:1px solid #e2dce0;padding-top:10px;}
+ body.designstudio #main .proof-photos a{aspect-ratio:2.4;}
+ body.designstudio #main .proof-review blockquote{font-size:13px;line-height:1.4;margin-block:6px;}
+ body.designstudio #main .design-tools button{padding-inline:9px;font-size:12px;}
+ body.designstudio #main .studio-toolbar .scene-tabs{gap:8px;}
+ body.designstudio #main .studio-toolbar{flex-wrap:wrap;}
+}
+
 
 /* Source: font-filters.css */
 /* Font discovery only: keep selection, previews, quotes and upload controls unchanged. */
@@ -1997,6 +2065,58 @@ body.designstudio .trust-rating-header:focus-visible{outline-color:#fff}
  #page-purchase .trust-payments{min-height:24px;gap:12px}
  #page-purchase .trust-paypal{width:64px;height:16px}
  #page-purchase .trust-klarna{width:38px;height:24px}
+}
+
+/* Approved review and original LED-neon customer projects. */
+#room-presentation-note{display:none!important;}
+.studio-preview-footer{margin-bottom:20px!important;}
+.proof-preview{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:18px;border:1px solid #e2dce0;border-radius:11px;padding:15px;background:#f8f6f7;margin-top:2px;color:#211e20;}
+.proof-preview *{box-sizing:border-box;}
+.proof-review{min-width:0;}
+.proof-rating{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.proof-rating>img{width:64px;height:23px;object-fit:contain;}
+.proof-rating>svg{width:84px;height:16px;fill:#f7b400;flex:none;}
+.proof-rating strong{font-size:12px;line-height:1.35;}
+.proof-review blockquote{font-size:14px;line-height:1.5;margin:9px 0 10px;}
+.proof-source{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:7px;font-size:10px;color:#72676e;line-height:1.4;}
+.proof-source a{display:inline-flex;align-items:center;white-space:nowrap;color:#bc0876;text-underline-offset:3px;}
+.proof-source svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.5;}
+.proof-projects{min-width:0;border-left:1px solid #e2dce0;padding-left:18px;}
+.proof-projects h3{font-size:14px;line-height:1.3;margin:0 0 9px;font-weight:650;}
+.proof-photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.proof-photos a{position:relative;display:block;aspect-ratio:1.5;overflow:hidden;border-radius:7px;background:#252020;}
+.proof-photos img{display:block;position:absolute;width:100%;height:100%;object-fit:cover;object-position:50% 30%;}
+.proof-photos .proof-factory{object-position:50% 22%;}
+.proof-photos .proof-bayern{object-position:50% 0%;height:auto;aspect-ratio:2;}
+.proof-photos span{position:absolute;bottom:0;left:0;right:0;padding:18px 7px 7px;background:linear-gradient(transparent,#171316ed);color:#fff;font-size:10px;line-height:1.3;font-weight:600;}
+
+@media(max-width:760px){
+ .proof-preview{grid-template-columns:1fr;gap:15px;padding:15px;}
+ .proof-review blockquote{font-size:14px;line-height:1.5;}
+ .proof-rating strong{font-size:11px;}
+ .proof-rating>img{width:59px;}
+ .proof-rating>svg{width:75px;}
+ .proof-projects{border-left:0;padding-left:0;border-top:1px solid #e2dce0;padding-top:13px;}
+ .proof-photos{gap:6px;}
+ .proof-photos a{aspect-ratio:1.35;}
+ .proof-photos span{font-size:9px;padding:17px 5px 6px;}
+}
+
+.proof-rating{color:inherit;text-decoration:none;min-height:28px;}
+.proof-rating[hidden]{display:none;}
+.proof-rating:hover strong{text-decoration:underline;text-underline-offset:3px;}
+.proof-preview a:focus-visible{outline:2px solid #c0107d;outline-offset:3px;border-radius:4px;}
+/* One static element across sizes: no post-paint DOM movement or duplicated photos. */
+@media(min-width:1001px){
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .config-workspace{row-gap:0;}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor{grid-row:1/3;}
+ body.designstudio #main .proof-preview{grid-column:2;grid-row:2;align-self:start;margin:2px 0 0;}
+}
+@media(min-width:761px) and (max-width:1000px){
+ body.designstudio #main .proof-preview{order:2;width:100%;margin:8px 0 0;}
+}
+@media(max-width:760px){
+ body.designstudio #main .proof-preview{order:2;width:calc(100% - 24px);margin:4px 12px 0;}
 }
 
 

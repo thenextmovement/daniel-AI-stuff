@@ -12,3 +12,21 @@
   link.hidden=false;
  }
 })();
+
+// Customer photos must not compete with the first usable sign preview.
+(() => {
+ const region=document.querySelector('.preview-column');
+ const images=[...document.querySelectorAll('img[data-proof-src]')];
+ if(!region||!images.length)return;
+ const load=image=>{image.src=image.dataset.proofSrc;delete image.dataset.proofSrc;};
+ function ready(){
+  if(!('IntersectionObserver' in window)){images.forEach(load);return;}
+  const observer=new IntersectionObserver(entries=>{
+   for(const entry of entries)if(entry.isIntersecting){load(entry.target);observer.unobserve(entry.target);}
+  },{rootMargin:'100px 0px'});
+  images.forEach(image=>observer.observe(image));
+ }
+ if(!region.inert){ready();return;}
+ const startup=new MutationObserver(()=>{if(!region.inert){startup.disconnect();ready();}});
+ startup.observe(region,{attributes:true,attributeFilter:['inert']});
+})();

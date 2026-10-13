@@ -1,4 +1,4 @@
-import {frameRoom,roomArea,moveWithinRoom,stockPresentationScale} from './room-framing.js?v=20261012-presentation1';
+import {frameRoom,roomArea,moveWithinRoom,stockPresentationScale} from './room-framing.js?v=20261013-wide1';
 import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261009-tour1';
 import {initBudgetAdvisor} from './budget-advisor.js?v=20261008-budget-live1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
