@@ -116,6 +116,18 @@
     header{position:fixed;top:0;left:0;right:0;z-index:50}
     .hidden{display:none}.flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}
     img,video{max-width:100%;height:auto;display:block}
+    /* Keep narrow-screen stats and contact actions inside their own columns. */
+    .lp-stats p, .footer-stats p { overflow-wrap: anywhere; hyphens: auto; }
+    .contact-advisor-content { min-width: 0; }
+    .contact-advisor-actions { flex-wrap: wrap; }
+    .faq-cta-actions { max-width: 100%; flex-wrap: wrap; justify-content: center; }
+    .faq-cta-actions > button { max-width: 100%; white-space: normal; }
+    @media (max-width: 479px) {
+      .lp-stats .grid { gap: 12px; }
+      .lp-stats [data-count], .lp-stats [data-count-static] { font-size: 22px; }
+      .lp-stats p { font-size: 11px; letter-spacing: 0.025em; }
+      #kontakt .contact-details { grid-template-columns: minmax(0, 1fr); }
+    }
   </style>
 
   <!-- Tailwind CSS (Production Build) -->
