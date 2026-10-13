@@ -1,0 +1,99 @@
+[
+  {
+    "id": "aperol",
+    "title": "Aperol · Deli Sülz",
+    "category": "Gastronomie",
+    "alt": "Orangefarbener Aperol-Schriftzug an einer strukturierten Wand",
+    "position": "50% 50%",
+    "image": "assets/modules/gallery4/aperol.webp",
+    "thumb": "assets/modules/gallery4/aperol-small-optimized.webp",
+    "ratio": 0.92125,
+    "gallery4Position": "50% 50%",
+    "gallery4Fit": "contain",
+    "description": "LED-Neonschild für die Aperol-Spritzbar Deli Sülz in Köln-Sülz. Der orangefarbene Schriftzug wurde für den Gastronomiebereich angefertigt."
+  },
+  {
+    "id": "aok",
+    "title": "AOK",
+    "category": "Empfang & Office",
+    "alt": "Warm leuchtendes AOK-Logo vor dunklen Holzlamellen",
+    "position": "50% 45%",
+    "image": "assets/modules/gallery4/aok.webp",
+    "thumb": "assets/modules/gallery4/aok-small-optimized.webp",
+    "ratio": 0.66667,
+    "gallery4Position": "50% 30%",
+    "description": "Individuelles LED-Neonschild für den Empfang der AOK. Das Projekt wurde nach der Anfrage in mehreren Telefonaten abgestimmt. Das Foto der fertigen Installation hat der Kunde zur Verfügung gestellt."
+  },
+  {
+    "id": "wella",
+    "title": "Wella",
+    "category": "Marke & Event",
+    "alt": "Großes pink leuchtendes Wella-Logo über einem Eventstand",
+    "position": "50% 40%",
+    "image": "assets/modules/gallery4/wella.webp",
+    "thumb": "assets/modules/gallery4/wella-small-optimized.webp",
+    "ratio": 1.77778,
+    "gallery4Position": "27% 35%",
+    "description": "Fünf Meter breites LED-Neonschild als Sonderanfertigung für Wella. Für den Einsatz im Freien wurde das Schild an einem Container angebracht und von hinten mit Stützfüßen abgestützt."
+  },
+  {
+    "id": "caudalie",
+    "title": "Caudalie",
+    "category": "Retail & Beauty",
+    "alt": "Weiß leuchtender Caudalie-Schriftzug an einem Tresen",
+    "position": "50% 50%",
+    "image": "assets/modules/gallery4/caudalie.webp",
+    "thumb": "assets/modules/gallery4/caudalie-small-optimized.webp",
+    "ratio": 1.0,
+    "gallery4Position": "50% 48%",
+    "description": "LED-Neonschild als Teil eines Ladenbauprojekts für Caudalie. Der weiße Markenschriftzug wurde für eine Theke an einem Stand angefertigt."
+  },
+  {
+    "id": "contour",
+    "title": "Contact Gym",
+    "category": "Sport & Interior",
+    "alt": "Rot und weiß leuchtendes Contact-Gym-Logo an einer Backsteinwand im Fitnessstudio",
+    "position": "50% 50%",
+    "image": "assets/modules/gallery4/contour.webp",
+    "thumb": "assets/modules/gallery4/contour-small-optimized.webp",
+    "ratio": 1.49945,
+    "gallery4Position": "49% 44%",
+    "description": "Acht Meter breites LED-Neonschild für das Fitnessstudio Contact Gym. Für das große Studio wurden im Rahmen des Projekts weitere Leuchtschilder angefertigt."
+  },
+  {
+    "id": "halo",
+    "title": "Licht im Raum",
+    "category": "Rauminstallation",
+    "alt": "Ringförmige Lichtinstallation mit warmweißer Schrift",
+    "position": "50% 50%",
+    "image": "assets/modules/gallery4/halo.webp",
+    "thumb": "assets/modules/gallery4/halo-small-optimized.webp",
+    "ratio": 1.12597,
+    "gallery4Position": "65% 48%",
+    "description": "Drei runde LED-NEON-HALO-Schilder in unterschiedlichen Durchmessern. Die Leuchtringe wurden gemeinsam für eine Rauminstallation eingesetzt."
+  },
+  {
+    "id": "schlager",
+    "title": "Schlagerliebe",
+    "category": "Bühne & Event",
+    "alt": "Roter Schlagerliebe-Schriftzug auf einer Konzertbühne",
+    "position": "50% 35%",
+    "image": "assets/modules/gallery4/schlager.webp",
+    "thumb": "assets/modules/gallery4/schlager-small-optimized.webp",
+    "ratio": 1.49953,
+    "gallery4Position": "7% 30%",
+    "description": "Sechs Meter breite und sechs Meter hohe LED-Neon-Sonderanfertigung mit großem Herz für eine RTL-Fernsehshow. Das Schild wurde kurzfristig zum Sendetermin geliefert und angebracht und anschließend in weiteren Fernsehsendungen eingesetzt."
+  },
+  {
+    "id": "asbach",
+    "title": "Asbach",
+    "category": "Marke & Event",
+    "alt": "Rot und blau leuchtender Asbach-Schriftzug über dem Eingang eines Events",
+    "position": "50% 39%",
+    "image": "assets/modules/gallery4/asbach.webp",
+    "thumb": "assets/modules/gallery4/asbach-small-optimized.webp",
+    "ratio": 0.75,
+    "gallery4Position": "50% 39%",
+    "description": "Acht Meter breites LED-Neonschild mit dem Schriftzug „Asbach Uralters Heim“ für den Außenbereich. Zum Projekt gehörte außerdem ein separates Asbach-A für die Bühne."
+  }
+]

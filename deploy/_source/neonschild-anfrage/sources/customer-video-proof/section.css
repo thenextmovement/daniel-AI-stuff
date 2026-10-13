@@ -1,0 +1,72 @@
+.nt-proof{background:#fff;color:#141414;font:400 16px/1.5 Inter,Arial,sans-serif;padding:clamp(36px,3.4vw,54px) 0 32px;scroll-margin-top:20px;-webkit-font-smoothing:antialiased}
+.nt-proof *{box-sizing:border-box}
+.nt-proof button{font:inherit}
+.nt-proof button:focus-visible,.nt-proof a:focus-visible{outline:3px solid #fa31a2;outline-offset:4px}
+.nt-proof__inner{width:91.6%;margin:0 auto}
+.nt-proof__top{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);align-items:center;gap:clamp(32px,4vw,76px);text-align:left;margin:0 0 28px}
+.nt-proof__eyebrow{margin:0 0 14px;font-size:12px;font-weight:500;letter-spacing:.19em;line-height:1.4;color:#565656}
+/* Section heading scale shared with the project gallery and four-step section. */
+.nt-proof h2{margin:0;max-width:28ch;font-size:clamp(32px,3.6vw,54px);font-weight:600;line-height:1.08;letter-spacing:-.048em;text-align:left;text-wrap:initial}
+.nt-proof__intro{max-width:60ch;margin:22px 0 0;color:#595959;font-size:16px;line-height:1.5}
+/* Rotating logo groups share the heading row; no separate ruled rail. */
+.nt-proof__brands{display:grid;align-items:center;min-width:0;min-height:64px}
+.nt-proof__brand-group{grid-area:1/1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;justify-items:center;gap:clamp(16px,2vw,34px);opacity:0;visibility:hidden;transform:translateY(7px);transition:opacity .5s ease,transform .5s ease,visibility .5s}
+.nt-proof__brand-group.is-active{opacity:1;visibility:visible;transform:none}
+.nt-proof__brands img{display:block;width:100%;max-width:120px;height:40px;object-fit:contain;filter:grayscale(1) brightness(0);opacity:.8}
+.nt-proof__brands .nt-proof__brand-kfc{max-width:72px;height:32px}
+.nt-proof__brands .nt-proof__brand-asbach{height:46px;filter:grayscale(1)}
+.nt-proof__band{width:100%;overflow:hidden}
+.nt-proof__videos{display:flex;gap:16px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;padding:6px 0 8px;overflow-anchor:none}
+.nt-proof__videos::-webkit-scrollbar{display:none}
+.nt-proof__video{display:flex;flex-direction:column;align-self:flex-start;flex:0 0 168px;min-width:0;padding:0;border:0;background:transparent;color:#141414;text-align:left;text-decoration:none;cursor:pointer}
+.nt-proof__frame{position:relative;display:block;width:100%;aspect-ratio:9/16;overflow:hidden;background:#eee;border-radius:5px}
+.nt-proof__frame img{display:block;width:100%;height:100%;object-fit:contain}
+.nt-proof__video:hover .nt-proof__play{background:#141414a6}
+.nt-proof__play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:grid;place-items:center;width:42px;height:42px;border:1px solid #fff;border-radius:50%;background:#0a0a0a6b;backdrop-filter:blur(5px)}
+.nt-proof__play:after{content:"";width:0;height:0;margin-left:3px;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:11px solid #fff}
+.nt-proof__caption{display:grid;grid-template-columns:minmax(0,1fr) 18px;gap:4px 7px;min-height:62px;padding:10px 0 0}
+.nt-proof__caption small{grid-column:1/-1;color:#666;font-size:9px;font-weight:600;letter-spacing:.12em}
+.nt-proof__caption strong{font-size:14px;font-weight:600;line-height:1.2;letter-spacing:-.025em}
+.nt-proof__caption svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.nt-proof__dialog{position:fixed;inset:0;width:min(92vw,700px);max-width:92vw;max-height:90dvh;margin:auto;padding:0;border:1px solid #ffffff44;border-radius:10px;overflow:auto;background:#181615;color:#fff;box-shadow:0 24px 80px #0009}
+.nt-proof__dialog::backdrop{background:#000c}
+.nt-proof__dialog[hidden],.nt-proof__dialog [hidden]{display:none!important}
+.nt-proof__close{position:absolute;z-index:2;top:10px;right:10px;display:grid;place-items:center;width:44px;height:44px;padding:0;border:1px solid #fffa;border-radius:50%;background:#111e;color:#fff;cursor:pointer}
+.nt-proof__close svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.nt-proof__consent{display:grid;grid-template-columns:minmax(0,240px) minmax(0,1fr);gap:30px;padding:28px}
+.nt-proof__consent img{display:block;width:100%;aspect-ratio:9/16;object-fit:contain;background:#0a0a0a}
+.nt-proof__consent-copy{display:flex;flex-direction:column;align-items:start;justify-content:center;gap:16px;padding-right:8px}
+.nt-proof__consent-copy h3{margin:0;font-size:clamp(26px,3vw,40px);font-weight:600;line-height:1.08;letter-spacing:-.04em}
+.nt-proof__consent-copy p{margin:0;color:#d2cdca;font-size:14px;line-height:1.5}
+.nt-proof__load{min-height:48px;padding:10px 19px;border:0;border-radius:999px;background:#fff;color:#181615;font-weight:600;cursor:pointer}
+.nt-proof__load:hover{background:#fa31a2}
+.nt-proof__external{color:#fff;font-size:13px;text-underline-offset:4px}
+.nt-proof__dialog.is-playing{width:min(92vw,calc(84dvh * 9 / 16));max-height:86dvh;overflow:hidden;border-radius:6px}
+.nt-proof__player{width:100%;aspect-ratio:9/16;background:#000}
+.nt-proof__player iframe{display:block;width:100%;height:100%;border:0}
+
+@media(max-width:760px){
+ .nt-proof{padding:34px 0 26px}
+ .nt-proof__top{grid-template-columns:1fr;gap:22px;margin-bottom:22px}
+ .nt-proof__eyebrow{margin-bottom:16px}
+ .nt-proof__intro{margin-top:14px;font-size:14px;max-width:36ch}
+ .nt-proof__brands{min-height:42px}
+ .nt-proof__brand-group{gap:22px}
+ .nt-proof__brands img{max-width:100px;height:30px}
+ .nt-proof__brands .nt-proof__brand-kfc{max-width:57px;height:27px}
+ .nt-proof__brands .nt-proof__brand-asbach{height:35px}
+ .nt-proof__videos{gap:12px}
+ .nt-proof__video{flex-basis:136px}
+ .nt-proof__caption{grid-template-columns:1fr;min-height:60px}
+ .nt-proof__caption svg{display:none}
+ .nt-proof__caption strong{font-size:13px}
+ .nt-proof__consent{grid-template-columns:1fr;gap:18px;padding:18px}
+ .nt-proof__consent img{width:auto;max-width:100%;height:min(39dvh,340px);justify-self:center}
+ .nt-proof__consent-copy{gap:12px;padding:0 2px 4px}
+ .nt-proof__consent-copy h3{font-size:25px}
+ .nt-proof__dialog.is-playing{width:min(94vw,calc(84dvh * 9 / 16))}
+}
+
+@media(max-width:600px){.nt-proof__inner{width:90%}.nt-proof h2{font-size:clamp(32px,8.2vw,42px)}}
+
+@media(prefers-reduced-motion:reduce){.nt-proof__brand-group{transition:none;transform:none}}

@@ -1,0 +1,29 @@
+<section id="kontakt" class="nt-contact-classic" aria-labelledby="nt-classic-title">
+<div class="nt-contact-classic__intro"><svg class="nt-contact-classic__bolt" viewBox="110 25 160 325" aria-hidden="true"><path d="M183.535156 170.886719 258.597656 36.234375 116.4375 201.417969H191.503906L116.4375 336.070312 258.597656 170.886719Z"/></svg>
+<h2 id="nt-classic-title">Nehmen Sie<br>Kontakt mit uns auf.</h2>
+<p class="nt-contact-classic__lead">Erzählen Sie uns von Ihrer Idee oder stellen Sie uns Ihre Frage.</p>
+<ul class="nt-contact-classic__benefits">
+<li><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M20 3H7a2 2 0 0 0-2 2v22a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10L20 3Zm0 0v7h7M10 19l4 4 8-9"/></svg><strong>Kostenloses, unverbindliches Angebot</strong></li>
+<li><svg viewBox="0 0 32 32" aria-hidden="true"><path d="m16 2 13 7v14l-13 7L3 23V9l13-7Zm0 14v14M3 9l13 7 13-7"/></svg><span><strong>Kostenlose 3D-Visualisierung</strong><small>Ihres hochgeladenen Logos</small></span></li>
+<li><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M25 12c0 5-5 9-11 9-2 0-4-.4-6-1l-6 3 2-6c-1-1-2-3-2-5 0-5 5-9 12-9s11 4 11 9Z M17 25c3 1 5 1 8 0l5 3-1-6c3-5 0-10-1-11"/></svg><strong>Individuelle Beratung</strong></li>
+</ul>
+<div class="nt-contact-classic__person"><img src="../express-chat/assets/fabienne.webp" width="56" height="56" loading="lazy" alt="Fabienne Trapp"><p><strong>Fabienne Trapp</strong><span>Ihre Ansprechpartnerin</span></p></div>
+<a class="nt-contact-classic__visit" href="https://www.google.com/maps/search/?api=1&amp;query=NEONTRIP%20Bilker%20Allee%2029%2040219%20D%C3%BCsseldorf" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg><span><strong>Besuchen Sie uns in Düsseldorf.</strong><span>Kommen Sie in unserem Ladenlokal vorbei.</span><span>Bilker Allee 29 · 40219 Düsseldorf</span></span></a>
+</div>
+<form id="nt-classic-form" class="nt-contact-classic__form" action="/api/c" method="post" enctype="multipart/form-data" aria-labelledby="nt-classic-title">
+<div class="nt-contact-classic__fields">
+<label for="nt-classic-first">Vorname <span>*</span><input id="nt-classic-first" name="vorname" autocomplete="given-name" required maxlength="80"></label>
+<label for="nt-classic-last">Nachname <span>*</span><input id="nt-classic-last" name="nachname" autocomplete="family-name" required maxlength="80"></label>
+<label for="nt-classic-email">Unternehmens-E-Mail <span>*</span><input id="nt-classic-email" name="email" type="email" autocomplete="email" required maxlength="254"></label>
+<label for="nt-classic-phone">Telefonnummer <span>(optional)</span><input id="nt-classic-phone" name="telefon" type="tel" autocomplete="tel" maxlength="60"></label>
+<label class="nt-contact-classic__wide" for="nt-classic-company">Unternehmen <span>(optional)</span><input id="nt-classic-company" name="unternehmen" autocomplete="organization" maxlength="200"></label>
+<label class="nt-contact-classic__wide" for="nt-classic-message">Ihre Nachricht <span>*</span><textarea id="nt-classic-message" name="nachricht" rows="3" required maxlength="10000" placeholder="Worum geht es bei Ihrem Projekt?"></textarea></label>
+</div>
+<div class="nt-contact-classic__upload-wrap">
+<label class="nt-contact-classic__upload" for="nt-classic-files"><input id="nt-classic-files" name="dateien" type="file" multiple aria-describedby="nt-classic-file-hint"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="m12 17 8-8a4 4 0 0 1 6 6L15 26a7 7 0 0 1-10-10L18 3m-9 16L21 7"/></svg><span><strong>Logo, Skizze oder Fotos hinzufügen</strong><small id="nt-classic-file-hint">Dateien auswählen oder hier ablegen · bis 20 MB je Datei</small></span></label>
+<div class="nt-contact-classic__files" hidden><p data-classic-file-summary aria-live="polite"></p><button type="button" data-classic-clear>Entfernen</button></div>
+</div>
+<div class="nt-contact-classic__actions"><p>Ihre Angaben behandeln wir vertraulich.<br><a href="https://anfrage.neontrip.de/datenschutz" target="_blank" rel="noopener">Datenschutz</a></p><button type="submit">Anfrage senden<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-6-6 6 6-6 6"/></svg></button></div>
+<p class="nt-contact-classic__status" role="status" tabindex="-1" hidden></p>
+</form>
+</section>

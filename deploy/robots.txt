@@ -10,3 +10,4 @@ Sitemap: https://neontrip.de/sitemap-en.xml
 Sitemap: https://neontrip.de/sitemap-blog.xml
 
 Sitemap: https://anfrage.neontrip.de/configurator/sitemap.xml
+Sitemap: https://anfrage.neontrip.de/neonschild/sitemap.xml
