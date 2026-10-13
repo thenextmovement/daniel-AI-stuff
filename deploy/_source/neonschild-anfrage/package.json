@@ -1,0 +1,12 @@
+{
+  "name": "neontrip-local-landingpage",
+  "private": true,
+  "scripts": {
+    "build": "python3 build-preview.py"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "purgecss": "8.0.0",
+    "svgo": "4.1.0"
+  }
+}

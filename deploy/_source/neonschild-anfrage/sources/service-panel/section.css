@@ -1,0 +1,17 @@
+/* Compact facts: pink line icons, quiet labels and one-time number motion. */
+.nt-service{color:#181615;background:#efefef;font:400 14px/1.4 Inter,Arial,sans-serif;padding:16px 4.2vw;scroll-margin-top:24px}
+.nt-service *{box-sizing:border-box}
+.nt-service__panel{display:flex;justify-content:center;gap:clamp(28px,5vw,80px);list-style:none;margin:0 auto;padding:0;max-width:1040px}
+.nt-service__item{display:flex;align-items:center;gap:12px;min-width:0}
+.nt-service__icon{flex:none;width:32px;height:32px;display:block;color:#fa31a2}
+.nt-service__value{display:block;font-size:18px;font-weight:500;line-height:1.12;letter-spacing:-.025em;margin:0;white-space:nowrap;font-variant-numeric:tabular-nums}
+.nt-service__unit{font-size:.75em;font-weight:400}
+.nt-service__copy p{margin:3px 0 0;color:#625e5b;font-size:12px;line-height:1.4}
+.nt-service__sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(max-width:600px){.nt-service{padding:14px 5vw}.nt-service__panel{gap:14px;justify-content:space-between}.nt-service__item{gap:7px;align-items:flex-start;flex:1}.nt-service__icon{width:22px;height:22px}.nt-service__value{font-size:13px}.nt-service__copy p{font-size:10px;max-width:88px}.nt-service__unit{font-size:.78em}}
+@media(max-width:360px){.nt-service__panel{gap:9px}.nt-service__item{gap:5px}.nt-service__icon{width:18px;height:18px}.nt-service__value{font-size:12px}}
+
+/* Equal fact columns; final business values remain static and readable. */
+.nt-service{position:relative}
+.nt-service__panel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.nt-service__item{justify-content:center}

@@ -1,0 +1,23 @@
+[
+  {
+    "title": "3D-Buchstaben auf Schiene für außen",
+    "source": "/Users/danielklesse/Desktop/NEONTRIP-Hero-Fotos/Fotos/catalog/rail-an.png",
+    "export_source": "/Users/danielklesse/Desktop/NEONTRIP-Landingpage-Uebergabe-2026-09-25/implementation/configurator/assets/content/hero-products/rail-on.webp",
+    "file": "assets/live/assets/images/product-hero/3D-rail-exterior.webp"
+  },
+  {
+    "title": "Rückbeleuchtete Buchstaben",
+    "source": "/Users/danielklesse/Desktop/NEONTRIP-Hero-Fotos/Fotos/hero-praxis-halo.png",
+    "file": "assets/live/assets/images/product-hero/3D-halo.webp"
+  },
+  {
+    "title": "Leuchtkästen",
+    "source": "/Users/danielklesse/Desktop/NEONTRIP-Hero-Fotos/Fotos/catalog/box-an.png",
+    "file": "assets/live/assets/images/product-hero/leuchtkasten.webp"
+  },
+  {
+    "title": "Ausstecker & Nasenschilder",
+    "source": "/Users/danielklesse/Desktop/NEONTRIP-Hero-Fotos/Fotos/catalog/settings-v2/blade-an.png",
+    "file": "assets/live/assets/images/product-hero/ausstecker.webp"
+  }
+]

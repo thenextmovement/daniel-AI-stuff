@@ -1,0 +1,37 @@
+<section id="anfrage" class="nt-live nt-request" aria-labelledby="nt-contact-title">
+<svg class="nt-request__bolt" viewBox="110 25 160 325" aria-hidden="true"><path d="M183.535156 170.886719 258.597656 36.234375 116.4375 201.417969H191.503906L116.4375 336.070312 258.597656 170.886719Z"/></svg>
+<header class="nt-request__heading"><div><p class="nt-kicker">Ihre Projektanfrage</p><h2 id="nt-contact-title">Ihr LED-Neonschild.<br> Schritt für Schritt.</h2></div><p>Kostenlose 3D-Vorschau.<br> Ihr unverbindliches Angebot.</p></header>
+<form id="kontakt-form" class="nt-request__form" action="#anfrage" enctype="multipart/form-data" aria-labelledby="nt-contact-title">
+<input type="hidden" name="produkt" value="LED-Neon">
+<nav class="nt-request__progress" aria-label="Schritte Ihrer Projektanfrage" hidden><ol><li><button type="button" data-go-step="0" aria-current="step"><span>01</span> Einsatzort</button></li><li><button type="button" data-go-step="1" disabled><span>02</span> Logo</button></li><li><button type="button" data-go-step="2" disabled><span>03</span> Kontakt</button></li></ol><p data-step-count aria-live="polite">Schritt 1 von 3</p></nav>
+<div class="nt-request__stage">
+<div class="nt-request__panels">
+<div class="nt-request__panel" data-step="0" aria-labelledby="nt-request-project-title">
+<h3 id="nt-request-project-title" tabindex="-1">Innen oder außen?</h3><p class="nt-request__intro" id="nt-request-choice-hint">Wo möchten Sie Ihr LED-Neonschild einsetzen?</p>
+<fieldset class="nt-request__choices" aria-describedby="nt-request-choice-hint"><legend class="nt-request__sr-only">Einsatzort Ihres LED-Neonschilds</legend>
+<label class="nt-request__choice"><input type="radio" name="einsatzort" value="innen" data-location-label="Innenbereich" required><span class="nt-request__choice-body"><img src="assets/images/product-hero/led-neon.webp" width="960" height="541" alt="Gestaltungsbeispiel: LED-Neon-Logo an einer Empfangswand im Innenraum" loading="lazy"><span class="nt-request__choice-text"><strong>Innen</strong><small>Für Ihre Innenräume</small></span><svg class="nt-request__check" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-8"/></svg></span></label>
+<label class="nt-request__choice"><input type="radio" name="einsatzort" value="aussen" data-location-label="Außenbereich" required><span class="nt-request__choice-body"><img src="assets/images/product-hero/led-neon-outdoor.webp" width="960" height="541" alt="Gestaltungsbeispiel: LED-Neon-Logo an einer Terrassenwand im Außenbereich" loading="lazy"><span class="nt-request__choice-text"><strong>Außen</strong><small>Für Ihren Außenbereich</small></span><svg class="nt-request__check" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-8"/></svg></span></label>
+</fieldset>
+
+</div>
+<div class="nt-request__panel" data-step="1" aria-labelledby="nt-request-logo-title">
+<h3 id="nt-request-logo-title" tabindex="-1">Haben Sie schon ein Logo oder eine Idee?</h3><p class="nt-request__intro">Ein Logo, eine Skizze oder ein Foto hilft uns bei Ihrer 3D-Vorschau. Der Upload ist optional.</p>
+<div class="nt-request__description"><label for="kontakt-nachricht">Kurz zu Ihrem Vorhaben <span>*</span></label><textarea id="kontakt-nachricht" name="nachricht" rows="2" required maxlength="10000" placeholder="Ihre Idee, ungefähre Größe und Wunschtermin – soweit schon bekannt."></textarea></div>
+<label class="nt-request__upload" for="kontakt-file-input"><input id="kontakt-file-input" name="datei" type="file" multiple aria-describedby="nt-contact-file-hint"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="m12 17 8-8a4 4 0 0 1 6 6L15 26a7 7 0 0 1-10-10L18 3m-9 16L21 7"/></svg><strong>Logo oder Dateien auswählen</strong><span id="nt-contact-file-hint">Alle Dateiformate · Mehrere Dateien möglich</span><span class="nt-request__upload-action" aria-hidden="true">Dateien auswählen <span>+</span></span></label>
+<div class="nt-request__files" hidden><div><strong id="nt-contact-file-label" aria-live="polite">Dateien auswählen</strong><button type="button" data-clear-files>Auswahl entfernen</button></div><ul data-file-list></ul></div>
+<p class="nt-request__hint">Noch keine Datei? Gehen Sie einfach zum nächsten Schritt.</p>
+</div>
+<div class="nt-request__panel" data-step="2" aria-labelledby="nt-request-contact-title">
+<h3 id="nt-request-contact-title" tabindex="-1">Wie erreichen wir Sie?</h3><p class="nt-request__intro">Für Ihre persönliche 3D-Vorschau und Ihr individuelles Angebot.</p>
+<div class="nt-request__summary"><p data-selected-product>Ihr LED-Neonschild</p><button type="button" data-edit-project hidden>Ändern</button></div>
+<div class="nt-request__fields"><div><label for="kontakt-vorname">Vorname <span>*</span></label><input id="kontakt-vorname" name="vorname" autocomplete="given-name" required maxlength="80"></div><div><label for="kontakt-nachname">Nachname <span>*</span></label><input id="kontakt-nachname" name="nachname" autocomplete="family-name" required maxlength="80"></div><div class="nt-request__company"><label for="kontakt-firma">Firma <span>(optional)</span></label><input id="kontakt-firma" name="firma" autocomplete="organization" maxlength="200"></div><div class="nt-request__email"><label for="kontakt-email">E-Mail <span>*</span></label><input id="kontakt-email" name="email" type="email" autocomplete="email" required maxlength="254"></div><div class="nt-request__phone"><label for="kontakt-telefon">Telefon <span>*</span></label><input id="kontakt-telefon" name="telefon" type="tel" autocomplete="tel" required maxlength="60"></div></div>
+<p class="nt-request__privacy">Ihre Angaben verarbeiten wir gemäß unserer <a href="https://anfrage.neontrip.de/datenschutz" target="_blank" rel="noopener">Datenschutzerklärung</a>.</p>
+</div>
+</div>
+<p class="nt-request__error" role="alert" hidden></p>
+<div class="nt-request__actions"><button class="nt-request__back" type="button" data-back aria-label="Zurück zum vorherigen Schritt" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H4m6 6-6-6 6-6"/></svg><span>Zurück</span></button><p data-next-hint>Im nächsten Schritt beschreiben Sie Ihre Idee.</p><button class="nt-request__primary" type="button" data-next hidden><span>Weiter zum Logo</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-6-6 6 6-6 6"/></svg></button><button class="nt-request__primary" type="submit" data-submit><span class="nt-request__submit-full">3D-Vorschau anfragen</span><span class="nt-request__submit-short">Anfrage senden</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-6-6 6 6-6 6"/></svg></button></div>
+</div>
+<p class="nt-request__status" id="nt-preview-form-note" role="status" hidden></p>
+<noscript><p class="nt-request__hint">Ohne JavaScript sehen Sie alle Schritte untereinander. In dieser lokalen Vorschau werden keine Angaben versendet.</p></noscript>
+</form>
+</section>

@@ -1,0 +1,18 @@
+[
+  {
+    "product": "LED-Neon",
+    "setting": "innen",
+    "file": "assets/live/assets/images/product-hero/led-neon.webp",
+    "source": "assets/modules/led-neon-usecases-v2/hero-20260930/01-empfang-an-960.webp",
+    "sha256": "4669facee4723b53e5dca6b2e791ba846e8d26e8e288f013922fbe60d0160537",
+    "note": "Existing hero design example; not a customer reference"
+  },
+  {
+    "product": "LED-Neon",
+    "setting": "aussen",
+    "file": "assets/live/assets/images/product-hero/led-neon-outdoor.webp",
+    "source": "assets/modules/led-neon-usecases-v2/hero-20260930/03-sommerevent-an-960.webp",
+    "sha256": "6c3cb91971c91a13cd1cd058a0059aa1a1860f321c3af05bb002b1451fd94092",
+    "note": "Existing hero design example; not a customer reference"
+  }
+]
