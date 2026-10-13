@@ -265,6 +265,8 @@
     /* Scroll reveal */
     .reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
     .reveal.visible { opacity: 1; transform: translateY(0); }
+    /* Above-the-fold content must not wait for scroll observers or animation. */
+    #hero .reveal { opacity: 1; transform: none; transition: none; }
     /* Fallback: show content if JS fails */
     .no-js .reveal { opacity: 1; transform: none; transition: none; }
     .no-js .stagger-children > * { opacity: 1; transform: none; }
@@ -2035,7 +2037,7 @@
         if (window.matchMedia && !window.matchMedia('(max-width: 767px)').matches) return;
         window.requestAnimationFrame(function() {
           var submit = form.querySelector('button[type="submit"]');
-          var target = n === 2 && submit ? submit : form;
+          var target = n === (steps[2] ? 2 : 1) && submit ? submit : form;
           var rect = target.getBoundingClientRect();
           var margin = 18;
           if (rect.bottom > window.innerHeight - margin || rect.top < margin) {
@@ -2049,12 +2051,14 @@
         bars.forEach(function(b, i) { if (b) b.style.background = i <= n ? '#fa31a2' : 'rgba(10,10,10,0.08)'; });
         keepHeroFormVisible(n);
       }
-      var n1 = document.getElementById('hero-next-1'); if (n1) n1.onclick = function() { var g = form.querySelector('[name="groesse"]'); if (g && !g.value) { g.focus(); g.style.borderColor = '#fa31a2'; setTimeout(function() { g.style.borderColor = ''; }, 2000); return; } goStep(1); };
+      var n1 = document.getElementById('hero-next-1'); if (n1) n1.onclick = function() { var g = steps[0].querySelector('[name="groesse"]'); if (g && !g.value) { g.focus(); g.style.borderColor = '#fa31a2'; setTimeout(function() { g.style.borderColor = ''; }, 2000); return; } goStep(1); };
       var n2 = document.getElementById('hero-next-2'); if (n2) n2.onclick = function() { goStep(2); };
       var b2 = document.getElementById('hero-back-2'); if (b2) b2.onclick = function() { goStep(0); };
       var b3 = document.getElementById('hero-back-3'); if (b3) b3.onclick = function() { goStep(1); };
       form.onsubmit = function(e) {
         e.preventDefault();
+        var size = form.querySelector('[name="groesse"]');
+        if (size && !size.value) { size.focus(); size.style.borderColor = '#fa31a2'; setTimeout(function() { size.style.borderColor = ''; }, 2000); return; }
         var nameVal = (form.querySelector('[name="name"]').value || '').trim();
         var emailVal = (form.querySelector('[name="email"]').value || '').trim();
         var telefonVal = (form.querySelector('[name="telefon"]').value || '').trim();
@@ -2083,7 +2087,7 @@
             var barsW = document.getElementById('hero-bars-wrapper');
             if (header) header.remove();
             if (barsW) barsW.remove();
-            steps.forEach(function(s) { s.classList.add('hidden'); });
+            steps.forEach(function(s) { if (s) s.classList.add('hidden'); });
             var success = document.createElement('div');
             success.className = 'text-center py-6';
             success.innerHTML = '<div class="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4"><svg class="w-7 h-7 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><h3 class="text-xl font-semibold text-dark tracking-[-0.03em] mb-1">Übermittlung angenommen!</h3><p class="text-sm font-medium text-dark/40 tracking-tight mb-5">Ihre Anfrage wird jetzt verarbeitet.</p>';
@@ -2555,49 +2559,41 @@
     // ═══════ HOVER SLIDESHOW ON PRODUCT TILES ═══════
     (function() {
       const slideshowState = new Map();
-
-      // Preload images for smooth transitions
-      Object.values(productGalleryData).forEach(product => {
-        if (product.images) {
-          product.images.forEach(src => { const img = new Image(); img.src = src; });
-        }
-      });
-
       document.querySelectorAll('.product-tile').forEach(card => {
-        const productKey = card.dataset.product;
-        const product = productGalleryData[productKey];
-        if (!product || !product.images || product.images.length === 0) return;
-
+        const product = productGalleryData[card.dataset.product];
         const imgContainer = card.querySelector('.rounded-lg');
-        if (!imgContainer) return;
+        if (!product || !product.images || !product.images.length || !imgContainer) return;
+        let overlayImgs = [];
 
-        // Create overlay images
-        const overlayImgs = product.images.map(src => {
-          const img = document.createElement('img');
-          img.src = src;
-          img.alt = product.title + ' Beispiel';
-          img.className = 'slideshow-img';
-          img.draggable = false;
-          imgContainer.appendChild(img);
-          return img;
-        });
-
-        card.addEventListener('mouseenter', () => {
+        // Mobile never needs hover images; desktop loads only the hovered product.
+        card.addEventListener('mouseenter', async () => {
           if (window.matchMedia('(hover: none)').matches) return;
+          if (!overlayImgs.length) {
+            overlayImgs = product.images.map(src => {
+              const img = document.createElement('img');
+              img.src = src;
+              img.alt = product.title + ' Beispiel';
+              img.className = 'slideshow-img';
+              img.decoding = 'async';
+              img.draggable = false;
+              imgContainer.appendChild(img);
+              return img;
+            });
+          }
+          await Promise.all(overlayImgs.map(img => img.decode().catch(() => {})));
+          if (!card.matches(':hover') || slideshowState.has(card)) return;
+          const loadedImgs = overlayImgs.filter(img => img.naturalWidth > 0);
+          if (!loadedImgs.length) return;
           let index = 0;
-          overlayImgs.forEach(img => img.classList.remove('active'));
-          overlayImgs[0].classList.add('active');
+          loadedImgs[0].classList.add('active');
           card.classList.add('slideshow-active');
-
           const interval = setInterval(() => {
-            overlayImgs[index].classList.remove('active');
-            index = (index + 1) % overlayImgs.length;
-            overlayImgs[index].classList.add('active');
+            loadedImgs[index].classList.remove('active');
+            index = (index + 1) % loadedImgs.length;
+            loadedImgs[index].classList.add('active');
           }, 1500);
-
           slideshowState.set(card, { interval, overlayImgs });
         });
-
         card.addEventListener('mouseleave', () => {
           const s = slideshowState.get(card);
           if (s) {

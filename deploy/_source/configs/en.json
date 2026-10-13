@@ -188,5 +188,7 @@
     "footer"
   ],
   "default_product": "LED Neonschild",
-  "sticky_produkt": "neonschild"
+  "sticky_produkt": "neonschild",
+  "hero_poster_desktop": "../assets/images/hero-poster.webp",
+  "hero_poster_mobile": "../assets/images/hero-poster.webp"
 }
