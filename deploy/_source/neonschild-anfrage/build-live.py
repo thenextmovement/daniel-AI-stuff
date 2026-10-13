@@ -33,12 +33,17 @@ head=[];body=[]
 for attrs,content in scripts:
     combined=attrs+content
     if len(content)>3000:continue
-    if any(term in combined for term in ['consent.cookiebot.com','googletagmanager.com/gtag','openAiAdsInitialized',"gtag('consent', 'default'","gtag('js', new Date())"]):
+    if 'googletagmanager.com/gtag/js' in attrs:
+        # Download analytics after the essential page markup and intro paint. Consent/config/events
+        # stay queued in the existing gtag dataLayer, so no attribution or event is lost.
+        url=re.search(r'src="([^"]+)"',attrs).group(1)
+        head.append('<script data-cookieconsent="ignore">window.addEventListener("DOMContentLoaded",function(){function start(){requestAnimationFrame(function(){requestAnimationFrame(function(){var s=document.createElement("script");s.async=true;s.fetchPriority="low";s.src='+json.dumps(url)+';document.head.appendChild(s);});});}var intro=document.querySelector("[data-nt-splash]");if(!intro){start();return;}var observer=new MutationObserver(function(){if(!intro.isConnected){observer.disconnect();start();}});observer.observe(intro.parentNode,{childList:true});},{once:true});</script>')
+    elif any(term in combined for term in ['consent.cookiebot.com','openAiAdsInitialized',"gtag('consent', 'default'","gtag('js', new Date())"]):
         head.append('<script'+attrs+'>'+content+'</script>')
     elif ('data-cookieconsent="statistics"' in attrs and 'clarity' in content) or 'nt-clarity-identifiers.js' in attrs:
         body.append('<script'+attrs+'>'+content+'</script>')
 assert len(head)==5 and len(body)==3,(len(head),len(body))
-page=page.replace('</head>','\n'.join(head)+'</head>')
+page=page.replace('</head>','<link rel="preconnect" href="https://consent.cookiebot.com"><link rel="preconnect" href="https://consentcdn.cookiebot.com"><style>#CybotCookiebotDialog .CybotCookiebotDialogNavItemLink.CybotCookiebotDialogActive{color:#b80d70!important}</style>'+ '\n'.join(head)+'</head>')
 # Keep transport ready before section submit listeners. Defer retains parser order.
 pre='<script defer data-cookieconsent="ignore" src="/assets/js/nt-business-email.js?v=78b9b0ce"></script>'
 pre+='<script defer data-cookieconsent="ignore" src="/assets/js/lp-common.js?v='+sha256((DEPLOY/'assets/js/lp-common.js').read_bytes()).hexdigest()[:10]+'"></script>'
