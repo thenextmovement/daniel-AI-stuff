@@ -83,12 +83,14 @@ body.designstudio .trust-rating-header:focus-visible{outline-color:#fff}
 .proof-rating:hover strong{text-decoration:underline;text-underline-offset:3px;}
 .proof-preview a:focus-visible{outline:2px solid #c0107d;outline-offset:3px;border-radius:4px;}
 /* One static element across sizes: no post-paint DOM movement or duplicated photos. */
-@media(min-width:1001px){
+@media(min-width:951px){
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .config-workspace{row-gap:0;}
+ /* Preview and proof occupy separate grid rows; neither may scroll over the other. */
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .config-workspace:has(.proof-preview) .preview-column{position:static;top:auto;}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor{grid-row:1/3;}
  body.designstudio #main .proof-preview{grid-column:2;grid-row:2;align-self:start;margin:2px 0 0;}
 }
-@media(min-width:761px) and (max-width:1000px){
+@media(min-width:761px) and (max-width:950px){
  body.designstudio #main .proof-preview{order:2;width:100%;margin:8px 0 0;}
 }
 @media(max-width:760px){

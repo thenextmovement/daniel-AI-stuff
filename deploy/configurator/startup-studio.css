@@ -2113,12 +2113,14 @@ body.designstudio .trust-rating-header:focus-visible{outline-color:#fff}
 .proof-rating:hover strong{text-decoration:underline;text-underline-offset:3px;}
 .proof-preview a:focus-visible{outline:2px solid #c0107d;outline-offset:3px;border-radius:4px;}
 /* One static element across sizes: no post-paint DOM movement or duplicated photos. */
-@media(min-width:1001px){
+@media(min-width:951px){
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .config-workspace{row-gap:0;}
+ /* Preview and proof occupy separate grid rows; neither may scroll over the other. */
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .config-workspace:has(.proof-preview) .preview-column{position:static;top:auto;}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor{grid-row:1/3;}
  body.designstudio #main .proof-preview{grid-column:2;grid-row:2;align-self:start;margin:2px 0 0;}
 }
-@media(min-width:761px) and (max-width:1000px){
+@media(min-width:761px) and (max-width:950px){
  body.designstudio #main .proof-preview{order:2;width:100%;margin:8px 0 0;}
 }
 @media(max-width:760px){
@@ -2150,6 +2152,15 @@ body.nt-configurator .nt-config-content .nt-video-caption small { font-size: 12p
 body.nt-configurator .nt-express :is(.nt-express__assistant-label, .nt-express__composer-hint, .nt-express__draft-note) { font-size: 14px; line-height: 1.4; }
 body.nt-configurator :is(.nt-content-cta, #next-step, #page-add-to-cart, #add-to-cart, #review-add-to-cart) {
   min-height: 48px !important; font-size: 16px; line-height: 1.3 !important;
+}
+/* Keep the mobile purchase label on one line beside the price and payment logos. */
+@media(max-width:760px){
+ body.nt-configurator #page-purchase .trust-purchase-action{max-width:none;flex-shrink:0;}
+ body.nt-configurator #page-add-to-cart{white-space:nowrap;font-size:14px;gap:8px;padding-inline:12px;}
+}
+@media(max-width:350px){
+ body.nt-configurator #page-add-to-cart{font-size:13px;}
+ body.nt-configurator #page-add-to-cart svg{display:none;}
 }
 
 /* Bounded lower-page adjustments, 07.10.2026. Heading scale stays unchanged. */
