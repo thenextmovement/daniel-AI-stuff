@@ -46,6 +46,21 @@ test('page readiness waits for visibility and is once per document',()=>{
   r.browser.document.visibilityState='visible';assert.equal(r.track.pageReady(),true);
   assert.equal(r.track.pageReady(),false);
 });
+test('consented initial events survive Clarity loading after the CRO module',()=>{
+  const r=fixture();delete r.browser.clarity;
+  r.browser.Cookiebot.consent.statistics=false;
+  r.track.pageReady();assert.equal(r.browser.clarity,undefined);
+  r.browser.Cookiebot.consent.statistics=true;
+  r.track.pageReady();r.track.pageReady();
+  assert.equal(typeof r.browser.clarity,'function');
+  const queued=r.browser.clarity.q.map(args=>Array.from(args));
+  assert.deepEqual(queued,[['event','nt_landing_ready'],['set','measurement_version','cro_v1'],['set','page_type','landing'],['set','ui_layout','desktop_grouped']]);
+  assert.deepEqual(events(r),['cro_page_ready']);
+  // The existing consent-controlled bootstrap reuses this standard Clarity queue.
+  const original=r.browser.clarity;
+  r.browser.clarity=r.browser.clarity||function(){};
+  assert.equal(r.browser.clarity,original);
+});
 test('view uniqueness differs from intentional repeated clicks',()=>{
   const r=fixture(),data={section_id:'benefits',cta_id:'benefits_request'};
   assert.equal(r.track.emit('section_view',data),true);assert.equal(r.track.emit('section_view',data),false);

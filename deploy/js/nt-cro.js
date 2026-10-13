@@ -59,7 +59,12 @@ export function createCroTracker(browser = globalThis, pageType = croPageType(br
     const payload = {send_to:'G-NEEVFC08VX',page_type:pageType,measurement_version:CRO_VERSION,ui_layout:layout(),...params};
     let measured = false;
     try { if (typeof browser.gtag === 'function') { browser.gtag('event',name,payload); measured = true; } } catch {}
-    try { if (typeof browser.clarity === 'function') { browser.clarity('event',clarityName || name); measured = true; } } catch {}
+    try {
+      // Cookiebot may release the Clarity bootstrap after this module. Reuse its
+      // standard queue so consented initial events/tags survive that load order.
+      browser.clarity = browser.clarity || function() { (browser.clarity.q = browser.clarity.q || []).push(arguments); };
+      if (typeof browser.clarity === 'function') { browser.clarity('event',clarityName || name); measured = true; }
+    } catch {}
     return measured;
   }
   function importOrigin() {
