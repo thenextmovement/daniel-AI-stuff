@@ -9,7 +9,7 @@ import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufactur
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
 import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261008-shopping1';
-import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent} from './checkout-client.js?v=20261012-purchase-repair';
+import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent,readCheckoutAttribution} from './checkout-client.js?v=20261014-ads-handoff';
 import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261012-purchase-repair';
 import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261009-purchase2';
@@ -2382,6 +2382,7 @@ const checkoutClient=createCheckoutClient({
   readSession:()=>readAsset(CHECKOUT_SESSION_KEY),
   saveSession:token=>saveAssetIfMissing(CHECKOUT_SESSION_KEY,token),
   readVisitorConsent:()=>cookiebotVisitorConsent(window.Cookiebot),
+  readAttribution:()=>readCheckoutAttribution(window),
   readFile:async(id,kind)=>(await getDraftAsset(id,kind)).file
 });
 function cartItemNeedsUpdate(item){return item.design.rasterVersion!==2||item.snapshot.rasterVersion!==2;}
