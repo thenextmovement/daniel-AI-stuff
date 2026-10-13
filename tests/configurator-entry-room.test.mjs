@@ -141,3 +141,23 @@ test('mobile starting frame makes a 100 cm sign readable and still fits three li
   }
  }
 });
+
+test('closer desktop and unobstructed mobile frames preserve full signs and measurement gutters',()=>{
+ for(const viewport of [{width:1280,height:640},{width:912,height:520},{width:390,height:200},{width:320,height:232}]){
+  const mobile=viewport.width<=760,padding={left:18,right:mobile?64:110,top:mobile?18:72,bottom:48};
+  for(const [widthMm,heightMm] of [[500,138],[1000,251],[2985,1371],[4000,2264]]){
+   const scale=stockPresentationScale(widthMm,heightMm,viewport,padding);
+   const box={x:500-widthMm*scale/2,y:250-heightMm*scale/2,width:widthMm*scale,height:heightMm*scale};
+   const input={room:'reception',viewport,sign:box,padding};
+   const frame=frameRoom({...input,defaultZoom:mobile?1.8:1.6}),pixels=viewport.width/frame.view.width;
+   assert.ok(frame.fits);
+   assert.ok((box.x-frame.view.x)*pixels>=padding.left-.01);
+   assert.ok((box.y-frame.view.y)*pixels>=padding.top-.01);
+   assert.ok((frame.view.x+frame.view.width-box.x-box.width)*pixels>=padding.right-.01);
+   assert.ok((frame.view.y+frame.view.height-box.y-box.height)*pixels>=padding.bottom-.01);
+   if(!mobile&&widthMm===500)assert.ok(box.width*pixels/viewport.width>=.4&&box.width*pixels/viewport.width<=.46);
+   const camera={zoom:1,x:500,y:270};
+   assert.deepEqual(frameRoom({...input,camera,defaultZoom:1.6}),frameRoom({...input,camera}));
+  }
+ }
+});

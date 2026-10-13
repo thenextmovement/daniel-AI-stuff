@@ -157,8 +157,7 @@ body.lichtbuehne.lichtbuehne-v4.designstudio #main #text-help,
  body.designstudio #main .studio-toolbar>.studio-scene-actions{display:none!important}
 }
 @media(max-width:760px){
- body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>.studio-context,
- body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>#usage-note{display:none!important}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>.studio-context{display:none!important}
 }
 
 /* Legible supporting copy in the existing lower-page sections. */

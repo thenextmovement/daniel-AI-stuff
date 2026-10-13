@@ -432,7 +432,7 @@ function paintPrice(){
   if(standPrice)standPrice.textContent=state.price.status==='pending'?'Wird berechnet …':(state.price.baseNet==null?'ab +':'+')+priceLabel({net:mountingNet('table-stand',state.price.baseNet)})+' / Stück';
   $('#share-design').disabled=designRendering||!state.result||!state.sizeValid;
   $('#stage-ar').disabled=designRendering||!state.result||!state.sizeValid;
-  $('#stage-ar span').textContent=state.mount==='table-stand'?'3D ansehen':'An deiner Wand ansehen';
+  $('#stage-ar span').textContent=state.mount==='table-stand'?'3D ansehen':mobileChoiceMedia.matches?'An Wand ansehen':'An deiner Wand ansehen';
   $('#stage-ar').setAttribute('aria-controls',mobileAr||state.mount==='table-stand'?'ar-dialog':'ar-share-dialog');
   $('#stage-ar').title=state.mount==='table-stand'?'3D-Vorschau. Wand-AR ist für Tischständer noch nicht verfügbar.':'';
   const arEntry=$('#config-ar-start');arEntry.disabled=$('#stage-ar').disabled;
@@ -1768,7 +1768,7 @@ function syncScenarioChoice(){
     scenarioSelect.dataset.options=key;
   }
   scenarioSelect.value=state.room;scenarioSelect.title=ROOMS.find(room=>room.id===state.room)?.name||'';
-  const sceneLabel=$('#mobile-scene-label');if(sceneLabel)sceneLabel.textContent=(state.outdoor?'Außen':'Innen')+' · '+scenarioSelect.title;
+  const sceneLabel=$('#mobile-scene-label');if(sceneLabel)sceneLabel.textContent='Ansicht';
 }
 function stockSignBox(room,viewport){
   const plate=plateSize(state.result.size),scale=1000/previewSpanMm(room,viewport),standing=state.mount==='table-stand';
@@ -1784,15 +1784,15 @@ function stockFramePadding(viewport){
   const stage=$('#preview-stage').getBoundingClientRect();
   const controlsBottom=Math.max(0,...['#stage-ar','.studio-mobile-tools>summary'].map(selector=>{
     const bounds=$(selector).getBoundingClientRect();
-    return bounds.width&&bounds.height?bounds.bottom-stage.top:0;
+    return bounds.width&&bounds.height&&bounds.top<stage.bottom&&bounds.bottom>stage.top&&bounds.left<stage.right&&bounds.right>stage.left?bounds.bottom-stage.top:0;
   }));
-  // Use the rendered controls, including wrapped labels, for both fresh and restored cameras.
-  return {left:18,right:viewport.width<=760?64:110,top:Math.max(58,controlsBottom+12),bottom:48};
+  // Reserve only controls inside the photograph; the mobile toolbar is below it.
+  return {left:18,right:viewport.width<=760?64:110,top:Math.max(mobileChoiceMedia.matches?18:58,controlsBottom+12),bottom:48};
 }
 function stockFrame(room,viewport){
-  // Start closer on phones without enlarging the preview panel or the ordered sign.
-  // The existing fit limit still reserves space for controls and dimension labels.
-  return frameRoom({room:room.id,viewport,sign:stockSignBox(room,viewport),camera:cameras.get(room.id),standing:state.mount==='table-stand',padding:stockFramePadding(viewport),defaultZoom:mobileChoiceMedia.matches?1.8:1});
+  // Keep the approved phone framing and bring wide desktop scenes closer.
+  // Compact tablets retain their own wide frame; existing cameras and fit limits win.
+  return frameRoom({room:room.id,viewport,sign:stockSignBox(room,viewport),camera:cameras.get(room.id),standing:state.mount==='table-stand',padding:stockFramePadding(viewport),defaultZoom:mobileChoiceMedia.matches?1.8:innerWidth>=1200?1.6:1});
 }
 function alternativeRoomFits(room,viewport){
   if(room.id==='custom'||stockFrame(room,viewport).fits)return true;
@@ -1920,7 +1920,19 @@ function selectMobileLook(value,navigate=true){
   document.body.dataset.mobileLook=value;
   for(const button of mobileLook.querySelectorAll('button'))button.setAttribute('aria-pressed',button.dataset.mobileLook===value);
   updateStepNavigation();
-  requestAnimationFrame(()=>{if(value==='text')fitTextField();fitQuickFontSamples();if(mobileChoiceMedia.matches){const editorTop=$('.editor').getBoundingClientRect().top+window.scrollY;window.scrollTo({top:Math.min(previousScroll,Math.max(0,editorTop)),behavior:'instant'});}});
+  requestAnimationFrame(()=>{
+    if(value==='text')fitTextField();fitQuickFontSamples();
+    if(!mobileChoiceMedia.matches)return;
+    const editorTop=$('.editor').getBoundingClientRect().top+window.scrollY;
+    window.scrollTo({top:Math.min(previousScroll,Math.max(0,editorTop)),behavior:'instant'});
+    // Short phones may need a little page scroll, never a smaller sign or a covered input.
+    const field=value==='size'?$('#sign-height'):value==='text'?$('#sign-text'):null;
+    const dock=$('.design-summary'),dockBox=dock.getBoundingClientRect();
+    if(field&&dockBox.height&&getComputedStyle(dock).visibility==='visible'){
+      const bottom=field.getBoundingClientRect().bottom;
+      if(bottom+8>dockBox.top)window.scrollBy({top:bottom+8-dockBox.top,behavior:'instant'});
+    }
+  });
 }
 for(const button of mobileLook.querySelectorAll('button'))button.addEventListener('click',()=>selectMobileLook(button.dataset.mobileLook));
 selectMobileLook('text');
@@ -1931,8 +1943,13 @@ mobileExpand.insertAdjacentHTML('beforeend','<span>Vorschau vergrößern</span>'
 mobileExpand.addEventListener('click',()=>{mobileTools.open=false;$('#open-large-preview').click();});
 const studioViewTabs=$('.scene-tabs');
 const mobileTools=document.createElement('details');mobileTools.className='studio-mobile-tools';
-mobileTools.innerHTML='<summary aria-label="Einsatzbereich, Hintergrund und Vorschau einstellen" title="Einsatzbereich, Hintergrund und Vorschau einstellen"><span id="mobile-scene-label">Raum &amp; Einsatz</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/></svg></summary><div class="studio-tools-popover"><strong>Raum &amp; Einsatz</strong></div>';
+mobileTools.innerHTML='<summary aria-label="Ansicht einstellen" title="Ansicht einstellen"><span id="mobile-scene-label">Ansicht</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/></svg></summary><div class="studio-tools-popover"></div>';
 studioToolbar.append(mobileExpand,mobileTools);
+const historyControls=$('#undo-design').parentElement;
+historyControls.classList.add('history-controls');
+const mobileEditTools=document.createElement('div');mobileEditTools.className='mobile-edit-tools';
+const usageLabel=document.createElement('span');usageLabel.className='mobile-usage-label';usageLabel.textContent='Einsatz';
+mobileEditTools.append(usageLabel);
 function syncMobileStudio(){
   mobileTools.open=false;textLayout.open=false;
   $('.journey').setAttribute('aria-label',mobileChoiceMedia.matches?'Gestaltung in zwei Schritten':'Gestaltung in drei Schritten');
@@ -1941,7 +1958,10 @@ function syncMobileStudio(){
   if(mobileChoiceMedia.matches){
     $('.line-height-control').prepend($('.alignment'));
     textLayout.querySelector('summary').setAttribute('aria-label','Textausrichtung und Zeilenabstand einstellen');
-    mobileTools.querySelector('.studio-tools-popover').append(studioContext,$('#usage-note'),studioViewTabs,studioSceneActions,mobileExpand,studioFooter);
+    mobileTools.querySelector('.studio-tools-popover').append(studioViewTabs,studioSceneActions,studioFooter,mobileExpand);
+    $('#preview-stage').after(studioToolbar);studioToolbar.prepend($('#stage-ar'));
+    mobileEditTools.append($('#usage-options'),historyControls);mobileLook.after(mobileEditTools,$('#usage-note'));
+    for(const button of historyControls.querySelectorAll('[data-history]'))button.setAttribute('aria-label',button.dataset.history==='undo'?'Rückgängig':'Wiederholen');
     $('#saved-current-actions').append(studioDesignTools);
     $('#save-design span').textContent='Aktuellen Entwurf speichern';
     $('#share-design span').textContent='Aktuellen Entwurf teilen';
@@ -1953,6 +1973,8 @@ function syncMobileStudio(){
     textLayout.querySelector('summary').setAttribute('aria-label','Zeilenabstand einstellen');
     studioVariantTools.append(studioDesignTools);
     $('#save-design span').textContent='Speichern';$('#share-design span').textContent='Teilen';
+    studioVariantTools.before(studioToolbar);$('#preview-stage').prepend($('#stage-ar'));
+    studioContext.prepend($('#usage-options'));$('.editor-panels').before(historyControls);
     studioToolbar.append(mobileExpand,mobileTools);
     studioToolbar.prepend(studioViewTabs);studioToolbar.insertBefore(studioSceneActions,mobileExpand);livePreview.append(studioFooter);
     $('.workbench-heading').after($('.journey'),studioContext,$('#usage-note'),$('#accessory-migration-note'));
@@ -2069,7 +2091,8 @@ function updateStepNavigation(){
     if(group===0){const look=document.body.dataset.mobileLook||'text';label=look==='text'?(state.mode==='logo'?'Weiter zur Farbe':'Weiter zur Schrift'):look==='font'?'Weiter zur Farbe':'Weiter zur Größe';}
     else if(activeStep===3)label='Weiter zur Rückplatte';
   }
-  $('#next-step-label').textContent=label;
+  $('#next-step').setAttribute('aria-label',label);
+  $('#next-step-label').textContent=mobileChoiceMedia.matches?label.replace(/^Weiter z/,'Z').replace('Änderungen übernehmen','Übernehmen'):label;
   let previous=group===2?'Zurück zur Rückplatte':activeStep===4?'Zurück zur Größe':group===1?'Zurück zum Look':'';
   if(mobileChoiceMedia.matches){
     const look=document.body.dataset.mobileLook||'text';
@@ -2342,7 +2365,7 @@ $('#order-review').addEventListener('click',event=>{
   if(step===0)selectMobileLook('text');
   setStep(step,true);
   if(step===0)requestAnimationFrame(()=>{
-    if(button.dataset.orderTarget==='usage'&&mobileChoiceMedia.matches)mobileTools.open=true;
+    if(button.dataset.orderTarget==='usage'&&mobileChoiceMedia.matches)mobileTools.open=false;
     const target=button.dataset.orderTarget==='usage'?$('#usage-options button[aria-pressed=true]'):state.mode==='logo'?$('#legacy-logo-text'):$('#sign-text');
     target.focus({preventScroll:true});target.scrollIntoView({block:'center',behavior:'instant'});
   });
@@ -2817,8 +2840,7 @@ $('#remove-background').addEventListener('click',()=>{
 for(const button of document.querySelectorAll('[data-width-cm]'))button.addEventListener('click',()=>chooseOuterSize('width',Number(button.dataset.widthCm)*10));
 setupPhotoCalibration({getPhoto:()=>ROOMS.find(r=>r.id==='custom'),onApply:({spanMm,calibration})=>{const room=ROOMS.find(r=>r.id==='custom');if(!room)return;room.spanMm=spanMm;room.calibration=calibration;$('#photo-width').value=Math.round(spanMm)/10;state.room='custom';state.scene='wall';paint();}});
 for(const button of document.querySelectorAll('[data-history]'))button.addEventListener('click',()=>moveHistory(button.dataset.history==='undo'?-1:1));
-const historyControls=$('#undo-design').parentElement;
-$('.editor-panels').before(historyControls);historyControls.classList.add('history-controls');$('.draft-tools').prepend($('#reset-position'));
+$('.draft-tools').prepend($('#reset-position'));
 for(const button of document.querySelectorAll('[data-history]'))button.insertAdjacentHTML('afterbegin','<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="'+(button.dataset.history==='undo'?'M9 5 4 10l5 5M4 10h9a6 6 0 0 1 0 12':'m15 5 5 5-5 5m5-5h-9a6 6 0 0 0 0 12')+'"/></svg>');
 $('#reset-position').addEventListener('click',()=>{positions.delete(state.room);paint();});
 // Finish a typing/drag group before a different button action begins.
