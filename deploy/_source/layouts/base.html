@@ -128,6 +128,13 @@
       .lp-stats p { font-size: 11px; letter-spacing: 0.025em; }
       #kontakt .contact-details { grid-template-columns: minmax(0, 1fr); }
     }
+
+    /* Keep the mobile inquiry action readable on narrow phones. */
+    @media (max-width: 479px) {
+      #mobile-sticky-cta .mobile-advisor-copy { display: none; }
+      #mobile-sticky-cta .mobile-inquiry-link { flex: 1; min-width: 0; text-align: center; padding-left: 10px !important; padding-right: 10px !important; }
+    }
+    #mobile-sticky-cta a[aria-label="WhatsApp"] { width: 44px !important; height: 44px !important; }
   </style>
 
   <!-- Tailwind CSS (Production Build) -->
@@ -544,7 +551,7 @@
     @media (min-width: 768px) { section#hero h1 { font-size: 80px !important; } }
 
     /* Noise overlay for card-in-card dark sections */
-    .noise-overlay { background-image: url('../assets/images/grain-texture.png'); background-size: 256px 256px; background-repeat: repeat; opacity: 0.05; pointer-events: none; }
+    .noise-overlay { background-image:none; background-size: 256px 256px; background-repeat: repeat; opacity: 0.05; pointer-events: none; }
 
     /* Grain texture overlay for dark sections — adds depth */
     .grain { position: relative; }
@@ -2007,7 +2014,7 @@
             return;
           }
         }
-        const target = document.querySelector(href);
+        const target = document.getElementById(new URL(href, window.location.href).hash.slice(1));
         if (target) {
           const offset = 80;
           const position = target.getBoundingClientRect().top + window.pageYOffset - offset;
@@ -2813,10 +2820,10 @@ if (window.innerWidth < 768) {
   <div style="background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(0,0,0,0.06);padding:14px 16px;padding-bottom:max(14px, env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;box-shadow:0 -4px 24px rgba(0,0,0,0.08)">
     <!-- Fabienne Photo -->
     <div style="width:42px;height:42px;flex-shrink:0">
-      <img src="../assets/images/fabienne-trapp-small.png" alt="Fabienne — Ihre Beraterin" style="width:42px;height:42px;border-radius:50%;object-fit:cover" width="42" height="42" loading="lazy">
+      <img src="../assets/images/fabienne-trapp-small.webp" alt="Fabienne — Ihre Beraterin" style="width:42px;height:42px;border-radius:50%;object-fit:cover" width="42" height="42" loading="lazy">
     </div>
     <!-- Text -->
-    <div style="flex:1;min-width:0">
+    <div class="mobile-advisor-copy" style="flex:1;min-width:0">
       <p style="font-size:13px;font-weight:600;color:#0A0A0A;line-height:1.2;margin:0">Fabienne berät Sie</p>
       <p style="font-size:11px;color:rgba(10,10,10,0.45);font-weight:500;margin:2px 0 0;display:flex;align-items:center;gap:4px">
         <span style="width:6px;height:6px;background:#22c55e;border-radius:50%;display:inline-block;flex-shrink:0"></span>
@@ -2824,7 +2831,7 @@ if (window.innerWidth < 768) {
       </p>
     </div>
     <!-- CTA Button -->
-    <a href="#hero" style="flex-shrink:0;background:#fa31a2;color:white;font-size:14px;font-weight:700;padding:14px 20px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(250,49,162,0.3)">
+    <a href="#hero" class="mobile-inquiry-link" style="flex-shrink:0;background:#fa31a2;color:white;font-size:14px;font-weight:700;padding:14px 20px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(250,49,162,0.3)">
       Anfrage starten
     </a>
     <!-- WhatsApp Button -->
@@ -2838,7 +2845,7 @@ if (window.innerWidth < 768) {
 <div class="contact-sticky" id="contact-sticky">
   <div style="background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(0,0,0,0.08);padding:12px 14px;display:flex;align-items:center;gap:12px;border-radius:20px;box-shadow:0 8px 32px rgba(0,0,0,0.12)">
     <div style="width:44px;height:44px;flex-shrink:0">
-      <img src="../assets/images/fabienne-trapp-small.png" alt="Fabienne — Ihre Beraterin" style="width:44px;height:44px;border-radius:50%;object-fit:cover" width="44" height="44" loading="lazy">
+      <img src="../assets/images/fabienne-trapp-small.webp" alt="Fabienne — Ihre Beraterin" style="width:44px;height:44px;border-radius:50%;object-fit:cover" width="44" height="44" loading="lazy">
     </div>
     <div style="min-width:0">
       <p style="font-size:13px;font-weight:600;color:#0A0A0A;line-height:1.2;margin:0">Fabienne berät Sie</p>
