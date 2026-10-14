@@ -351,7 +351,6 @@ body.designstudio #studio-mobile-expand{display:none!important}
 }
 @media(max-width:760px){
  body.designstudio .studio-tools-popover{max-height:calc(100dvh - 160px);overflow-y:auto;overscroll-behavior:contain}
- body.lichtbuehne.lichtbuehne-v4.designstudio:has(.studio-mobile-tools[open]) #main .design-summary{display:none}
  body.designstudio .text-layout-options[open]{z-index:40}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .text-layout-options .line-height-control{position:fixed;inset:auto 16px calc(var(--price-dock-height,96px) + 12px);width:auto;max-width:none}
 }
@@ -437,7 +436,7 @@ body.designstudio .studio-scenario select:focus-visible{outline:none}
 @media(max-width:760px){body.designstudio #usage-options button::after{display:none}}
 @media(max-width:760px){
  /* Preserve document height while keyboard, menus or dialogs hide the dock. */
- body.lichtbuehne.lichtbuehne-v4.designstudio:is(.keyboard-editing,:has(dialog[open]),:has(.studio-mobile-tools[open])) #main .design-summary{display:grid!important;visibility:hidden;pointer-events:none}
+ body.lichtbuehne.lichtbuehne-v4.designstudio:is(.keyboard-editing,:has(dialog[open])) #main .design-summary{display:grid!important;visibility:hidden;pointer-events:none}
 }
 
 /* Reuse the reviewed design snapshot as a compact, editable selection overview. */
@@ -570,7 +569,7 @@ body.lichtbuehne.lichtbuehne-v4.designstudio #main :is(.mount-options,.price-ext
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .design-summary{min-height:0;padding:4px 16px calc(4px + env(safe-area-inset-bottom));grid-template-rows:minmax(44px,auto) auto;gap:0 12px}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main #summary-price-details{margin:0;min-height:34px;line-height:1.3;padding:2px 0}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .design-price>strong{gap:2px 6px}
- body.lichtbuehne.lichtbuehne-v4.designstudio:is(.keyboard-editing,:has(dialog[open]),:has(.studio-mobile-tools[open])) #main .design-summary{position:static;visibility:hidden;pointer-events:none}
+ body.lichtbuehne.lichtbuehne-v4.designstudio:is(.keyboard-editing,:has(dialog[open])) #main .design-summary{position:static;visibility:hidden;pointer-events:none}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .studio-tools-popover .studio-preview-footer{display:block;padding:0;background:transparent}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .studio-tools-popover #dimensions-toggle{width:100%;justify-content:flex-start;gap:8px;min-height:44px;font-size:14px}
  body.designstudio .studio-tools-popover #dimensions-toggle span{position:static;width:auto;height:auto;clip-path:none;overflow:visible}
@@ -598,7 +597,7 @@ body.lichtbuehne.lichtbuehne-v4.designstudio #main :is(.mount-options,.price-ext
 /* Text settings are a temporary mobile panel, with an explicit return to the input. */
 body.designstudio .text-layout-done{display:none}
 @media(max-width:760px){
- body.lichtbuehne.lichtbuehne-v4.designstudio #main:has(.text-layout-options[open],.studio-mobile-tools[open]){z-index:50}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main:has(.text-layout-options[open]){z-index:50}
  body.lichtbuehne.lichtbuehne-v4.designstudio:has(.text-layout-options[open]) #main .design-summary{position:static;visibility:hidden;pointer-events:none}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .text-layout-options .line-height-control{bottom:calc(12px + env(safe-area-inset-bottom));max-height:calc(100dvh - 40px)}
  body.designstudio .text-layout-done{display:block;width:100%;min-height:44px;margin-top:14px;padding:10px;border:1px solid #d5cbd0;border-radius:7px;background:#fff;color:#9d0659;font:inherit;font-weight:600}
@@ -1112,4 +1111,50 @@ body.designstudio .room-presentation-note{margin:6px 2px 0;color:#655d56;font:40
  body.designstudio #main .design-tools button{padding-inline:9px;font-size:12px;}
  body.designstudio #main .studio-toolbar .scene-tabs{gap:8px;}
  body.designstudio #main .studio-toolbar{flex-wrap:wrap;}
+}
+
+/* Mobile controls live below the photograph; product use remains beside history. */
+body.designstudio .mobile-edit-tools{display:none}
+@media(max-width:760px){
+ body.lichtbuehne.lichtbuehne-v4.designstudio :is(#main,#large-room-dialog) .studio-toolbar{position:relative;inset:auto;display:block;width:100%;min-height:44px;margin:0;padding:0 12px;background:#fff;z-index:auto}
+ body.designstudio :is(#main,#large-room-dialog) .studio-toolbar>.stage-ar{position:absolute;inset:0 auto auto 12px;min-height:44px;height:44px;margin:0;padding:8px 0;gap:6px;border:0;border-radius:0;box-shadow:none;background:transparent;font-size:13px;font-weight:500}
+ body.designstudio :is(#main,#large-room-dialog) .studio-toolbar>.stage-ar .icon{width:18px;height:18px}
+ body.designstudio :is(#main,#large-room-dialog) .studio-mobile-tools{width:100%;position:static}
+ body.lichtbuehne.lichtbuehne-v4.designstudio :is(#main,#large-room-dialog) .studio-mobile-tools>summary{width:max-content;max-width:none;height:44px;min-height:44px;margin-left:auto;padding:8px 0 8px 12px;border:0;border-radius:0;background:transparent}
+ body.designstudio #mobile-scene-label{position:static;clip-path:none;width:auto;height:auto;overflow:visible;font-size:13px}
+ body.designstudio :is(#main,#large-room-dialog) .studio-tools-popover{position:static;width:100%;max-height:none;padding:8px 0;margin:0;box-shadow:none;border:0;border-top:1px solid #e5dce1;border-radius:0;overflow:visible;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 12px}
+ body.lichtbuehne.lichtbuehne-v4.designstudio :is(#main,#large-room-dialog) .studio-tools-popover .scene-tabs{grid-column:1/-1;display:flex;width:100%;gap:18px!important}
+ body.lichtbuehne.lichtbuehne-v4.designstudio :is(#main,#large-room-dialog) .studio-tools-popover .studio-scene-actions{display:contents}
+ body.lichtbuehne.lichtbuehne-v4.designstudio :is(#main,#large-room-dialog) .studio-tools-popover .studio-preview-footer{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;min-height:44px;margin:0!important;padding:0;background:transparent}
+ body.lichtbuehne.lichtbuehne-v4.designstudio :is(#main,#large-room-dialog) .studio-tools-popover #dimensions-toggle{min-width:0;min-height:44px;padding:6px 0;font-size:13px}
+ body.designstudio .studio-tools-popover #camera-controls{display:flex;gap:4px}
+ body.designstudio .studio-tools-popover #camera-controls button{min-width:44px;min-height:44px;padding:6px 8px;font-size:13px}
+ body.lichtbuehne.lichtbuehne-v4.designstudio :is(#main,#large-room-dialog) .studio-tools-popover #studio-mobile-expand{grid-column:1/-1;font-size:13px;min-height:44px}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>.studio-context{display:none}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>.mobile-edit-tools{order:1;display:flex;align-items:center;gap:6px;width:100%;min-height:44px;margin:0 0 6px}
+ body.designstudio .mobile-usage-label{font-size:12px;color:#62565f;flex:none}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .mobile-edit-tools #usage-options{display:block;margin:0;padding:0;order:0;min-width:0;width:auto}
+ body.designstudio:not([data-mobile-look="text"][data-active-group="0"]) #main .mobile-edit-tools :is(.mobile-usage-label,#usage-options),
+ body.designstudio:not([data-mobile-look="text"][data-active-group="0"]) #main .editor>#usage-note{display:none!important}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .mobile-edit-tools #usage-options>div{display:flex;gap:4px}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .mobile-edit-tools #usage-options button{flex:none;min-height:44px;padding:7px 8px;font-size:13px;gap:0}
+ body.designstudio .mobile-edit-tools #usage-options button::after,body.designstudio .mobile-edit-tools #usage-options .icon{display:none}
+ body.designstudio .mobile-edit-tools .history-controls{margin:0 0 0 auto;gap:4px;flex-wrap:nowrap}
+ body.designstudio .mobile-edit-tools .history-controls button{width:44px;height:44px;padding:12px;justify-content:center;font-size:0}
+ body.designstudio .mobile-edit-tools .history-controls .icon{width:18px;height:18px;margin:0}
+ body.designstudio #main .editor>#usage-note{order:1;margin:0 0 8px;font-size:12px}
+ body.designstudio #main .editor>.studio-mobile-look{margin-bottom:2px}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .config-workspace{gap:4px}
+}
+
+@media(max-width:760px){
+ body.designstudio .studio-tools-popover #camera-controls button::after{content:none}
+ body.designstudio #main #next-step-label{white-space:nowrap}
+ body.lichtbuehne.lichtbuehne-v4.designstudio :is(#main,#large-room-dialog) .studio-tools-popover #open-scenes{min-width:0;width:100%;padding:6px 0;gap:6px;font-size:12px;white-space:normal;text-align:left}
+}
+@media(max-width:350px){
+ body.lichtbuehne.lichtbuehne-v4.designstudio :is(#main,#large-room-dialog) .studio-tools-popover .studio-preview-footer{grid-template-columns:1fr}
+ body.designstudio .studio-tools-popover #camera-controls{justify-self:end;margin:0}
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor .step-navigation #next-step{font-size:12px;white-space:nowrap;gap:4px;padding:8px}
+ body.designstudio #next-step .icon{width:16px;height:16px;flex:none}
 }

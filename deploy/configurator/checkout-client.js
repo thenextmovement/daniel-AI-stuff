@@ -67,14 +67,46 @@ export function checkedCheckoutUrl(value){
   return url.href;
 }
 
+const CLICK_KEYS=['gclid','gbraid','wbraid'];
+const CAMPAIGN_KEYS=['utm_source','utm_medium','utm_campaign','utm_id','utm_term','utm_content'];
+function attributionValue(key,value){
+  if(typeof value!=='string'||!value||value.length>512||/[\u0000-\u001f\u007f]/.test(value))return undefined;
+  return CLICK_KEYS.includes(key)&&!/^[A-Za-z0-9._~-]+$/.test(value)?undefined:value;
+}
+// Navigation context only: never changes the cart, checkout identity or price.
+// Google auto-linking does not cover our asynchronous location.assign handoff.
+export async function readCheckoutAttribution(browser){
+  if(browser?.location?.hostname!=='anfrage.neontrip.de'||cookiebotVisitorConsent(browser.Cookiebot)?.marketing!==true)return {};
+  const incoming=new URLSearchParams(browser.location.search),values={};
+  for(const key of [...CLICK_KEYS,...CAMPAIGN_KEYS]){
+    const value=attributionValue(key,incoming.get(key));if(value)values[key]=value;
+  }
+  // A current click/campaign wins over an older Google cookie. Read that cookie
+  // through Google's supported API, without depending on its private format.
+  if(![...CLICK_KEYS,...CAMPAIGN_KEYS].some(key=>incoming.has(key))&&typeof browser.gtag==='function'){
+    const gclid=await new Promise(resolve=>{
+      let settled=false;
+      const finish=value=>{if(settled)return;settled=true;clearTimeout(timer);resolve(attributionValue('gclid',value));};
+      const timer=setTimeout(()=>finish(undefined),250);
+      try{browser.gtag('get','AW-314675901','gclid',finish);}catch{finish(undefined);}
+    });
+    if(gclid)values.gclid=gclid;
+  }
+  return cookiebotVisitorConsent(browser.Cookiebot)?.marketing===true?values:{};
+}
+function attributedCheckoutUrl(value,attribution){
+  const url=new URL(checkedCheckoutUrl(value));
+  for(const key of [...CLICK_KEYS,...CAMPAIGN_KEYS]){
+    const candidate=attributionValue(key,attribution?.[key]);
+    if(candidate&&!url.searchParams.has(key))url.searchParams.set(key,candidate);
+  }
+  return url.href;
+}
+
 // Copy only the existing backend contract. Room photos, camera state, SVG
 // previews, inactive uploads and browser price/approval claims never leave here.
-export function checkoutPayload(cartItems,delivery){
+export function designPayloadItems(cartItems){
   if(!Array.isArray(cartItems)||!cartItems.length||cartItems.length>20)throw new CheckoutClientError('INVALID_DESIGN');
-  if(!delivery)throw new CheckoutClientError('DELIVERY_REQUIRED');
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(delivery.dateIso)||!Number.isInteger(delivery.businessDays)||delivery.businessDays<2||delivery.businessDays>15)throw new CheckoutClientError('INVALID_DELIVERY');
-  if(delivery.businessDays<minimumDeliveryBusinessDays(cartItems.flatMap(item=>[item?.design,item?.snapshot])))throw new CheckoutClientError('DELIVERY_TOO_EARLY');
-  const selectedDelivery={dateIso:delivery.dateIso,businessDays:delivery.businessDays,countryCode:'DE'};
   const items=cartItems.map(item=>{
     if(!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>99||!item.design||!item.snapshot)throw new CheckoutClientError('INVALID_DESIGN');
     const d=item.design,s=item.snapshot;
@@ -90,6 +122,15 @@ export function checkoutPayload(cartItems,delivery){
     snapshot.mount=pick(s.mount,['id']);
     return {quantity:item.quantity,design,snapshot};
   });
+  return JSON.parse(JSON.stringify(items));
+}
+export function checkoutPayload(cartItems,delivery){
+  if(!Array.isArray(cartItems)||!cartItems.length||cartItems.length>20)throw new CheckoutClientError('INVALID_DESIGN');
+  if(!delivery)throw new CheckoutClientError('DELIVERY_REQUIRED');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(delivery.dateIso)||!Number.isInteger(delivery.businessDays)||delivery.businessDays<2||delivery.businessDays>15)throw new CheckoutClientError('INVALID_DELIVERY');
+  if(delivery.businessDays<minimumDeliveryBusinessDays(cartItems.flatMap(item=>[item?.design,item?.snapshot])))throw new CheckoutClientError('DELIVERY_TOO_EARLY');
+  const selectedDelivery={dateIso:delivery.dateIso,businessDays:delivery.businessDays,countryCode:'DE'};
+  const items=designPayloadItems(cartItems);
   // A real immutable copy before an asynchronous upload can start.
   return JSON.parse(JSON.stringify({items,assetRefs:[],delivery:selectedDelivery}));
 }
@@ -105,7 +146,7 @@ export function requiredCheckoutAssets(payload){
   return [...refs].map(([id,kind])=>({id,kind}));
 }
 
-export function createCheckoutClient({readSession,saveSession,readFile,readVisitorConsent=()=>undefined,fetcher=(...args)=>fetch(...args),cryptoApi=globalThis.crypto,timeoutMs=60_000,apiBaseUrl=''}){
+export function createCheckoutClient({readSession,saveSession,readFile,readVisitorConsent=()=>undefined,readAttribution=()=>({}),fetcher=(...args)=>fetch(...args),cryptoApi=globalThis.crypto,timeoutMs=60_000,apiBaseUrl=''}){
   if(apiBaseUrl!==''&&apiBaseUrl!=='https://angebote.neontrip.de')throw new CheckoutClientError('ORIGIN_NOT_ALLOWED');
   let sessionPromise=null,pending=null;
   const uploads=new Map();
@@ -165,6 +206,11 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
       for(const ref of refs)payload.assetRefs.push(await upload(ref,token));
       // Read after uploads, immediately before the existing checkout request.
       const visitorConsent=readVisitorConsent(),sentConsentKey=consentKey(visitorConsent);
+      // Tracking failure must never prevent a purchase. Consent changes still
+      // stop the handoff, so Shopify never receives a stale privacy choice.
+      let attribution={};
+      if(visitorConsent?.marketing===true){try{attribution=await readAttribution();}catch{}}
+      if(consentKey(readVisitorConsent())!==sentConsentKey)throw new CheckoutClientError('CONSENT_CHANGED');
       if(visitorConsent!==undefined)payload.visitorConsent={...visitorConsent};
       const body=JSON.stringify(payload);
       if(new TextEncoder().encode(body).length>MAX_JSON_BYTES)throw new CheckoutClientError('PAYLOAD_TOO_LARGE');
@@ -178,12 +224,22 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
         if(consentKey(result.visitorConsent)!==sentConsentKey)throw new CheckoutClientError('INVALID_CONSENT');
         const checkoutUrl=checkedCheckoutUrl(result.checkoutUrl);
         if(!Number.isSafeInteger(expectedTotalCents)||expectedTotalCents!==result.subtotalCents)throw new CheckoutClientError('PRICE_CHANGED');
-        return {id:result.id,status:'CREATED',checkoutUrl,delivery:payload.delivery};
+        return {id:result.id,status:'CREATED',checkoutUrl:attributedCheckoutUrl(checkoutUrl,attribution),delivery:payload.delivery};
       }
       if((status===200||status===202)&&HEX64.test(result?.id)&&['CREATING','UNKNOWN'].includes(result.status))throw new CheckoutClientError('CHECKOUT_UNCONFIRMED');
       throw new CheckoutClientError(result?.error?.code||'INVALID_RESPONSE');
     })().catch(error=>{if(error&&typeof error==='object')error.attemptId=attemptId;throw error;}).finally(()=>{pending=null;});
     return pending;
   }
-  return {prepare};
+  // The mail save uses the same owned upload protocol without a checkout,
+  // delivery choice, consent forwarding or provider side effect.
+  async function prepareDesignAssets(cartItems){
+    const payload={items:designPayloadItems(cartItems),assetRefs:[]};
+    const refs=requiredCheckoutAssets(payload);
+    if(new TextEncoder().encode(JSON.stringify(payload)).length+refs.length*240>MAX_JSON_BYTES)throw new CheckoutClientError('PAYLOAD_TOO_LARGE');
+    const token=await session();
+    for(const ref of refs)payload.assetRefs.push(await upload(ref,token));
+    return {payload,token};
+  }
+  return {prepare,prepareDesignAssets};
 }

@@ -699,8 +699,8 @@ body{
 
 
 /* 12.10.2026: alternate the composed sections, using two quiet surfaces. */
-.nt-service,.nt-material,.nt-express,#produkte{background:var(--nt-surface)}
-.nt-gallery4,.nt-proof,#faq,#kontakt.nt-contact-classic{background:#fff}
+.nt-service,.nt-material,.nt-express,#produkte,#kontakt.nt-contact-classic{background:var(--nt-surface)}
+.nt-gallery4,.nt-proof,#faq{background:#fff}
 .nt-gallery4>neontrip-gallery{background:inherit}
 .nt-steps__cta{background:var(--nt-surface);border-color:var(--nt-surface)}
 .nt-contact-classic__form{background:#fafafa}

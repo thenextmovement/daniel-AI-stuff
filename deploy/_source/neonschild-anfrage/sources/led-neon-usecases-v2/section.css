@@ -331,3 +331,25 @@
  .nt-usecases__scene-next{order:2}
  .nt-usecases__light-dock .nt-usecases__motion-toggle{order:3;width:40px}
 }
+
+/* Section navigation stays within the photographic hero, including its mobile menu. */
+.nt-usecases__header{position:relative;z-index:5}
+.nt-usecases__menu-toggle,.nt-usecases__contact-short{display:none}
+.nt-usecases__header nav a{white-space:nowrap}
+@media(max-width:1180px){
+ .nt-usecases__header{gap:10px}
+ .nt-usecases__brand{margin-right:auto}
+ .nt-usecases .nt-usecases__menu-toggle{display:flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;padding:10px;border:1px solid #ffffff80;border-radius:50%;background:transparent;color:white}
+ .nt-usecases__menu-toggle svg:last-child,.nt-usecases__menu-toggle[aria-expanded=true] svg:first-child{display:none}
+ .nt-usecases__menu-toggle[aria-expanded=true] svg:last-child{display:block}
+ .nt-usecases__header nav{position:absolute;inset:calc(100% - 4px) 5vw auto;display:none;gap:0;padding:10px 18px;border:1px solid #e8e8e8;border-radius:16px;background:#fff;color:#181615;box-shadow:0 14px 32px #00000018}
+ .nt-usecases__header.is-menu-open nav{display:grid;animation:nt-menu-enter .18s ease-out}
+ .nt-usecases__header nav a{min-height:46px;padding:8px 6px;font-size:15px}
+ .nt-usecases__header nav a+a{border-top:1px solid #f1f1f1}
+ .nt-usecases__header nav a:hover{color:#cf197d}
+}
+@media(max-width:600px){
+ .nt-usecases__contact-full{display:none}
+ .nt-usecases__contact-short{display:inline}
+}
+@keyframes nt-menu-enter{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}

@@ -1,6 +1,7 @@
 """Build the independent local remix. No network, deployment or form service."""
 from pathlib import Path
 from hashlib import sha256
+from base64 import b64encode
 import re
 import json
 import subprocess
@@ -11,7 +12,8 @@ SOURCES = ROOT / 'sources'
 PUBLIC_URL = 'https://anfrage.neontrip.de/neonschild/anfrage'
 TITLE = 'LED-Neonschild mit Logo anfertigen lassen | NEONTRIP'
 DESCRIPTION = 'Individuelle LED-Neonschilder für Ihre Marke. Design hochladen, kostenlose 3D-Vorschau erhalten und unverbindlich anfragen. Persönliche Beratung von NEONTRIP.'
-SOCIAL_IMAGE = 'https://anfrage.neontrip.de/assets/images/projekte/wella-sonderanfertigung.webp'
+SOCIAL_IMAGE = 'https://anfrage.neontrip.de/assets/neonschild-anfrage/20261013-v1/social-share-20261014.jpg'
+SOCIAL_IMAGE_ALT = 'NEONTRIP: Ihr Design als LED-Neon. Kostenlose 3D-Vorschau und unverbindliches Angebot. Pinkes Neonschild in einem Empfangsbereich.'
 MODULES = {
     'hero': ('led-neon-usecases-v2', '.nt-usecases'),
     'facts': ('service-panel', '.nt-service'),
@@ -22,6 +24,7 @@ MODULES = {
     'express': ('express-chat', '.nt-express'),
     'material': ('material-montage', '.nt-material'),
     'classic': ('contact-classic', None),
+    'instagram': ('instagram-feed', None),
 }
 
 def live_assets(text):
@@ -54,6 +57,13 @@ for key, (module, selector) in MODULES.items():
             image = match.group(0)
             source = re.search(r'(data-)?srcset="([^"]+)"', image)
             sizes = re.search(r'sizes="([^"]+)"', image).group(1)
+            if '01-empfang-aus.webp' in image:
+                # Ship the original 32 KB opening frame with the document so
+                # mobile LCP does not wait for a separate image connection.
+                # Keep the exact pixels, WebP fallback and all later frames.
+                opening_frame = ROOT / 'assets/modules/led-neon-usecases-v2/hero-20260930/01-empfang-aus.avif'
+                inline_frame = 'data:image/avif;base64,' + b64encode(opening_frame.read_bytes()).decode('ascii')
+                return '<picture><source type="image/avif" srcset="' + inline_frame + '">' + image + '</picture>'
             return ('<picture><source type="image/avif" ' + (source.group(1) or '') +
                     'srcset="' + source.group(2).replace('.webp', '.avif') +
                     '" sizes="' + sizes + '">' + image + '</picture>')
@@ -105,8 +115,9 @@ live_css = re.sub(r'url\([\'"]?[^)]*grain-texture\.png[\'"]?\)', 'none', live_cs
 tailwind = (ROOT / 'assets/live/assets/css/tailwind.min.css').read_text()
 # Live global resets must not restyle the exact approved hero/express modules.
 (ROOT / 'live-scoped.css').write_text(minify('@scope (.live-scope) {\n' + tailwind + '\n' + live_css + '\n}\n', 'css', style_content))
-# The hero and facts are needed for the first paint; later sections can load
-# without blocking it. Keep the original cascade order around composition.css.
+# Keep section styles separate for editing, then inline the compact production
+# styles in their original cascade order. Async media-switch styles postpone
+# the first rendered frame and can race the intro and font layout.
 first_screen_css = minify('\n'.join(css[:2]), 'css', style_content)
 (ROOT / 'modules.css').write_text(minify('\n'.join(css[2:]), 'css', style_content))
 (ROOT / 'modules.js').write_text(minify('\n'.join(js), 'js'))
@@ -122,7 +133,6 @@ def version(file):
 
 head = '''<!doctype html><html lang="de"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="preload" as="image" type="image/avif" href="assets/modules/led-neon-usecases-v2/hero-20260930/01-empfang-aus.avif" imagesrcset="assets/modules/led-neon-usecases-v2/hero-20260930/01-empfang-aus-960.avif 960w, assets/modules/led-neon-usecases-v2/hero-20260930/01-empfang-aus.avif 1672w" imagesizes="(max-width: 767px) 680px, 100vw" fetchpriority="high">
 <meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#181615">
 <meta http-equiv="Content-Security-Policy" content="form-action 'none'; connect-src 'self'">
 <link rel="icon" href="assets/favicon.svg">
@@ -134,10 +144,11 @@ for key, value in {
     'og:type': 'website', 'og:locale': 'de_DE', 'og:site_name': 'NEONTRIP',
     'og:title': TITLE, 'og:description': DESCRIPTION, 'og:url': PUBLIC_URL,
     'og:image': SOCIAL_IMAGE,
-    'og:image:alt': 'Pink leuchtendes Wella-Logo über einem Eventstand – ein NEONTRIP-Kundenprojekt',
+    'og:image:type': 'image/jpeg', 'og:image:width': '1200', 'og:image:height': '630',
+    'og:image:alt': SOCIAL_IMAGE_ALT,
 }.items():
     head += f'<meta property="{key}" content="{escape(value, quote=True)}">\n'
-for key, value in {'twitter:card': 'summary_large_image', 'twitter:title': TITLE, 'twitter:description': DESCRIPTION, 'twitter:image': SOCIAL_IMAGE, 'twitter:image:alt': 'Pink leuchtendes Wella-Logo über einem Eventstand'}.items():
+for key, value in {'twitter:card': 'summary_large_image', 'twitter:title': TITLE, 'twitter:description': DESCRIPTION, 'twitter:image': SOCIAL_IMAGE, 'twitter:image:alt': SOCIAL_IMAGE_ALT}.items():
     head += f'<meta name="{key}" content="{escape(value, quote=True)}">\n'
 organization_id = 'https://neontrip.de/#organization'
 structured_data = {'@context': 'https://schema.org', '@graph': [
@@ -145,7 +156,7 @@ structured_data = {'@context': 'https://schema.org', '@graph': [
      'url': 'https://neontrip.de/', 'logo': 'https://anfrage.neontrip.de/assets/logo_affiliate.webp',
      'telephone': '+49 211 54257240', 'email': 'support@neontrip.de',
      'address': {'@type': 'PostalAddress', 'streetAddress': 'Bilker Allee 29', 'postalCode': '40219', 'addressLocality': 'Düsseldorf', 'addressCountry': 'DE'},
-     'sameAs': ['https://www.instagram.com/neontrip.de', 'https://www.linkedin.com/company/neontrip', 'https://www.youtube.com/@neontrip', 'https://www.google.com/maps?cid=2466754384071016120']},
+     'sameAs': ['https://www.instagram.com/theneontrip/', 'https://www.linkedin.com/company/neontrip', 'https://www.youtube.com/@neontrip', 'https://www.google.com/maps?cid=2466754384071016120']},
     {'@type': 'WebPage', '@id': PUBLIC_URL + '#webpage', 'url': PUBLIC_URL, 'name': TITLE,
      'description': DESCRIPTION, 'inLanguage': 'de', 'publisher': {'@id': organization_id},
      'mainEntity': {'@id': PUBLIC_URL + '#service'}},
@@ -155,12 +166,9 @@ structured_data = {'@context': 'https://schema.org', '@graph': [
 ]}
 head += '<script type="application/ld+json">' + json.dumps(structured_data, ensure_ascii=False).replace('<', '\\u003c') + '</script>\n'
 head += '<style data-style="splash">' + (ROOT / 'neontrip-splash.css').read_text() + '</style>\n'
-for file in ('live-scoped.css',):
-    head += f'<link rel="stylesheet" href="{file}?v={version(file)}" media="print" onload="this.media=\'all\'">\n'
-    head += f'<noscript><link rel="stylesheet" href="{file}?v={version(file)}"></noscript>\n'
+head += '<style data-style="live-scoped">' + (ROOT / 'live-scoped.css').read_text() + '</style>\n'
 head += '<style data-style="first-screen">' + first_screen_css + '</style>\n'
-head += f'<link rel="stylesheet" href="modules.css?v={version("modules.css")}" media="print" onload="this.media=\'all\'">\n'
-head += f'<noscript><link rel="stylesheet" href="modules.css?v={version("modules.css")}"></noscript>\n'
+head += '<style data-style="modules">' + (ROOT / 'modules.css').read_text() + '</style>\n'
 head += '<style data-style="composition">' + minify((ROOT / 'composition.css').read_text(), 'css', style_content) + '</style>\n'
 head += '<noscript><style>img[data-near-src]{display:none!important}</style></noscript>\n'
 sequence = ('hero', 'facts', 'gallery4', 'inquiry', 'process', 'material', 'videos', 'express', 'faq')
@@ -168,7 +176,7 @@ page = head + '</head><body>\n' + splash + '\n<div data-nt-splash-content style=
 # Start before parsing visible page content, without waiting for images or module initialization.
 page += '\n<script>' + (ROOT / 'neontrip-splash.js').read_text() + '</script>\n<main>\n'
 page += '\n'.join(html[k] for k in sequence)
-page += '\n' + html['products'] + '\n' + html['classic'] + '\n</main>\n' + html['footer'] + '\n' + html['product-modal']
+page += '\n' + html['products'] + '\n' + html['instagram'] + '\n' + html['classic'] + '\n</main>\n' + html['footer'] + '\n' + html['product-modal']
 for file in ('modules.js', 'live-products.js', 'interactions.js'):
     page += f'\n<script src="{file}?v={version(file)}" defer></script>'
 page += '\n</div></body></html>'

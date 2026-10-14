@@ -1,4 +1,4 @@
-import {frameRoom,roomArea,moveWithinRoom,stockPresentationScale} from './room-framing.js?v=20261013-clearance1';
+import {frameRoom,roomArea,moveWithinRoom,stockPresentationScale} from './room-framing.js?v=20261013-mobile-framing1';
 import {initEntryOnboarding,createDraftWriteGuard} from './entry-onboarding.js?v=20261009-tour1';
 import {initBudgetAdvisor} from './budget-advisor.js?v=20261013-cro1';
 import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
@@ -9,11 +9,12 @@ import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufactur
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
 import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261008-shopping1';
-import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent} from './checkout-client.js?v=20261012-purchase-repair';
+import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent,readCheckoutAttribution} from './checkout-client.js?v=20261014-design-email-allfonts';
 import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261012-purchase-repair';
 import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261009-purchase2';
-import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261009-purchase2';
+import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261014-design-email-allfonts';
+import {createDesignEmailClient,loadSavedEmailDesign,savedDesignEmailId} from './design-email.js?v=20261014-design-email-allfonts';
 import {createFailureReporter,createFailureAttemptId} from './failure-reporting.js';
 import {createConfiguratorTracker} from './funnel-tracking.js?v=20261013-cro1';
 const $ = selector => document.querySelector(selector);
@@ -432,7 +433,7 @@ function paintPrice(){
   if(standPrice)standPrice.textContent=state.price.status==='pending'?'Wird berechnet …':(state.price.baseNet==null?'ab +':'+')+priceLabel({net:mountingNet('table-stand',state.price.baseNet)})+' / Stück';
   $('#share-design').disabled=designRendering||!state.result||!state.sizeValid;
   $('#stage-ar').disabled=designRendering||!state.result||!state.sizeValid;
-  $('#stage-ar span').textContent=state.mount==='table-stand'?'3D ansehen':'An deiner Wand ansehen';
+  $('#stage-ar span').textContent=state.mount==='table-stand'?'3D ansehen':mobileChoiceMedia.matches?'An Wand ansehen':'An deiner Wand ansehen';
   $('#stage-ar').setAttribute('aria-controls',mobileAr||state.mount==='table-stand'?'ar-dialog':'ar-share-dialog');
   $('#stage-ar').title=state.mount==='table-stand'?'3D-Vorschau. Wand-AR ist für Tischständer noch nicht verfügbar.':'';
   const arEntry=$('#config-ar-start');arEntry.disabled=$('#stage-ar').disabled;
@@ -1768,7 +1769,7 @@ function syncScenarioChoice(){
     scenarioSelect.dataset.options=key;
   }
   scenarioSelect.value=state.room;scenarioSelect.title=ROOMS.find(room=>room.id===state.room)?.name||'';
-  const sceneLabel=$('#mobile-scene-label');if(sceneLabel)sceneLabel.textContent=(state.outdoor?'Außen':'Innen')+' · '+scenarioSelect.title;
+  const sceneLabel=$('#mobile-scene-label');if(sceneLabel)sceneLabel.textContent='Ansicht';
 }
 function stockSignBox(room,viewport){
   const plate=plateSize(state.result.size),scale=1000/previewSpanMm(room,viewport),standing=state.mount==='table-stand';
@@ -1784,13 +1785,15 @@ function stockFramePadding(viewport){
   const stage=$('#preview-stage').getBoundingClientRect();
   const controlsBottom=Math.max(0,...['#stage-ar','.studio-mobile-tools>summary'].map(selector=>{
     const bounds=$(selector).getBoundingClientRect();
-    return bounds.width&&bounds.height?bounds.bottom-stage.top:0;
+    return bounds.width&&bounds.height&&bounds.top<stage.bottom&&bounds.bottom>stage.top&&bounds.left<stage.right&&bounds.right>stage.left?bounds.bottom-stage.top:0;
   }));
-  // Use the rendered controls, including wrapped labels, for both fresh and restored cameras.
-  return {left:18,right:viewport.width<=760?64:110,top:Math.max(58,controlsBottom+12),bottom:48};
+  // Reserve only controls inside the photograph; the mobile toolbar is below it.
+  return {left:18,right:viewport.width<=760?64:110,top:Math.max(mobileChoiceMedia.matches?18:58,controlsBottom+12),bottom:48};
 }
 function stockFrame(room,viewport){
-  return frameRoom({room:room.id,viewport,sign:stockSignBox(room,viewport),camera:cameras.get(room.id),standing:state.mount==='table-stand',padding:stockFramePadding(viewport)});
+  // Keep the approved phone framing and bring wide desktop scenes closer.
+  // Compact tablets retain their own wide frame; existing cameras and fit limits win.
+  return frameRoom({room:room.id,viewport,sign:stockSignBox(room,viewport),camera:cameras.get(room.id),standing:state.mount==='table-stand',padding:stockFramePadding(viewport),defaultZoom:mobileChoiceMedia.matches?1.8:innerWidth>=1200?1.6:1});
 }
 function alternativeRoomFits(room,viewport){
   if(room.id==='custom'||stockFrame(room,viewport).fits)return true;
@@ -1918,7 +1921,19 @@ function selectMobileLook(value,navigate=true){
   document.body.dataset.mobileLook=value;
   for(const button of mobileLook.querySelectorAll('button'))button.setAttribute('aria-pressed',button.dataset.mobileLook===value);
   updateStepNavigation();
-  requestAnimationFrame(()=>{if(value==='text')fitTextField();fitQuickFontSamples();if(mobileChoiceMedia.matches){const editorTop=$('.editor').getBoundingClientRect().top+window.scrollY;window.scrollTo({top:Math.min(previousScroll,Math.max(0,editorTop)),behavior:'instant'});}});
+  requestAnimationFrame(()=>{
+    if(value==='text')fitTextField();fitQuickFontSamples();
+    if(!mobileChoiceMedia.matches)return;
+    const editorTop=$('.editor').getBoundingClientRect().top+window.scrollY;
+    window.scrollTo({top:Math.min(previousScroll,Math.max(0,editorTop)),behavior:'instant'});
+    // Short phones may need a little page scroll, never a smaller sign or a covered input.
+    const field=value==='size'?$('#sign-height'):value==='text'?$('#sign-text'):null;
+    const dock=$('.design-summary'),dockBox=dock.getBoundingClientRect();
+    if(field&&dockBox.height&&getComputedStyle(dock).visibility==='visible'){
+      const bottom=field.getBoundingClientRect().bottom;
+      if(bottom+8>dockBox.top)window.scrollBy({top:bottom+8-dockBox.top,behavior:'instant'});
+    }
+  });
 }
 for(const button of mobileLook.querySelectorAll('button'))button.addEventListener('click',()=>selectMobileLook(button.dataset.mobileLook));
 selectMobileLook('text');
@@ -1929,8 +1944,13 @@ mobileExpand.insertAdjacentHTML('beforeend','<span>Vorschau vergrößern</span>'
 mobileExpand.addEventListener('click',()=>{mobileTools.open=false;$('#open-large-preview').click();});
 const studioViewTabs=$('.scene-tabs');
 const mobileTools=document.createElement('details');mobileTools.className='studio-mobile-tools';
-mobileTools.innerHTML='<summary aria-label="Einsatzbereich, Hintergrund und Vorschau einstellen" title="Einsatzbereich, Hintergrund und Vorschau einstellen"><span id="mobile-scene-label">Raum &amp; Einsatz</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/></svg></summary><div class="studio-tools-popover"><strong>Raum &amp; Einsatz</strong></div>';
+mobileTools.innerHTML='<summary aria-label="Ansicht einstellen" title="Ansicht einstellen"><span id="mobile-scene-label">Ansicht</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/></svg></summary><div class="studio-tools-popover"></div>';
 studioToolbar.append(mobileExpand,mobileTools);
+const historyControls=$('#undo-design').parentElement;
+historyControls.classList.add('history-controls');
+const mobileEditTools=document.createElement('div');mobileEditTools.className='mobile-edit-tools';
+const usageLabel=document.createElement('span');usageLabel.className='mobile-usage-label';usageLabel.textContent='Einsatz';
+mobileEditTools.append(usageLabel);
 function syncMobileStudio(){
   mobileTools.open=false;textLayout.open=false;
   $('.journey').setAttribute('aria-label',mobileChoiceMedia.matches?'Gestaltung in zwei Schritten':'Gestaltung in drei Schritten');
@@ -1939,7 +1959,10 @@ function syncMobileStudio(){
   if(mobileChoiceMedia.matches){
     $('.line-height-control').prepend($('.alignment'));
     textLayout.querySelector('summary').setAttribute('aria-label','Textausrichtung und Zeilenabstand einstellen');
-    mobileTools.querySelector('.studio-tools-popover').append(studioContext,$('#usage-note'),studioViewTabs,studioSceneActions,mobileExpand,studioFooter);
+    mobileTools.querySelector('.studio-tools-popover').append(studioViewTabs,studioSceneActions,studioFooter,mobileExpand);
+    $('#preview-stage').after(studioToolbar);studioToolbar.prepend($('#stage-ar'));
+    mobileEditTools.append($('#usage-options'),historyControls);mobileLook.after(mobileEditTools,$('#usage-note'));
+    for(const button of historyControls.querySelectorAll('[data-history]'))button.setAttribute('aria-label',button.dataset.history==='undo'?'Rückgängig':'Wiederholen');
     $('#saved-current-actions').append(studioDesignTools);
     $('#save-design span').textContent='Aktuellen Entwurf speichern';
     $('#share-design span').textContent='Aktuellen Entwurf teilen';
@@ -1951,6 +1974,8 @@ function syncMobileStudio(){
     textLayout.querySelector('summary').setAttribute('aria-label','Zeilenabstand einstellen');
     studioVariantTools.append(studioDesignTools);
     $('#save-design span').textContent='Speichern';$('#share-design span').textContent='Teilen';
+    studioVariantTools.before(studioToolbar);$('#preview-stage').prepend($('#stage-ar'));
+    studioContext.prepend($('#usage-options'));$('.editor-panels').before(historyControls);
     studioToolbar.append(mobileExpand,mobileTools);
     studioToolbar.prepend(studioViewTabs);studioToolbar.insertBefore(studioSceneActions,mobileExpand);livePreview.append(studioFooter);
     $('.workbench-heading').after($('.journey'),studioContext,$('#usage-note'),$('#accessory-migration-note'));
@@ -2067,7 +2092,8 @@ function updateStepNavigation(){
     if(group===0){const look=document.body.dataset.mobileLook||'text';label=look==='text'?(state.mode==='logo'?'Weiter zur Farbe':'Weiter zur Schrift'):look==='font'?'Weiter zur Farbe':'Weiter zur Größe';}
     else if(activeStep===3)label='Weiter zur Rückplatte';
   }
-  $('#next-step-label').textContent=label;
+  $('#next-step').setAttribute('aria-label',label);
+  $('#next-step-label').textContent=mobileChoiceMedia.matches?label.replace(/^Weiter z/,'Z').replace('Änderungen übernehmen','Übernehmen'):label;
   let previous=group===2?'Zurück zur Rückplatte':activeStep===4?'Zurück zur Größe':group===1?'Zurück zum Look':'';
   if(mobileChoiceMedia.matches){
     const look=document.body.dataset.mobileLook||'text';
@@ -2340,7 +2366,7 @@ $('#order-review').addEventListener('click',event=>{
   if(step===0)selectMobileLook('text');
   setStep(step,true);
   if(step===0)requestAnimationFrame(()=>{
-    if(button.dataset.orderTarget==='usage'&&mobileChoiceMedia.matches)mobileTools.open=true;
+    if(button.dataset.orderTarget==='usage'&&mobileChoiceMedia.matches)mobileTools.open=false;
     const target=button.dataset.orderTarget==='usage'?$('#usage-options button[aria-pressed=true]'):state.mode==='logo'?$('#legacy-logo-text'):$('#sign-text');
     target.focus({preventScroll:true});target.scrollIntoView({block:'center',behavior:'instant'});
   });
@@ -2357,8 +2383,56 @@ const checkoutClient=createCheckoutClient({
   readSession:()=>readAsset(CHECKOUT_SESSION_KEY),
   saveSession:token=>saveAssetIfMissing(CHECKOUT_SESSION_KEY,token),
   readVisitorConsent:()=>cookiebotVisitorConsent(window.Cookiebot),
+  readAttribution:()=>readCheckoutAttribution(window),
   readFile:async(id,kind)=>(await getDraftAsset(id,kind)).file
 });
+// Freeze exactly the current design when the user opens the mail dialog. No
+// request, contact capture or marketing event occurs before explicit submission.
+const designEmailClient=createDesignEmailClient({apiBaseUrl:checkoutApiOrigin===window.location.origin?'':checkoutApiOrigin,
+  readSession:()=>readAsset(CHECKOUT_SESSION_KEY),saveSession:token=>saveAssetIfMissing(CHECKOUT_SESSION_KEY,token),
+  readFile:async(id,kind)=>(await getDraftAsset(id,kind)).file});
+let emailDesign=null,emailSending=false;
+for(const button of document.querySelectorAll('[data-design-email]'))button.addEventListener('click',()=>{
+  if(emailSending){$('#design-email-dialog').showModal();return;}
+  const dialog=$('#design-email-dialog'),status=$('#design-email-status'),form=$('#design-email-form');
+  form.hidden=true;emailDesign=null;status.textContent='';
+  $('#design-email-preview').hidden=true;$('#design-email-summary').textContent='';
+  $('#design-email-address').readOnly=false;$('#design-email-submit').disabled=false;$('#design-email-submit').textContent='Entwurf an mich senden';
+  try{
+    if(designRendering||!state.result||!state.sizeValid||state.price?.status!=='calculated')throw new Error('Bitte zuerst die gültige Vorschau und den Preis abwarten.');
+    const design=captureDesign();
+    if(design.mode!=='text')throw new Error('Bitte sichere einen Schriftzug per E-Mail. Logos kannst du weiterhin auf diesem Gerät speichern oder als Vorschaubild teilen.');
+    const snapshot=captureOrderSnapshot();emailDesign={quantity:1,design,snapshot};
+    $('#design-email-preview').src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(orderPreview()));
+    $('#design-email-preview').hidden=false;
+    $('#design-email-summary').textContent=designName()+' · '+dimensions(snapshot.plate)+' · '+state.font;
+    form.hidden=false;
+  }catch(error){status.textContent=error.message;}
+  if(!dialog.open)dialog.showModal();
+  if(!form.hidden)$('#design-email-address').focus();
+});
+$('#design-email-form')?.addEventListener('submit',async event=>{
+  event.preventDefault();if(emailSending||!emailDesign||!event.currentTarget.reportValidity())return;
+  emailSending=true;
+  const button=$('#design-email-submit'),address=$('#design-email-address'),status=$('#design-email-status');
+  address.readOnly=true;button.disabled=true;button.textContent='Entwurf wird geprüft …';status.textContent='Bitte kurz warten. Wir prüfen deinen Entwurf und den Preis.';
+  try{
+    const result=await designEmailClient.send(address.value,emailDesign);
+    if(result.status==='SENT'){
+      status.textContent='Dein Entwurf wurde per E-Mail versendet. Schau auch in deinen Spam-Ordner.';
+      button.textContent='Entwurf versendet';
+    }else{
+      status.textContent=result.status==='SENDING'?'Deine Entwurfsmail wird verarbeitet. Du kannst den Status hier erneut prüfen.':'Der Versand ist noch nicht bestätigt. Bitte prüfe zuerst dein Postfach. Eine erneute Statusprüfung verschickt diese Mail nicht noch einmal.';
+      button.textContent='Versandstatus prüfen';button.disabled=false;
+    }
+  }catch(error){
+    status.textContent=error.message||'Der Versand ist noch nicht bestätigt.';
+    const invalidAddress=['INVALID_EMAIL','INVALID_DESIGN_EMAIL'].includes(error.code);
+    address.readOnly=!invalidAddress;button.textContent=invalidAddress?'Entwurf an mich senden':'Versandstatus prüfen';button.disabled=false;
+  }
+  finally{emailSending=false;}
+});
+
 function cartItemNeedsUpdate(item){return item.design.rasterVersion!==2||item.snapshot.rasterVersion!==2;}
 function refreshCartButtons(){
   const needsUpdate=cartItems.some(cartItemNeedsUpdate);
@@ -2638,7 +2712,7 @@ $('#quote-form').addEventListener('submit',async event=>{
  $('#quote-dialog').querySelectorAll('[data-close]').forEach(button=>button.disabled=true);
  const status=$('#quote-status');status.textContent='Deine Entwürfe werden für die Anfrage vorbereitet …';
  try{
-  const {createShareImage}=await import('./design-share.js?v=20261009-purchase2');
+  const {createShareImage}=await import('./design-share.js?v=20261014-design-email-allfonts');
   const data=[],previews=[];
   for(const [index,item] of quoteCart.entries()){
    const price=await storedPrice(item.design);if(price.status!=='calculated')throw new Error('Bitte den Entwurf im Warenkorb erneut prüfen.');
@@ -2815,8 +2889,7 @@ $('#remove-background').addEventListener('click',()=>{
 for(const button of document.querySelectorAll('[data-width-cm]'))button.addEventListener('click',()=>chooseOuterSize('width',Number(button.dataset.widthCm)*10));
 setupPhotoCalibration({getPhoto:()=>ROOMS.find(r=>r.id==='custom'),onApply:({spanMm,calibration})=>{const room=ROOMS.find(r=>r.id==='custom');if(!room)return;room.spanMm=spanMm;room.calibration=calibration;$('#photo-width').value=Math.round(spanMm)/10;state.room='custom';state.scene='wall';paint();}});
 for(const button of document.querySelectorAll('[data-history]'))button.addEventListener('click',()=>moveHistory(button.dataset.history==='undo'?-1:1));
-const historyControls=$('#undo-design').parentElement;
-$('.editor-panels').before(historyControls);historyControls.classList.add('history-controls');$('.draft-tools').prepend($('#reset-position'));
+$('.draft-tools').prepend($('#reset-position'));
 for(const button of document.querySelectorAll('[data-history]'))button.insertAdjacentHTML('afterbegin','<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="'+(button.dataset.history==='undo'?'M9 5 4 10l5 5M4 10h9a6 6 0 0 1 0 12':'m15 5 5 5-5 5m5-5h-9a6 6 0 0 0 0 12')+'"/></svg>');
 $('#reset-position').addEventListener('click',()=>{positions.delete(state.room);paint();});
 // Finish a typing/drag group before a different button action begins.
@@ -3037,27 +3110,33 @@ $('#share-native').addEventListener('click',async()=>{
  catch(error){if(currentShare===session)$('#share-status').textContent=error.name==='AbortError'?'Teilen abgebrochen. Dein Entwurf bleibt erhalten.':'Teilen hier nicht verfügbar. Bitte das Bild herunterladen oder den Link kopieren.';}
 });
 $('#design-share-dialog').addEventListener('close',()=>{shareDialogRevision++;if(currentShare?.imageUrl)URL.revokeObjectURL(currentShare.imageUrl);currentShare=null;});
-function showIncomingDesigns(){
+let incomingDesignRevision=0;
+async function showIncomingDesigns(){
  if(!draftReady)return;
+ const revision=++incomingDesignRevision,hash=location.hash;
  const dialog=$('#shared-design-dialog'),list=$('#shared-design-list');
  list.replaceChildren();$('#shared-design-status').textContent='';
  try{
   if(location.hash)entryOnboarding.end();
-  incomingDesigns=readDesignLink(location.hash,sharePolicy);$('#open-shared-designs').hidden=!incomingDesigns;
+  const savedId=savedDesignEmailId(hash);let saved=null;
+  if(savedId){$('#shared-design-status').textContent='Dein Entwurf wird geladen …';if(!dialog.open)dialog.showModal();saved=await loadSavedEmailDesign(savedId,{apiBaseUrl:checkoutApiOrigin===window.location.origin?'':checkoutApiOrigin});}
+  if(revision!==incomingDesignRevision)return;
+  incomingDesigns=saved?[saved.design]:readDesignLink(hash,sharePolicy);$('#open-shared-designs').hidden=!incomingDesigns;
+  $('#shared-design-status').textContent='';
   if(!incomingDesigns)return;
   $('#shared-design-title').textContent=incomingDesigns.length===2?'Zwei Entwürfe für dich.':'Ein Entwurf für dich.';
   for(const [i,design] of incomingDesigns.entries()){
    const card=document.createElement('article'),title=document.createElement('h3'),info=document.createElement('p');
-   title.textContent=(incomingDesigns.length===2?(i?'B · ':'A · '):'')+design.text;info.textContent=design.fontId+' · '+COLORS.find(c=>c.id===design.color).name;
+   title.textContent=(incomingDesigns.length===2?(i?'B · ':'A · '):'')+design.text;info.textContent=(design.font||design.fontId)+' · '+(COLORS.find(c=>c.id===design.color)?.name||'');
    card.append(title,info,designButton('Als eigene Kopie öffnen',async()=>{
     if(draftApplying)return;commitHistory();const previous=captureDesign();draftApplying=true;card.querySelector('button').disabled=true;
-    try{await applyDesign(design);if(!state.result)throw new Error($('#text-error').textContent||'Dieser Entwurf benötigt eine Korrektur.');acceptReplacementDraft();history.record(captureDesign());persistDesign(captureDesign());dialog.close();setStep(0);$('#save-design-status').textContent='Geteilte Kopie geöffnet. Vorheriger Entwurf: Rückgängig.';}
+    try{const font=saved?await saved.loadFont():null;if(font){const asset=await rememberAsset(design.fontId,font);if(!asset.persisted)throw new Error('Die Schrift konnte auf diesem Gerät nicht gespeichert werden. Dein bisheriger Entwurf bleibt erhalten.');}await applyDesign(design);if(!state.result)throw new Error($('#text-error').textContent||'Dieser Entwurf benötigt eine Korrektur.');acceptReplacementDraft();history.record(captureDesign());persistDesign(captureDesign());dialog.close();setStep(0);$('#save-design-status').textContent='Geteilte Kopie geöffnet. Vorheriger Entwurf: Rückgängig.';}
     catch(error){await applyDesign(previous);$('#shared-design-status').textContent=error.message;}
     finally{draftApplying=false;card.querySelector('button').disabled=false;refreshHistoryButtons();}
    }));list.append(card);
   }
   if(!dialog.open)dialog.showModal();
- }catch(error){incomingDesigns=null;$('#open-shared-designs').hidden=true;$('#shared-design-status').textContent=error.message;if(!dialog.open)dialog.showModal();}
+ }catch(error){if(revision!==incomingDesignRevision)return;incomingDesigns=null;$('#open-shared-designs').hidden=true;$('#shared-design-status').textContent=error.message;if(!dialog.open)dialog.showModal();}
 }
 $('#open-shared-designs').addEventListener('click',showIncomingDesigns);
 window.addEventListener('hashchange',showIncomingDesigns);
@@ -3081,7 +3160,7 @@ $('#save-design').addEventListener('click',async()=>{
     if(designAssetRefs(design).some(id=>!draftAssets.get(id)?.persisted))throw new Error('Eine Datei ist noch nicht gespeichert. Bitte erneut versuchen.');
     const snapshot=captureOrderSnapshot();
     const record={version:1,name:designName(),design,size:dimensions(snapshot.plate),widthMm:snapshot.plate.widthMm,heightMm:snapshot.plate.heightMm,font:state.mode==='logo'?'Eigenes Logo':state.font,color:snapshotColorSummary(snapshot),backing:BACKINGS[state.backing].name,finish:finishName(state.plateFinish),mount:MOUNTS[state.mount].name,preview:new XMLSerializer().serializeToString(orderPreview())};
-    await saveNamedDesign(record);window.ntCro?.feature('save','saved');status.textContent='Design gespeichert';refreshSavedCount();if($('#saved-designs').open)await openSavedDesigns();
+    await saveNamedDesign(record);window.ntCro?.feature('save','saved');status.textContent='Auf diesem Gerät gespeichert. Für später: Entwurf per E-Mail sichern.';refreshSavedCount();if($('#saved-designs').open)await openSavedDesigns();
   }catch(error){window.ntCro?.feature('save','error');window.ntCro?.error('save',error);status.textContent=error.message||'Speichern nicht möglich. Bitte diesen Tab geöffnet lassen.';}
   finally{button.disabled=designRendering||!state.result;}
 });

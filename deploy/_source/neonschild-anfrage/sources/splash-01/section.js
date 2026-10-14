@@ -35,7 +35,12 @@
   content.inert = true;
   htmlStyle.setProperty('overflow', 'hidden');
   overlay.hidden = false;
-  overlay.setAttribute('data-active', '');
   overlay.focus({preventScroll:true});
-  timer = setTimeout(finish, reduced.matches ? 180 : 1500);
+  // Start the complete sequence on a render frame, not while HTML is parsing.
+  // This keeps all 1500 ms of motion visible even when the first paint is delayed.
+  requestAnimationFrame(() => {
+    if (finished) return;
+    overlay.setAttribute('data-active', '');
+    timer = setTimeout(finish, reduced.matches ? 180 : 1500);
+  });
 })();
