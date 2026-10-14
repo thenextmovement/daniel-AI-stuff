@@ -11,7 +11,8 @@ SOURCES = ROOT / 'sources'
 PUBLIC_URL = 'https://anfrage.neontrip.de/neonschild/anfrage'
 TITLE = 'LED-Neonschild mit Logo anfertigen lassen | NEONTRIP'
 DESCRIPTION = 'Individuelle LED-Neonschilder für Ihre Marke. Design hochladen, kostenlose 3D-Vorschau erhalten und unverbindlich anfragen. Persönliche Beratung von NEONTRIP.'
-SOCIAL_IMAGE = 'https://anfrage.neontrip.de/assets/images/projekte/wella-sonderanfertigung.webp'
+SOCIAL_IMAGE = 'https://anfrage.neontrip.de/assets/neonschild-anfrage/20261013-v1/social-share-20261014.jpg'
+SOCIAL_IMAGE_ALT = 'NEONTRIP: Ihr Design als LED-Neon. Kostenlose 3D-Vorschau und unverbindliches Angebot. Pinkes Neonschild in einem Empfangsbereich.'
 MODULES = {
     'hero': ('led-neon-usecases-v2', '.nt-usecases'),
     'facts': ('service-panel', '.nt-service'),
@@ -135,10 +136,11 @@ for key, value in {
     'og:type': 'website', 'og:locale': 'de_DE', 'og:site_name': 'NEONTRIP',
     'og:title': TITLE, 'og:description': DESCRIPTION, 'og:url': PUBLIC_URL,
     'og:image': SOCIAL_IMAGE,
-    'og:image:alt': 'Pink leuchtendes Wella-Logo über einem Eventstand – ein NEONTRIP-Kundenprojekt',
+    'og:image:type': 'image/jpeg', 'og:image:width': '1200', 'og:image:height': '630',
+    'og:image:alt': SOCIAL_IMAGE_ALT,
 }.items():
     head += f'<meta property="{key}" content="{escape(value, quote=True)}">\n'
-for key, value in {'twitter:card': 'summary_large_image', 'twitter:title': TITLE, 'twitter:description': DESCRIPTION, 'twitter:image': SOCIAL_IMAGE, 'twitter:image:alt': 'Pink leuchtendes Wella-Logo über einem Eventstand'}.items():
+for key, value in {'twitter:card': 'summary_large_image', 'twitter:title': TITLE, 'twitter:description': DESCRIPTION, 'twitter:image': SOCIAL_IMAGE, 'twitter:image:alt': SOCIAL_IMAGE_ALT}.items():
     head += f'<meta name="{key}" content="{escape(value, quote=True)}">\n'
 organization_id = 'https://neontrip.de/#organization'
 structured_data = {'@context': 'https://schema.org', '@graph': [
