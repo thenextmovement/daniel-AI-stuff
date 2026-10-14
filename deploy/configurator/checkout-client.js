@@ -231,5 +231,15 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
     })().catch(error=>{if(error&&typeof error==='object')error.attemptId=attemptId;throw error;}).finally(()=>{pending=null;});
     return pending;
   }
-  return {prepare};
+  // The mail save uses the same owned upload protocol without a checkout,
+  // delivery choice, consent forwarding or provider side effect.
+  async function prepareDesignAssets(cartItems){
+    const payload={items:designPayloadItems(cartItems),assetRefs:[]};
+    const refs=requiredCheckoutAssets(payload);
+    if(new TextEncoder().encode(JSON.stringify(payload)).length+refs.length*240>MAX_JSON_BYTES)throw new CheckoutClientError('PAYLOAD_TOO_LARGE');
+    const token=await session();
+    for(const ref of refs)payload.assetRefs.push(await upload(ref,token));
+    return {payload,token};
+  }
+  return {prepare,prepareDesignAssets};
 }

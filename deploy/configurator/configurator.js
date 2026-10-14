@@ -9,12 +9,12 @@ import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufactur
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
 import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261008-shopping1';
-import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent,readCheckoutAttribution} from './checkout-client.js?v=20261014-design-email';
+import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent,readCheckoutAttribution} from './checkout-client.js?v=20261014-design-email-allfonts';
 import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261012-purchase-repair';
 import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261009-purchase2';
-import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261014-design-email';
-import {createDesignEmailClient} from './design-email.js?v=20261014-design-email';
+import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261014-design-email-allfonts';
+import {createDesignEmailClient,loadSavedEmailDesign,savedDesignEmailId} from './design-email.js?v=20261014-design-email-allfonts';
 import {createFailureReporter,createFailureAttemptId} from './failure-reporting.js';
 import {createConfiguratorTracker} from './funnel-tracking.js?v=20261013-cro1';
 const $ = selector => document.querySelector(selector);
@@ -2389,7 +2389,8 @@ const checkoutClient=createCheckoutClient({
 // Freeze exactly the current design when the user opens the mail dialog. No
 // request, contact capture or marketing event occurs before explicit submission.
 const designEmailClient=createDesignEmailClient({apiBaseUrl:checkoutApiOrigin===window.location.origin?'':checkoutApiOrigin,
-  readSession:()=>readAsset(CHECKOUT_SESSION_KEY),saveSession:token=>saveAssetIfMissing(CHECKOUT_SESSION_KEY,token)});
+  readSession:()=>readAsset(CHECKOUT_SESSION_KEY),saveSession:token=>saveAssetIfMissing(CHECKOUT_SESSION_KEY,token),
+  readFile:async(id,kind)=>(await getDraftAsset(id,kind)).file});
 let emailDesign=null,emailSending=false;
 for(const button of document.querySelectorAll('[data-design-email]'))button.addEventListener('click',()=>{
   if(emailSending){$('#design-email-dialog').showModal();return;}
@@ -2400,8 +2401,7 @@ for(const button of document.querySelectorAll('[data-design-email]'))button.addE
   try{
     if(designRendering||!state.result||!state.sizeValid||state.price?.status!=='calculated')throw new Error('Bitte zuerst die gültige Vorschau und den Preis abwarten.');
     const design=captureDesign();
-    if(design.mode!=='text'||!FONTS.includes(design.fontId)||design.fontSource)throw new Error('Entwurfsmails unterstützen aktuell die 37 NEONTRIP-Schriften. Logos sowie Katalog- und Uploadschriften kannst du weiterhin auf diesem Gerät speichern oder als Vorschaubild teilen.');
-    createDesignLink([design],'https://anfrage.neontrip.de/configurator/',sharePolicy);
+    if(design.mode!=='text')throw new Error('Bitte sichere einen Schriftzug per E-Mail. Logos kannst du weiterhin auf diesem Gerät speichern oder als Vorschaubild teilen.');
     const snapshot=captureOrderSnapshot();emailDesign={quantity:1,design,snapshot};
     $('#design-email-preview').src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(orderPreview()));
     $('#design-email-preview').hidden=false;
@@ -2712,7 +2712,7 @@ $('#quote-form').addEventListener('submit',async event=>{
  $('#quote-dialog').querySelectorAll('[data-close]').forEach(button=>button.disabled=true);
  const status=$('#quote-status');status.textContent='Deine Entwürfe werden für die Anfrage vorbereitet …';
  try{
-  const {createShareImage}=await import('./design-share.js?v=20261014-design-email');
+  const {createShareImage}=await import('./design-share.js?v=20261014-design-email-allfonts');
   const data=[],previews=[];
   for(const [index,item] of quoteCart.entries()){
    const price=await storedPrice(item.design);if(price.status!=='calculated')throw new Error('Bitte den Entwurf im Warenkorb erneut prüfen.');
@@ -3110,27 +3110,33 @@ $('#share-native').addEventListener('click',async()=>{
  catch(error){if(currentShare===session)$('#share-status').textContent=error.name==='AbortError'?'Teilen abgebrochen. Dein Entwurf bleibt erhalten.':'Teilen hier nicht verfügbar. Bitte das Bild herunterladen oder den Link kopieren.';}
 });
 $('#design-share-dialog').addEventListener('close',()=>{shareDialogRevision++;if(currentShare?.imageUrl)URL.revokeObjectURL(currentShare.imageUrl);currentShare=null;});
-function showIncomingDesigns(){
+let incomingDesignRevision=0;
+async function showIncomingDesigns(){
  if(!draftReady)return;
+ const revision=++incomingDesignRevision,hash=location.hash;
  const dialog=$('#shared-design-dialog'),list=$('#shared-design-list');
  list.replaceChildren();$('#shared-design-status').textContent='';
  try{
   if(location.hash)entryOnboarding.end();
-  incomingDesigns=readDesignLink(location.hash,sharePolicy);$('#open-shared-designs').hidden=!incomingDesigns;
+  const savedId=savedDesignEmailId(hash);let saved=null;
+  if(savedId){$('#shared-design-status').textContent='Dein Entwurf wird geladen …';if(!dialog.open)dialog.showModal();saved=await loadSavedEmailDesign(savedId,{apiBaseUrl:checkoutApiOrigin===window.location.origin?'':checkoutApiOrigin});}
+  if(revision!==incomingDesignRevision)return;
+  incomingDesigns=saved?[saved.design]:readDesignLink(hash,sharePolicy);$('#open-shared-designs').hidden=!incomingDesigns;
+  $('#shared-design-status').textContent='';
   if(!incomingDesigns)return;
   $('#shared-design-title').textContent=incomingDesigns.length===2?'Zwei Entwürfe für dich.':'Ein Entwurf für dich.';
   for(const [i,design] of incomingDesigns.entries()){
    const card=document.createElement('article'),title=document.createElement('h3'),info=document.createElement('p');
-   title.textContent=(incomingDesigns.length===2?(i?'B · ':'A · '):'')+design.text;info.textContent=design.fontId+' · '+COLORS.find(c=>c.id===design.color).name;
+   title.textContent=(incomingDesigns.length===2?(i?'B · ':'A · '):'')+design.text;info.textContent=(design.font||design.fontId)+' · '+(COLORS.find(c=>c.id===design.color)?.name||'');
    card.append(title,info,designButton('Als eigene Kopie öffnen',async()=>{
     if(draftApplying)return;commitHistory();const previous=captureDesign();draftApplying=true;card.querySelector('button').disabled=true;
-    try{await applyDesign(design);if(!state.result)throw new Error($('#text-error').textContent||'Dieser Entwurf benötigt eine Korrektur.');acceptReplacementDraft();history.record(captureDesign());persistDesign(captureDesign());dialog.close();setStep(0);$('#save-design-status').textContent='Geteilte Kopie geöffnet. Vorheriger Entwurf: Rückgängig.';}
+    try{const font=saved?await saved.loadFont():null;if(font){const asset=await rememberAsset(design.fontId,font);if(!asset.persisted)throw new Error('Die Schrift konnte auf diesem Gerät nicht gespeichert werden. Dein bisheriger Entwurf bleibt erhalten.');}await applyDesign(design);if(!state.result)throw new Error($('#text-error').textContent||'Dieser Entwurf benötigt eine Korrektur.');acceptReplacementDraft();history.record(captureDesign());persistDesign(captureDesign());dialog.close();setStep(0);$('#save-design-status').textContent='Geteilte Kopie geöffnet. Vorheriger Entwurf: Rückgängig.';}
     catch(error){await applyDesign(previous);$('#shared-design-status').textContent=error.message;}
     finally{draftApplying=false;card.querySelector('button').disabled=false;refreshHistoryButtons();}
    }));list.append(card);
   }
   if(!dialog.open)dialog.showModal();
- }catch(error){incomingDesigns=null;$('#open-shared-designs').hidden=true;$('#shared-design-status').textContent=error.message;if(!dialog.open)dialog.showModal();}
+ }catch(error){if(revision!==incomingDesignRevision)return;incomingDesigns=null;$('#open-shared-designs').hidden=true;$('#shared-design-status').textContent=error.message;if(!dialog.open)dialog.showModal();}
 }
 $('#open-shared-designs').addEventListener('click',showIncomingDesigns);
 window.addEventListener('hashchange',showIncomingDesigns);
