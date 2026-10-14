@@ -105,12 +105,8 @@ function attributedCheckoutUrl(value,attribution){
 
 // Copy only the existing backend contract. Room photos, camera state, SVG
 // previews, inactive uploads and browser price/approval claims never leave here.
-export function checkoutPayload(cartItems,delivery){
+export function designPayloadItems(cartItems){
   if(!Array.isArray(cartItems)||!cartItems.length||cartItems.length>20)throw new CheckoutClientError('INVALID_DESIGN');
-  if(!delivery)throw new CheckoutClientError('DELIVERY_REQUIRED');
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(delivery.dateIso)||!Number.isInteger(delivery.businessDays)||delivery.businessDays<2||delivery.businessDays>15)throw new CheckoutClientError('INVALID_DELIVERY');
-  if(delivery.businessDays<minimumDeliveryBusinessDays(cartItems.flatMap(item=>[item?.design,item?.snapshot])))throw new CheckoutClientError('DELIVERY_TOO_EARLY');
-  const selectedDelivery={dateIso:delivery.dateIso,businessDays:delivery.businessDays,countryCode:'DE'};
   const items=cartItems.map(item=>{
     if(!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>99||!item.design||!item.snapshot)throw new CheckoutClientError('INVALID_DESIGN');
     const d=item.design,s=item.snapshot;
@@ -126,6 +122,15 @@ export function checkoutPayload(cartItems,delivery){
     snapshot.mount=pick(s.mount,['id']);
     return {quantity:item.quantity,design,snapshot};
   });
+  return JSON.parse(JSON.stringify(items));
+}
+export function checkoutPayload(cartItems,delivery){
+  if(!Array.isArray(cartItems)||!cartItems.length||cartItems.length>20)throw new CheckoutClientError('INVALID_DESIGN');
+  if(!delivery)throw new CheckoutClientError('DELIVERY_REQUIRED');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(delivery.dateIso)||!Number.isInteger(delivery.businessDays)||delivery.businessDays<2||delivery.businessDays>15)throw new CheckoutClientError('INVALID_DELIVERY');
+  if(delivery.businessDays<minimumDeliveryBusinessDays(cartItems.flatMap(item=>[item?.design,item?.snapshot])))throw new CheckoutClientError('DELIVERY_TOO_EARLY');
+  const selectedDelivery={dateIso:delivery.dateIso,businessDays:delivery.businessDays,countryCode:'DE'};
+  const items=designPayloadItems(cartItems);
   // A real immutable copy before an asynchronous upload can start.
   return JSON.parse(JSON.stringify({items,assetRefs:[],delivery:selectedDelivery}));
 }

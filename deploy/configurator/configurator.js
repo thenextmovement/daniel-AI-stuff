@@ -9,11 +9,12 @@ import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufactur
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
 import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261008-shopping1';
-import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent,readCheckoutAttribution} from './checkout-client.js?v=20261014-ads-handoff';
+import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent,readCheckoutAttribution} from './checkout-client.js?v=20261014-design-email';
 import { buildBackingContour, tabletopContour, buildFreestandingSupports } from './backing-contour.js?v=20261012-purchase-repair';
 import {createColorExample} from './color-examples.js?v=20261005-refine2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261009-purchase2';
-import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261009-purchase2';
+import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261014-design-email';
+import {createDesignEmailClient} from './design-email.js?v=20261014-design-email';
 import {createFailureReporter,createFailureAttemptId} from './failure-reporting.js';
 import {createConfiguratorTracker} from './funnel-tracking.js?v=20261013-cro1';
 const $ = selector => document.querySelector(selector);
@@ -2385,6 +2386,53 @@ const checkoutClient=createCheckoutClient({
   readAttribution:()=>readCheckoutAttribution(window),
   readFile:async(id,kind)=>(await getDraftAsset(id,kind)).file
 });
+// Freeze exactly the current design when the user opens the mail dialog. No
+// request, contact capture or marketing event occurs before explicit submission.
+const designEmailClient=createDesignEmailClient({apiBaseUrl:checkoutApiOrigin===window.location.origin?'':checkoutApiOrigin,
+  readSession:()=>readAsset(CHECKOUT_SESSION_KEY),saveSession:token=>saveAssetIfMissing(CHECKOUT_SESSION_KEY,token)});
+let emailDesign=null,emailSending=false;
+for(const button of document.querySelectorAll('[data-design-email]'))button.addEventListener('click',()=>{
+  if(emailSending){$('#design-email-dialog').showModal();return;}
+  const dialog=$('#design-email-dialog'),status=$('#design-email-status'),form=$('#design-email-form');
+  form.hidden=true;emailDesign=null;status.textContent='';
+  $('#design-email-preview').hidden=true;$('#design-email-summary').textContent='';
+  $('#design-email-address').readOnly=false;$('#design-email-submit').disabled=false;$('#design-email-submit').textContent='Entwurf an mich senden';
+  try{
+    if(designRendering||!state.result||!state.sizeValid||state.price?.status!=='calculated')throw new Error('Bitte zuerst die gültige Vorschau und den Preis abwarten.');
+    const design=captureDesign();
+    if(design.mode!=='text'||!FONTS.includes(design.fontId)||design.fontSource)throw new Error('Entwurfsmails unterstützen aktuell die 37 NEONTRIP-Schriften. Logos sowie Katalog- und Uploadschriften kannst du weiterhin auf diesem Gerät speichern oder als Vorschaubild teilen.');
+    createDesignLink([design],'https://anfrage.neontrip.de/configurator/',sharePolicy);
+    const snapshot=captureOrderSnapshot();emailDesign={quantity:1,design,snapshot};
+    $('#design-email-preview').src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(orderPreview()));
+    $('#design-email-preview').hidden=false;
+    $('#design-email-summary').textContent=designName()+' · '+dimensions(snapshot.plate)+' · '+state.font;
+    form.hidden=false;
+  }catch(error){status.textContent=error.message;}
+  if(!dialog.open)dialog.showModal();
+  if(!form.hidden)$('#design-email-address').focus();
+});
+$('#design-email-form')?.addEventListener('submit',async event=>{
+  event.preventDefault();if(emailSending||!emailDesign||!event.currentTarget.reportValidity())return;
+  emailSending=true;
+  const button=$('#design-email-submit'),address=$('#design-email-address'),status=$('#design-email-status');
+  address.readOnly=true;button.disabled=true;button.textContent='Entwurf wird geprüft …';status.textContent='Bitte kurz warten. Wir prüfen deinen Entwurf und den Preis.';
+  try{
+    const result=await designEmailClient.send(address.value,emailDesign);
+    if(result.status==='SENT'){
+      status.textContent='Dein Entwurf wurde per E-Mail versendet. Schau auch in deinen Spam-Ordner.';
+      button.textContent='Entwurf versendet';
+    }else{
+      status.textContent=result.status==='SENDING'?'Deine Entwurfsmail wird verarbeitet. Du kannst den Status hier erneut prüfen.':'Der Versand ist noch nicht bestätigt. Bitte prüfe zuerst dein Postfach. Eine erneute Statusprüfung verschickt diese Mail nicht noch einmal.';
+      button.textContent='Versandstatus prüfen';button.disabled=false;
+    }
+  }catch(error){
+    status.textContent=error.message||'Der Versand ist noch nicht bestätigt.';
+    const invalidAddress=['INVALID_EMAIL','INVALID_DESIGN_EMAIL'].includes(error.code);
+    address.readOnly=!invalidAddress;button.textContent=invalidAddress?'Entwurf an mich senden':'Versandstatus prüfen';button.disabled=false;
+  }
+  finally{emailSending=false;}
+});
+
 function cartItemNeedsUpdate(item){return item.design.rasterVersion!==2||item.snapshot.rasterVersion!==2;}
 function refreshCartButtons(){
   const needsUpdate=cartItems.some(cartItemNeedsUpdate);
@@ -2664,7 +2712,7 @@ $('#quote-form').addEventListener('submit',async event=>{
  $('#quote-dialog').querySelectorAll('[data-close]').forEach(button=>button.disabled=true);
  const status=$('#quote-status');status.textContent='Deine Entwürfe werden für die Anfrage vorbereitet …';
  try{
-  const {createShareImage}=await import('./design-share.js?v=20261009-purchase2');
+  const {createShareImage}=await import('./design-share.js?v=20261014-design-email');
   const data=[],previews=[];
   for(const [index,item] of quoteCart.entries()){
    const price=await storedPrice(item.design);if(price.status!=='calculated')throw new Error('Bitte den Entwurf im Warenkorb erneut prüfen.');
@@ -3106,7 +3154,7 @@ $('#save-design').addEventListener('click',async()=>{
     if(designAssetRefs(design).some(id=>!draftAssets.get(id)?.persisted))throw new Error('Eine Datei ist noch nicht gespeichert. Bitte erneut versuchen.');
     const snapshot=captureOrderSnapshot();
     const record={version:1,name:designName(),design,size:dimensions(snapshot.plate),widthMm:snapshot.plate.widthMm,heightMm:snapshot.plate.heightMm,font:state.mode==='logo'?'Eigenes Logo':state.font,color:snapshotColorSummary(snapshot),backing:BACKINGS[state.backing].name,finish:finishName(state.plateFinish),mount:MOUNTS[state.mount].name,preview:new XMLSerializer().serializeToString(orderPreview())};
-    await saveNamedDesign(record);window.ntCro?.feature('save','saved');status.textContent='Design gespeichert';refreshSavedCount();if($('#saved-designs').open)await openSavedDesigns();
+    await saveNamedDesign(record);window.ntCro?.feature('save','saved');status.textContent='Auf diesem Gerät gespeichert. Für später: Entwurf per E-Mail sichern.';refreshSavedCount();if($('#saved-designs').open)await openSavedDesigns();
   }catch(error){window.ntCro?.feature('save','error');window.ntCro?.error('save',error);status.textContent=error.message||'Speichern nicht möglich. Bitte diesen Tab geöffnet lassen.';}
   finally{button.disabled=designRendering||!state.result;}
 });
