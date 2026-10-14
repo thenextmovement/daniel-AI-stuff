@@ -1,6 +1,7 @@
 """Build the independent local remix. No network, deployment or form service."""
 from pathlib import Path
 from hashlib import sha256
+from base64 import b64encode
 import re
 import json
 import subprocess
@@ -56,6 +57,13 @@ for key, (module, selector) in MODULES.items():
             image = match.group(0)
             source = re.search(r'(data-)?srcset="([^"]+)"', image)
             sizes = re.search(r'sizes="([^"]+)"', image).group(1)
+            if '01-empfang-aus.webp' in image:
+                # Ship the original 32 KB opening frame with the document so
+                # mobile LCP does not wait for a separate image connection.
+                # Keep the exact pixels, WebP fallback and all later frames.
+                opening_frame = ROOT / 'assets/modules/led-neon-usecases-v2/hero-20260930/01-empfang-aus.avif'
+                inline_frame = 'data:image/avif;base64,' + b64encode(opening_frame.read_bytes()).decode('ascii')
+                return '<picture><source type="image/avif" srcset="' + inline_frame + '">' + image + '</picture>'
             return ('<picture><source type="image/avif" ' + (source.group(1) or '') +
                     'srcset="' + source.group(2).replace('.webp', '.avif') +
                     '" sizes="' + sizes + '">' + image + '</picture>')
@@ -125,7 +133,6 @@ def version(file):
 
 head = '''<!doctype html><html lang="de"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="preload" as="image" type="image/avif" href="assets/modules/led-neon-usecases-v2/hero-20260930/01-empfang-aus.avif" imagesrcset="assets/modules/led-neon-usecases-v2/hero-20260930/01-empfang-aus-960.avif 960w, assets/modules/led-neon-usecases-v2/hero-20260930/01-empfang-aus.avif 1672w" imagesizes="(max-width: 767px) 680px, 100vw" fetchpriority="high">
 <meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#181615">
 <meta http-equiv="Content-Security-Policy" content="form-action 'none'; connect-src 'self'">
 <link rel="icon" href="assets/favicon.svg">
