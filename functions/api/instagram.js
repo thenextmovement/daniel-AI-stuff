@@ -21,7 +21,9 @@ function plainText(value) {
 }
 
 export function normalizeFeed(raw) {
-  if (Number(raw?.meta?.code) !== 200 || raw.meta.username !== 'theneontrip' || !Array.isArray(raw.data)) throw new Error('Feed unavailable');
+  if (Number(raw?.meta?.code) !== 200) throw new Error(`provider-${Number(raw?.meta?.code) || 0}`);
+  if (raw.meta.username !== 'theneontrip') throw new Error('account-mismatch');
+  if (!Array.isArray(raw.data)) throw new Error('invalid-post-list');
   const ids = new Set();
   return raw.data.slice(0, 8).flatMap(post => {
     const id = String(post.id || '');
@@ -40,7 +42,7 @@ async function getFeed(context, cache) {
   const hit = cache && await cache.match(key);
   if (hit) return hit.json();
   const upstream = await fetch(FEED_URL, {headers: {'X-API-Key': context.env.INSTAFEED_API_KEY}, redirect: 'error', signal: AbortSignal.timeout(8000)});
-  if (!upstream.ok) throw new Error('Feed unavailable');
+  if (!upstream.ok) throw new Error(`http-${upstream.status}`);
   const posts = normalizeFeed(await upstream.json());
   if (!posts.length) throw new Error('Feed empty');
   if (cache) context.waitUntil(cache.put(key, Response.json(posts, {headers: {'Cache-Control': `public, max-age=${TTL}`}})));
@@ -50,7 +52,10 @@ async function getFeed(context, cache) {
 export async function onRequest(context) {
   const {request, env} = context;
   if (request.method !== 'GET') return new Response('Method Not Allowed', {status: 405, headers: {Allow: 'GET', 'Cache-Control': 'no-store'}});
-  if (!env.INSTAFEED_API_KEY) return response({available: false}, 503);
+  if (!env.INSTAFEED_API_KEY) {
+    console.warn('NEONTRIP Instagram: missing-secret');
+    return response({available: false}, 503);
+  }
   const url = new URL(request.url);
   const id = url.searchParams.get('image');
   if ([...url.searchParams.keys()].some(name => name !== 'image') || (id !== null && !/^[\w-]{1,100}$/.test(id))) return response({available: false}, 400);
@@ -72,5 +77,10 @@ export async function onRequest(context) {
     const result = new Response(bytes, {headers: {'Content-Type': type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff'}});
     if (cache) context.waitUntil(cache.put(key, result.clone()));
     return result;
-  } catch { return response({available: false}, 503); }
+  } catch (error) {
+    // Log only known diagnostic codes, never upstream bodies, URLs or credentials.
+    const known = /^(provider-\d+|http-\d+|account-mismatch|invalid-post-list|Feed empty|Image unavailable|Image too large)$/;
+    console.warn('NEONTRIP Instagram:', known.test(error.message) ? error.message : error.name === 'TimeoutError' ? 'timeout' : 'request-failed');
+    return response({available: false}, 503);
+  }
 }
