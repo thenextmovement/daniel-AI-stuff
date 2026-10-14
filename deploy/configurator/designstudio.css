@@ -1134,6 +1134,8 @@ body.designstudio .mobile-edit-tools{display:none}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor>.mobile-edit-tools{order:1;display:flex;align-items:center;gap:6px;width:100%;min-height:44px;margin:0 0 6px}
  body.designstudio .mobile-usage-label{font-size:12px;color:#62565f;flex:none}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .mobile-edit-tools #usage-options{display:block;margin:0;padding:0;order:0;min-width:0;width:auto}
+ body.designstudio:not([data-mobile-look="text"][data-active-group="0"]) #main .mobile-edit-tools :is(.mobile-usage-label,#usage-options),
+ body.designstudio:not([data-mobile-look="text"][data-active-group="0"]) #main .editor>#usage-note{display:none!important}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .mobile-edit-tools #usage-options>div{display:flex;gap:4px}
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .mobile-edit-tools #usage-options button{flex:none;min-height:44px;padding:7px 8px;font-size:13px;gap:0}
  body.designstudio .mobile-edit-tools #usage-options button::after,body.designstudio .mobile-edit-tools #usage-options .icon{display:none}
