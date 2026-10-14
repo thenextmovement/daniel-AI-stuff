@@ -41,7 +41,7 @@ async function getFeed(context, cache) {
   const key = new Request(new URL('/__nt-instagram/v1/feed', context.request.url));
   const hit = cache && await cache.match(key);
   if (hit) return hit.json();
-  const upstream = await fetch(FEED_URL, {headers: {'X-API-Key': context.env.INSTAFEED_API_KEY}, redirect: 'error', signal: AbortSignal.timeout(8000)});
+  const upstream = await fetch(FEED_URL, {headers: {'X-API-Key': context.env.INSTAFEED_API_KEY}, redirect: 'manual', signal: AbortSignal.timeout(8000)});
   if (!upstream.ok) throw new Error(`http-${upstream.status}`);
   const posts = normalizeFeed(await upstream.json());
   if (!posts.length) throw new Error('Feed empty');
@@ -69,7 +69,7 @@ export async function onRequest(context) {
     const key = new Request(new URL(`/__nt-instagram/v1/image/${id}`, request.url));
     const cached = cache && await cache.match(key);
     if (cached) return cached;
-    const media = await fetch(post.image, {redirect: 'error', signal: AbortSignal.timeout(8000)});
+    const media = await fetch(post.image, {redirect: 'manual', signal: AbortSignal.timeout(8000)});
     const type = media.headers.get('Content-Type')?.split(';')[0];
     if (!media.ok || !imageTypes.has(type) || Number(media.headers.get('Content-Length')) > 5_000_000) throw new Error('Image unavailable');
     const bytes = await media.arrayBuffer();
