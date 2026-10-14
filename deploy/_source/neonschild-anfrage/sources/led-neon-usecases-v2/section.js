@@ -19,6 +19,32 @@ export default function init(root) {
   target.addEventListener(event, handler);
   listeners.push(() => target.removeEventListener(event, handler));
  }
+ const header = root.querySelector('.nt-usecases__header');
+ const menuToggle = header.querySelector('.nt-usecases__menu-toggle');
+ const navigation = header.querySelector('nav');
+ const compactHeader = matchMedia('(max-width:1180px)');
+ function setMenu(open, restoreFocus = false) {
+  header.classList.toggle('is-menu-open', open);
+  menuToggle.setAttribute('aria-expanded', String(open));
+  menuToggle.setAttribute('aria-label', open ? 'Menü schließen' : 'Menü öffnen');
+  if (restoreFocus) menuToggle.focus();
+ }
+ on(menuToggle, 'click', () => setMenu(menuToggle.getAttribute('aria-expanded') !== 'true'));
+ on(navigation, 'click', event => {
+  if (event.target.closest('a[href^="#"]')) setMenu(false);
+ });
+ on(header, 'keydown', event => {
+  if (event.key === 'Escape' && menuToggle.getAttribute('aria-expanded') === 'true') {
+   event.preventDefault();
+   setMenu(false, true);
+  }
+ });
+ for (const event of ['pointerdown', 'focusin']) {
+  on(document, event, e => {
+   if (menuToggle.getAttribute('aria-expanded') === 'true' && !header.contains(e.target)) setMenu(false);
+  });
+ }
+ on(compactHeader, 'change', () => setMenu(false));
  function paintControl() {
   root.classList.toggle('is-motion-paused', paused);
   const lit = scenes[active].classList.contains('is-lit');
