@@ -2,6 +2,7 @@
 const FEED_URL = 'https://instafeed.nfcube.com/feed/v6?limit=8&account=galaxybuzzdk.myshopify.com&fu=0&fid=0&locale=de';
 const TTL = 600;
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
+const imageWidths = new Set(['480', '640', '960']);
 
 function response(data, status = 200) {
   return Response.json(data, {status, headers: {'Cache-Control': status === 200 ? 'public, max-age=120' : 'no-store', 'X-Content-Type-Options': 'nosniff'}});
@@ -58,7 +59,10 @@ export async function onRequest(context) {
   }
   const url = new URL(request.url);
   const id = url.searchParams.get('image');
-  if ([...url.searchParams.keys()].some(name => name !== 'image') || (id !== null && !/^[\w-]{1,100}$/.test(id))) return response({available: false}, 400);
+  const width = url.searchParams.get('w') || '640';
+  if ([...url.searchParams.keys()].some(name => !['image', 'w'].includes(name)) ||
+      (id !== null && !/^[\w-]{1,100}$/.test(id)) || !imageWidths.has(width) ||
+      (id === null && url.searchParams.has('w'))) return response({available: false}, 400);
   const cache = globalThis.caches?.default;
   try {
     // Only image IDs from this account's current feed are accepted, never caller URLs.
@@ -66,15 +70,27 @@ export async function onRequest(context) {
     if (id === null) return response({available: true, username: 'theneontrip', posts: posts.map(post => ({...post, image: `/api/instagram?image=${encodeURIComponent(post.id)}`}))});
     const post = posts.find(item => item.id === id);
     if (!post) return response({available: false}, 404);
-    const key = new Request(new URL(`/__nt-instagram/v1/image/${id}`, request.url));
+    const key = new Request(new URL(`/__nt-instagram/v2/image/${id}/${width}`, request.url));
     const cached = cache && await cache.match(key);
     if (cached) return cached;
-    const media = await fetch(post.image, {redirect: 'manual', signal: AbortSignal.timeout(8000)});
+    // Match the existing centered square crop, with enough resolution for retina screens.
+    // Widths are bounded above so arbitrary requests cannot create unlimited variants.
+    let media;
+    let optimized = true;
+    try {
+      media = await fetch(post.image, {redirect: 'manual', signal: AbortSignal.timeout(8000),
+        cf: {image: {width: Number(width), height: Number(width), fit: 'cover', quality: 82, format: 'webp', metadata: 'none'}}});
+      if (!media.ok || !media.headers.get('Content-Type')?.startsWith('image/webp')) throw new Error('Image transform unavailable');
+    } catch {
+      // Keep the feed usable during a transformation outage; retry optimization soon.
+      optimized = false;
+      media = await fetch(post.image, {redirect: 'manual', signal: AbortSignal.timeout(8000)});
+    }
     const type = media.headers.get('Content-Type')?.split(';')[0];
     if (!media.ok || !imageTypes.has(type) || Number(media.headers.get('Content-Length')) > 5_000_000) throw new Error('Image unavailable');
     const bytes = await media.arrayBuffer();
     if (bytes.byteLength > 5_000_000) throw new Error('Image too large');
-    const result = new Response(bytes, {headers: {'Content-Type': type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff'}});
+    const result = new Response(bytes, {headers: {'Content-Type': type, 'Cache-Control': `public, max-age=${optimized ? 86400 : 300}`, 'X-Content-Type-Options': 'nosniff', 'X-Neontrip-Image': optimized ? 'optimized' : 'original'}});
     if (cache) context.waitUntil(cache.put(key, result.clone()));
     return result;
   } catch (error) {

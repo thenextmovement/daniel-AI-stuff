@@ -30,7 +30,9 @@
       for(const post of data.posts){
         if(!/^https:\/\/www\.instagram\.com\/(p|reel|tv)\/[\w-]+\/?$/.test(post.link)||!/^\/api\/instagram\?image=[\w-]+$/.test(post.image))continue;
         const card=document.createElement('a');card.className='nt-instagram__card';card.href=post.link;card.target='_blank';card.rel='noopener noreferrer';card.setAttribute('aria-label','Instagram-Beitrag öffnen: '+post.alt);
-        const image=document.createElement('img');image.alt=post.alt;image.width=640;image.height=640;image.loading='lazy';image.decoding='async';image.fetchPriority='low';image.src=post.image;
+        const image=document.createElement('img');image.alt=post.alt;image.width=640;image.height=640;image.loading='lazy';image.decoding='async';image.fetchPriority='low';
+        image.sizes='(max-width: 600px) 68.4vw, (max-width: 767px) calc(30vw - 9.34px), (max-width: 900px) calc(30.54vw - 9.34px), calc(22.9vw - 10.5px)';
+        image.srcset=[480,640,960].map(width=>post.image+'&w='+width+' '+width+'w').join(',');image.src=post.image+'&w=640';
         image.addEventListener('error',()=>{card.remove();if(!rail.children.length)fail();else update();},{once:true});card.append(image);
         const badge=document.createElement('span');badge.className='nt-instagram__badge';badge.setAttribute('aria-hidden','true');badge.innerHTML=post.type==='video'?'<svg viewBox="0 0 24 24"><path d="m9 5 11 7-11 7Z"/></svg>':'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".8"/></svg>';card.append(badge);
         if(post.date&&/^\d{4}-\d{2}-\d{2}$/.test(post.date)){const date=document.createElement('time');date.className='nt-instagram__date';date.dateTime=post.date;date.textContent=new Date(post.date+'T12:00:00Z').toLocaleDateString('de-DE',{day:'numeric',month:'short',year:'numeric'});card.append(date);}
