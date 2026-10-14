@@ -23,6 +23,7 @@ MODULES = {
     'express': ('express-chat', '.nt-express'),
     'material': ('material-montage', '.nt-material'),
     'classic': ('contact-classic', None),
+    'instagram': ('instagram-feed', None),
 }
 
 def live_assets(text):
@@ -148,7 +149,7 @@ structured_data = {'@context': 'https://schema.org', '@graph': [
      'url': 'https://neontrip.de/', 'logo': 'https://anfrage.neontrip.de/assets/logo_affiliate.webp',
      'telephone': '+49 211 54257240', 'email': 'support@neontrip.de',
      'address': {'@type': 'PostalAddress', 'streetAddress': 'Bilker Allee 29', 'postalCode': '40219', 'addressLocality': 'Düsseldorf', 'addressCountry': 'DE'},
-     'sameAs': ['https://www.instagram.com/neontrip.de', 'https://www.linkedin.com/company/neontrip', 'https://www.youtube.com/@neontrip', 'https://www.google.com/maps?cid=2466754384071016120']},
+     'sameAs': ['https://www.instagram.com/theneontrip/', 'https://www.linkedin.com/company/neontrip', 'https://www.youtube.com/@neontrip', 'https://www.google.com/maps?cid=2466754384071016120']},
     {'@type': 'WebPage', '@id': PUBLIC_URL + '#webpage', 'url': PUBLIC_URL, 'name': TITLE,
      'description': DESCRIPTION, 'inLanguage': 'de', 'publisher': {'@id': organization_id},
      'mainEntity': {'@id': PUBLIC_URL + '#service'}},
@@ -168,7 +169,7 @@ page = head + '</head><body>\n' + splash + '\n<div data-nt-splash-content style=
 # Start before parsing visible page content, without waiting for images or module initialization.
 page += '\n<script>' + (ROOT / 'neontrip-splash.js').read_text() + '</script>\n<main>\n'
 page += '\n'.join(html[k] for k in sequence)
-page += '\n' + html['products'] + '\n' + html['classic'] + '\n</main>\n' + html['footer'] + '\n' + html['product-modal']
+page += '\n' + html['products'] + '\n' + html['instagram'] + '\n' + html['classic'] + '\n</main>\n' + html['footer'] + '\n' + html['product-modal']
 for file in ('modules.js', 'live-products.js', 'interactions.js'):
     page += f'\n<script src="{file}?v={version(file)}" defer></script>'
 page += '\n</div></body></html>'
