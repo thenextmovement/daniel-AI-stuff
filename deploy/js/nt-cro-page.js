@@ -1,9 +1,11 @@
-import {createCroTracker,croPageType,CTAS,SECTIONS} from './nt-cro.js?v=20261013-cro1';
+import {createCroTracker,croPageType,croPath,CTAS,SECTIONS,INQUIRY_STEPS} from './nt-cro.js?v=20261014-cro2';
 
 const LP_SECTIONS = {hero:'hero',projekte:'projects',events:'events',anfrage:'products',vorteile:'benefits',bewertungen:'reviews',faq:'faq',kunden:'references',kontakt:'contact'};
+const NEONSCHILD_SECTIONS = {'led-neon-start':'hero',vorteile:'benefits',projekte:'projects',anfrage:'inquiry',ablauf:'how_it_works','material-montage':'mounting',kundenstimmen:'reviews',express:'express',faq:'faq',produkte:'products',instagram:'instagram',kontakt:'contact'};
 const CONFIG_SECTIONS = {'config-how-it-works':'how_it_works','config-ar':'ar','config-budget':'budget','config-customers':'brands','config-product':'mounting','config-delivery-info':'express','schriftzug-faq':'faq','config-other-signs':'other_signs','config-customer-photos':'customer_photos'};
-const FORM_IDS = {'hero-form':'hero_mobile','hero-form-desktop':'hero_desktop','kontakt-form':'contact','quick-anfrage-form':'quick_request','quick-form':'quick_request','multi-step-form':'multi_step','anfrage-form':'multi_step','quote-form':'configurator_quote'};
-const SECTION_CTAS = {hero:'hero_request',products:'products_request',benefits:'benefits_request',faq:'faq_request',references:'references_request',contact:'contact_request'};
+const FORM_IDS = {'hero-form':'hero_mobile','hero-form-desktop':'hero_desktop','kontakt-form':'contact','quick-anfrage-form':'quick_request','quick-form':'quick_request','multi-step-form':'multi_step','anfrage-form':'multi_step','quote-form':'configurator_quote','nt-inquiry-form':'neonschild_inquiry','nt-classic-form':'neonschild_contact'};
+const SECTION_CTAS = {hero:'hero_request',products:'products_request',benefits:'benefits_request',faq:'faq_request',references:'references_request',contact:'contact_request',how_it_works:'process_request',express:'express_request'};
+const PRODUCT_CTAS = {'front-buchstaben':'product_front_request','halo-buchstaben':'product_halo_request',leuchtkasten:'product_lightbox_request',ausstecker:'product_blade_request'};
 const CONFIG_CTAS = {'add-to-cart':['editor_add_to_cart','editor'],'review-add-to-cart':['review_add_to_cart','editor'],'page-add-to-cart':['sticky_add_to_cart','editor'],'cart-pay':['cart_checkout','cart'],'prepare-checkout':['cart_checkout','cart'],'cart-request-quote':['cart_quote','cart'],'config-final-action':['final_configure','final_cta']};
 
 export function initCroPage(browser = globalThis) {
@@ -17,7 +19,8 @@ export function initCroPage(browser = globalThis) {
     const append = browser.ntAppendTrackingParams;
     browser.ntAppendTrackingParams = function(...args) {return tracker.inquiryUrl(append.apply(this,args));};
   }
-  const sections = pageType === 'configurator' ? CONFIG_SECTIONS : LP_SECTIONS;
+  const neonschild = croPath(browser.location.pathname) === '/neonschild/anfrage';
+  const sections = pageType === 'configurator' ? CONFIG_SECTIONS : neonschild ? NEONSCHILD_SECTIONS : LP_SECTIONS;
   for (const [id,value] of Object.entries(sections)) {
     const node = doc.getElementById(id);
     if (node) node.dataset.croSection = value;
@@ -46,18 +49,29 @@ export function initCroPage(browser = globalThis) {
       const href = node.getAttribute('href') || '', handler = node.getAttribute('onclick') || '';
       let inquiryLink = false;
       try {const url = new URL(href,browser.location.href);inquiryLink = url.origin === browser.location.origin && /^\/anfrage(?:\.html)?\/?$/.test(url.pathname);} catch {}
-      if (!handler.includes('openFormPopup(') && !inquiryLink) continue;
+      const inlineInquiry = neonschild && (href === '#anfrage' || (href === '#express' && !!node.closest('#led-neon-start')));
+      if (!handler.includes('openFormPopup(') && !inquiryLink && !inlineInquiry) continue;
       const inHeader = !!node.closest('header'), inGallery = !!node.closest('[role=dialog],dialog,#projectGalleryModal,#lightbox');
-      const section = inHeader ? 'header' : node.closest('footer') ? 'footer' : inGallery ? 'gallery' : node.closest('[data-cro-section]')?.dataset.croSection || 'gallery';
-      markCta(node,inHeader ? 'header_request' : section === 'footer' ? 'footer_request' : SECTION_CTAS[section] || 'gallery_request',section);
-      const product = handler.match(/openFormPopup\(['"]([a-z-]+)['"]\)/)?.[1];
+      const section = inHeader ? 'header' : node.closest(neonschild ? '.nt-site-footer' : 'footer') ? 'footer' : inGallery ? 'gallery' : node.closest('[data-cro-section]')?.dataset.croSection || 'gallery';
+      markCta(node,neonschild && href === '#express' ? 'hero_express_request' : inHeader ? 'header_request' : section === 'footer' ? 'footer_request' : SECTION_CTAS[section] || 'gallery_request',section);
+      const product = handler.match(/openFormPopup\(['"]([a-z-]+)['"]/)?.[1];
       if (product) node.dataset.croProduct = product;
+      if (neonschild && section === 'products' && PRODUCT_CTAS[product]) markCta(node,PRODUCT_CTAS[product],section);
     }
     for (const node of doc.querySelectorAll('header .header-cta[href="#hero"],a.mobile-nav-link[href="#hero"]')) markCta(node,'header_request','header');
     markCta(doc.getElementById('pgm-cta'),'gallery_request','gallery');
     markCta(doc.getElementById('lightbox-cta'),'gallery_request','gallery');
     for (const sticky of doc.querySelectorAll('#contact-sticky a[href="#hero"],#mobile-sticky-cta a[href="#hero"]')) markCta(sticky,'sticky_request','hero');
     doc.querySelector('section.md\\:hidden h2')?.closest('section')?.setAttribute('data-cro-section','testimonials_mobile');
+  }
+  const inquiryForm = neonschild ? doc.getElementById('nt-inquiry-form') : null;
+  if (inquiryForm) {
+    markCta(doc.getElementById('nt-inquiry-back'),'inquiry_back','inquiry');
+    markCta(doc.getElementById('nt-inquiry-edit-location'),'inquiry_step_location','inquiry');
+    for (const node of inquiryForm.querySelectorAll('[data-step-button]')) {
+      markCta(node,'inquiry_step_' + INQUIRY_STEPS[Number(node.dataset.stepButton)],'inquiry');
+    }
+    markCta(doc.querySelector('#nt-classic-form [type=submit]'),'contact_submit','contact');
   }
   const dwell = new Map();
   let timer = null, frame = null, enabledBefore = false;
@@ -122,12 +136,21 @@ export function initCroPage(browser = globalThis) {
       const visibleControl = panel && [...panel.querySelectorAll('h1,h2,label,input,button')].some(el => regionVisible(el));
       if (visibleControl) tracker.emit('configurator_step_view',{step_id:currentStep()});
     }
+    if (inquiryForm) {
+      const panel = inquiryForm.querySelector('.step-panel[data-step]:not([hidden]):not([inert])');
+      const visibleControl = panel && [...panel.querySelectorAll('h3,label,input,button')].some(el => regionVisible(el));
+      if (visibleControl) tracker.emit('lead_form_step_view',{form_id:'neonschild_inquiry',step_id:INQUIRY_STEPS[Number(panel.dataset.step)]});
+    }
     if (Number.isFinite(next)) timer = browser.setTimeout(scan,next+20);
   }
   const schedule = () => {
     if (frame === null) frame = browser.requestAnimationFrame(() => {try {scan();} catch {}});
   };
   function refreshCta() {
+    if (inquiryForm) {
+      const step = Number(inquiryForm.querySelector('[data-step-button][aria-current=step]')?.dataset.stepButton);
+      markCta(doc.getElementById('nt-inquiry-next'),['inquiry_next_design','inquiry_next_contact','inquiry_submit'][step],'inquiry');
+    }
     const next = doc.getElementById('next-step');
     if (pageType !== 'configurator' || !next) return;
     const group = Number(doc.body.dataset.activeGroup || 0);
@@ -165,9 +188,11 @@ export function initCroPage(browser = globalThis) {
   // Observe only visibility-affecting containers; never the expensive SVG renderer.
   if (browser.MutationObserver) {
     const observer = new browser.MutationObserver(() => {refreshCta();schedule();});
-    for (const node of [doc.body,...doc.querySelectorAll('dialog,.editor-panels > *')]) {
-      observer.observe(node,{attributes:true,attributeFilter:['data-active-group','hidden','open','inert']});
+    for (const node of [doc.body,...doc.querySelectorAll('dialog,.editor-panels > *'),...(inquiryForm?.querySelectorAll('.step-panel,[data-step-button]') || [])]) {
+      observer.observe(node,{attributes:true,attributeFilter:['data-active-group','hidden','open','inert','aria-current']});
     }
+    const expressWidget = neonschild && doc.querySelector('#express [data-widget]');
+    if (expressWidget) observer.observe(expressWidget,{childList:true,attributes:true,attributeFilter:['hidden']});
   }
   refreshCta();schedule();
   return tracker;

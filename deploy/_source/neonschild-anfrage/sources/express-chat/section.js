@@ -139,6 +139,8 @@ export default function init(root) {
     target.dispatchEvent(new Event('input',{bubbles:true}));
     target.scrollIntoView({behavior:reduced.matches?'instant':'smooth',block:'start'});target.elements.vorname.focus({preventScroll:true});
   }));
+  box.lastElementChild.dataset.croCta='express_request';
+  box.lastElementChild.dataset.croSectionId='express';
   box.append(button('Zusammenfassung speichern','nt-express__quick-download',download));box.lastElementChild.className='nt-express__edit';
   box.append(button('Neue Anfrage beginnen','nt-express__reset',()=>{draft=empty();editing=null;file=null;fileInput.value='';textarea.value='';displayed=parseDay(berlinToday());displayed.setUTCDate(1);setError('');render(false);conversation.scrollTop=0}));widget.append(box);
  }

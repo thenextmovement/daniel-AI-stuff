@@ -1,22 +1,24 @@
 // NEONTRIP CRO v1. Only bounded metadata, explicit statistics consent and production.
 // The browser argument is injectable for offline tests; no runtime preview bypass.
 export const CRO_VERSION = 'cro_v1';
-export const SECTIONS = new Set('hero projects events products benefits reviews testimonials_mobile faq references contact header footer gallery editor cart how_it_works ar budget brands mounting express final_cta other_signs customer_photos form'.split(' '));
-export const CTAS = new Set('header_request footer_request products_request benefits_request faq_request references_request contact_request gallery_request hero_request sticky_request editor_add_to_cart review_add_to_cart sticky_add_to_cart cart_checkout cart_quote final_configure editor_next_format editor_next_accessories'.split(' '));
-export const FORMS = new Set('hero_mobile hero_desktop contact quick_request multi_step configurator_quote inquiry_wizard'.split(' '));
+export const SECTIONS = new Set('hero projects events products benefits reviews testimonials_mobile faq references contact header footer gallery editor cart how_it_works ar budget brands mounting express final_cta other_signs customer_photos form inquiry instagram'.split(' '));
+export const CTAS = new Set('header_request footer_request products_request benefits_request faq_request references_request contact_request gallery_request hero_request sticky_request editor_add_to_cart review_add_to_cart sticky_add_to_cart cart_checkout cart_quote final_configure editor_next_format editor_next_accessories hero_express_request process_request express_request inquiry_next_design inquiry_next_contact inquiry_submit inquiry_back inquiry_step_location inquiry_step_design inquiry_step_contact contact_submit product_front_request product_halo_request product_lightbox_request product_blade_request'.split(' '));
+export const FORMS = new Set('hero_mobile hero_desktop contact quick_request multi_step configurator_quote inquiry_wizard neonschild_inquiry neonschild_contact'.split(' '));
+export const INQUIRY_STEPS = ['location','design','contact'];
 const STEPS = new Set(['look','format','accessories']);
 const FEATURES = {budget:['started','results','empty','applied','error'],save:['started','saved','error'],compare:['opened','error'],ar:['requested','ready','launch_requested','error']};
 const STAGES = new Set(['calculation','checkout','quote','form','save','budget','ar','compare']);
 const CODES = new Set(['network','persistence_unconfirmed','storage','validation','unavailable']);
 const COMMERCE = new Set(['add_to_cart','begin_checkout']);
 const FUNNEL = new Set(['configurator_engaged','add_to_cart','configurator_delivery_opened','begin_checkout','configurator_checkout_ready']);
-const LANDINGS = new Set(['/','/leuchtreklame','/neon-schilder','/leuchtbuchstaben','/firmenschilder','/logo','/led-schriftzuege','/firmenlogo-beleuchtet']);
+const LANDINGS = new Set(['/','/leuchtreklame','/neon-schilder','/leuchtbuchstaben','/firmenschilder','/logo','/led-schriftzuege','/firmenlogo-beleuchtet','/neonschild/anfrage']);
 const CONFIGURATORS = new Set(['/configurator',...['cafe-kaffee','empfang-bewegraum','hochzeit-forever-together','studio-im-gespraech','wunschname-emma','zuhause-stay-golden'].map(slug => '/configurator/neon-' + slug + '.html')]);
 const ORIGIN_KEY = 'nt_cro_origin_v1', LEADS_KEY = 'nt_cro_leads_v1';
 const TTL = 30 * 60 * 1000;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export function croPath(path = '/') {
-  return path.replace(/\/index\.html$/, '/').replace(/\/$/, '') || '/';
+  const normalized = path.replace(/\/index\.html$/, '/').replace(/\/$/, '') || '/';
+  return normalized === '/neonschild/anfrage.html' ? '/neonschild/anfrage' : normalized;
 }
 export function croPageType(path) {
   const p = croPath(path);
@@ -28,7 +30,7 @@ function safe(fn, fallback = false) {
   return (...args) => { try { return fn(...args); } catch { return fallback; } };
 }
 export function createCroTracker(browser = globalThis, pageType = croPageType(browser.location?.pathname)) {
-  let step = null, ready = false, pending = null;
+  let step = null, inquiryStep = null, ready = false, pending = null;
   let forms = new WeakMap();
   const sent = new Set(), leads = new Set();
   const enabled = () => ['landing','form','configurator'].includes(pageType) &&
@@ -100,6 +102,11 @@ export function createCroTracker(browser = globalThis, pageType = croPageType(br
     } catch {}
     return true;
   }
+  function formEvent(formId,outcome) {
+    // Keep the existing cross-page funnel, plus separate the two forms on this page.
+    const prefix = {neonschild_inquiry:'nt_inquiry',neonschild_contact:'nt_contact'}[formId];
+    try { if (prefix) browser.clarity?.('event',prefix + '_' + outcome); } catch {}
+  }
   function emit(name, data = {}, key) {
     if (!enabled()) return false;
     if (FUNNEL.has(name)) {
@@ -138,6 +145,12 @@ export function createCroTracker(browser = globalThis, pageType = croPageType(br
       if (!deliver(name,{step_id:data.step_id,from_step:previous},'nt_step_' + data.step_id)) return false;
       step = data.step_id; return true;
     }
+    if (name === 'lead_form_step_view') {
+      if (currentPath() !== '/neonschild/anfrage' || data.form_id !== 'neonschild_inquiry' ||
+          !INQUIRY_STEPS.includes(data.step_id) || inquiryStep === data.step_id) return false;
+      if (!deliver(name,{form_id:data.form_id,step_id:data.step_id,from_step:inquiryStep || 'none'},'nt_inquiry_step_' + data.step_id)) return false;
+      inquiryStep = data.step_id; return true;
+    }
     if (name === 'configurator_feature') {
       if (!FEATURES[data.feature_id]?.includes(data.feature_outcome)) return false;
       const dedup = key ? name + ':' + data.feature_id + ':' + data.feature_outcome + ':' + key : null;
@@ -162,6 +175,7 @@ export function createCroTracker(browser = globalThis, pageType = croPageType(br
     const value = context(form);
     const {at,...params} = value;
     if (!deliver('lead_form_start',params,value.form_id === 'configurator_quote' ? 'nt_quote_form_started' : 'nt_lead_form_started')) return false;
+    formEvent(value.form_id,'form_started');
     forms.set(form,value);pending = null;
     return true;
   }
@@ -179,6 +193,7 @@ export function createCroTracker(browser = globalThis, pageType = croPageType(br
     const {at,...origin} = context(form);
     const outcome = status === 'confirmed' ? (origin.form_id === 'configurator_quote' ? 'nt_quote_confirmed' : 'nt_lead_confirmed') : 'nt_contact_only';
     if (!deliver('generate_lead',{currency:'EUR',value:280,...origin,lead_status:status},outcome)) return false;
+    formEvent(origin.form_id,status);
     leads.add(id);
     write(LEADS_KEY,[...new Set([...(Array.isArray(stored) ? stored.filter(v => UUID.test(v)) : []),id])].slice(-100));
     forms.delete(form);pending = null;
@@ -193,7 +208,7 @@ export function createCroTracker(browser = globalThis, pageType = croPageType(br
       write(ORIGIN_KEY,pending); return true;
     }),
     forget:safe(() => {
-      pending = null; forms = new WeakMap(); step = null;
+      pending = null; forms = new WeakMap(); step = null; inquiryStep = null;
       try { browser.sessionStorage?.removeItem(ORIGIN_KEY);browser.sessionStorage?.removeItem(LEADS_KEY); } catch {}
     }),
     feature:safe((id,outcome,key) => emit('configurator_feature',{feature_id:id,feature_outcome:outcome},key)),

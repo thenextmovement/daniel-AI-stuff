@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCroTracker,croPageType} from '../deploy/js/nt-cro.js';
+import {createCroTracker,croPageType,croPath} from '../deploy/js/nt-cro.js';
+import {readFile} from 'node:fs/promises';
 
 const id = '00000000-0000-4000-8000-000000000001';
 function fixture(pathname='/neon-schilder/') {
@@ -173,4 +174,62 @@ test('multiple AR failure callbacks count once per request, while explicit retry
   const r=fixture('/configurator/');
   r.track.feature('ar','error',1);r.track.feature('ar','error',1);r.track.feature('ar','error',2);
   assert.equal(r.google.length,2);assert.equal(r.google[0][2].feature_outcome,'error');
+});
+
+test('advertised landing aliases share bounded origin; unrelated routes remain excluded',()=>{
+  for (const path of ['/neonschild/anfrage','/neonschild/anfrage/','/neonschild/anfrage.html']) {
+    assert.equal(croPageType(path),'landing');assert.equal(croPath(path),'/neonschild/anfrage');
+    const r=fixture(path);r.track.rememberOrigin('hero','hero_request');r.track.startForm(form('neonschild_inquiry'));
+    assert.equal(r.google.at(-1)[2].origin_page_path,'/neonschild/anfrage');
+  }
+  for (const path of ['/neonschild','/neonschild/other','/neonschild/anfrage-old.html']) assert.equal(croPageType(path),null);
+});
+
+test('inquiry steps require consent and the real page; repeated renders are ignored, returns retained',()=>{
+  const r=fixture('/neonschild/anfrage'),data={form_id:'neonschild_inquiry'};
+  r.browser.Cookiebot.consent.statistics=false;
+  assert.equal(r.track.emit('lead_form_step_view',{...data,step_id:'location'}),false);
+  r.browser.Cookiebot.consent.statistics=true;
+  for (const step_id of ['location','location','design','contact','design','complete','PRIVATE']) r.track.emit('lead_form_step_view',{...data,step_id,content:'PRIVATE'});
+  assert.deepEqual(r.google.map(v=>[v[2].from_step,v[2].step_id]),[['none','location'],['location','design'],['design','contact'],['contact','design']]);
+  assert.equal(JSON.stringify(r.google).includes('PRIVATE'),false);
+  assert.equal(r.track.emit('lead_form_step_view',{form_id:'neonschild_contact',step_id:'contact'}),false);
+  assert.equal(fixture().track.emit('lead_form_step_view',{...data,step_id:'location'}),false);
+  assert.equal(events(r).includes('generate_lead'),false);
+});
+
+test('both new forms reuse receipt validation, frozen CTA origin and lead deduplication',()=>{
+  for (const type of ['neonschild_inquiry','neonschild_contact']) {
+    const r=fixture('/neonschild/anfrage.html'),f=form(type);
+    r.track.rememberOrigin('express','express_request');r.track.startForm(f);r.track.startForm(f);
+    r.track.rememberOrigin('faq','faq_request');
+    assert.equal(r.track.lead(f,receipt({persisted:false})),false);
+    assert.equal(r.track.lead(f,receipt()),true);assert.equal(r.track.lead(f,receipt()),false);
+    assert.deepEqual(events(r),['lead_form_start','generate_lead']);
+    assert.equal(r.google.at(-1)[2].form_id,type);
+    assert.equal(r.google.at(-1)[2].origin_cta_id,'express_request');
+    assert.equal(r.google.at(-1)[2].origin_page_path,'/neonschild/anfrage');
+    const prefix=type==='neonschild_inquiry'?'nt_inquiry':'nt_contact';
+    assert.deepEqual(r.clarity,[['event','nt_lead_form_started'],['event',prefix+'_form_started'],['event','nt_lead_confirmed'],['event',prefix+'_confirmed']]);
+  }
+});
+
+test('express draft and contact recovery cannot appear as confirmed full inquiries',()=>{
+  const r=fixture('/neonschild/anfrage');
+  r.track.emit('cta_click',{section_id:'express',cta_id:'express_request'});
+  assert.equal(r.track.startForm(form('express_draft')),false);
+  assert.equal(events(r).includes('generate_lead'),false);
+  r.track.lead(form('neonschild_contact'),receipt({recovery:true}));
+  assert.equal(r.google.at(-1)[2].lead_status,'contact_only');
+  assert.deepEqual(r.clarity.slice(-2),[['event','nt_contact_only'],['event','nt_contact_contact_only']]);
+  assert.equal(JSON.stringify(r.clarity).includes('confirmed'),false);
+});
+
+test('generated advertised page includes CRO exactly once and retains the canonical receipt transport',async()=>{
+  const html=await readFile(new URL('../deploy/neonschild/anfrage.html',import.meta.url),'utf8');
+  assert.equal((html.match(/src="\/js\/nt-cro-page\.js\?/g)||[]).length,1);
+  assert.match(html,/data-cookieconsent="ignore" src="\/js\/nt-cro-page\.js/);
+  const integration=await readFile(new URL('../deploy/assets/neonschild-anfrage/20261013-v1/live-integration.js',import.meta.url),'utf8');
+  assert.match(integration,/ntCro\?\.startForm/);assert.match(integration,/ntCro\?\.lead/);assert.match(integration,/ntRequirePersistedReceipt/);
+  assert.match(html,/id="nt-inquiry-form"/);assert.match(html,/id="nt-classic-form"/);
 });

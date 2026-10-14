@@ -49,7 +49,7 @@ pre='<script defer data-cookieconsent="ignore" src="/assets/js/nt-business-email
 pre+='<script defer data-cookieconsent="ignore" src="/assets/js/lp-common.js?v='+sha256((DEPLOY/'assets/js/lp-common.js').read_bytes()).hexdigest()[:10]+'"></script>'
 pre+='<script defer data-cookieconsent="ignore" src="'+PREFIX+'live-integration.js?v='+sha256((PUBLIC/'live-integration.js').read_bytes()).hexdigest()[:10]+'"></script>'
 page=page.replace('<script src="'+PREFIX+'modules.js',pre+'<script src="'+PREFIX+'modules.js')
-page=page.replace('</body>','\n'.join(body)+'</body>')
+page=page.replace('</body>','\n'.join(body)+'<script type="module" data-cookieconsent="ignore" src="/js/nt-cro-page.js?v=20261014-cro2"></script></body>')
 page=page.replace('href="https://anfrage.neontrip.de/cookie-einstellungen"','data-cookie-settings href="/cookie-einstellungen"')
 page=page.replace('novalidate aria-label="Ihr LED-Neonschild anfragen">', 'novalidate aria-label="Ihr LED-Neonschild anfragen"><input name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-10000px">')
 # No JavaScript: expose real contact options rather than posting unmapped fields.
