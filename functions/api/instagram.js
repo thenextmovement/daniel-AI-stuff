@@ -1,5 +1,5 @@
 // Read-only Instafeed integration. Credentials and media requests stay server-side.
-const FEED_URL = 'https://instafeed.nfcube.com/feed/v6?limit=8&account=galaxybuzzdk.myshopify.com&fu=0&fid=0';
+const FEED_URL = 'https://instafeed.nfcube.com/feed/v6?limit=8&account=galaxybuzzdk.myshopify.com&fu=0&fid=0&locale=de';
 const TTL = 600;
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
 
@@ -41,7 +41,7 @@ async function getFeed(context, cache) {
   const key = new Request(new URL('/__nt-instagram/v1/feed', context.request.url));
   const hit = cache && await cache.match(key);
   if (hit) return hit.json();
-  const upstream = await fetch(FEED_URL, {headers: {'X-API-Key': context.env.INSTAFEED_API_KEY}, redirect: 'manual', signal: AbortSignal.timeout(8000)});
+  const upstream = await fetch(FEED_URL, {headers: {'X-API-Key': context.env.INSTAFEED_API_KEY}, cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(8000)});
   if (!upstream.ok) throw new Error(`http-${upstream.status}`);
   const posts = normalizeFeed(await upstream.json());
   if (!posts.length) throw new Error('Feed empty');
