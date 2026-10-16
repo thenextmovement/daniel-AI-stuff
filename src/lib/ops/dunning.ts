@@ -424,6 +424,8 @@ export function dunningOrderKey(value: unknown) {
 export function dunningStageLabel(stage: number, source?: DunningSource) {
   if (source === "legacy" && stage === 4)
     return "Letzte Mahnung vor Inkasso (Altbestand)";
+  if (source === "legacy" && stage > 4)
+    return `Mahnstufe ${stage} (Altbestand)`;
   return CURRENT_STAGE_LABELS[stage] || `Mahnstufe ${stage}`;
 }
 
@@ -961,15 +963,42 @@ export function buildDunningCases(input: {
       input.audits,
       input.messages,
     );
-    const legacyStage = Math.max(
-      Number(statusRow?.mahnstufe || 0),
-      ...sendlogs.map((row) => Number(row.mahnstufe || 0)),
+    // dunning_status also mirrors T099. A verified copy is not legacy evidence.
+    const matchesVerifiedT099 = (stage: number, sentAt: string | null) =>
+      Boolean(
+        validIso(sentAt) &&
+          locks.some(
+            (lock) =>
+              t099LockIdentity(lock.request_id)?.stage === stage &&
+              verifiedLockSentAt(lock, input.audits, input.messages) ===
+                validIso(sentAt),
+          ),
+      );
+    const legacySendlogs = sendlogs.filter(
+      (row) => !matchesVerifiedT099(Number(row.mahnstufe || 0), row.sent_at),
     );
-    const hasLegacy = Boolean(statusRow || sendlogs.length);
+    const projectedStage = Number(statusRow?.mahnstufe || 0);
+    const legacyStage = Math.max(
+      matchesVerifiedT099(projectedStage, statusRow?.last_sent_at || null)
+        ? 0
+        : projectedStage,
+      ...legacySendlogs.map((row) => Number(row.mahnstufe || 0)),
+    );
+    const hasLegacy = Boolean(legacyStage > 0 || legacySendlogs.length);
     const hasT099 = Boolean(candidate || locks.length);
     const source = sourceForCase(hasLegacy, hasT099);
     const currentStage = Math.max(currentT099Stage, legacyStage, 0);
-    const currentStageLabel = dunningStageLabel(currentStage, source);
+    const stageSourcesConflict =
+      hasLegacy &&
+      hasT099 &&
+      (legacyStage !== currentT099Stage ||
+        (legacyStage >= 4 && currentT099Stage > 0));
+    const currentStageLabel = stageSourcesConflict
+      ? `Mahnstufe ${currentStage} (Zuordnung prüfen)`
+      : dunningStageLabel(
+          currentStage,
+          currentT099Stage > 0 ? "t099" : hasLegacy ? "legacy" : source,
+        );
     const currentLock = lastVerifiedLock(
       locks,
       currentT099Stage,
@@ -1184,8 +1213,6 @@ export function buildDunningCases(input: {
     const dueDate = cleanText(candidate?.easybill_due_date, 20);
     const daysOverdue = daysSince(atNineBerlinDate(dueDate), now);
     const orderAgeDays = daysSince(orderCreatedAt, now);
-    const stageSourcesConflict =
-      hasLegacy && hasT099 && legacyStage !== currentT099Stage;
     const nextStage =
       !closed && candidate && currentT099Stage < 6 && !stageSourcesConflict
         ? currentT099Stage + 1
@@ -1211,7 +1238,8 @@ export function buildDunningCases(input: {
           previousStageSentAt,
         })
       : null;
-    const finalStageReached = legacyStage >= 4 || currentT099Stage >= 6;
+    const finalStageReached =
+      !stageSourcesConflict && (legacyStage >= 4 || currentT099Stage >= 6);
     const finalReminderSentAt = finalStageReached ? lastSentAt : null;
     const legalReviewDueAt = plusCalendarDays(finalReminderSentAt, 7);
     const finalReminderWaiting = Boolean(
@@ -1280,6 +1308,7 @@ export function buildDunningCases(input: {
       !email ||
       !input.intakeFresh ||
       !scheduledAt ||
+      stageSourcesConflict ||
       finalStageReached
     )
       state = "data_issue";
