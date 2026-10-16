@@ -67,7 +67,7 @@ test("deploy waits for a healthy exact-commit Coolify result", async () => {
       response.end(JSON.stringify(application()));
       return;
     }
-    if (request.method === "GET" && request.url === "/deploy") {
+    if (request.method === "POST" && request.url === "/deploy") {
       response.end(JSON.stringify({ deployments: [{ resource_uuid: resourceUuid, deployment_uuid: deploymentUuid }] }));
       return;
     }
@@ -98,7 +98,7 @@ test("deploy waits for a healthy exact-commit Coolify result", async () => {
   assert.deepEqual(methods.slice(0, 3), [
     `PATCH /api/v1/applications/${resourceUuid}`,
     `GET /api/v1/applications/${resourceUuid}`,
-    "GET /deploy",
+    "POST /deploy",
   ]);
 });
 

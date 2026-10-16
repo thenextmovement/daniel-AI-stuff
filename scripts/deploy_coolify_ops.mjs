@@ -176,7 +176,7 @@ export async function deployOps({
   log(JSON.stringify({ event: "coolify_rolling_update_prerequisites", resourceUuid, ok: true }));
 
   const webhookResponse = await fetchImpl(webhook, {
-    method: "GET",
+    method: "POST",
     headers: { Authorization: `Bearer ${normalizedToken}`, Accept: "application/json" },
   });
   const ticket = parseDeploymentTicket(await readJson(webhookResponse, "Coolify deploy webhook"), resourceUuid);
