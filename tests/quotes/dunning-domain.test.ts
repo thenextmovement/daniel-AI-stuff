@@ -787,3 +787,88 @@ test("official court PDF preparation fails closed and treats tracking-only evide
     }
   }
 });
+
+function modernEvidence(stage: number, sentAt = "2026-10-14T14:20:27.000Z") {
+  const lockKey = "e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:1234567890:S" + stage;
+  const evidence: Pick<BuildInput, "locks" | "messages" | "audits" | "statuses"> = {
+    locks: [{ request_id: lockKey, locked_at: sentAt, message_id: "modern-message", internet_message_id: "modern-internet", conversation_id: "modern-conversation", status: "draft_created", attempt_count: 1, lease_until: sentAt, last_error: null, updated_at: sentAt }],
+    messages: [{ id: "modern-row", message_id: "modern-message", internet_message_id: "modern-internet", conversation_id: "modern-conversation", direction: "outbound", from_email: "support@neontrip.de", from_name: "NEONTRIP", to_emails: ["kunde@example.com"], cc_emails: [], bcc_emails: [], subject: "Mahnung #NEONT5000", body_preview: "", received_at: null, sent_at: sentAt, message_created_at: sentAt, source: "outlook", created_at: sentAt }],
+    audits: [{ id: "modern-audit", document_id: "1234567890", workflow_name: "TICKET-099 Existing Ledger Sender", action: "customer_stage_sent_verified", status: "sent", error_message: null, metadata: { lock_key: lockKey, stage, provider_message_id: "modern-message", provider_internet_message_id: "modern-internet", provider_conversation_id: "modern-conversation", recipient: "kunde@example.com", sent_at: sentAt, attachment_verified: true, pdf_sha256: "abc123", attachment_content_sha256: "abc123", pdf_bytes: 1200 }, created_at: sentAt }],
+    statuses: [{ shopify_order_number: "#NEONT5000", mahnstufe: stage, last_sent_at: sentAt, next_due_at: "2026-10-21", paused: false, note: "Daily control projection", updated_by: "n8n:35-day-dunning-control", updated_at: "2026-10-15T10:02:13.000Z" }]
+  };
+  return evidence;
+}
+
+for (const [stage, label, next] of [[4, "1. Mahnung", 5], [5, "2. Mahnung", 6]] as const) {
+  test(`verified modern S${stage} projected into dunning_status remains scheduled, not a final deadline`, () => {
+    const [entry] = buildDunningCases(input({ ...modernEvidence(stage), now: new Date("2026-10-16T10:00:00Z") }));
+    assert.equal(entry?.currentStageLabel, label);
+    assert.equal(entry?.source, "t099");
+    assert.equal(entry?.state, "scheduled");
+    assert.equal(entry?.nextStage, next);
+    assert.equal(entry?.scheduledAt, "2026-10-21T14:20:27.000Z");
+    assert.equal(entry?.nextActionKind, "customer_email");
+    assert.equal(entry?.finalReminderWaiting, false);
+    assert.equal(entry?.legalReviewReady, false);
+    assert.equal(entry?.legalReviewDueAt, null);
+    assert.equal(entry?.sendEligible, false);
+  });
+}
+
+test("a mirrored modern S6 remains a verified final reminder", () => {
+  const [entry] = buildDunningCases(input({ ...modernEvidence(6), now: new Date("2026-10-16T10:00:00Z") }));
+  assert.equal(entry?.source, "t099");
+  assert.equal(entry?.currentStageLabel, "3. und letzte Mahnung");
+  assert.equal(entry?.state, "final_wait");
+  assert.equal(entry?.nextStage, null);
+  assert.equal(entry?.legalReviewDueAt, "2026-10-21T14:20:27.000Z");
+});
+
+test("an imported copy of the same modern message is not a second legacy final", () => {
+  const evidence = modernEvidence(4);
+  const [entry] = buildDunningCases(input({
+    ...evidence,
+    sendlogs: [{ id: 17, sent_at: "2026-10-14T14:20:27Z", shopify_order_number: "#NEONT5000", mahnstufe: 4, lang: "de", email: "kunde@example.com", kunde: "Muster GmbH", betrag: "119", subject: "1. Mahnung #NEONT5000", actor: "import", status: "import-outlook" }],
+    now: new Date("2026-10-16T10:00:00Z")
+  }));
+  assert.equal(entry?.state, "scheduled");
+  assert.equal(entry?.source, "t099");
+  assert.equal(entry?.courtReview, false);
+});
+
+test("unverified modern evidence cannot reinterpret a legacy projection or enable court action", () => {
+  const evidence = modernEvidence(4);
+  evidence.audits[0]!.metadata!.attachment_verified = false;
+  const [entry] = buildDunningCases(input({ ...evidence, now: new Date("2026-10-22T10:00:00Z") }));
+  assert.equal(entry?.state, "data_issue");
+  assert.equal(entry?.legalReviewReady, false);
+  assert.equal(entry?.sendEligible, false);
+});
+
+test("a legacy final and modern S4 with distinct evidence require source review", () => {
+  const [entry] = buildDunningCases(input({
+    ...modernEvidence(4),
+    sendlogs: [{ id: 18, sent_at: "2026-09-01T10:00:00Z", shopify_order_number: "#NEONT5000", mahnstufe: 4, lang: "de", email: "kunde@example.com", kunde: "Muster GmbH", betrag: "119", subject: "Letzte Mahnung vor Inkasso #NEONT5000", actor: "legacy", status: "sent" }],
+    now: new Date("2026-10-22T10:00:00Z")
+  }));
+  assert.equal(entry?.state, "data_issue");
+  assert.equal(entry?.legalReviewReady, false);
+  assert.equal(entry?.nextStage, null);
+  assert.equal(entry?.sendEligible, false);
+});
+
+test("modern stage correction retains pause and paid protections", () => {
+  const evidence = modernEvidence(4);
+  evidence.statuses[0]!.paused = true;
+  const [paused] = buildDunningCases(input({ ...evidence, now: new Date("2026-10-16T10:00:00Z") }));
+  assert.equal(paused?.state, "paused");
+  assert.equal(paused?.sendEligible, false);
+  assert.deepEqual(buildDunningCases(input({ ...modernEvidence(4), orders: [order({ financial_status: "paid", total_outstanding: 0 })] })), []);
+});
+
+test("legacy S5 is not labelled as a modern second reminder", () => {
+  const evidence = modernEvidence(5);
+  const [entry] = buildDunningCases(input({statuses:evidence.statuses,candidates:[],now:new Date('2026-10-22T10:00:00Z')}));
+  assert.equal(entry?.currentStageLabel, 'Mahnstufe 5 (Altbestand)');
+  assert.equal(entry?.state, 'court_review');
+});
