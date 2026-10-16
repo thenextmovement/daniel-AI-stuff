@@ -1,0 +1,610 @@
+{
+  "name": "NEONTRIP X Ads - Conversion Delivery",
+  "active": false,
+  "nodes": [
+    {
+      "id": "x-access-check",
+      "name": "Check X Access Only",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "x-account-access",
+      "name": "Read X Account Access",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "url": "https://ads-api.x.com/12/accounts/18ce55xv4u4/authenticated_user_access",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth1Api",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "oAuth1Api": {
+          "id": "o8ZFzyjOQTAPdXXa",
+          "name": "NEONTRIP X Ads Conversion API"
+        }
+      }
+    },
+    {
+      "id": "x-schedule",
+      "name": "Reconcile Every Five Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        480,
+        240
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "x-pending",
+      "name": "Check Pending Contexts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ops.neontrip.de/api/internal/measurement/x",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { action: \"pending\" } }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "52s73ZL3sfST19A8",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    },
+    {
+      "id": "x-needed",
+      "name": "Has Pending Contexts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "x-needed-condition",
+              "leftValue": "={{ $json.pending === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "x-orders",
+      "name": "Read Paid Order Associations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        240
+      ],
+      "parameters": {
+        "url": "={{ \"https://galaxybuzzdk.myshopify.com/admin/api/2026-07/orders.json?status=any&financial_status=paid&limit=250&fields=id,checkout_token&updated_at_min=\" + encodeURIComponent($now.minus({days:30}).toISO()) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ (($response.headers.link || \"\").match(/<([^>]+)>; rel=\"next\"/) || [\"\", \"\"])[1] }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.headers.link || !$response.headers.link.includes('rel=\"next\"') }}",
+              "limitPagesFetched": true,
+              "maxRequests": 20,
+              "requestInterval": 600
+            }
+          }
+        }
+      },
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      }
+    },
+    {
+      "id": "x-bundle",
+      "name": "Validate Association Pages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        240
+      ],
+      "parameters": {
+        "jsCode": "const pages = $input.all().map(i => i.json);\nif (pages.some(p => p.statusCode !== 200 || !Array.isArray(p.body?.orders))) throw new Error(\"Shopify association read failed\");\nif ((pages.at(-1)?.headers?.link || \"\").includes('rel=\"next\"')) throw new Error(\"Shopify pagination incomplete\");\nreturn [{json:{action:\"associate\",orders:pages.flatMap(p=>p.body.orders.map(o=>({id:String(o.id),checkout_token:o.checkout_token})))}}];"
+      }
+    },
+    {
+      "id": "x-associate",
+      "name": "Associate Consented Checkouts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ops.neontrip.de/api/internal/measurement/x",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "52s73ZL3sfST19A8",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    },
+    {
+      "id": "x-claim",
+      "name": "Claim One Purchase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ops.neontrip.de/api/internal/measurement/x",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { action: \"claim\" } }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "52s73ZL3sfST19A8",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    },
+    {
+      "id": "x-has-job",
+      "name": "Has Claimed Purchase",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2160,
+        240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "x-has-job-condition",
+              "leftValue": "={{ Boolean($json.job) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "x-order",
+      "name": "Read Canonical Shopify Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        240
+      ],
+      "parameters": {
+        "url": "={{ \"https://galaxybuzzdk.myshopify.com/admin/api/2026-07/orders/\" + $json.job.order_id + \".json?fields=id,checkout_token,financial_status,test,cancelled_at,total_price,currency\" }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      }
+    },
+    {
+      "id": "x-payment",
+      "name": "Read Shopify Payment Evidence",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-07/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { query: \"query XPaymentProof($id: ID!) { order(id: $id) { id displayFinancialStatus test cancelledAt totalPriceSet { shopMoney { amount currencyCode } } totalReceivedSet { shopMoney { amount currencyCode } } transactions(first: 100) { id status kind manualPaymentGateway test processedAt amountSet { shopMoney { amount currencyCode } } } } }\", variables: { id: \"gid://shopify/Order/\" + $(\"Claim One Purchase\").first().json.job.order_id } } }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      }
+    },
+    {
+      "id": "x-prepare",
+      "name": "Verify Consent and Payment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ops.neontrip.de/api/internal/measurement/x",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { action: \"prepare\", job: $(\"Claim One Purchase\").first().json.job, proof: { rest: $(\"Read Canonical Shopify Order\").first().json.order, graphql: $json } } }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "52s73ZL3sfST19A8",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    },
+    {
+      "id": "x-ready",
+      "name": "Ready to Send",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3120,
+        240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "x-ready-condition",
+              "leftValue": "={{ $json.ready === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "x-send",
+      "name": "Send Paid Conversion to X",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3360,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ads-api.x.com/12/measurement/conversions/rhd4k",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth1Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json",
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "oAuth1Api": {
+          "id": "o8ZFzyjOQTAPdXXa",
+          "name": "NEONTRIP X Ads Conversion API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "x-receipt",
+      "name": "Record X Receipt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3600,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ops.neontrip.de/api/internal/measurement/x",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { action: \"receipt\", job: $(\"Claim One Purchase\").first().json.job, response: { statusCode: $json.statusCode || 0, body: { data: $json.body?.data || null, errors: Boolean($json.body?.errors) } } } }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "52s73ZL3sfST19A8",
+          "name": "NEONTRIP Billing Worker"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Check X Access Only": {
+      "main": [
+        [
+          {
+            "node": "Read X Account Access",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reconcile Every Five Minutes": {
+      "main": [
+        [
+          {
+            "node": "Check Pending Contexts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Pending Contexts": {
+      "main": [
+        [
+          {
+            "node": "Has Pending Contexts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Pending Contexts": {
+      "main": [
+        [
+          {
+            "node": "Read Paid Order Associations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Paid Order Associations": {
+      "main": [
+        [
+          {
+            "node": "Validate Association Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Association Pages": {
+      "main": [
+        [
+          {
+            "node": "Associate Consented Checkouts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Associate Consented Checkouts": {
+      "main": [
+        [
+          {
+            "node": "Claim One Purchase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim One Purchase": {
+      "main": [
+        [
+          {
+            "node": "Has Claimed Purchase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Claimed Purchase": {
+      "main": [
+        [
+          {
+            "node": "Read Canonical Shopify Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Canonical Shopify Order": {
+      "main": [
+        [
+          {
+            "node": "Read Shopify Payment Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Shopify Payment Evidence": {
+      "main": [
+        [
+          {
+            "node": "Verify Consent and Payment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Consent and Payment": {
+      "main": [
+        [
+          {
+            "node": "Ready to Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ready to Send": {
+      "main": [
+        [
+          {
+            "node": "Send Paid Conversion to X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Paid Conversion to X": {
+      "main": [
+        [
+          {
+            "node": "Record X Receipt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "executionTimeout": 240,
+    "availableInMCP": true
+  }
+}
