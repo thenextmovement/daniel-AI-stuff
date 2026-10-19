@@ -256,6 +256,11 @@ export type DunningTimelineEntry = {
   status: string | null;
 };
 
+type RemainderWaiverRow = {
+  id: string; event_type: string; source: string; actor: string; created_at: string;
+  payload: Record<string, unknown>;
+};
+
 export type DunningCaseSummary = {
   key: string;
   orderNumber: string;
@@ -271,6 +276,7 @@ export type DunningCaseSummary = {
   financialStatus: string;
   bankPaymentsCents: number;
   reviewedPaymentCents: number;
+  waivedCents?: number;
   paymentReviewNote: string | null;
   lastBankPaymentAt: string | null;
   fulfillmentStatus: string;
@@ -864,6 +870,7 @@ export function buildDunningCases(input: {
   shipments?: DunningShipmentRow[];
   bankPayments?: QontoPaymentCreditRow[];
   reviewedPayments?: ReadonlyMap<string, ReviewedPayment>;
+  waivers?: RemainderWaiverRow[];
   now?: Date;
 }) {
   const now = input.now || new Date();
@@ -1191,20 +1198,40 @@ export function buildDunningCases(input: {
       review.grossCents === orderTotalCents &&
       review.allocatedCents > 0 && review.remainingCents >= 0 &&
       review.allocatedCents + review.remainingCents === review.grossCents;
-    const amountCents = validReview
+    const amountBeforeWaiver = validReview
       ? Math.min(bankRemainingCents, review.remainingCents)
       : bankRemainingCents;
-    const reviewedPaymentCents = bankRemainingCents - amountCents;
-    const paymentReviewNote = validReview ? review.note : null;
+    const reviewedPaymentCents = bankRemainingCents - amountBeforeWaiver;
+    const orderWaivers = (input.waivers || []).filter(row =>
+      row.payload.orderNumber === orderNumber);
+    const waiver = orderWaivers.length === 1 ? orderWaivers[0] : null;
+    const evidence = waiver?.payload;
+    const waivedCents = waiver && evidence &&
+      waiver.event_type === "REMAINDER_WAIVED" && waiver.source === "USER_INSTRUCTION" &&
+      cleanText(waiver.actor, 180) && validIso(waiver.created_at) &&
+      Date.parse(waiver.created_at) <= now.getTime() &&
+      evidence.schema === "dunning.remainder-waiver.v1" &&
+      evidence.shopifyOrderId === orderId && evidence.currency === currency &&
+      evidence.grossCents === orderTotalCents &&
+      evidence.receivedCents === matchingBankCents &&
+      evidence.notBankPayment === true && evidence.collectibleRemainingCents === 0 &&
+      Number.isSafeInteger(evidence.waivedCents) && Number(evidence.waivedCents) > 0 &&
+      Number(evidence.waivedCents) === amountBeforeWaiver &&
+      matchingBankCents + Number(evidence.waivedCents) === orderTotalCents
+        ? Number(evidence.waivedCents) : 0;
+    const amountCents = amountBeforeWaiver - waivedCents;
+    const paymentReviewNote = waivedCents > 0
+      ? `Restbetrag ${(waivedCents / 100).toFixed(2)} ${currency} ausdrücklich erlassen. Kein zusätzlicher Zahlungseingang; keine weitere Mahnung.`
+      : validReview ? review.note : null;
     const possiblePayment = !validReview && orderPayments.some(payment =>
       !verifiedBankPayments.includes(payment));
-    const lastBankPaymentAt = bankPaymentsCents > 0
+    const lastBankPaymentAt = bankPaymentsCents > 0 || waivedCents > 0
       ? latestIso(...verifiedBankPayments.map(payment => payment.settled_at))
       : null;
     const sourceFinancialStatus =
       cleanText(order?.financial_status, 60) ||
       (sourceAmountCents > 0 ? "unpaid" : "unknown");
-    const financialStatus =
+    const financialStatus = waivedCents > 0 ? "settled_by_waiver" :
       bankPaymentsCents + reviewedPaymentCents > 0
         ? amountCents > 0
           ? "partially_paid"
@@ -1212,17 +1239,17 @@ export function buildDunningCases(input: {
         : sourceFinancialStatus;
     const fulfillmentStatus =
       cleanText(order?.fulfillment_status, 60) || "unknown";
-    const closed = isFinanciallyClosed(
+    const closed = waivedCents > 0 || isFinanciallyClosed(
       financialStatus,
       amountCents,
       validIso(order?.cancelled_at),
     );
-    const paymentException = Boolean(closed && (
+    const paymentException = Boolean(!waivedCents && closed && (
       waitingPaymentTag || (numericCents(order?.total_outstanding) > 0 &&
         bankPaymentsCents + reviewedPaymentCents > 0)
     ));
     const displayAmountCents =
-      closed && order && bankPaymentsCents + reviewedPaymentCents === 0
+      closed && !waivedCents && order && bankPaymentsCents + reviewedPaymentCents === 0
         ? numericCents(order.total_outstanding)
         : amountCents;
     const preliminaryOnly = candidate?.preliminary_only === true;
@@ -1420,7 +1447,7 @@ export function buildDunningCases(input: {
       nextActionLabel = waitingPaymentTag ? `${waitingPaymentTag} prüfen – keine Mahn-E-Mail` : "Zahlung in der Abrechnung zuordnen – keine Mahn-E-Mail";
     } else if (closed) {
       nextActionKind = "none";
-      nextActionLabel = "Keine Aktion – Forderung erledigt";
+      nextActionLabel = waivedCents > 0 ? "Erledigt durch Restbetragserlass – keine weitere Mahnung" : "Keine Aktion – Forderung erledigt";
     } else if (paused || stopTag) nextActionLabel = "Pause oder Sperre prüfen";
     else if (customerReplied) nextActionLabel = "Kundenantwort bearbeiten";
     else if (legalReviewReady) {
@@ -1468,7 +1495,7 @@ export function buildDunningCases(input: {
           ? "Mahnantrag nach Teilzahlung neu erstellen"
           : "Gericht über Teilzahlung informieren und Restforderung prüfen";
     }
-    if (closed && !paymentException) continue;
+    if (closed && !paymentException && !waivedCents) continue;
     cases.push({
       key: orderNumber.slice(1),
       orderNumber,
@@ -1482,8 +1509,9 @@ export function buildDunningCases(input: {
       orderTotalCents,
       currency,
       financialStatus,
-      bankPaymentsCents,
+      bankPaymentsCents: waivedCents > 0 ? matchingBankCents : bankPaymentsCents,
       reviewedPaymentCents,
+      waivedCents,
       paymentReviewNote,
       lastBankPaymentAt,
       fulfillmentStatus,
@@ -2132,6 +2160,24 @@ function dunningSendConfigured() {
   }
 }
 
+async function loadRemainderWaivers(): Promise<RemainderWaiverRow[]> {
+  const cutoff = new Date().toISOString();
+  const rows: RemainderWaiverRow[] = [];
+  let cursor: string | null = null;
+  while (true) {
+    const page: RemainderWaiverRow[] = await supabaseRequest<RemainderWaiverRow[]>("billing_events", undefined, {
+      select:"id,event_type,source,actor,created_at,payload",
+      event_type:"eq.REMAINDER_WAIVED", created_at:`lte.${cutoff}`,
+      order:"id.asc", limit:1000, ...(cursor ? {id:`gt.${cursor}`} : {}),
+    });
+    rows.push(...page);
+    if (page.length < 1000) return rows;
+    const next = page[page.length - 1]?.id;
+    if (!next || next === cursor) throw new Error("Erlassdaten unvollständig");
+    cursor = next;
+  }
+}
+
 export async function listDunningDashboard(): Promise<DunningDashboard> {
   const [
     statuses,
@@ -2144,6 +2190,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     insolvencyChecks,
     courtEvents,
     historicalAudits,
+    waivers,
   ] = await Promise.all([
     supabaseRequest<DunningStatusRow[]>("dunning_status", undefined, {
       select:
@@ -2196,6 +2243,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       select:"id,action,status,metadata,created_at",
       action:"eq.daily_35_day_dunning_audit", order:"created_at.desc", limit:1,
     }),
+    loadRemainderWaivers(),
   ]);
 
   const latestAudit = latestIntakeAudits[0] || null;
@@ -2325,8 +2373,9 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     shipments,
     bankPayments: bankPaymentRefresh.payments,
     reviewedPayments,
+    waivers,
   });
-  const openCases = cases.filter((entry) => !entry.paymentException);
+  const openCases = cases.filter((entry) => !entry.paymentException && entry.state !== "closed");
   return {
     generatedAt: new Date().toISOString(),
     sourceHealth: {

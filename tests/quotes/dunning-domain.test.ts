@@ -1107,3 +1107,52 @@ test("verified mirror snapshot excludes retained old rows and rejects an overlap
  const partial=mirrorSourceHealth(audit,"bank",[old,current,{id:"new",ingested_at:"2026-08-25T10:15:00Z"}]);
  assert.equal(partial.complete,false);
 });
+
+function waiverInput(payloadOverrides: Record<string, unknown> = {}): BuildInput {
+  return input({
+    bankPayments:[{transaction_id:"waiver-payment",reference_digits:"5000",reference:"PF-NEONT5000",counterparty_name:"Muster GmbH",amount:113,currency:"EUR",settled_at:"2026-08-20T10:00:00Z",ingested_at:"2026-08-25T10:00:00Z"}],
+    waivers:[{id:"waiver-1",event_type:"REMAINDER_WAIVED",source:"USER_INSTRUCTION",actor:"Owner",created_at:"2026-08-24T10:00:00Z",payload:{schema:"dunning.remainder-waiver.v1",orderNumber:"#NEONT5000",shopifyOrderId:"1234567890",currency:"EUR",grossCents:11900,receivedCents:11300,waivedCents:600,collectibleRemainingCents:0,notBankPayment:true,...payloadOverrides}}],
+  });
+}
+
+test("authorized remainder waiver closes collection without inflating bank receipts",()=>{
+  const [entry]=buildDunningCases(waiverInput());
+  assert.equal(entry.amountCents,0);
+  assert.equal(entry.bankPaymentsCents,11300);
+  assert.equal(entry.reviewedPaymentCents,0);
+  assert.equal(entry.waivedCents,600);
+  assert.equal(entry.state,"closed");
+  assert.equal(entry.sendEligible,false);
+  assert.match(entry.nextActionLabel,/erlass/i);
+});
+test("waivers require matching identity, amount, currency and received payment",()=>{
+  for(const changes of [{shopifyOrderId:"999"},{currency:"USD"},{grossCents:12000},{receivedCents:11200},{waivedCents:601},{waivedCents:-600},{collectibleRemainingCents:1},{notBankPayment:false},{schema:"unknown"}]){
+    const [entry]=buildDunningCases(waiverInput(changes));
+    assert.equal(entry.amountCents,600);
+    assert.equal(entry.waivedCents,0);
+  }
+});
+test("untrusted, future or conflicting waiver records do not close a case",()=>{
+  for(const changes of [{source:"EMAIL"},{actor:""},{created_at:"2027-01-01T00:00:00Z"},{event_type:"OTHER"}]){
+    const data=waiverInput(); data.waivers![0]={...data.waivers![0],...changes};
+    assert.equal(buildDunningCases(data)[0].amountCents,600);
+  }
+  const data=waiverInput(); data.waivers!.push({...data.waivers![0],id:"waiver-2"});
+  assert.equal(buildDunningCases(data)[0].amountCents,600);
+});
+test("waiver without actual matching payment does not manufacture settlement",()=>{
+  const data=waiverInput();data.bankPayments=[];
+  assert.equal(buildDunningCases(data)[0].amountCents,11900);
+});
+
+test("waiver keeps zero collectible balance when Shopify already reflects partial payment",()=>{
+  const data=waiverInput();
+  data.orders[0].total_outstanding=6;
+  data.candidates=[];
+  const [entry]=buildDunningCases(data);
+  assert.equal(entry.amountCents,0);
+  assert.equal(entry.bankPaymentsCents,11300);
+  assert.equal(entry.waivedCents,600);
+  assert.equal(entry.state,"closed");
+  assert.equal(entry.sendEligible,false);
+});
