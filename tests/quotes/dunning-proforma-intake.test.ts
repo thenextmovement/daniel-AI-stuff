@@ -52,3 +52,10 @@ test("project references before explicit immediate terms do not exclude valid pr
  const f=fixture();f.d.text="Projektnummer: Neon Schild CF Rottweil\n\nZahlbar sofort. Produktion beginnt.";
  assert.equal(run("intake.js",f.data)[0].json.metadata.candidates.length,1);
 });
+
+test("a continue decision with an unresolved payment risk is rejected",()=>{
+ const code=readFileSync(new URL("../../workflows/dunning/validate-reply-decision.js",import.meta.url),"utf8");
+ const meta={requires_ai:true,latest_reply:{body_text:"Ich habe bezahlt."},resolved_document_request_evidence:true};
+ const answer={decision:"continue_dunning",confidence:.99,summary:"Widersprüchlich",reason_codes:["document_request_fulfilled"],risk_flags:["payment_claim"],evidence_quote:"Ich habe bezahlt.",requires_human_review:false};
+ assert.throws(()=>new Function("$","$input",code)(()=>({first:()=>({json:meta})}),{first:()=>({json:{text:JSON.stringify(answer)}})}),/CLASSIFIER_TECHNICAL_FAILURE/);
+});

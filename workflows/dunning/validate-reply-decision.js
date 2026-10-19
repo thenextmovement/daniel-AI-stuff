@@ -33,8 +33,8 @@ const risksValid = reasonsValid && Array.isArray(parsed.risk_flags) && parsed.ri
 const evidenceValid = risksValid && typeof parsed.evidence_quote === 'string' && parsed.evidence_quote.length <= 300 && String(meta.latest_reply?.body_text || '').includes(parsed.evidence_quote);
 const reviewFlagValid = evidenceValid && typeof parsed.requires_human_review === 'boolean' && (parsed.decision === 'uncertain' ? parsed.requires_human_review === true : parsed.requires_human_review === false);
 const confidencePolicyValid = reviewFlagValid && (parsed.decision === 'uncertain' || parsed.confidence >= 0.90);
-const resolutionProofValid = !parsed?.reason_codes?.includes('document_request_fulfilled') || meta.resolved_document_request_evidence === true;
-const reasonPolicyValid = resolutionProofValid && confidencePolicyValid && (parsed.decision === 'continue_dunning' ? parsed.reason_codes.every((value) => continueReasons.has(value)) : parsed.decision === 'stop_dunning' ? parsed.reason_codes.some((value) => stopReasons.has(value)) : true);
+const resolutionProofValid = !(Array.isArray(parsed?.reason_codes) && parsed.reason_codes.includes('document_request_fulfilled')) || meta.resolved_document_request_evidence === true;
+const reasonPolicyValid = resolutionProofValid && confidencePolicyValid && (parsed.decision === 'continue_dunning' ? parsed.risk_flags.length === 0 && parsed.reason_codes.every((value) => continueReasons.has(value)) : parsed.decision === 'stop_dunning' ? parsed.reason_codes.some((value) => stopReasons.has(value)) : true);
 if (meta.requires_ai === true && !(keysValid && decisionValid && confidenceValid && summaryValid && reasonsValid && risksValid && evidenceValid && reviewFlagValid && confidencePolicyValid && reasonPolicyValid)) validationError = validationError || 'invalid_schema_or_policy';
 if (meta.requires_ai === true && validationError) throw new Error('CLASSIFIER_TECHNICAL_FAILURE: ' + validationError + '; no customer decision or pause was recorded');
 let decision = null;
