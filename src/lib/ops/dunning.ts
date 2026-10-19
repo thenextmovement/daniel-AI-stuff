@@ -1268,7 +1268,7 @@ export function buildDunningCases(input: {
       EXISTING_COMPANY_DOMAIN_PRIOR_PAID:"Bestandskundenschutz: bezahlter Vorauftrag derselben Firma",
       CUSTOMER_REPLY_AI_REVIEW_REQUIRED:"Kundenantwort muss zuerst geprüft werden",
       BILLING_ROUTE_SEND_PROOF_MISSING:"Versand an die Rechnungsadresse noch nicht nachgewiesen",
-      BILLING_RECIPIENT_CHANGED:"Rechnungsadresse wurde geändert und muss erneut geprüft werden",
+      BILLING_RECIPIENT_OR_ORDER_EMAIL_CHANGED:"Rechnungsadresse wurde geändert und muss erneut geprüft werden",
       LIVE_STAGE_NOT_DUE:"Wartefrist bis zur nächsten Mahnstufe läuft noch",
       CUSTOMER_REPLY_BEFORE_T268_CUTOVER:"Historische Kundenantwort muss zuerst geprüft werden",
     };
