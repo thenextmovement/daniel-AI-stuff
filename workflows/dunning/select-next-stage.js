@@ -234,13 +234,14 @@ for (const row of allCandidateRows) {
     const holdUpdated = DateTime.fromISO(String(holdRow?.updated_at || ''), { setZone: true }).toUTC();
     const manuallyContinued = ['stop_dunning','uncertain'].includes(decision) && holdRow?.paused === false && decisionCreated.isValid && holdUpdated.isValid && holdUpdated > decisionCreated;
     if (decision === 'continue_dunning' || manuallyContinued) {
-      const baselineValue = manuallyContinued ? holdRow.updated_at : latestDecision.metadata.reply_received_at;
+      const documentResolved = !manuallyContinued && latestDecision.metadata.reason_codes?.includes('document_request_fulfilled') && latestDecision.metadata.invoice_delivery?.sent_at;
+      const baselineValue = manuallyContinued ? holdRow.updated_at : documentResolved ? latestDecision.metadata.invoice_delivery.sent_at : latestDecision.metadata.reply_received_at;
       const baseline = DateTime.fromISO(String(baselineValue || ''), { setZone: true }).setZone('Europe/Berlin');
       if (!baseline.isValid || baseline.toUTC() < t268Cutover) continue;
-      cycleKind = 'reply_restart';
+      if (!documentResolved) cycleKind = 'reply_restart';
       cycleTriggerReplyId = String(latestDecision.metadata.reply_message_id || '');
-      cycleId = 'R' + fnv(cycleTriggerReplyId);
-      cycleBaseline = baseline;
+      if (!documentResolved) cycleId = 'R' + fnv(cycleTriggerReplyId);
+      cycleBaseline = documentResolved && firstEligibleBase > baseline ? firstEligibleBase : baseline;
       cycleDecisionAuditId = String(latestDecision.id || '');
     } else if (['stop_dunning','uncertain'].includes(decision)) {
       continue;
@@ -291,7 +292,8 @@ for (const row of allCandidateRows) {
   }
   if (!stage || permanentBlockedKeys.has(keyFor(stage)) || recentTechnicalBlockedKeys.has(keyFor(stage))) continue;
   const snapshotEmail = String(row.shopify_email_hint || '').trim().toLowerCase();
-  const snapshotDomain = snapshotEmail.includes('@') ? snapshotEmail.split('@').pop().replace(/\.$/, '') : '';
+  const historyEmail = row.billing_recipient_source === 'easybill_customer_snapshot' ? String(row.original_shopify_email || '').trim().toLowerCase() : snapshotEmail;
+  const snapshotDomain = historyEmail.includes('@') ? historyEmail.split('@').pop().replace(/\.$/, '') : '';
   const domainHistory = stage >= 3 && Boolean(String(row.shopify_company_hint || '').trim() || String(row.easybill_company_hint || '').trim()) && Boolean(snapshotDomain) && !publicDomains.has(snapshotDomain);
   const replyThreads = [];
   for (let previousStage = anchor?.stage || 1; previousStage < stage; previousStage += 1) {
@@ -324,10 +326,12 @@ for (const row of allCandidateRows) {
     shopify_order_created_at: row.shopify_order_created_at,
     shopify_order_updated_at: row.shopify_order_updated_at || null,
     mirror_email: snapshotEmail,
+    original_shopify_email: row.original_shopify_email || null,
+    billing_recipient_source: row.billing_recipient_source || null,
     intake_company: String(row.shopify_company_hint || '').trim() || null,
     intake_easybill_company: String(row.easybill_company_hint || '').trim() || null,
     company_history_query_mode: domainHistory ? 'domain' : 'exact_email',
-    company_history_query_value: domainHistory ? snapshotDomain : snapshotEmail,
+    company_history_query_value: domainHistory ? snapshotDomain : historyEmail,
     easybill_document_id: String(row.easybill_document_id),
     easybill_invoice_number: String(row.easybill_invoice_number || ''),
     easybill_customer_id: String(row.easybill_customer_id || ''),

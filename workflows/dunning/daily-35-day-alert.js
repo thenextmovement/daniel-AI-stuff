@@ -16,7 +16,7 @@ const cases=audit.metadata.cases.filter(c=>!automatic.includes(c)).map(c=>!Objec
 if(!cases.length)return [];
 if(cases.some(c=>!/^#NEONT[0-9]+$/.test(c.order)))throw Error('DUNNING_ALERT_ORDER_INVALID');
 const grouped=Object.keys(actions).map(status=>({status,orders:cases.filter(c=>c.status===status).map(c=>c.order).sort(),stageDetails:cases.filter(c=>c.status===status).filter(c=>c.stage_label).map(c=>c.order+': '+(c.sender_blocked?c.note:c.stage_label)+(c.automation?.reason&&c.automation.reason!=='REGULAR_INTAKE'?' – '+c.automation.reason:'')+(c.stage_source==='t099'?' (aktueller Ablauf)':'')).sort()})).filter(g=>g.orders.length);
-const body='<p>Die tägliche Kontrolle der Bestellungen älter als 35 Tage ist abgeschlossen. Bei '+cases.length+' Fällen ist eine Prüfung nötig. Gesperrte Fälle bleiben gesperrt; dies ist keine automatische Freigabe zum Versand.</p>'
+const body='<p>Die tägliche Kontrolle aller offenen Bestellungen ist abgeschlossen. Bei '+cases.length+' Fällen ist eine Prüfung nötig. Gesperrte Fälle bleiben gesperrt; dies ist keine automatische Freigabe zum Versand.</p>'
 +(automatic.length?'<p><strong>'+automatic.length+' Fälle im automatischen Ablauf:</strong> '+automatic.map(c=>c.order).join(', ')+'. Die nächste Stufe wird nach Frist und erneuter Live-Prüfung bearbeitet.</p>':'')
 +grouped.map(g=>'<p><strong>'+g.orders.join(', ')+'</strong><br>'+actions[g.status]+(['final_stage_review','stage_source_review','automation_review','sender_blocked'].includes(g.status)?'<br>'+g.stageDetails.join('; '):'')+'</p>').join('')
 +'<p>Details und E-Mail-Prüfhinweise stehen in OPS. <a href="https://fuajob.online/workflow/oA57luKTeHEE06uN">Kontrolllauf öffnen</a>.</p>';

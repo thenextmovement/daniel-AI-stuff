@@ -15,7 +15,7 @@
     if (c.allocated_cents > 0 || c.remaining_cents <= 0) { exclude('PAYMENT_RECORDING_REQUIRED'); continue; }
     if (c.stage_source === 't099' && !proofs.some(p => String(p.document_id) === c.shopify_order_id && (p.metadata?.evidence_schema === 'dunning.reviewed.reminder.v1' || p.metadata?.continuation?.schema === 'dunning.historical.candidate.v1'))) { exclude('REGULAR_INTAKE'); continue; }
     const o = orders.find(o => String(o.legacyResourceId) === c.shopify_order_id && key(o.name) === c.order);
-    if (!o || o.cancelledAt || !['PENDING','PARTIALLY_PAID'].includes(o.displayFinancialStatus) || !instant(o.createdAt) || Date.parse(o.createdAt) > now - 35 * 86400000) { exclude('ORDER_NOT_ELIGIBLE'); continue; }
+    if (!o || o.cancelledAt || !['PENDING','PARTIALLY_PAID'].includes(o.displayFinancialStatus) || !instant(o.createdAt)) { exclude('ORDER_NOT_ELIGIBLE'); continue; }
     const state = states.find(s => key(s.shopify_order_number) === c.order);
     if (state?.paused || (o.tags || []).some(t => /mahnstop|mahn.stop|keine.?mahnung|keine.?zahlungserinnerung|nicht.?mahnen|inkasso|insolven|warten.?auf.?zahlung|mit.*anwalt|e2e|testbestellung/i.test(t))) { exclude('MANUAL_OR_TAG_HOLD'); continue; }
     const matches = documents.filter(d => key(d.order_number) === c.order && !d.cancel_id && d.is_draft === false && d.paid_at == null);
@@ -24,7 +24,7 @@
     if (docs.length !== 1) { exclude('DOCUMENT_NOT_UNIQUE'); continue; }
     const d = docs[0], total = cents(o.totalPriceSet), current = cents(o.currentTotalPriceSet), due = cents(o.totalOutstandingSet), paid = cents(o.totalReceivedSet);
     if (![total,current,due,paid,d.amount,d.paid_amount].every(Number.isSafeInteger) || total <= 0 || current !== total || due <= 0 || paid < 0 || paid + due !== total || d.amount !== total || d.paid_amount !== paid || c.remaining_cents !== due || c.gross_cents !== due) { exclude('PAYMENT_OR_AMOUNT_MISMATCH'); continue; }
-    const explicitImmediateProforma = d.type === 'PROFORMA_INVOICE' && d.due_date == null && d.due_in_days === 0 && /^Zahlbar sofort[.!]/i.test(String(d.text || '').replace(/<[^>]*>/g,' ').trim()) && /^\d{4}-\d{2}-\d{2}$/.test(d.document_date || '');
+    const explicitImmediateProforma = d.type === 'PROFORMA_INVOICE' && d.due_date == null && d.due_in_days === 0 && /(?:^|[\n\r])\s*Zahlbar sofort[.!](?:\s|$)/i.test(String(d.text || '').replace(/<br\s*\/?\s*>|<\/p>/gi,'\n').replace(/<[^>]*>/g,' ').trim()) && /^\d{4}-\d{2}-\d{2}$/.test(d.document_date || '');
     const dueDate = explicitImmediateProforma ? d.document_date : d.due_date;
     if (d.currency !== o.totalPriceSet?.shopMoney?.currencyCode || !/^[A-Z]{3}$/.test(d.currency || '') || !text(d.number) || !text(String(d.customer_id || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate || '') || !instant(o.updatedAt) || !text(d.created_at)) { exclude('DOCUMENT_FIELDS_MISSING'); continue; }
     let recipient = email(o.email);
@@ -57,7 +57,7 @@
       const m = mail[0]; model = 'legacy_4';
       anchor = { stage: c.stage, sent_at: instant(m.sent_at), message_id: m.message_id, internet_message_id: m.internet_message_id, conversation_id: m.conversation_id, lock_key: null, evidence: 'outlook_legacy' };
     } else if (outbound.some(m => /mahnung|zahlungserinnerung|rückfrage.*rechnung|freundliche erinnerung/i.test(m.subject || '') && String(m.subject).includes(c.order.replace(/^#/, '')))) { exclude('UNASSIGNED_PRIOR_REMINDER'); continue; }
-    if (!anchor && d.type === 'INVOICE' && Date.parse(o.createdAt) >= Date.parse('2026-08-05T15:30:00Z')) { exclude('REGULAR_INTAKE'); continue; }
+    if (!anchor && Date.parse(o.createdAt) >= Date.parse('2026-08-05T15:30:00Z')) { exclude('REGULAR_INTAKE'); continue; }
     const review = proofs.find(p => p.id === '8a19fc8c-1dbf-4bb2-bdbd-2325a04c179c' && p.action === 'one_time_correspondence_review' && p.status === 'success' && p.metadata?.schema === 'dunning.mailreview.v1' && p.metadata?.provider_mailbox === 'support@neontrip.de');
     const finding = review?.metadata?.findings?.[c.order.replace(/\D/g,'')];
     if (finding?.hold === true || finding?.outcome === 'auto_reply_and_billing_route') { exclude(finding.hold ? 'CORRESPONDENCE_REVIEW_HOLD' : 'BILLING_ROUTE_REVIEW_REQUIRED'); continue; }

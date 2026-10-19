@@ -77,3 +77,32 @@ test("proven review cutoff avoids reblocking settled correspondence but detects 
  f.data["Graph Read Prior Reminder Threads"][0].body.value.push(m);assert.equal(run("reply-decision.js",f.data).reply_evidence.replies.length,0);
  m.receivedDateTime="2026-10-15T12:00:00Z";m.body.content="Wir haben bereits bezahlt.";assert.equal(run("reply-decision.js",f.data).requires_ai,true);
 });
+
+test("regular proforma uses the verified billing address and keeps company history on the ordering company",()=>{
+ const f:any=fixture();f.c.continuation=null;f.c.cycle_kind="initial";f.c.intake_evidence={};f.c.stage=1;f.c.previous_stage_sent_at=null;
+ f.c.original_shopify_email="buyer@example.com";f.o.email="buyer@example.com";f.c.billing_recipient_source="easybill_customer_snapshot";f.c.mirror_email="billing@example.com";f.d.customer_snapshot={emails:["billing@example.com"]};f.c.company_history_query_value="buyer@example.com";
+ f.d.due_date=null;f.d.due_in_days=0;f.d.document_date="2026-09-01";f.d.text="Zahlbar sofort.";f.c.easybill_due_date="2026-09-01";
+ const r=run("live-send-gate.js",f.data);assert.deepEqual(r.reasons,[]);assert.equal(r.recipient,"billing@example.com");
+ f.d.customer_snapshot.emails=["changed@example.com"];assert.equal(run("live-send-gate.js",f.data).send_allowed,false);
+});
+test("regular proforma still rejects ambiguous documents and changed payment terms",()=>{
+ const f:any=fixture();f.c.continuation=null;f.c.cycle_kind="initial";f.c.intake_evidence={};f.c.stage=1;
+ f.data["Easybill Customer Documents"][0].body.push({...f.d,id:790});assert.equal(run("live-send-gate.js",f.data).send_allowed,false);
+ f.data["Easybill Customer Documents"][0].body.pop();f.d.due_date="2026-11-01";assert.equal(run("live-send-gate.js",f.data).send_allowed,false);
+});
+
+
+test("reply analysis includes later invoice delivery, fields and a changed context invalidates a cached decision",()=>{
+ const f:any=fixture();f.d.customer_snapshot={emails:["test@example.com"]};f.d.text_prefix="Projekt ID: J800-J8001";f.d.updated_at="2026-09-16 09:34:29";
+ const messages=f.data["Graph Read Prior Reminder Threads"][0].body.value;
+ messages.push({id:"request",internetMessageId:"<request>",conversationId:"billing",from:{emailAddress:{address:"test@example.com"}},receivedDateTime:"2026-09-16T07:04:00Z",isDraft:false,internetMessageHeaders:[],subject:"Rechnung #NEONT9000",body:{contentType:"text",content:"Bitte die Rechnung an test@example.com und mit Projekt-ID senden."}});
+ messages.push({id:"invoice",internetMessageId:"<invoice>",conversationId:"invoice-thread",from:{emailAddress:{address:"support@neontrip.de"}},sentDateTime:"2026-09-16T07:34:34Z",isDraft:false,hasAttachments:true,attachments:[{name:"Rechnung-PF-NEONT9000.pdf",contentType:"application/pdf",isInline:false}],toRecipients:[{emailAddress:{address:"test@example.com"}}],subject:"Kunde | PF-NEONT9000 | DARA NOVA GmbH",body:{contentType:"text",content:"Ihre Rechnung im Anhang."}});
+ f.data["Read Sender Evidence Audits"][0].body.push({action:"customer_reply_decision",status:"success",metadata:{schema:"t268.reply-decision.v1",reply_message_id:"request",decision:"uncertain",validation_error:"invalid_json"}});
+ const r=run("reply-decision.js",f.data);assert.equal(r.requires_ai,true);assert.equal(r.invoice_delivery.message_id,"invoice");assert.equal(r.resolved_document_request_evidence,true);assert.match(r.prompt_user,/J800-J8001/);assert.equal(r.invoice_delivery.attachments[0].content_type,"application/pdf");
+ const saved=messages.at(-1).attachments;delete messages.at(-1).attachments;assert.equal(run("reply-decision.js",f.data).resolved_document_request_evidence,false);messages.at(-1).attachments=saved;
+ messages.at(-1).subject="Rechnung PF-NEONT90000";assert.equal(run("reply-decision.js",f.data).invoice_delivery,null);
+});
+test("a newer complaint and undelivered invoice cannot be dismissed by old invoice evidence",()=>{
+ const f:any=fixture();f.data["Graph Read Prior Reminder Threads"][0].body.value.push({id:"complaint",internetMessageId:"<c>",conversationId:"thread1",from:{emailAddress:{address:"test@example.com"}},receivedDateTime:"2026-10-19T12:00:00Z",isDraft:false,internetMessageHeaders:[],subject:"#NEONT9000",body:{contentType:"text",content:"Das Schild ist beschädigt. Bitte klären."}});
+ const r=run("reply-decision.js",f.data);assert.equal(r.requires_ai,true);assert.equal(r.resolved_document_request_evidence,false);
+});

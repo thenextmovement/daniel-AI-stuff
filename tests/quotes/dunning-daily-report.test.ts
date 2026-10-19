@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import {createRequire} from "node:module";
+const {DateTime}=createRequire(import.meta.url)("luxon");
 
 const code = readFileSync(new URL("../../workflows/dunning/daily-35-day-reconciliation.js", import.meta.url), "utf8");
 const alertCode = readFileSync(new URL("../../workflows/dunning/daily-35-day-alert.js", import.meta.url), "utf8");
@@ -10,6 +12,7 @@ function fixture(stage = 4, modern = true) {
   const page = (body: any[]) => [{ statusCode: 200, headers: { "content-range": "0-0/" + body.length }, body }];
   const o = { name: "#NEONT4581", legacyResourceId: "8439288856843", createdAt: "2026-07-01T08:00:00Z", cancelledAt: null, displayFinancialStatus: "PENDING", currentTotalPriceSet: { shopMoney: { amount: "1342.32", currencyCode: "EUR" } }, totalOutstandingSet: { shopMoney: { amount: "1342.32", currencyCode: "EUR" } }, email: "kunde@example.com", tags: [], billingAddress: { company: "Testkunde" } };
   const f: Record<string, any[]> = {
+    "Read Daily Intake Snapshot": [{statusCode:200,body:[{status:"success",metadata:{source_complete:true,observed_at:"2026-10-16T09:30:00Z",fresh_until:"2026-10-16T11:00:00Z",candidates:[{shopify_order_id:"8439288856843"}]}}]}],
     "Read Summary": [{ bank: [], shopify: { open: [o], orders: [o], total: 1, pages: 1, cutoff: "2026-09-10" }, invoices: [{ order_number: "#NEONT4581", type: "INVOICE" }], proformas: [] }],
     "Read Daily Dunning States": page([{ shopify_order_number: "#NEONT4581", mahnstufe: stage, last_sent_at: sentAt, next_due_at: "2026-10-21", paused: false, note: "Manuelle Notiz" }]),
     "Read Daily Reminder Logs": page(modern ? [] : [{ shopify_order_number: "#NEONT4581", mahnstufe: stage, sent_at: sentAt, status: "sent", subject: "Letzte Mahnung vor Inkasso" }]),
@@ -24,7 +27,7 @@ function run(f: Record<string, any[]>) {
     constructor(value?: any) { super(value === undefined ? "2026-10-16T10:00:00Z" : value); }
   }
   const $ = (name: string) => ({ first: () => ({ json: f[name]![0] }), all: () => f[name]!.map(json => ({ json })) });
-  return new Function("$", "Date", code)($, Clock)[0].json;
+  return new Function("$", "Date", "DateTime", code)($, Clock, DateTime)[0].json;
 }
 function report(r: any) {
   return new Function("$", alertCode)((name: string) => ({ first: () => ({ json: name === "Build Daily OPS Reconciliation" ? r : { audit_id: "test-audit" } }) }));
@@ -115,4 +118,15 @@ test("retryable enrolled cases remain in the blocked-work email until a successf
     assert.match(result[0].json.emailBody, /QONTO_AMBIGUOUS_POSSIBLE_PAYMENT/);
     assert.doesNotMatch(result[0].json.emailBody, /Fälle im automatischen Ablauf/);
   }
+});
+
+test("the control distinguishes not-yet-due from missing first reminders",()=>{
+ const f:any=fixture(0);f["Read Daily Dunning States"][0].body=[];f["Read Daily Dunning States"][0].headers["content-range"]="*/0";f["Read Daily Verified Stages"][0].body=[];f["Read Daily Verified Stages"][0].headers["content-range"]="*/0";
+ const o=f["Read Summary"][0].shopify.open[0];o.createdAt="2026-10-15T09:00:00Z";
+ f["Read Summary"][0].invoices=[{order_number:"#NEONT4581",type:"INVOICE",created_at:"2026-10-15 11:00:00",due_date:"2026-10-15",is_draft:false}];
+ const c=run(f).audit_record.metadata.cases[0];assert.equal(c.status,"not_due");assert.equal(c.next_due_at,"2026-10-20T09:00:00.000Z");
+});
+test("the report never claims regular enrollment when its intake candidate is absent",()=>{
+ const f:any=fixture();f["Read Daily Intake Snapshot"][0].body[0].metadata.candidates=[];
+ const r=run(f),c=r.audit_record.metadata.cases[0];assert.equal(c.automation.status,"excluded");assert.equal(c.automation.reason,"REGULAR_INTAKE_MISSING");assert.equal(report(r).length,1);
 });

@@ -31,7 +31,16 @@ const issues={
 '4676':'Barzahlung bei Abholung ausdrücklich vereinbart; Kasse/Abholung prüfen.',
 '4680':'50 Prozent / 21.211,75 EUR am 11.09. bezahlt; Restfälligkeit und Stopptag prüfen.'
 };
+
+const intakeEnvelope=$('Read Daily Intake Snapshot').first().json;
+if(intakeEnvelope?.statusCode!==200||!Array.isArray(intakeEnvelope.body))throw Error('INTAKE_SNAPSHOT_UNAVAILABLE');
+const intake=intakeEnvelope.body[0]?.metadata;
+const intakeFresh=intakeEnvelope.body[0]?.status==='success'&&intake?.source_complete===true&&Date.parse(intake.fresh_until)>Date.parse(now)&&Array.isArray(intake.candidates);
+const regularCandidateIds=new Set(intakeFresh?intake.candidates.map(c=>String(c.shopify_order_id)):[]);
+const businessDays=(value,days)=>{let out=value;if(!out?.isValid)return out;for(let left=days;left>0;){out=out.plus({days:1});if(out.weekday<=5)left--;}return out;};
+const localInstant=value=>{let d=DateTime.fromISO(String(value||''),{zone:'Europe/Berlin'});return d.isValid?d:DateTime.fromSQL(String(value||''),{zone:'Europe/Berlin'});};
 const cases=[];
+
 for(const o of src.shopify.open){const key=norm(o.name),digits=String(o.name).replace(/\D/g,'');const state=states.find(s=>norm(s.shopify_order_number)===key);
 const validLogs=logs.filter(l=>norm(l.shopify_order_number)===key&&['sent','sent-custom','import-outlook'].includes(l.status));
 const proofs=audits.filter(a=>String(a.document_id)===String(o.legacyResourceId)&&a.metadata?.provider_message_id&&a.metadata?.sent_at);
@@ -57,6 +66,19 @@ const gross=cents(o.totalOutstandingSet),allocated=Math.min(gross,allocations[di
 const hold=Boolean(state?.paused)||(o.tags||[]).some(t=>/mahnstop|mahn.stop|keine.?mahnung|keine.?zahlungserinnerung|nicht.?mahnen|inkasso|insolven|warten.?auf.?zahlung|mit.*anwalt/i.test(t));
 let status=o.cancelledAt?'cancelled':test?'test':o.displayFinancialStatus==='PAID'?'payment_data_conflict':remaining===0?'payment_recording_required':hold?'held':stageConflict?'stage_source_review':finalStage?'final_stage_review':stage>0||reminder?'reminder_evidenced':'reminder_missing';
 if(!['cancelled','test','payment_data_conflict','payment_recording_required','held','final_stage_review','stage_source_review'].includes(status)&&state?.next_due_at&&String(state.next_due_at)<now.slice(0,10))status='follow_up_due';
+
+let nextDue=state?.next_due_at||null;
+if(status==='reminder_missing'){
+ const finalDocs=docs.filter(d=>d.type==='INVOICE'), relevantDocs=finalDocs.length?finalDocs:docs.filter(d=>d.type==='PROFORMA_INVOICE');
+ if(relevantDocs.length===1){
+  const d=relevantDocs[0],created=localInstant(d.created_at),orderCreated=localInstant(o.createdAt);
+  let firstDue=businessDays(created>orderCreated?created:orderCreated,3);
+  if(/umdasch/i.test([o.email,o.billingAddress?.company,d.address?.company_name,d.address?.company].join(' '))||['2669065012','2669064937'].includes(String(d.customer_id))){
+   let grace=created.plus({days:45}).startOf('day').set({hour:9});while(grace.isValid&&grace.weekday>5)grace=grace.plus({days:1});if(grace>firstDue)firstDue=grace;
+  }
+  if(firstDue?.isValid){nextDue=firstDue.toUTC().toISO();if(firstDue.toMillis()>Date.parse(now))status='not_due';}
+ }
+}
 const bankCandidates=src.bank.filter(b=>b.side==='credit'&&b.status==='completed'&&new RegExp('NEON\\s*T?\\s*'+digits+'(?![0-9])','i').test(String(b.reference||''))).map(b=>({transaction_id:b.transaction_id,amount:b.amount,settled_at:b.settled_at}));
 const latestBlocked=senderIssues.filter(a=>String(a.document_id)===String(o.legacyResourceId)).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))[0];
 const latestSent=[state?.last_sent_at,...validLogs.map(l=>l.sent_at),...proofs.map(a=>a.metadata.sent_at)].filter(Boolean).sort((a,b)=>Date.parse(b)-Date.parse(a))[0];
@@ -67,9 +89,9 @@ const rawBlockReasons=latestBlocked?.metadata?.reasons||[];
 const effectiveBlockReasons=rawBlockReasons.includes('SHOPIFY_LIVE_GATE_INCOMPLETE')&&!latestBlocked?.metadata?.live_evidence?.shopify_order_id?rawBlockReasons.filter(r=>!['SHOPIFY_REFUND_OR_VOID_PRESENT','CUSTOMER_EMAIL_INVALID'].includes(r)):rawBlockReasons;
 const senderBlockKind=blockUnresolved?(effectiveBlockReasons.some(r=>permanentBlockReasons.has(r))?'permanent':'technical'):null;
 const blockNote=blockUnresolved?'Automatischer Versand Stufe '+latestBlocked.metadata?.stage+' am '+latestBlocked.created_at+' blockiert: '+(latestBlocked.metadata?.reasons||[]).join(', ')+'. ':'';
-const stageNote=stageLabel+' | Ablauf: '+(stageSource==='t099'?'aktuell':stageSource==='legacy'?'Altbestand':stageSource==='mixed'?'Zuordnung prüfen':'noch unbelegt')+(state?.next_due_at&&!finalStage&&!stageConflict?' | Nächste Frist '+state.next_due_at:'')+'. ';
-const note=stageNote+blockNote+(issues[digits]||(status==='follow_up_due'?'Nächste Mahnstufe seit '+state.next_due_at+' fällig; Versandlauf und Sperren prüfen.':!docs.length?'Kein eindeutig passender offener Easybill-Beleg; Zuordnung prüfen.':status==='reminder_missing'?'Keine Zahlungserinnerung im geprüften Versandnachweis; Zahlung/Beleg/Sperren vor Nachsendung prüfen.':status==='held'?'Bestehende Pause oder Shopify-Sperre beachten.':stageConflict?'Zuordnung zwischen Altbestand und aktuellem Ablauf prüfen; keine automatische Fortsetzung.':finalStage?'Letzte Mahnstufe erreicht; Folgeprüfung statt weiterer pauschaler Erinnerung.':'Versandverlauf vorhanden; nächste Fälligkeit und Sperren prüfen.'));
-cases.push({order:key,shopify_order_id:String(o.legacyResourceId),created_at:o.createdAt,customer:o.billingAddress?.company||[o.billingAddress?.firstName,o.billingAddress?.lastName].filter(Boolean).join(' '),email,gross_cents:gross,allocated_cents:allocated,remaining_cents:remaining,stage,stage_source:stageSource,stage_label:stageLabel,next_due_at:state?.next_due_at||null,status,note,sender_blocked:Boolean(blockUnresolved),sender_block_kind:senderBlockKind,invoice_count:docs.length,proforma_only:docs.length>0&&docs.every(d=>d.type==='PROFORMA_INVOICE'),last_reminder_at:[latestSent,reminder?.sent_at].filter(Boolean).sort((a,b)=>Date.parse(b)-Date.parse(a))[0]||null,bank_candidates:bankCandidates});
+const stageNote=stageLabel+' | Ablauf: '+(stageSource==='t099'?'aktuell':stageSource==='legacy'?'Altbestand':stageSource==='mixed'?'Zuordnung prüfen':'noch unbelegt')+(nextDue&&!finalStage&&!stageConflict?' | Nächste Frist '+nextDue:'')+'. ';
+const note=stageNote+blockNote+(issues[digits]||(status==='follow_up_due'?'Nächste Mahnstufe seit '+state.next_due_at+' fällig; Versandlauf und Sperren prüfen.':!docs.length?'Kein eindeutig passender offener Easybill-Beleg; Zuordnung prüfen.':status==='not_due'?'Erste Erinnerung noch nicht fällig; geplanter Termin '+nextDue+'.':status==='reminder_missing'?'Keine Zahlungserinnerung im geprüften Versandnachweis; Zahlung/Beleg/Sperren vor Nachsendung prüfen.':status==='held'?'Bestehende Pause oder Shopify-Sperre beachten.':stageConflict?'Zuordnung zwischen Altbestand und aktuellem Ablauf prüfen; keine automatische Fortsetzung.':finalStage?'Letzte Mahnstufe erreicht; Folgeprüfung statt weiterer pauschaler Erinnerung.':'Versandverlauf vorhanden; nächste Fälligkeit und Sperren prüfen.'));
+cases.push({order:key,shopify_order_id:String(o.legacyResourceId),created_at:o.createdAt,customer:o.billingAddress?.company||[o.billingAddress?.firstName,o.billingAddress?.lastName].filter(Boolean).join(' '),email,gross_cents:gross,allocated_cents:allocated,remaining_cents:remaining,stage,stage_source:stageSource,stage_label:stageLabel,next_due_at:nextDue,status,note,sender_blocked:Boolean(blockUnresolved),sender_block_kind:senderBlockKind,invoice_count:docs.length,proforma_only:docs.length>0&&docs.every(d=>d.type==='PROFORMA_INVOICE'),last_reminder_at:[latestSent,reminder?.sent_at].filter(Boolean).sort((a,b)=>Date.parse(b)-Date.parse(a))[0]||null,bank_candidates:bankCandidates});
 }
 const continuation = (
 // Side-effect-free contract embedded in the daily n8n node; all candidates still require the live sender gate.
@@ -89,7 +111,7 @@ const continuation = (
     if (c.allocated_cents > 0 || c.remaining_cents <= 0) { exclude('PAYMENT_RECORDING_REQUIRED'); continue; }
     if (c.stage_source === 't099' && !proofs.some(p => String(p.document_id) === c.shopify_order_id && (p.metadata?.evidence_schema === 'dunning.reviewed.reminder.v1' || p.metadata?.continuation?.schema === 'dunning.historical.candidate.v1'))) { exclude('REGULAR_INTAKE'); continue; }
     const o = orders.find(o => String(o.legacyResourceId) === c.shopify_order_id && key(o.name) === c.order);
-    if (!o || o.cancelledAt || !['PENDING','PARTIALLY_PAID'].includes(o.displayFinancialStatus) || !instant(o.createdAt) || Date.parse(o.createdAt) > now - 35 * 86400000) { exclude('ORDER_NOT_ELIGIBLE'); continue; }
+    if (!o || o.cancelledAt || !['PENDING','PARTIALLY_PAID'].includes(o.displayFinancialStatus) || !instant(o.createdAt)) { exclude('ORDER_NOT_ELIGIBLE'); continue; }
     const state = states.find(s => key(s.shopify_order_number) === c.order);
     if (state?.paused || (o.tags || []).some(t => /mahnstop|mahn.stop|keine.?mahnung|keine.?zahlungserinnerung|nicht.?mahnen|inkasso|insolven|warten.?auf.?zahlung|mit.*anwalt|e2e|testbestellung/i.test(t))) { exclude('MANUAL_OR_TAG_HOLD'); continue; }
     const matches = documents.filter(d => key(d.order_number) === c.order && !d.cancel_id && d.is_draft === false && d.paid_at == null);
@@ -98,7 +120,7 @@ const continuation = (
     if (docs.length !== 1) { exclude('DOCUMENT_NOT_UNIQUE'); continue; }
     const d = docs[0], total = cents(o.totalPriceSet), current = cents(o.currentTotalPriceSet), due = cents(o.totalOutstandingSet), paid = cents(o.totalReceivedSet);
     if (![total,current,due,paid,d.amount,d.paid_amount].every(Number.isSafeInteger) || total <= 0 || current !== total || due <= 0 || paid < 0 || paid + due !== total || d.amount !== total || d.paid_amount !== paid || c.remaining_cents !== due || c.gross_cents !== due) { exclude('PAYMENT_OR_AMOUNT_MISMATCH'); continue; }
-    const explicitImmediateProforma = d.type === 'PROFORMA_INVOICE' && d.due_date == null && d.due_in_days === 0 && /^Zahlbar sofort[.!]/i.test(String(d.text || '').replace(/<[^>]*>/g,' ').trim()) && /^\d{4}-\d{2}-\d{2}$/.test(d.document_date || '');
+    const explicitImmediateProforma = d.type === 'PROFORMA_INVOICE' && d.due_date == null && d.due_in_days === 0 && /(?:^|[\n\r])\s*Zahlbar sofort[.!](?:\s|$)/i.test(String(d.text || '').replace(/<br\s*\/?\s*>|<\/p>/gi,'\n').replace(/<[^>]*>/g,' ').trim()) && /^\d{4}-\d{2}-\d{2}$/.test(d.document_date || '');
     const dueDate = explicitImmediateProforma ? d.document_date : d.due_date;
     if (d.currency !== o.totalPriceSet?.shopMoney?.currencyCode || !/^[A-Z]{3}$/.test(d.currency || '') || !text(d.number) || !text(String(d.customer_id || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate || '') || !instant(o.updatedAt) || !text(d.created_at)) { exclude('DOCUMENT_FIELDS_MISSING'); continue; }
     let recipient = email(o.email);
@@ -131,7 +153,7 @@ const continuation = (
       const m = mail[0]; model = 'legacy_4';
       anchor = { stage: c.stage, sent_at: instant(m.sent_at), message_id: m.message_id, internet_message_id: m.internet_message_id, conversation_id: m.conversation_id, lock_key: null, evidence: 'outlook_legacy' };
     } else if (outbound.some(m => /mahnung|zahlungserinnerung|rückfrage.*rechnung|freundliche erinnerung/i.test(m.subject || '') && String(m.subject).includes(c.order.replace(/^#/, '')))) { exclude('UNASSIGNED_PRIOR_REMINDER'); continue; }
-    if (!anchor && d.type === 'INVOICE' && Date.parse(o.createdAt) >= Date.parse('2026-08-05T15:30:00Z')) { exclude('REGULAR_INTAKE'); continue; }
+    if (!anchor && Date.parse(o.createdAt) >= Date.parse('2026-08-05T15:30:00Z')) { exclude('REGULAR_INTAKE'); continue; }
     const review = proofs.find(p => p.id === '8a19fc8c-1dbf-4bb2-bdbd-2325a04c179c' && p.action === 'one_time_correspondence_review' && p.status === 'success' && p.metadata?.schema === 'dunning.mailreview.v1' && p.metadata?.provider_mailbox === 'support@neontrip.de');
     const finding = review?.metadata?.findings?.[c.order.replace(/\D/g,'')];
     if (finding?.hold === true || finding?.outcome === 'auto_reply_and_billing_route') { exclude(finding.hold ? 'CORRESPONDENCE_REVIEW_HOLD' : 'BILLING_ROUTE_REVIEW_REQUIRED'); continue; }
@@ -153,14 +175,21 @@ const continuation = (
   }
   return { schema: 'dunning.historical.snapshot.v1', observed_at: observedAt, fresh_until: new Date(now + 26 * 3600000).toISOString(), candidates, excluded };
 })
-
-
 )({ orders:src.shopify.orders, documents:[...src.invoices,...src.proformas], states, logs, mails, proofs:audits, cases, observedAt:now });
 for (const row of continuation.candidates) { const date=DateTime.fromFormat(String(row.easybill_document_created_at), 'yyyy-MM-dd HH:mm:ss', {zone:'Europe/Berlin'}); if(date.isValid) row.easybill_document_created_at=date.toUTC().toISO(); }
-for (const c of cases) { const candidate=continuation.candidates.find(row=>row.shopify_order_name===c.order); const exclusion=continuation.excluded.find(row=>row.order===c.order); if(candidate) c.note += ' Automatische Fortsetzung aufgenommen; vor jedem Versand erneute Live-Prüfung.'; c.automation = candidate ? {status:'enrolled',stage_model:candidate.continuation.stage_model} : {status:exclusion?.reason==='REGULAR_INTAKE'?'regular_intake':'excluded',reason:exclusion?.reason||'UNCLASSIFIED'}; }
+for (const c of cases) {
+ const candidate=continuation.candidates.find(row=>row.shopify_order_name===c.order);
+ const exclusion=continuation.excluded.find(row=>row.order===c.order);
+ const regular=exclusion?.reason==='REGULAR_INTAKE';
+ const regularVerified=regular&&regularCandidateIds.has(c.shopify_order_id);
+ c.automation=candidate?{status:'enrolled',stage_model:candidate.continuation.stage_model}:regularVerified?{status:'regular_intake'}:{status:'excluded',reason:regular?(intakeFresh?'REGULAR_INTAKE_MISSING':'REGULAR_INTAKE_STALE'):exclusion?.reason||'UNCLASSIFIED'};
+ if(candidate||regularVerified)c.note+=' Automatische Fortsetzung aufgenommen; vor jedem Versand erneute Live-Prüfung.';
+ if(regular&&!regularVerified)c.note+=' Aufnahme im aktuellen Versandlauf nicht bestätigt: '+c.automation.reason+'.';
+}
+
 const active=cases.filter(c=>!['cancelled','test','payment_data_conflict','payment_recording_required'].includes(c.status));
 const noteRows=cases.map(c=>{const old=states.find(s=>norm(s.shopify_order_number)===c.order);const prior=String(old?.note||'').replace(/\n?\[35-TAGE-KONTROLLE\][\s\S]*?\[\/35-TAGE-KONTROLLE\]/g,'').trim();const note='[35-TAGE-KONTROLLE] '+now.slice(0,10)+' | '+c.status+' | Arbeitsrest '+(c.remaining_cents/100).toFixed(2)+' EUR | '+c.note+' [/35-TAGE-KONTROLLE]';return{shopify_order_number:c.order,note:[prior,note].filter(Boolean).join('\n'),updated_by:'n8n:35-day-dunning-control',updated_at:now};});
 const orderRows=src.shopify.orders.map(o=>({shopify_order_id:String(o.legacyResourceId),name:o.name,financial_status:String(o.displayFinancialStatus||'').toLowerCase(),total_price:Number(o.currentTotalPriceSet.shopMoney.amount),total_outstanding:Number(o.totalOutstandingSet.shopMoney.amount),currency:o.totalOutstandingSet.shopMoney.currencyCode,email:o.email||null,tags:(o.tags||[]).join(', '),created_at:o.createdAt,cancelled_at:o.cancelledAt||null,ingested_at:now}));
-const totals={orders_checked:src.shopify.total,raw_positive:cases.length,excluded_cancelled:cases.filter(c=>c.status==='cancelled').length,excluded_tests:cases.filter(c=>c.status==='test').length,payment_recording_required:cases.filter(c=>c.status==='payment_recording_required').length,open_or_review:active.length,working_amount_cents:active.reduce((s,c)=>s+c.remaining_cents,0),sender_blocked:active.filter(c=>c.sender_blocked).length,missing_reminder_evidence:active.filter(c=>c.status==='reminder_missing').length,held:active.filter(c=>c.status==='held').length,follow_up_due:active.filter(c=>c.status==='follow_up_due').length};
-const record={document_id:now.slice(0,10),workflow_name:'NEONTRIP Daily 35-Day Dunning Control',action:'daily_35_day_dunning_audit',status:'success',metadata:{schema:'dunning.35day.control.v1',cutoff:src.shopify.cutoff,observed_at:now,continuation,totals,stages:[...new Set([0,1,2,3,4,5,6,...active.map(c=>c.stage)])].sort((a,b)=>a-b).map(stage=>({stage,count:active.filter(c=>c.stage===stage).length,amount_cents:active.filter(c=>c.stage===stage).reduce((s,c)=>s+c.remaining_cents,0)})),cases,source_counts:{shopify_pages:src.shopify.pages,invoices:src.invoices.length,proformas:src.proformas.length,unique_bank_transactions:src.bank.length,messages:mails.length}}};
+const totals={orders_checked:src.shopify.total,raw_positive:cases.length,excluded_cancelled:cases.filter(c=>c.status==='cancelled').length,excluded_tests:cases.filter(c=>c.status==='test').length,payment_recording_required:cases.filter(c=>c.status==='payment_recording_required').length,open_or_review:active.length,working_amount_cents:active.reduce((s,c)=>s+c.remaining_cents,0),sender_blocked:active.filter(c=>c.sender_blocked).length,missing_reminder_evidence:active.filter(c=>c.status==='reminder_missing').length,held:active.filter(c=>c.status==='held').length,not_due:active.filter(c=>c.status==='not_due').length,intake_missing:active.filter(c=>['REGULAR_INTAKE_MISSING','REGULAR_INTAKE_STALE'].includes(c.automation.reason)).length,follow_up_due:active.filter(c=>c.status==='follow_up_due').length};
+const record={document_id:now.slice(0,10),workflow_name:'NEONTRIP Daily 35-Day Dunning Control',action:'daily_35_day_dunning_audit',status:'success',metadata:{schema:'dunning.35day.control.v1',scope:'all_open_orders',cutoff:src.shopify.cutoff,observed_at:now,continuation,totals,stages:[...new Set([0,1,2,3,4,5,6,...active.map(c=>c.stage)])].sort((a,b)=>a-b).map(stage=>({stage,count:active.filter(c=>c.stage===stage).length,amount_cents:active.filter(c=>c.stage===stage).reduce((s,c)=>s+c.remaining_cents,0)})),cases,source_counts:{shopify_pages:src.shopify.pages,invoices:src.invoices.length,proformas:src.proformas.length,unique_bank_transactions:src.bank.length,messages:mails.length}}};
 return[{json:{order_rows:orderRows,note_rows:noteRows,audit_record:record,totals}}];

@@ -998,3 +998,12 @@ test("incomplete or non-progressing mail pages fail instead of returning partial
   mode = "http";pageCount = 0;
   await assert.rejects(loadDunningEmailEvidence({select:"id"}), /Supabase Anfrage fehlgeschlagen/);
 });
+
+test("regular proforma with fulfilled invoice request shows the actual delivery deadline without a new cycle",()=>{
+ const data=input({now:new Date("2026-10-19T13:00:00Z"),orders:[order({created_at:"2026-09-11T14:00:00Z"})],candidates:[candidate({shopify_order_created_at:"2026-09-11T14:00:00Z",easybill_document_created_at:"2026-09-11T14:35:58Z",easybill_due_date:"2026-09-11",easybill_invoice_number:"PF-NEONT5000",shopify_email_hint:"billing@example.com"})]});
+ data.audits.push({id:"resolved",document_id:"1234567890",workflow_name:"TICKET-099 Existing Ledger Sender",action:"customer_reply_decision",status:"success",error_message:null,created_at:"2026-10-19T12:00:00Z",metadata:{schema:"t268.reply-decision.v1",policy:"t268.reply-classifier.2026-10-19.v2",lock_key:"e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:1234567890:S1",decision:"continue_dunning",reply_received_at:"2026-09-16T07:04:31Z",reason_codes:["document_request_fulfilled"],resolved_document_request_evidence:true,invoice_delivery:{sent_at:"2026-09-16T07:34:34Z"},payment_received_cents:0,amount_due_cents:11900}});
+ const [entry]=buildDunningCases(data);
+ assert.equal(entry.scheduledAt,"2026-09-21T07:34:34.000Z");
+ assert.equal(entry.email,"billing@example.com");
+ assert.equal(entry.nextStage,1);
+});

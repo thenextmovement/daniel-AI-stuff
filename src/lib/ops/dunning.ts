@@ -1046,8 +1046,9 @@ export function buildDunningCases(input: {
       ...outboundMessages.map((row) => row.sent_at || row.created_at),
     );
     const lastContactAt = latestIso(lastReplyAt, lastOutboundAt);
-    const replyDecision = continuation ? input.audits.filter(audit => audit.action === "customer_reply_decision" && audit.status === "success" && audit.metadata?.schema === "t268.reply-decision.v1" && String(audit.metadata?.lock_key || "").startsWith(T099_PREFIX + orderId + ":") && Number(audit.metadata?.amount_due_cents) === Number(candidate?.amount_due_cents) && Number(audit.metadata?.payment_received_cents) === Number(candidate?.payment_received_cents || 0)).sort((a,b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] : undefined;
+    const replyDecision = (continuation || candidate) ? input.audits.filter(audit => audit.action === "customer_reply_decision" && audit.status === "success" && audit.metadata?.schema === "t268.reply-decision.v1" && String(audit.metadata?.lock_key || "").startsWith(T099_PREFIX + orderId + ":") && Number(audit.metadata?.amount_due_cents) === Number(candidate?.amount_due_cents) && Number(audit.metadata?.payment_received_cents) === Number(candidate?.payment_received_cents || 0)).sort((a,b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] : undefined;
     const continuedReplyAt = replyDecision?.metadata?.decision === "continue_dunning" ? validIso(replyDecision.metadata.reply_received_at) : null;
+    const resolvedInvoiceAt = replyDecision?.metadata?.decision === "continue_dunning" && replyDecision.metadata.resolved_document_request_evidence === true && Array.isArray(replyDecision.metadata.reason_codes) && replyDecision.metadata.reason_codes.includes("document_request_fulfilled") ? validIso(recordValue(replyDecision.metadata.invoice_delivery).sent_at) : null;
     const replyDecisionBlocked = ["stop_dunning", "uncertain"].includes(String(replyDecision?.metadata?.decision));
     const reviewedCorrespondenceAt = continuation?.correspondence_review?.audit_id === "8a19fc8c-1dbf-4bb2-bdbd-2325a04c179c" ? validIso(continuation.correspondence_review.reviewed_at) : null;
     const customerReplied = replyDecisionBlocked || Boolean(
@@ -1253,8 +1254,9 @@ export function buildDunningCases(input: {
           previousStageSentAt,
         })
       : null;
-    if (continuation && continuedReplyAt && scheduledAt) {
-      const replyEarliest = nextDunningSchedule({ nextStage:1, orderCreatedAt:continuedReplyAt, easybillCreatedAt:continuedReplyAt, dueDate, previousStageSentAt:null });
+    const replyWaitFrom = resolvedInvoiceAt || (continuation ? continuedReplyAt : null);
+    if (replyWaitFrom && scheduledAt) {
+      const replyEarliest = nextDunningSchedule({ nextStage:1, orderCreatedAt:replyWaitFrom, easybillCreatedAt:replyWaitFrom, dueDate, previousStageSentAt:null });
       if (replyEarliest && Date.parse(replyEarliest) > Date.parse(scheduledAt)) scheduledAt = replyEarliest;
     }
     const nextLockKey = nextStage ? (continuation?.cycle_prefix || T099_PREFIX + orderId) + ":S" + nextStage : null;
@@ -1265,6 +1267,9 @@ export function buildDunningCases(input: {
       QONTO_UNREFLECTED_EXACT_PAYMENT:"Bankzahlung noch nicht in der Abrechnung zugeordnet",
       EXISTING_COMPANY_DOMAIN_PRIOR_PAID:"Bestandskundenschutz: bezahlter Vorauftrag derselben Firma",
       CUSTOMER_REPLY_AI_REVIEW_REQUIRED:"Kundenantwort muss zuerst geprüft werden",
+      BILLING_ROUTE_SEND_PROOF_MISSING:"Versand an die Rechnungsadresse noch nicht nachgewiesen",
+      BILLING_RECIPIENT_CHANGED:"Rechnungsadresse wurde geändert und muss erneut geprüft werden",
+      LIVE_STAGE_NOT_DUE:"Wartefrist bis zur nächsten Mahnstufe läuft noch",
       CUSTOMER_REPLY_BEFORE_T268_CUTOVER:"Historische Kundenantwort muss zuerst geprüft werden",
     };
     const senderBlocker = senderBlockReasons.length ? "Versand blockiert: " + senderBlockReasons.map(reason => senderBlockLabels[reason] || reason).join(", ") : null;

@@ -43,7 +43,7 @@ test("missing, mismatched or ambiguous sent evidence cannot advance an old stage
  const h:any=fixture();h.proofs=[];h.mails.push({...h.mails[0],message_id:"m2"});assert.equal(build(h).candidates.length,0);
 });
 test("first historical proforma can start only without any prior reminder",()=>{
- const f:any=fixture();f.proofs=[];f.mails=[];f.states[0].mahnstufe=0;f.states[0].last_sent_at=null;f.cases[0].stage=0;f.cases[0].stage_source="unknown";f.cases[0].status="reminder_missing";
+ const f:any=fixture();f.orders[0].createdAt="2026-07-01T09:00:00Z";f.proofs=[];f.mails=[];f.states[0].mahnstufe=0;f.states[0].last_sent_at=null;f.cases[0].stage=0;f.cases[0].stage_source="unknown";f.cases[0].status="reminder_missing";
  const r=build(f);assert.equal(r.candidates.length,1);assert.equal(r.candidates[0].continuation.anchor,null);
  f.mails=fixture().mails;assert.equal(build(f).candidates.length,0);
 });
@@ -74,4 +74,9 @@ test("documented correspondence review carries its cutoff but unresolved billing
  assert.equal(build(f).candidates[0].continuation.correspondence_review.audit_id,review.id);
  review.metadata.findings["9000"].outcome="auto_reply_and_billing_route";assert.equal(build(f).candidates.length,0);
  review.metadata.findings["9000"].outcome="confirmed_order";review.metadata.findings["9000"].hold=true;assert.equal(build(f).candidates.length,0);
+});
+
+test("a young post-cutover proforma is routed to regular intake, never excluded by age",()=>{
+ const f:any=fixture();f.orders[0].createdAt="2026-10-01T09:00:00Z";f.proofs=[];f.mails=[];f.states=[];f.cases[0].stage=0;f.cases[0].stage_source="unknown";f.cases[0].status="reminder_missing";
+ const r=build(f);assert.equal(r.candidates.length,0);assert.equal(r.excluded[0].reason,"REGULAR_INTAKE");
 });

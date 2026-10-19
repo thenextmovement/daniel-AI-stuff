@@ -63,3 +63,12 @@ test("normal current S4 keeps progressing in its original cycle independently of
  const h=f.data["Read Latest Historical Control"][0].body[0].metadata.continuation;h.observed_at=m.observed_at;h.fresh_until=f.now.plus({hours:26}).minus({minutes:5}).toISO();f.candidate.continuation.observed_at=h.observed_at;
  const r=run(f)[0].json;assert.equal(r.stage,2);assert.equal(r.cycle_id,"R20261014T35");assert.equal(r.scheduled_at,"2026-10-22T12:00:00.000Z");
 });
+
+test("a fulfilled invoice request keeps the original cycle and waits from actual delivery",()=>{
+ const f:any=fixture("2026-10-19T13:00:00Z");
+ const c={...f.candidate,continuation:undefined,intake_evidence:undefined,cycle_kind:"initial",cycle_id:"INITIAL",easybill_document_created_at:"2026-09-01T08:00:00Z"};
+ f.data["Read Latest Historical Control"][0].body[0].metadata.continuation.candidates=[];
+ const m=f.data["Read Latest Live Complete Intake"][0].body[0].metadata;m.candidates=[c];m.union.candidate_count=1;
+ f.data["Read Sender Evidence Audits"]=[f.page([{id:"decision",workflow_name:"TICKET-099 Existing Ledger Sender",action:"customer_reply_decision",status:"success",created_at:"2026-10-19T12:00:00Z",metadata:{lock_key:"e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:123:S1",schema:"t268.reply-decision.v1",shopify_order_id:"123",decision:"continue_dunning",reply_message_id:"request",reply_received_at:"2026-09-16T07:04:31Z",reason_codes:["document_request_fulfilled"],invoice_delivery:{sent_at:"2026-09-16T07:34:34Z"},payment_received_cents:0,amount_due_cents:10000}}])];
+ const r=run(f)[0].json;assert.equal(r.stage,1);assert.equal(r.lock_key,prefix+"123:S1");assert.equal(r.scheduled_at,"2026-09-21T07:34:34.000Z");
+});
