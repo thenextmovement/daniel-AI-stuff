@@ -127,7 +127,21 @@ for (const row of historicalRows) {
   if (!valid) throw new Error('HISTORICAL_CONTINUATION_CANDIDATE_INVALID');
   historicalOrderIds.add(row.shopify_order_id);
 }
-const historicalProtected = new Set((historical?.excluded || []).filter(row => row.reason !== 'REGULAR_INTAKE').map(row => row.order));
+// A historical held snapshot must not prevent the live managed-pause resume path.
+// Only the expired, versioned date pause is reconsidered; all other exclusions stay.
+const managedPauseDue = row => {
+  const until = DateTime.fromISO(String(row?.pause_until || ''), {setZone:true}).toUTC();
+  const updated = DateTime.fromISO(String(row?.updated_at || ''), {setZone:true}).toUTC();
+  return row?.paused === true && row.pause_mode === 'until_date' &&
+    typeof row.pause_reason === 'string' && row.pause_reason.trim().length >= 3 &&
+    typeof row.paused_by === 'string' && row.paused_by.trim().length >= 3 &&
+    Number.isSafeInteger(Number(row.pause_version)) && Number(row.pause_version) > 0 &&
+    until.isValid && until <= nowUtc && updated.isValid;
+};
+const historicalProtected = new Set((historical?.excluded || []).filter(row =>
+  row.reason !== 'REGULAR_INTAKE' &&
+  !(row.reason === 'held' && managedPauseDue(holdOrders.get(String(row.order).normalize('NFKC').trim().toUpperCase())))
+).map(row => row.order));
 const allCandidateRows = [...(metadata.candidates || []), ...enrolledCandidates].filter(row => !historicalOrderIds.has(String(row.shopify_order_id)) && !historicalProtected.has(String(row.shopify_order_name))).concat(historicalRows);
 
 if (Number(intakeEnvelope.statusCode || 0) < 200 || Number(intakeEnvelope.statusCode || 0) >= 300 || !intake || !duplicateConsistent || intake.workflow_name !== 'TICKET-099 Existing Ledger Intake' || intake.action !== 'future_candidate_snapshot' || intake.status !== 'success' || metadata.schema !== 't099.intake.snapshot.v2' || metadata.source_complete !== true || metadata.sources?.shopify?.complete !== true || metadata.sources?.easybill?.complete !== true || metadata.candidates_truncated !== false || !observed.isValid || !freshUntil.isValid || freshUntil.toMillis() - observed.toMillis() !== 90 * 60 * 1000 || nowUtc > freshUntil || !DateTime.fromISO(String(metadata.cutover_at || ''), { setZone: true }).toUTC().equals(cutover) || !sourceCountersValid || !candidatesValid || !locksResponse.complete || !senderLocksScoped || !auditResponse.complete || !senderAuditsScoped || !messageResponse.complete || !senderMessagesScoped || !holdsResponse.complete || !holdsUnique || !enrollmentResponse.complete || !enrollmentsValid) return [];
