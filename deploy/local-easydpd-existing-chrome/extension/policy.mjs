@@ -102,7 +102,8 @@ export function existingLabelEvidence(hrefs) {
     let url;
     try { url = new URL(String(rawHref)); } catch { continue; }
     if (url.origin === EASYDPD_FRAME_ORIGIN && /^\/labels\/\d+\/download\//.test(url.pathname)) {
-      labelUrls.add(url.toString());
+      // View/attachment/signature variants identify the same label resource.
+      labelUrls.add(url.origin + url.pathname);
     }
     if (url.hostname === "tracking.dpd.de") {
       const match = url.pathname.match(/\/parcel\/(\d{11,20})(?:\/|$)/);

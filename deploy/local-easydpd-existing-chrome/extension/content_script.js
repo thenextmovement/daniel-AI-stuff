@@ -84,12 +84,18 @@
   }
 
   function collectExistingLabelEvidence() {
-    const labelUrls = new Set();
+    const labelUrls = new Map();
     const trackingNumbers = new Set();
     for (const anchor of document.querySelectorAll("a[href]")) {
       let url;
       try { url = new URL(anchor.href); } catch { continue; }
-      if (url.origin === FRAME_ORIGIN && /^\/labels\/\d+\/download\//.test(url.pathname)) labelUrls.add(url.toString());
+      if (url.origin === FRAME_ORIGIN && /^\/labels\/\d+\/download\//.test(url.pathname)) {
+        // View and attachment links share a label; prefer its actual download link.
+        const identity = url.origin + url.pathname;
+        if (!labelUrls.has(identity) || url.searchParams.has("attachment")) {
+          labelUrls.set(identity, url.toString());
+        }
+      }
       if (url.hostname === "tracking.dpd.de") {
         const match = url.pathname.match(/\/parcel\/(\d{11,20})(?:\/|$)/);
         if (match) trackingNumbers.add(match[1]);
@@ -99,8 +105,8 @@
       found: labelUrls.size > 0 || trackingNumbers.size > 0,
       labelCount: labelUrls.size,
       trackingNumbers: [...trackingNumbers],
-      downloadUrl: labelUrls.size === 1 ? [...labelUrls][0] : null,
-      downloadUrls: [...labelUrls],
+      downloadUrl: labelUrls.size === 1 ? [...labelUrls.values()][0] : null,
+      downloadUrls: [...labelUrls.values()],
     };
   }
 

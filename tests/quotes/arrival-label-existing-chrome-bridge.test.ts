@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
+import { runInNewContext } from "node:vm";
 import {
   EXPECTED_BRIDGE_PROTOCOL_VERSION,
   EXPECTED_EXTENSION_ID,
@@ -29,6 +30,7 @@ import { projectPersistedBrowserManualReview } from "../../src/lib/ops/arrival-l
 import {
   BRIDGE_PROTOCOL_VERSION,
   existingLabelEvidence,
+  postDispatchDownloadUrl,
   matchingDownloadedPdf,
   validateBridgeJob,
   validateEasyDpdLabelDownloadUrl,
@@ -96,6 +98,62 @@ test("EasyDPD history evidence blocks on label downloads or exact DPD tracking",
   ), /^https:\/\/easydpd[.]247apps[.]de\/labels\//);
   assert.throws(() => validateEasyDpdLabelDownloadUrl("https://evil.example/labels/1/download/label.pdf"), /freigegebenen Route/);
   assert.throws(() => validateEasyDpdLabelDownloadUrl("https://easydpd.247apps.de/settings"), /freigegebenen Route/);
+});
+
+
+test("EasyDPD view and attachment links for one label are not separate purchases", () => {
+  const view = "https://easydpd.247apps.de/labels/123/download/main.pdf?signature=fixture";
+  const attachment = view + "&attachment";
+  const other = "https://easydpd.247apps.de/labels/124/download/extra.pdf?signature=fixture";
+  assert.equal(existingLabelEvidence([view, attachment]).labelCount, 1);
+  assert.equal(existingLabelEvidence([view, attachment, other]).labelCount, 2);
+});
+
+test("live content history recovers one PDF across query variants and preserves distinct-label guards", async () => {
+  const source = await readFile("deploy/local-easydpd-existing-chrome/extension/content_script.js", "utf8");
+  const primary = "https://easydpd.247apps.de/labels/123/download/main.pdf?signature=fixture";
+  const extra = "https://easydpd.247apps.de/labels/124/download/extra.pdf?signature=fixture";
+  const primaryTracking = "01476817855492";
+  const extraTracking = "01476817855493";
+  async function history(hrefs: string[]) {
+    let listener: (message: unknown, sender: unknown, reply: (response: any) => void) => unknown;
+    const anchors = [
+      { href: "https://admin.shopify.com/store/galaxybuzzdk/orders/1234567890", textContent: "#NEONT4535" },
+      ...hrefs.map((href) => ({ href, textContent: "" })),
+    ];
+    runInNewContext(source, {
+      URL, setTimeout,
+      location: { origin: "https://easydpd.247apps.de" },
+      document: { querySelectorAll: (selector: string) => {
+        assert.equal(selector, "a[href]");
+        return anchors;
+      } },
+      chrome: { runtime: { onMessage: { addListener: (fn: typeof listener) => { listener = fn; } } } },
+    });
+    const response: any = await new Promise((resolve) => listener({
+      target: "neontrip-easydpd-frame", action: "inspect_history", job: job(),
+    }, {}, resolve));
+    assert.equal(response.ok, true);
+    return response.result;
+  }
+  for (const variants of [[primary, primary + "&attachment"], [primary + "&attachment", primary]]) {
+    const observed = await history([...variants, "https://tracking.dpd.de/status/de_DE/parcel/" + primaryTracking]);
+    assert.equal(observed.labelCount, 1);
+    assert.equal(postDispatchDownloadUrl(observed, job()), primary + "&attachment");
+  }
+  const distinct = await history([
+    primary, primary + "&attachment", extra, extra + "&attachment",
+    "https://tracking.dpd.de/status/de_DE/parcel/" + primaryTracking,
+    "https://tracking.dpd.de/status/de_DE/parcel/" + extraTracking,
+    "https://untrusted.example/labels/999/download/unrelated.pdf",
+  ]);
+  assert.equal(distinct.labelCount, 2);
+  assert.throws(() => postDispatchDownloadUrl(distinct, job()), /nicht eindeutig/);
+  assert.equal(postDispatchDownloadUrl(distinct, job({
+    parcelKind: "acrylic_table_device",
+    parentPurchaseJobId: "22222222-2222-4222-8222-222222222222",
+    expectedPrimaryDpdTracking: primaryTracking,
+  }), "/labels/123/download/main.pdf"), extra + "&attachment");
 });
 
 test("download capture requires the same Shopify tab or the exact EasyDPD order label after dispatch", () => {
