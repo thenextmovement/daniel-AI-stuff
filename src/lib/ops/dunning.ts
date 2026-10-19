@@ -45,9 +45,13 @@ type ShopifyOrderRow = {
   bill_address: Record<string, unknown> | null;
   phone: string | null;
   shopify_updated_at?: string | null;
+  test?: boolean;
 };
 
 type QontoPaymentCreditRow = {
+  id?: string;
+  reference?: string | null;
+  counterparty_name?: string | null;
   transaction_id: string;
   amount: number | string | null;
   currency: string | null;
@@ -56,8 +60,13 @@ type QontoPaymentCreditRow = {
   ingested_at: string | null;
 };
 
-type ProcessedTransactionRow = {
-  transaction_id: string;
+type ReviewedPayment = {
+  shopifyOrderId: string;
+  grossCents: number;
+  allocatedCents: number;
+  remainingCents: number;
+  note: string;
+  observedAt: string;
 };
 
 type DunningShipmentRow = {
@@ -261,6 +270,8 @@ export type DunningCaseSummary = {
   currency: string;
   financialStatus: string;
   bankPaymentsCents: number;
+  reviewedPaymentCents: number;
+  paymentReviewNote: string | null;
   lastBankPaymentAt: string | null;
   fulfillmentStatus: string;
   orderCreatedAt: string | null;
@@ -335,6 +346,11 @@ export type DunningDashboard = {
     shopifyLive: boolean;
     shopifyObservedAt: string | null;
     bankObservedAt: string | null;
+    bankFresh: boolean;
+    bankComplete: boolean;
+    bankCount: number;
+    shopifyMirrorFresh: boolean;
+    shopifyMirrorCount: number;
   };
   sendConfigured: boolean;
   stats: {
@@ -428,8 +444,8 @@ export function normalizeDunningOrderNumber(value: unknown) {
     .trim()
     .toUpperCase()
     .replace(/^#+/, "");
-  if (!/^NEONT\d{1,12}$/.test(raw)) return null;
-  return `#${raw}`;
+  const match = raw.match(/^NEONT?(\d{1,12})$/);
+  return match ? `#NEONT${match[1]}` : null;
 }
 
 export function dunningOrderKey(value: unknown) {
@@ -841,11 +857,13 @@ export function buildDunningCases(input: {
   candidates: T099Candidate[];
   intakeFresh: boolean;
   historicalFresh?: boolean;
+  mirrorsFresh?: boolean;
   automationExclusions?: ReadonlyMap<string,string>;
   insolvencyChecks?: ReadonlyMap<string, DunningInsolvencyCheck>;
   courtEvents?: ReadonlyMap<string, DunningCourtEvent[]>;
   shipments?: DunningShipmentRow[];
   bankPayments?: QontoPaymentCreditRow[];
+  reviewedPayments?: ReadonlyMap<string, ReviewedPayment>;
   now?: Date;
 }) {
   const now = input.now || new Date();
@@ -909,12 +927,17 @@ export function buildDunningCases(input: {
   }
 
   const bankPaymentsByOrder = new Map<string, QontoPaymentCreditRow[]>();
+  const seenBankIds = new Set<string>();
   for (const payment of input.bankPayments || []) {
-    const digits = cleanText(payment.reference_digits, 30);
-    if (!digits) continue;
-    bankPaymentsByOrder.set(digits, [
-      ...(bankPaymentsByOrder.get(digits) || []),
-      payment,
+    const identity = canonicalBankTransactionId(payment.transaction_id);
+    if (!identity || seenBankIds.has(identity)) continue;
+    seenBankIds.add(identity);
+    const references = [...new Set(
+      [...String(payment.reference || "").matchAll(/NEON\s*T?\s*(\d+)(?!\d)/gi)].map(match => match[1]!),
+    )];
+    if (!references.length && payment.reference_digits) references.push(payment.reference_digits);
+    for (const digits of references) bankPaymentsByOrder.set(digits, [
+      ...(bankPaymentsByOrder.get(digits) || []), payment,
     ]);
   }
 
@@ -957,6 +980,10 @@ export function buildDunningCases(input: {
       order?.shopify_order_id || candidate?.shopify_order_id,
       40,
     );
+    if (order?.test === true || /\be2e\b|testbestellung/i.test(
+      [order?.tags, order?.kunde, addressText(order?.bill_address || null, ["company"]),
+        addressText(order?.ship_address || null, ["company"])].filter(Boolean).join(" "),
+    )) continue;
     const statusRow = statusByOrder.get(orderNumber) || null;
     const sendlogs = (sendlogsByOrder.get(orderNumber) || []).sort(
       (a, b) => Date.parse(a.sent_at) - Date.parse(b.sent_at),
@@ -1147,24 +1174,38 @@ export function buildDunningCases(input: {
             Date.parse(settledAt) >= Date.parse(orderCreatedAt)),
       );
     });
-    const bankPaymentsCents = orderPayments.reduce(
-      (sum, payment) => sum + numericCents(payment.amount),
-      0,
+    const orderTotalCents = numericCents(order?.total_price) || sourceAmountCents;
+    const verifiedBankPayments = orderPayments.filter(payment =>
+      bankPaymentMatchesOrder(payment, order),
     );
-    const lastBankPaymentAt = latestIso(
-      ...orderPayments.map((payment) => payment.settled_at),
+    const matchingBankCents = verifiedBankPayments.reduce(
+      (sum, payment) => sum + numericCents(payment.amount), 0,
     );
-    const amountCents = Math.max(
-      0,
-      sourceAmountCents - bankPaymentsCents,
-    );
-    const orderTotalCents =
-      numericCents(order?.total_price) || sourceAmountCents;
+    // Compare total receipts to the order total; never subtract again from an
+    // already reduced Shopify/Easybill balance.
+    const bankRemainingCents = matchingBankCents > 0 ? Math.min(sourceAmountCents,
+      Math.max(0, orderTotalCents - matchingBankCents)) : sourceAmountCents;
+    const bankPaymentsCents = sourceAmountCents - bankRemainingCents;
+    const review = input.reviewedPayments?.get(orderNumber);
+    const validReview = review && review.shopifyOrderId === orderId &&
+      review.grossCents === orderTotalCents &&
+      review.allocatedCents > 0 && review.remainingCents >= 0 &&
+      review.allocatedCents + review.remainingCents === review.grossCents;
+    const amountCents = validReview
+      ? Math.min(bankRemainingCents, review.remainingCents)
+      : bankRemainingCents;
+    const reviewedPaymentCents = bankRemainingCents - amountCents;
+    const paymentReviewNote = validReview ? review.note : null;
+    const possiblePayment = !validReview && orderPayments.some(payment =>
+      !verifiedBankPayments.includes(payment));
+    const lastBankPaymentAt = bankPaymentsCents > 0
+      ? latestIso(...verifiedBankPayments.map(payment => payment.settled_at))
+      : null;
     const sourceFinancialStatus =
       cleanText(order?.financial_status, 60) ||
       (sourceAmountCents > 0 ? "unpaid" : "unknown");
     const financialStatus =
-      bankPaymentsCents > 0
+      bankPaymentsCents + reviewedPaymentCents > 0
         ? amountCents > 0
           ? "partially_paid"
           : "paid"
@@ -1176,9 +1217,12 @@ export function buildDunningCases(input: {
       amountCents,
       validIso(order?.cancelled_at),
     );
-    const paymentException = Boolean(closed && waitingPaymentTag);
+    const paymentException = Boolean(closed && (
+      waitingPaymentTag || (numericCents(order?.total_outstanding) > 0 &&
+        bankPaymentsCents + reviewedPaymentCents > 0)
+    ));
     const displayAmountCents =
-      closed && order && bankPaymentsCents === 0
+      closed && order && bankPaymentsCents + reviewedPaymentCents === 0
         ? numericCents(order.total_outstanding)
         : amountCents;
     const preliminaryOnly = candidate?.preliminary_only === true;
@@ -1299,12 +1343,14 @@ export function buildDunningCases(input: {
     const courtReview = legalReviewReady;
     const automationBlocker = input.automationExclusions?.get(orderNumber) || candidate?.automation_blocker;
     const blockers: string[] = [];
+    if (input.mirrorsFresh === false) blockers.push("Bank- oder Shopify-Spiegel nicht vollständig aktuell");
+    if (possiblePayment) blockers.push("Mögliche Zahlung noch nicht eindeutig zugeordnet");
     if (senderBlocker) blockers.push(senderBlocker);
     if (automationBlocker) blockers.push(automationBlocker);
     if (!anchorValid) blockers.push("Letzter Versandnachweis für die automatische Fortsetzung fehlt");
     if (paymentException)
       blockers.push(
-        `Shopify-Ausnahmetag ${waitingPaymentTag} trotz ausgeglichener Forderung`,
+        waitingPaymentTag ? `Shopify-Ausnahmetag ${waitingPaymentTag} trotz ausgeglichener Forderung` : "Zahlung belegt; Buchungszuordnung erforderlich",
       );
     if (closed) blockers.push("Forderung ist nicht mehr offen");
     if (paused) blockers.push("Mahnwesen ist pausiert");
@@ -1347,7 +1393,7 @@ export function buildDunningCases(input: {
       !candidate ||
       !email ||
       !(input.intakeFresh && input.historicalFresh !== false && candidate?.source_fresh !== false) ||
-      Boolean(automationBlocker || senderBlocker) || !anchorValid ||
+      Boolean(automationBlocker || senderBlocker || possiblePayment || input.mirrorsFresh === false) || !anchorValid ||
       !scheduledAt ||
       stageSourcesConflict ||
       finalStageReached
@@ -1371,7 +1417,7 @@ export function buildDunningCases(input: {
     let nextActionAt: string | null = null;
     let nextActionLabel = "Fall prüfen";
     if (paymentException) {
-      nextActionLabel = `${waitingPaymentTag} prüfen – keine Mahn-E-Mail`;
+      nextActionLabel = waitingPaymentTag ? `${waitingPaymentTag} prüfen – keine Mahn-E-Mail` : "Zahlung in der Abrechnung zuordnen – keine Mahn-E-Mail";
     } else if (closed) {
       nextActionKind = "none";
       nextActionLabel = "Keine Aktion – Forderung erledigt";
@@ -1437,6 +1483,8 @@ export function buildDunningCases(input: {
       currency,
       financialStatus,
       bankPaymentsCents,
+      reviewedPaymentCents,
+      paymentReviewNote,
       lastBankPaymentAt,
       fulfillmentStatus,
       orderCreatedAt,
@@ -1581,61 +1629,45 @@ function inFilter(values: string[]) {
   return `in.(${values.join(",")})`;
 }
 
+export async function loadCompleteMirror<T>(path: string, key: string, select: string) {
+  const rows: T[] = [];
+  let cursor: string | null = null;
+  while (true) {
+    const page: T[] = await supabaseRequest<T[]>(path, undefined, {
+      select, order: key + ".asc", limit:1000, ...(cursor ? {[key]:"gt." + cursor} : {}),
+    });
+    if (!Array.isArray(page)) throw new Error("OPS-Spiegel unvollständig: ungültige Antwort.");
+    for (const row of page) {
+      const id = String((row as Record<string,unknown>)[key] || "");
+      if (!id || (cursor && id <= cursor)) throw new Error("OPS-Spiegel unvollständig: widersprüchliche Seitenfolge.");
+      cursor = id; rows.push(row);
+    }
+    if (page.length < 1000) return rows;
+  }
+}
+
 async function loadRelevantShopifyOrders(
   orderNames: string[],
   orderIds: string[],
 ) {
   const select =
     "shopify_order_id,name,financial_status,fulfillment_status,total_price,total_outstanding,currency,email,kunde,kunde_email,tags,created_at,cancelled_at,ingested_at,ship_address,bill_address,phone";
-  const positive = await pagedRequest<ShopifyOrderRow>(
-    "shopify_orders",
-    {
-      select,
-      total_outstanding: "gt.0",
-      order: "created_at.desc",
-    },
-    3000,
-  );
-  const taggedPaymentExceptions = await pagedRequest<ShopifyOrderRow>(
-    "shopify_orders",
-    {
-      select,
-      tags: "ilike.*warten auf za*",
-      order: "created_at.desc",
-    },
-    3000,
-  );
-  const extra: ShopifyOrderRow[] = [];
-  for (let index = 0; index < orderNames.length; index += 80) {
-    const chunk = orderNames.slice(index, index + 80);
-    if (chunk.length)
-      extra.push(
-        ...(await supabaseRequest<ShopifyOrderRow[]>(
-          "shopify_orders",
-          undefined,
-          { select, name: inFilter(chunk), limit: 1000 },
-        )),
-      );
-  }
-  for (let index = 0; index < orderIds.length; index += 80) {
-    const chunk = orderIds.slice(index, index + 80);
-    if (chunk.length)
-      extra.push(
-        ...(await supabaseRequest<ShopifyOrderRow[]>(
-          "shopify_orders",
-          undefined,
-          { select, shopify_order_id: inFilter(chunk), limit: 1000 },
-        )),
-      );
-  }
-  return [
-    ...new Map(
-      [...positive, ...taggedPaymentExceptions, ...extra].map((row) => [
-        row.shopify_order_id,
-        row,
-      ]),
-    ).values(),
-  ];
+  const [rows, audits] = await Promise.all([
+    loadCompleteMirror<ShopifyOrderRow>("shopify_orders", "shopify_order_id", select),
+    supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
+      select:"id,status,metadata,created_at", action:"eq.ops_source_mirror_verified",
+      "metadata->>source":"eq.shopify", order:"created_at.desc", limit:1,
+    }),
+  ]);
+  const requestedNames = new Set(orderNames.map(normalizeDunningOrderNumber));
+  const requestedIds = new Set(orderIds);
+  const health = mirrorSourceHealth(audits[0], "shopify", rows);
+  return {
+    orders: health.rows.filter(row => numericCents(row.total_outstanding) > 0 ||
+      dunningPaymentExceptionTag(row.tags) || requestedNames.has(normalizeDunningOrderNumber(row.name)) ||
+      requestedIds.has(row.shopify_order_id)),
+    ...health,
+  };
 }
 
 function recordValue(value: unknown) {
@@ -1738,6 +1770,7 @@ async function refreshShopifyOrdersLive(
                   ... on Order {
                     id
                     name
+                    test
                     email
                     phone
                     tags
@@ -1793,9 +1826,12 @@ async function refreshShopifyOrdersLive(
         );
         const customerEmail = cleanText(customer.email, 320);
         const updatedAt = validIso(node.updatedAt);
+        if (totalPrice === null || outstanding === null || !updatedAt || typeof node.test !== "boolean")
+          throw new Error("Shopify Live-Abgleich: Zahlungsdaten fehlen.");
         matchedIds.add(id);
         refreshed.set(id, {
           ...current,
+          test: node.test === true,
           name: cleanText(node.name, 80) || current.name,
           financial_status:
             cleanText(node.displayFinancialStatus, 60)?.toLowerCase() ||
@@ -1844,6 +1880,7 @@ async function refreshShopifyOrdersLive(
                   nodes {
                     id
                     name
+                    test
                     email
                     phone
                     tags
@@ -1867,7 +1904,7 @@ async function refreshShopifyOrdersLive(
                 }
               }
             `,
-            variables: { query: `name:${orderName.replace(/^#/, "")}` },
+            variables: { query: `name:${orderName.replace(/^#/, "")} OR name:${orderName.replace(/^#NEONT/, "NEON")}` },
           }),
           signal: AbortSignal.timeout(15_000),
         },
@@ -1901,8 +1938,12 @@ async function refreshShopifyOrdersLive(
         180,
       );
       const customerEmail = cleanText(customer.email, 320);
+      const updatedAt = validIso(node.updatedAt);
+      if (totalPrice === null || outstanding === null || !updatedAt || typeof node.test !== "boolean")
+        throw new Error("Shopify Live-Abgleich: Zahlungsdaten fehlen.");
       additionalOrders.set(id, {
         shopify_order_id: id,
+        test: node.test === true,
         name: cleanText(node.name, 80) || orderName,
         financial_status:
           cleanText(node.displayFinancialStatus, 60)?.toLowerCase() || null,
@@ -1925,7 +1966,7 @@ async function refreshShopifyOrdersLive(
         bill_address: shopifyAddress(node.billingAddress),
         phone:
           cleanText(node.phone, 60) || cleanText(customer.phone, 60) || null,
-        shopify_updated_at: validIso(node.updatedAt),
+        shopify_updated_at: updatedAt,
       });
     }
   } catch (error) {
@@ -1959,66 +2000,71 @@ function dunningOrderDigits(orderNumber: string) {
   );
 }
 
-function transactionIdentityAliases(value: unknown) {
-  const raw = cleanText(value, 300);
-  if (!raw) return [];
-  const suffix = raw.match(/transaction-([a-z0-9-]+)$/i)?.[1] || null;
-  return suffix ? [raw, suffix] : [raw];
+export function canonicalBankTransactionId(value: unknown) {
+  const raw = cleanText(value, 300)?.toLowerCase() || "";
+  const suffix = raw.match(/transaction-([a-z0-9-]+)$/i)?.[1] || raw;
+  const hex = suffix.replace(/-/g, "");
+  return /^[a-f0-9]{32}$/.test(hex) ? hex : suffix;
 }
 
-async function loadUnpostedQontoPayments(orderNames: string[]) {
-  const digits = [
-    ...new Set(
-      orderNames
-        .map(dunningOrderDigits)
-        .filter((value): value is string => Boolean(value)),
-    ),
-  ];
-  if (!digits.length)
-    return {
-      payments: [] as QontoPaymentCreditRow[],
-      observedAt: null as string | null,
-    };
+function bankPaymentMatchesOrder(payment: QontoPaymentCreditRow, order?: ShopifyOrderRow | null) {
+  if (!order) return false;
+  const references = [...new Set([...String(payment.reference || "").matchAll(
+    /NEON\s*T?\s*(\d+)(?!\d)/gi,
+  )].map(match => match[1]))];
+  // Collective and differently referenced payments require the reviewed
+  // allocation from the daily reconciliation, not a guessed split.
+  if (references.length > 1) return false;
+  const normalize = (value: unknown) => String(value || "").normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/\b(gmbh|ggmbh|kg|ag|ug|co|mbh)\b/g, "")
+    .replace(/[^a-z0-9]/g, "");
+  const payer = normalize(payment.counterparty_name);
+  const identities = [order.kunde, ...[order.bill_address, order.ship_address].flatMap(address => {
+    const a = address || {};
+    return [a.company, a.name, [a.first_name || a.firstName, a.last_name || a.lastName].filter(Boolean).join(" ")];
+  })].map(normalize).filter(value => value.length >= 4);
+  return payer.length >= 4 && identities.includes(payer);
+}
 
-  const payments: QontoPaymentCreditRow[] = [];
-  for (let index = 0; index < digits.length; index += 80) {
-    const chunk = digits.slice(index, index + 80);
-    payments.push(
-      ...(await supabaseRequest<QontoPaymentCreditRow[]>(
-        "qonto_transactions",
-        undefined,
-        {
-          select:
-            "transaction_id,amount,currency,reference_digits,settled_at,ingested_at",
-          reference_digits: inFilter(chunk),
-          side: "eq.credit",
-          status: "eq.completed",
-          order: "settled_at.asc",
-          limit: 1000,
-        },
-      )),
-    );
-  }
-  const processed = await pagedRequest<ProcessedTransactionRow>(
-    "processed_transactions",
-    {
-      select: "transaction_id",
-      order: "processed_at.desc",
-    },
-    5000,
-  );
-  const processedAliases = new Set(
-    processed.flatMap((row) => transactionIdentityAliases(row.transaction_id)),
-  );
-  const unposted = payments.filter(
-    (payment) =>
-      !transactionIdentityAliases(payment.transaction_id).some((alias) =>
-        processedAliases.has(alias),
-      ),
-  );
+export function mirrorSourceHealth<T extends {ingested_at: string | null}>(audit: WorkflowAuditRow | undefined,
+  source: "bank" | "shopify", rows: T[], now = new Date()) {
+  const meta = audit?.metadata;
+  const observedAt = validIso(meta?.observed_at);
+  const verifiedAt = validIso(meta?.verified_at);
+  const count = Number(meta?.source_count);
+  // Retained historical rows are not part of the provider's verified snapshot.
+  // A partial newer write still fails the exact count/timestamp checks.
+  const currentRows = observedAt ? rows.filter(row => validIso(row.ingested_at) === observedAt) : [];
+  const complete = Boolean(audit?.status === "success" &&
+    meta?.schema === "ops.source-mirror.v1" && meta?.source === source &&
+    meta?.source_complete === true && Number.isSafeInteger(count) && count > 0 &&
+    count === currentRows.length && meta?.written_count === count && observedAt && verifiedAt &&
+    Date.parse(verifiedAt) >= Date.parse(observedAt) &&
+    rows.every(row => {
+      const ingestedAt = validIso(row.ingested_at);
+      return ingestedAt && Date.parse(ingestedAt) <= Date.parse(observedAt);
+    }));
+  const fresh = Boolean(complete && observedAt && verifiedAt &&
+    Date.parse(verifiedAt) <= now.getTime() &&
+    now.getTime() - Date.parse(observedAt) <= 45 * 60_000);
+  return {complete, fresh, observedAt, count: currentRows.length, rows: complete ? currentRows : rows};
+}
+
+async function loadBankMirror() {
+  const [payments, audits] = await Promise.all([
+    loadCompleteMirror<QontoPaymentCreditRow & {side: string; status: string}>(
+      "qonto_transactions", "id",
+      "id,transaction_id,amount,currency,reference,reference_digits,counterparty_name,settled_at,ingested_at,side,status"),
+    supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
+      select:"id,status,metadata,created_at", action:"eq.ops_source_mirror_verified",
+      "metadata->>source":"eq.bank", order:"created_at.desc", limit:1,
+    }),
+  ]);
+  const health = mirrorSourceHealth(audits[0], "bank", payments);
   return {
-    payments: unposted,
-    observedAt: latestIso(...payments.map((payment) => payment.ingested_at)),
+    payments: health.rows.filter(row => row.side === "credit" && row.status === "completed"),
+    ...health,
   };
 }
 
@@ -2221,7 +2267,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     orderIds,
   );
   const shopifyRefresh = await refreshShopifyOrdersLive(
-    mirroredOrders,
+    mirroredOrders.orders,
     orderNames,
   );
   const orders = shopifyRefresh.orders;
@@ -2241,13 +2287,27 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
   ];
   const [shipments, bankPaymentRefresh] = await Promise.all([
     loadRelevantShippingShipments(shipmentOrderNames, shipmentOrderIds),
-    loadUnpostedQontoPayments(shipmentOrderNames),
+    loadBankMirror(),
   ]);
   const messages = [
     ...new Map(
       [...inboundMessages, ...senderMessages].map((row) => [row.id, row]),
     ).values(),
   ];
+  const reviewedPayments = new Map<string, ReviewedPayment>();
+  if (historicalFresh && Array.isArray(historicalAudit?.metadata?.cases)) {
+    for (const raw of historicalAudit.metadata.cases) {
+      const row = recordValue(raw), number = normalizeDunningOrderNumber(row.order);
+      const amounts = [row.gross_cents, row.allocated_cents, row.remaining_cents];
+      if (!number || !amounts.every(value => Number.isSafeInteger(value) && Number(value) >= 0)) continue;
+      reviewedPayments.set(number, {
+        shopifyOrderId:String(row.shopify_order_id), grossCents:Number(row.gross_cents),
+        allocatedCents:Number(row.allocated_cents), remainingCents:Number(row.remaining_cents),
+        note:cleanText(row.note, 2000) || "Zahlung im Gesamtabgleich nachgewiesen",
+        observedAt:String(historical.observed_at),
+      });
+    }
+  }
   const cases = buildDunningCases({
     orders,
     statuses,
@@ -2258,11 +2318,13 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     candidates,
     intakeFresh,
     historicalFresh,
+    mirrorsFresh: mirroredOrders.fresh && bankPaymentRefresh.fresh && shopifyRefresh.live,
     automationExclusions: new Map(exclusions.filter(row => !["REGULAR_INTAKE","final_stage_review","held","cancelled","test"].includes(row.reason)).map(row => [row.order, exclusionLabels[row.reason] || "Automatik ausgeschlossen: " + row.reason])),
     insolvencyChecks,
     courtEvents,
     shipments,
     bankPayments: bankPaymentRefresh.payments,
+    reviewedPayments,
   });
   const openCases = cases.filter((entry) => !entry.paymentException);
   return {
@@ -2279,6 +2341,11 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       shopifyLive: shopifyRefresh.live,
       shopifyObservedAt: shopifyRefresh.observedAt,
       bankObservedAt: bankPaymentRefresh.observedAt,
+      bankFresh: bankPaymentRefresh.fresh,
+      bankComplete: bankPaymentRefresh.complete,
+      bankCount: bankPaymentRefresh.count,
+      shopifyMirrorFresh: mirroredOrders.fresh,
+      shopifyMirrorCount: mirroredOrders.count,
     },
     sendConfigured: dunningSendConfigured(),
     stats: {

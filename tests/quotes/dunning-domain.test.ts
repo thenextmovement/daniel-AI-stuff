@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   buildDunningCases,
   loadDunningEmailEvidence,
+  loadCompleteMirror,
+  mirrorSourceHealth,
   createDunningActionPreview,
   dunningCaseMatchesQuery,
   dunningPaymentExceptionTag,
@@ -604,6 +606,7 @@ test("unposted Qonto credits reduce the displayed claim without closing a partia
       bankPayments: [
         {
           transaction_id: "transaction-payment-4566",
+          counterparty_name: "Muster GmbH",
           amount: 335.28,
           currency: "EUR",
           reference_digits: "4566",
@@ -1017,4 +1020,90 @@ test("OPS clears only superseded reply and released hold blockers",()=>{
  assert.equal(buildDunningCases(data)[0].sendEligible,true);
  data.audits[0].metadata.reasons.push("QONTO_UNREFLECTED_EXACT_PAYMENT");
  const entry=buildDunningCases(data)[0];assert.equal(entry.sendEligible,false);assert.match(entry.blockers.join(" "),/Bankzahlung/);
+});
+
+test("legacy NEON identity joins its outstanding amount and collection hold", () => {
+  assert.equal(normalizeDunningOrderNumber("#NEON1643"), "#NEONT1643");
+  const rows=buildDunningCases(input({orders:[order({name:"#NEON1643",total_outstanding:1444.66,tags:"Inkasso eingeschaltet"})],candidates:[],statuses:[{shopify_order_number:"#NEONT1643",mahnstufe:0,paused:false,note:null,last_sent_at:null,next_due_at:null,updated_at:null,updated_by:null}]}));
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].amountCents,144466);
+  assert.equal(rows[0].stopTag,true);
+  assert.equal(rows[0].sendEligible,false);
+});
+test("test orders do not inflate the real open balance", () => {
+  assert.equal(buildDunningCases(input({orders:[order({tags:"testbestellung"})]})).length,0);
+});
+
+test("fresh bank references from another customer do not erase an open balance", () => {
+ const [entry] = buildDunningCases(input({bankPayments:[{transaction_id:"different-party",reference_digits:"5000",reference:"PF-NEONT5000",counterparty_name:"Other Customer GmbH",amount:119,currency:"EUR",settled_at:"2026-08-20T10:00:00Z",ingested_at:"2026-08-25T10:00:00Z"}]}));
+ assert.equal(entry?.amountCents,11900);
+ assert.equal(entry?.sendEligible,false);
+ assert.match(entry?.blockers.join(" ") || "",/Zahlung.*zugeordnet/);
+});
+
+test("bank payments already reflected in Shopify are not deducted twice", () => {
+ const [entry] = buildDunningCases(input({orders:[order({total_price:200,total_outstanding:100,shopify_updated_at:"2026-08-25T11:00:00Z"})],candidates:[],bankPayments:[{transaction_id:"reflected",reference_digits:"5000",reference:"NEONT5000",counterparty_name:"Muster GmbH",amount:100,currency:"EUR",settled_at:"2026-08-20T10:00:00Z",ingested_at:"2026-08-25T10:00:00Z"}]}));
+ assert.equal(entry?.amountCents,10000);
+ assert.equal(entry?.bankPaymentsCents,0);
+});
+
+test("duplicate provider transaction spellings are counted only once", () => {
+ const payment={reference_digits:"5000",reference:"NEONT5000",counterparty_name:"Muster GmbH",amount:50,currency:"EUR",settled_at:"2026-08-20T10:00:00Z",ingested_at:"2026-08-25T10:00:00Z"};
+ const [entry]=buildDunningCases(input({bankPayments:[{...payment,transaction_id:"01a08a53-288d-70df-a27d-93ddae8e2c17"},{...payment,transaction_id:"company-transaction-01a08a53-288d-70df-a27d-93ddae-8e2c17"}]}));
+ assert.equal(entry?.amountCents,6900);
+});
+
+test("verified payment review covers collective and non-bank payments without double deduction", () => {
+ const reviewedPayments=new Map([["#NEONT5000",{shopifyOrderId:"1234567890",grossCents:11900,allocatedCents:11900,remainingCents:0,note:"Zahlung nachgewiesen; Buchung fehlt",observedAt:"2026-08-25T11:00:00Z"}]]);
+ const [entry]=buildDunningCases(input({reviewedPayments}));
+ assert.equal(entry?.amountCents,0);
+ assert.equal(entry?.paymentException,true);
+ assert.equal(entry?.sendEligible,false);
+ assert.equal(entry?.reviewedPaymentCents,11900);
+ const changed=buildDunningCases(input({orders:[order({total_price:200,total_outstanding:200})],candidates:[],reviewedPayments}))[0];
+ assert.equal(changed?.amountCents,20000);
+});
+
+test("E2E customer and Shopify test flag stay out of real receivables", () => {
+ assert.equal(buildDunningCases(input({orders:[order({kunde:"NEONTRIP E2E TEST AT GmbH – NICHT PRODUZIEREN"})]})).length,0);
+ assert.equal(buildDunningCases(input({orders:[order({test:true})]})).length,0);
+});
+
+test("mirror freshness requires a complete verified write and expires after missed runs", () => {
+ const observedAt="2026-08-25T10:00:00.000Z";
+ const rows=[{ingested_at:observedAt}];
+ const audit={id:"sync",document_id:null,workflow_name:"OPS Source Mirror",action:"ops_source_mirror_verified",status:"success",error_message:null,created_at:observedAt,metadata:{schema:"ops.source-mirror.v1",source:"bank",source_complete:true,source_count:1,written_count:1,observed_at:observedAt,verified_at:"2026-08-25T10:01:00.000Z"}};
+ assert.equal(mirrorSourceHealth(audit,"bank",rows,new Date("2026-08-25T10:30:00Z")).fresh,true);
+ assert.equal(mirrorSourceHealth(audit,"bank",rows,new Date("2026-08-25T10:46:00Z")).fresh,false);
+ assert.equal(mirrorSourceHealth(audit,"bank",[],new Date("2026-08-25T10:30:00Z")).complete,false);
+ assert.equal(mirrorSourceHealth(audit,"bank",[{ingested_at:"2026-08-25T10:15:00Z"}]).complete,false);
+ assert.equal(mirrorSourceHealth(audit,"shopify",rows).complete,false);
+ assert.equal(mirrorSourceHealth(undefined,"bank",rows).fresh,false);
+ assert.equal(buildDunningCases(input({mirrorsFresh:false}))[0]?.sendEligible,false);
+});
+
+test("mirrors load beyond former caps and reject a repeated page", async (t) => {
+ const oldUrl=process.env.SUPABASE_URL, oldKey=process.env.SUPABASE_SERVICE_ROLE_KEY;
+ process.env.SUPABASE_URL="https://supabase.invalid"; process.env.SUPABASE_SERVICE_ROLE_KEY="synthetic-test-only";
+ t.after(()=>{if(oldUrl===undefined)delete process.env.SUPABASE_URL;else process.env.SUPABASE_URL=oldUrl;if(oldKey===undefined)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=oldKey;});
+ let repeat=false;
+ t.mock.method(globalThis,"fetch",async (url: string | URL | Request)=>{
+   const query=new URL(String(url)).searchParams;const after=repeat?0:Number(query.get("id")?.slice(3)||0);
+   const data=Array.from({length:Math.min(1000,6203-after)},(_,i)=>({id:String(after+i+1).padStart(6,"0")}));
+   return new Response(JSON.stringify(data),{status:200});
+ });
+ assert.equal((await loadCompleteMirror("qonto_transactions","id","id")).length,6203);
+ repeat=true;
+ await assert.rejects(loadCompleteMirror("qonto_transactions","id","id"),/Seitenfolge/);
+});
+
+test("verified mirror snapshot excludes retained old rows and rejects an overlapping partial write", () => {
+ const observedAt="2026-08-25T10:00:00.000Z";
+ const audit:any={status:"success",metadata:{schema:"ops.source-mirror.v1",source:"bank",source_complete:true,source_count:1,written_count:1,observed_at:observedAt,verified_at:"2026-08-25T10:01:00.000Z"}};
+ const old={id:"old",ingested_at:"2026-06-25T10:00:00Z"};
+ const current={id:"current",ingested_at:observedAt};
+ const health=mirrorSourceHealth(audit,"bank",[old,current],new Date("2026-08-25T10:15:00Z"));
+ assert.equal(health.fresh,true);assert.equal(health.count,1);assert.deepEqual(health.rows,[current]);
+ const partial=mirrorSourceHealth(audit,"bank",[old,current,{id:"new",ingested_at:"2026-08-25T10:15:00Z"}]);
+ assert.equal(partial.complete,false);
 });

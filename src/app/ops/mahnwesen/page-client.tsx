@@ -488,8 +488,8 @@ function FilterPanel({
           );
         })}
         <span className="ml-auto text-xs text-stone-500">
-          Bezahlte Fälle sind ausgeblendet. Ausnahme: Shopify-Tag „WARTEN AUF
-          ZA(HLUNG)“.
+          Bezahlte Fälle sind ausgeblendet. Offene Buchungszuordnungen und
+          Shopify-Ausnahmetags bleiben als Klärfälle sichtbar.
         </span>
       </div>
       <details className="border-t border-[#e6e0d8]">
@@ -776,6 +776,11 @@ function CaseTable({
                   <p className="mt-1 text-xs text-stone-500">
                     {relativeDue(entry)}
                   </p>
+                  {entry.reviewedPaymentCents > 0 ? (
+                    <p className="mt-1 text-xs font-semibold text-emerald-700">
+                      Zahlung {money(entry.reviewedPaymentCents, entry.currency)} aus geprüftem Abgleich berücksichtigt
+                    </p>
+                  ) : null}
                   {entry.bankPaymentsCents > 0 ? (
                     <p className="mt-1 text-xs font-semibold text-emerald-700">
                       Bankzahlung {money(entry.bankPaymentsCents, entry.currency)} berücksichtigt
@@ -907,7 +912,12 @@ function CaseTable({
                 <p className="mt-1 font-semibold text-stone-950">
                   {money(entry.amountCents, entry.currency)}
                 </p>
-                {entry.bankPaymentsCents > 0 ? (
+                {entry.reviewedPaymentCents > 0 ? (
+                    <p className="mt-1 text-xs font-semibold text-emerald-700">
+                      Zahlung {money(entry.reviewedPaymentCents, entry.currency)} aus geprüftem Abgleich berücksichtigt
+                    </p>
+                  ) : null}
+                  {entry.bankPaymentsCents > 0 ? (
                   <p className="mt-1 text-xs font-semibold text-emerald-700">
                     Bankzahlung berücksichtigt
                   </p>
@@ -1579,7 +1589,12 @@ function DetailDrawer({
               <p className="mt-2 text-xl font-semibold">
                 {money(entry.amountCents, entry.currency)}
               </p>
-              {entry.bankPaymentsCents > 0 ? (
+              {entry.reviewedPaymentCents > 0 ? (
+                    <p className="mt-1 text-xs font-semibold text-emerald-700">
+                      Zahlung {money(entry.reviewedPaymentCents, entry.currency)} aus geprüftem Abgleich berücksichtigt
+                    </p>
+                  ) : null}
+                  {entry.bankPaymentsCents > 0 ? (
                 <p className="mt-1 text-xs font-semibold text-emerald-700">
                   {money(entry.bankPaymentsCents, entry.currency)} Bankzahlung am{" "}
                   {dateLabel(entry.lastBankPaymentAt, true)} berücksichtigt
@@ -1795,14 +1810,20 @@ function DetailDrawer({
               </div>
             ) : null}
           </section>
+          {entry.paymentReviewNote ? (
+            <section className="rounded-[22px] border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
+              <h3 className="font-semibold">Geprüfte Zahlungszuordnung</h3>
+              <p className="mt-1 text-sm leading-6">{entry.paymentReviewNote}</p>
+            </section>
+          ) : null}
           {entry.paymentException ? (
             <section className="rounded-[22px] border border-amber-200 bg-amber-50 p-5 text-amber-950">
-              <h3 className="font-semibold">Bezahlter Shopify-Ausnahmefall</h3>
+              <h3 className="font-semibold">{entry.paymentExceptionTag ? "Bezahlter Shopify-Ausnahmefall" : "Zahlung belegt – Buchung offen"}</h3>
               <p className="mt-1 text-sm leading-6">
-                Die Forderung ist ausgeglichen, aber der Tag „
-                {entry.paymentExceptionTag}“ ist gesetzt. Der Fall bleibt nur
-                zur manuellen Datenprüfung sichtbar; es wird keine weitere
-                Mahn-E-Mail geplant.
+                {entry.paymentExceptionTag
+                  ? "Die Forderung ist ausgeglichen, aber der Tag „" + entry.paymentExceptionTag + "“ ist gesetzt."
+                  : "Die Zahlung ist nachgewiesen und vom offenen Gesamtbetrag abgezogen. Die Zuordnung in Shopify/Abrechnung fehlt noch."}
+                {" "}Der Fall bleibt zur Datenprüfung sichtbar; es wird keine weitere Mahn-E-Mail geplant.
               </p>
             </section>
           ) : null}
@@ -2424,7 +2445,9 @@ export function DunningOpsClient({
   const liveSourcesFresh = Boolean(
     dashboard?.sourceHealth.intakeFresh &&
       dashboard?.sourceHealth.historicalFresh !== false &&
-      dashboard?.sourceHealth.shopifyLive,
+      dashboard?.sourceHealth.shopifyLive &&
+      dashboard?.sourceHealth.shopifyMirrorFresh &&
+      dashboard?.sourceHealth.bankFresh,
   );
 
   async function login() {
@@ -2834,7 +2857,11 @@ export function DunningOpsClient({
                 <div>
                   <p className="font-semibold">
                     {liveSourcesFresh
-                      ? "Shopify-, Bank- und Mahndaten frisch geladen"
+                      ? "Shopify-, Bank- und Mahndaten vollständig und aktuell"
+                      : !dashboard.sourceHealth.bankFresh
+                        ? "Bankabgleich nicht vollständig aktuell – Gesamtsumme vorläufig"
+                      : !dashboard.sourceHealth.shopifyMirrorFresh
+                        ? "Shopify-Spiegel nicht vollständig aktuell – Gesamtsumme vorläufig"
                       : !dashboard.sourceHealth.shopifyLive
                         ? "Shopify-Live-Abgleich ist nicht vollständig"
                         : "Versand bleibt wegen nicht frischer Mahndaten blockiert"}
@@ -2842,7 +2869,8 @@ export function DunningOpsClient({
                   <p className="mt-0.5 text-xs opacity-75">
                     Seite aktualisiert {dateLabel(dashboard.generatedAt, true)} ·
                     Shopify {dateLabel(dashboard.sourceHealth.shopifyObservedAt, true)} ·
-                    Bankstand {dateLabel(dashboard.sourceHealth.bankObservedAt, true)} ·
+                    Bankstand {dateLabel(dashboard.sourceHealth.bankObservedAt, true)} ({dashboard.sourceHealth.bankCount} Buchungen) ·
+                    Shopify-Spiegel {dashboard.sourceHealth.shopifyMirrorCount} Bestellungen ·
                     Gesamtabgleich {dateLabel(dashboard.sourceHealth.historicalObservedAt || null, true)} ·
                     {dashboard.sourceHealth.candidateCount} Automatik-Kandidaten
                   </p>

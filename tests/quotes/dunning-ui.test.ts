@@ -67,7 +67,6 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   assert.match(client, /Bankzahlung .* berücksichtigt/);
   assert.match(domain, /totalOutstandingSet/);
   assert.match(domain, /qonto_transactions/);
-  assert.match(domain, /processed_transactions/);
   assert.match(client, /Versand- und Zustellnachweis/);
   assert.match(
     client,
