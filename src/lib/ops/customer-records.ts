@@ -1103,6 +1103,16 @@ export type CustomerSearchResult = {
   auditTrail: CustomerAuditEntry[];
 };
 
+export type CustomerSearchSuggestion = {
+  masterCustomerId: string;
+  requestId: string;
+  displayName: string | null;
+  company: string | null;
+  email: string;
+  phone: string | null;
+  updatedAt: string | null;
+};
+
 export type CustomerInternalTaskCategory =
   | "customer_followup"
   | "problem_case"
@@ -1479,7 +1489,37 @@ function chunkArray<T>(items: T[], size: number) {
 }
 
 function normalizePhoneSearch(value: string) {
-  return value.replace(/[^\d+]/g, "");
+  return value.replace(/\D/g, "");
+}
+
+export function customerPhoneSearchVariants(value: string) {
+  const digits = normalizePhoneSearch(value);
+  if (digits.length < 4) return [];
+
+  const variants = new Set([digits]);
+  if (digits.startsWith("0049") && digits.length > 4) {
+    variants.add(digits.slice(2));
+    variants.add(`0${digits.slice(4)}`);
+  } else if (digits.startsWith("49") && digits.length > 2) {
+    variants.add(`00${digits}`);
+    variants.add(`0${digits.slice(2)}`);
+  } else if (digits.startsWith("0") && digits.length > 1) {
+    variants.add(`49${digits.slice(1)}`);
+    variants.add(`0049${digits.slice(1)}`);
+  }
+
+  return [...variants].filter((variant) => variant.length >= 4);
+}
+
+function phoneIlikePattern(value: string) {
+  return `*${value.split("").map(escapeIlikeTerm).join("*")}*`;
+}
+
+function phoneSearchClauses(value: string) {
+  return customerPhoneSearchVariants(value).flatMap((variant) => {
+    const pattern = phoneIlikePattern(variant);
+    return [`phone.ilike.${pattern}`, `original_phone.ilike.${pattern}`];
+  });
 }
 
 function normalizeRequestSearch(query: string) {
@@ -1507,6 +1547,67 @@ export function resolveCustomerSearchMode(query: string): CustomerSearchMode {
     return "request_id";
   }
   return "name";
+}
+
+function sortCustomerRowsByUpdatedAt(rows: MasterCustomerRow[], limit: number) {
+  const timestamp = (value: string | null | undefined) => {
+    const parsed = value ? Date.parse(value) : 0;
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const unique = new Map<string, MasterCustomerRow>();
+  for (const row of rows) {
+    const current = unique.get(row.request_id);
+    const currentTime = timestamp(current?.updated_at);
+    const nextTime = timestamp(row.updated_at);
+    if (!current || nextTime > currentTime) unique.set(row.request_id, row);
+  }
+  return [...unique.values()]
+    .sort((left, right) => timestamp(right.updated_at) - timestamp(left.updated_at))
+    .slice(0, limit);
+}
+
+async function searchCustomerSuggestionRows(query: string, limit: number) {
+  const normalized = normalizeRequestSearch(query);
+  const escaped = escapeIlikeTerm(normalized);
+  const fuzzy = `*${escaped}*`;
+  const clauses = [
+    `request_id.ilike.${fuzzy}`,
+    `email.ilike.${fuzzy}`,
+    `billing_email.ilike.${fuzzy}`,
+    `original_email.ilike.${fuzzy}`,
+    `name.ilike.${fuzzy}`,
+    `first_name.ilike.${fuzzy}`,
+    `last_name.ilike.${fuzzy}`,
+    `company.ilike.${fuzzy}`,
+    `company_name.ilike.${fuzzy}`,
+    ...phoneSearchClauses(normalized),
+  ];
+  if (normalized.includes("@")) clauses.push(emailArrayContainsClause("cc_emails", normalizeEmail(normalized)));
+
+  const [directRows, requestRows] = await Promise.all([
+    selectMasterCustomerRows({
+      or: `(${clauses.join(",")})`,
+      order: "updated_at.desc",
+      limit,
+    }),
+    supabaseRequest<Array<{ request_id: string; updated_at?: string | null }>>("master_requests", undefined, {
+      select: "request_id,updated_at",
+      or: `(request_id.ilike.${fuzzy},form_id.ilike.${fuzzy})`,
+      order: "updated_at.desc",
+      limit,
+    }),
+  ]);
+
+  const relatedRequestIds = uniqueValues(requestRows.map((row) => row.request_id));
+  const relatedRows = relatedRequestIds.length
+    ? await selectMasterCustomerRows({
+        request_id: `in.(${relatedRequestIds.join(",")})`,
+        order: "updated_at.desc",
+        limit,
+      })
+    : [];
+
+  return sortCustomerRowsByUpdatedAt([...directRows, ...relatedRows], limit);
 }
 
 function companyValue(row: Pick<MasterCustomerRow, "company" | "company_name">) {
@@ -5082,11 +5183,6 @@ async function applyCustomerMutation(
 export async function searchCustomerRecords(query: string) {
   const normalized = normalizeRequestSearch(query);
   const searchMode = resolveCustomerSearchMode(normalized);
-  const normalizedEmail = normalizeEmail(normalized);
-  const fuzzyName = `*${escapeIlikeTerm(normalized)}*`;
-  const normalizedPhone = normalizePhoneSearch(normalized);
-  const fuzzyPhone = `*${escapeIlikeTerm(normalized)}*`;
-  const fuzzyPhoneDigits = `*${normalizedPhone}*`;
   const trimmedDealId = normalized.replace(/^(deal:|ac:)/i, "").trim();
   const trelloIdentifier = parseTrelloCardIdentifier(normalized) || normalized.replace(/^trello:/i, "").trim();
 
@@ -5112,28 +5208,7 @@ export async function searchCustomerRecords(query: string) {
         })
       : [];
   } else {
-    rows = await selectMasterCustomerRows({
-      ...(searchMode === "email"
-        ? {
-            or: `(${[
-              emailEqualsClause("email", normalizedEmail),
-              emailEqualsClause("billing_email", normalizedEmail),
-              emailEqualsClause("original_email", normalizedEmail),
-              emailArrayContainsClause("cc_emails", normalizedEmail),
-            ].join(",")})`,
-          }
-        : searchMode === "request_id"
-          ? { request_id: `eq.${normalized}` }
-          : searchMode === "phone"
-            ? {
-                or: `(phone.ilike.${fuzzyPhone},original_phone.ilike.${fuzzyPhone},phone.ilike.${fuzzyPhoneDigits},original_phone.ilike.${fuzzyPhoneDigits})`,
-              }
-            : {
-                or: `(name.ilike.${fuzzyName},first_name.ilike.${fuzzyName},last_name.ilike.${fuzzyName},company.ilike.${fuzzyName},company_name.ilike.${fuzzyName})`,
-              }),
-      order: "updated_at.desc",
-      limit: 10,
-    });
+    rows = await searchCustomerSuggestionRows(normalized, 10);
   }
 
   const contexts = await Promise.all(
@@ -5144,6 +5219,28 @@ export async function searchCustomerRecords(query: string) {
   );
 
   return contexts.map(mapSearchResult);
+}
+
+export async function searchCustomerRecordSuggestions(query: string, requestedLimit = 10) {
+  const limit = Math.max(1, Math.min(10, Math.floor(requestedLimit) || 10));
+  const normalized = normalizeRequestSearch(query);
+  const digitsOnly = normalizePhoneSearch(normalized);
+  const hasLetters = /[a-z@]/i.test(normalized);
+  if ((hasLetters && normalized.length < 2) || (!hasLetters && digitsOnly.length < 4)) return [];
+
+  const rows = await searchCustomerSuggestionRows(normalized, limit);
+  return rows.map((row): CustomerSearchSuggestion => {
+    const snapshot = toEditableSnapshot(row);
+    return {
+      masterCustomerId: row.id,
+      requestId: row.request_id,
+      displayName: snapshot.displayName,
+      company: snapshot.company,
+      email: snapshot.email,
+      phone: snapshot.phone || trimNullable(row.original_phone),
+      updatedAt: row.updated_at || null,
+    };
+  });
 }
 
 async function mapWithConcurrency<T, R>(

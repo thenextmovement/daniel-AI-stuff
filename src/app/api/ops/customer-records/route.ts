@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
-import { listCustomerRecordsInbox, listCustomerRecordsWorkboard, previewCustomerRecordUpdate, searchCustomerRecords, updateCustomerRecord } from "@/lib/ops/customer-records";
+import {
+  listCustomerRecordsInbox,
+  listCustomerRecordsWorkboard,
+  previewCustomerRecordUpdate,
+  searchCustomerRecordSuggestions,
+  searchCustomerRecords,
+  updateCustomerRecord,
+} from "@/lib/ops/customer-records";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -52,6 +59,11 @@ export async function GET(request: NextRequest) {
     if (mode === "workboard") {
       const sections = await listCustomerRecordsWorkboard();
       return NextResponse.json({ ok: true, sections });
+    }
+    if (mode === "suggestions") {
+      const requestedLimit = Number(request.nextUrl.searchParams.get("limit") || "10");
+      const suggestions = await searchCustomerRecordSuggestions(query, requestedLimit);
+      return NextResponse.json({ ok: true, suggestions });
     }
     const results = await searchCustomerRecords(query);
     return NextResponse.json({ ok: true, results });
