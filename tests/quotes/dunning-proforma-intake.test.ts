@@ -59,3 +59,19 @@ test("a continue decision with an unresolved payment risk is rejected",()=>{
  const answer={decision:"continue_dunning",confidence:.99,summary:"Widersprüchlich",reason_codes:["document_request_fulfilled"],risk_flags:["payment_claim"],evidence_quote:"Ich habe bezahlt.",requires_human_review:false};
  assert.throws(()=>new Function("$","$input",code)(()=>({first:()=>({json:meta})}),{first:()=>({json:{text:JSON.stringify(answer)}})}),/CLASSIFIER_TECHNICAL_FAILURE/);
 });
+
+test("approved billing revision resolves only fully identified older proformas",()=>{
+ const f=fixture();const newer={...f.d,id:457,number:"PF-NEONT9000-1"};
+ f.data["Read All Live Open Easybill Proformas"]=[f.page([f.d,newer])];
+ const c:any={shopify_order_id:"123",shopify_order_name:"#NEONT9000",current_revision:1,status:"PAYMENT_PENDING",currency:"EUR",total_gross_cents:10000,paid_at:null,cancelled_at:null,refunded_at:null,
+ billing_documents:[{document_type:"PROFORMA",revision:0,document_number:f.d.number,easybill_document_id:"456",amount_cents:10000,currency:"EUR",status:"SENT",sent_at:"2026-10-01T09:01:00Z"},{document_type:"PROFORMA",revision:1,document_number:newer.number,easybill_document_id:"457",amount_cents:10000,currency:"EUR",status:"SENT",sent_at:"2026-10-02T09:01:00Z"}]};
+ f.data["Read Billing Revisions"]=[{statusCode:200,headers:{"content-range":"0-0/1"},body:[c]}];
+ const candidates=()=>run("intake.js",f.data)[0].json.metadata.candidates;
+ assert.equal(candidates()[0]?.easybill_document_id,"457");
+ for(const change of [
+ ()=>{c.billing_documents[1].status="DRAFT";},
+ ()=>{c.billing_documents[1].status="SENT";c.billing_documents[0].easybill_document_id="other";},
+ ()=>{c.billing_documents[0].easybill_document_id="456";c.paid_at="2026-10-03T09:00:00Z";},
+ ()=>{c.paid_at=null;f.data["Read Billing Revisions"][0].headers["content-range"]="0-0/2";}
+ ]){change();assert.equal(candidates().length,0);}
+});
