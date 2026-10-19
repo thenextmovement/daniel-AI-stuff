@@ -70,9 +70,9 @@ export function validateA6Layout(width: number, height: number, layout: DpdPdfLa
   return { ok: errors.length === 0, errors, intersections };
 }
 
-export async function annotateDpdLabelPdf(inputPdf: Uint8Array, trackingNumber: string, layout: DpdPdfLayout, parcelKind: ArrivalParcelKind = "main") {
+export async function annotateDpdLabelPdf(inputPdf: Uint8Array, trackingNumber: string, layout: DpdPdfLayout, parcelKind: ArrivalParcelKind = "main", parcelCount = 1) {
   if (!layout.version.trim()) throw new Error("PDF-Layoutversion fehlt.");
-  const overlayText = labelOverlayText(trackingNumber, parcelKind);
+  const overlayText = labelOverlayText(trackingNumber, parcelKind, parcelCount);
   const document = await PDFDocument.load(inputPdf, { updateMetadata: false });
   if (document.getPageCount() !== 1) throw new Error("DPD-Etikett muss genau eine PDF-Seite enthalten.");
   const page = document.getPage(0);
@@ -82,22 +82,26 @@ export async function annotateDpdLabelPdf(inputPdf: Uint8Array, trackingNumber: 
 
   const font = await document.embedFont(StandardFonts.HelveticaBold);
   const requestedFontSize = Math.min(Math.max(layout.fontSize || 24, 12), 42);
-  const maximumWidth = layout.safeArea.width * 0.9;
+  const maximumWidth = parcelCount > 1 ? layout.safeArea.width - 4 : layout.safeArea.width * 0.9;
   // The exact approved text may wrap, but never shrink below the existing 12pt minimum.
   const singleLineSize = Math.min(requestedFontSize, maximumWidth / font.widthOfTextAtSize(overlayText, 1));
-  const lines = parcelKind === "acrylic_table_device" && singleLineSize < 12
-    ? [trackingNumber.slice(-6), "(Tischgerät)"] : [overlayText];
+  const lines = parcelCount > 1
+    ? [trackingNumber.slice(-6), `Paket 1 von ${parcelCount}`]
+    : parcelKind === "acrylic_table_device" && singleLineSize < 12
+      ? [trackingNumber.slice(-6), "(Tischgerät)"] : [overlayText];
+  const subtitleFont = parcelCount > 1 ? await document.embedFont(StandardFonts.Helvetica) : font;
+  const lineFont = (index: number) => parcelCount > 1 && index > 0 ? subtitleFont : font;
   const fontSize = Math.min(requestedFontSize,
-    ...lines.map((line) => maximumWidth / font.widthOfTextAtSize(line, 1)),
+    ...lines.map((line, index) => maximumWidth / lineFont(index).widthOfTextAtSize(line, 1)),
     layout.safeArea.height * 0.9 / (font.heightAtSize(1, { descender: false }) + (lines.length - 1) * 1.2));
   if (fontSize < 12) throw new Error("Aufdruckflaeche ist fuer einen gut sichtbaren Aufdruck zu klein.");
   const textHeight = font.heightAtSize(fontSize, { descender: false });
   const blockHeight = textHeight + (lines.length - 1) * fontSize * 1.2;
   lines.forEach((line, index) => page.drawText(line, {
-    x: layout.safeArea.x + (layout.safeArea.width - font.widthOfTextAtSize(line, fontSize)) / 2,
+    x: layout.safeArea.x + (layout.safeArea.width - lineFont(index).widthOfTextAtSize(line, fontSize)) / 2,
     y: layout.safeArea.y + (layout.safeArea.height - blockHeight) / 2 + (lines.length - 1 - index) * fontSize * 1.2,
     size: fontSize,
-    font,
+    font: lineFont(index),
     color: rgb(0, 0, 0),
   }));
 

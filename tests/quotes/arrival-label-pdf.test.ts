@@ -91,3 +91,46 @@ test("processed artifacts use a controlled case directory and full DHL number", 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('first-of-three overlay retains six digits and manual parcel count inside the safe area', async () => {
+  const result = await annotateDpdLabelPdf(await syntheticLabel(), '0012345678', layout, 'main', 3);
+  assert.equal(result.qa.overlayText, '345678 Paket 1 von 3');
+  assert.equal(result.qa.ok, true);
+  const text = await extractPdfText(result.pdf);
+  assert.match(text, /345678/);
+  assert.match(text, /Paket 1 von 3/);
+  assert.match(text, /01476817678011/);
+  await assert.rejects(annotateDpdLabelPdf(await syntheticLabel(), '0012345678', layout, 'acrylic_table_device', 3), /manuell/);
+});
+
+// Coordinates read from the active EasyDPD A6 configuration, 2026-10-19.
+// The upper-right synthetic fixture above must never define the production position.
+test('multi-parcel overlay uses the approved DPD area left of QR, above tracking', async () => {
+  const productionLayout: DpdPdfLayout = {
+    version: 'easydpd-a6-2026-07-22-v1', orientation: 'portrait', fontSize: 24,
+    safeArea: {x:18,y:190,width:130,height:38},
+    protectedAreas: [
+      {name:'address_and_sender',x:8,y:285,width:281,height:126},
+      {name:'reference_and_weight',x:8,y:245,width:170,height:40},
+      {name:'qr_code',x:175,y:175,width:114,height:112},
+      {name:'tracking_and_barcode',x:8,y:0,width:281,height:180},
+    ],
+  };
+  const original = await PDFDocument.create(); original.addPage([width,height]);
+  const result = await annotateDpdLabelPdf(await original.save(),'0012345678',productionLayout,'main',3);
+  assert.equal(result.qa.ok,true);
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const loading = pdfjs.getDocument({data:result.pdf});
+  const doc = await loading.promise;
+  try {
+    const content = await (await doc.getPage(1)).getTextContent();
+    const texts = content.items.filter((item): item is typeof item & {str:string;transform:number[];width:number;height:number;fontName:string} => 'str' in item && Boolean(item.str.trim()));
+    assert.deepEqual(texts.map(item=>item.str),['345678','Paket 1 von 3']);
+    for (const item of texts) {
+      const [x,y] = item.transform.slice(4);
+      assert.ok(x>=18 && x+item.width<=148, 'text must stay in the approved left column');
+      const ascent = content.styles[item.fontName].ascent;
+      assert.ok(y>=190 && y+item.height*ascent<=228, 'visible text must stay above the tracking area');
+    }
+  } finally { await loading.destroy(); }
+});

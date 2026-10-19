@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Temporal } from '@js-temporal/polyfill';
 import { resolveCardDhlTracking } from './arrival-labels/tracking';
 import { LEO_INTAKE_LISTS } from './arrival-labels/carrier-release';
-import { ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID, type TrelloCardEvidence } from './arrival-labels/domain';
+import { ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID, findTrelloCardForTracking, type TrelloCardEvidence } from './arrival-labels/domain';
 
 type Obj = Record<string, any>;
 const obj = (v: unknown): Obj => v && typeof v === 'object' && !Array.isArray(v) ? v as Obj : {};
@@ -103,7 +103,7 @@ export function planDhlChecks(cards:TrelloCardEvidence[],shipments:DhlShipmentLi
   }
   for(const [trackingNumber,matching] of groups) {
     const card=matching[0];
-    if(matching.length!==1||blockedNumbers.has(trackingNumber)) {issues.push({code:'duplicate_or_conflicting_card',trelloUrl:card.url});continue;}
+    if(matching.length!==1||blockedNumbers.has(trackingNumber)||!findTrelloCardForTracking(cards,trackingNumber).card) {issues.push({code:'duplicate_or_conflicting_card',trelloUrl:card.url});continue;}
     const existing=shipments.filter(s=>s.tracking_number===trackingNumber);
     if(existing.length>1||(existing.length===1&&existing[0].trello_card_id!==card.id)) {issues.push({code:'shipment_card_mismatch',trelloUrl:card.url});continue;}
     if(!LEO_INTAKE_LISTS.has(card.listId||'')&&!(card.listId===shipped&&existing.length===1)) continue;

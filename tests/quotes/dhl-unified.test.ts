@@ -147,3 +147,10 @@ test('completion cannot hide a conflicting card or shipment identity',()=>{
   const result=planDhlChecks([card()],[{...deliveredShipment(),trello_card_id:'old'}],[completedCase()]);
   assert.equal(result.completedCount,0);assert.equal(result.issues[0].code,'shipment_card_mismatch');
 });
+
+test('multi-package polling selects the first field number and rejects secondary duplicates across cards', () => {
+  const multi={...card(),name:'#NEONT123',trackingField:'DHL 0012345678, DHL 1123456789, DHL 2234567890'};
+  assert.deepEqual(planDhlChecks([multi],[]).candidates.map(c=>c.trackingNumber),['0012345678']);
+  const other={...card('card2'),name:'#NEONT124',trackingField:'DHL 3345678901, DHL 0012345678'};
+  assert.ok(!planDhlChecks([multi,other],[]).candidates.some(c=>c.trackingNumber==='0012345678'));
+});

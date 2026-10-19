@@ -1,3 +1,4 @@
+import { firstParcelCountForCase } from "@/lib/ops/arrival-labels/first-parcel";
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { isArrivalBrowserWorkerAuthorized } from "@/lib/ops/arrival-labels/auth";
@@ -82,7 +83,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!config?.enabled || !config.printerKey || !config.storageBucket) throw new PrintInputError("Aktive Druck- und Storage-Konfiguration fehlt.");
     const layout = validateDpdPdfLayout(config.pdfLayoutConfig);
     stage = "annotate_pdf";
-    const annotated = await annotateDpdLabelPdf(bytes, job.incoming_dhl_tracking_number, layout, job.parcel_kind);
+    const parcelCount = await firstParcelCountForCase(job.case_id, job.incoming_dhl_tracking_number);
+    const annotated = await annotateDpdLabelPdf(bytes, job.incoming_dhl_tracking_number, layout, job.parcel_kind, parcelCount);
     stage = "render_preview";
     const preview = await renderPdfFirstPageToPng(annotated.pdf, 3);
     const previewSha256 = sha256(preview);

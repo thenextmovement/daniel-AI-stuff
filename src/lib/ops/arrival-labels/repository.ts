@@ -1,3 +1,4 @@
+import { prepareFirstParcelSelection } from './first-parcel';
 import { randomUUID } from "node:crypto";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import {
@@ -639,6 +640,8 @@ export async function upsertArrivalCase(input: {
 }) {
   const order = input.decision.shopifyOrder;
   const card = input.decision.trelloCard;
+  const parcelHold = card && input.decision.status === "label_planned"
+    ? await prepareFirstParcelSelection(card, input.arrival.trackingNumber) : null;
   const rows = await supabaseRequest<CaseRow[]>("arrival_label_cases", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
@@ -665,8 +668,8 @@ export async function upsertArrivalCase(input: {
       delivery_note_status: input.decision.deliveryNoteStatus,
       selected_dpd_product: input.decision.selectedDpdProduct,
       existing_dpd_tracking: input.decision.existingDpdTracking,
-      status: input.decision.status,
-      manual_review_reason: input.decision.manualReviewReason,
+      status: parcelHold ? "manual_review" : input.decision.status,
+      manual_review_reason: parcelHold || input.decision.manualReviewReason,
       source_snapshot: {
         arrivalSources: input.arrival.sourceKinds,
         trelloTrigger: input.arrival.trelloTrigger,
