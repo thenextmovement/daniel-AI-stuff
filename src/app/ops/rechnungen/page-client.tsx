@@ -6,6 +6,7 @@ import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
 import { billingChangeBaselines, type BillingHistoryState } from "@/lib/ops/billing/change-history";
+import { addressComparisonFields, comparisonField, comparisonFieldChanged, type ComparisonField } from "@/lib/ops/billing/change-comparison";
 
 type BillingCase = {
   id: string; shopify_order_id: string; shopify_order_name: string; customer_email: string | null; customer: Record<string, unknown>;
@@ -17,7 +18,6 @@ type BillingCase = {
 };
 type Detail = { billingCase: BillingCase; documents: Array<Record<string, unknown>>; changes: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>; incidents: Array<Record<string, unknown>>; payments: Array<Record<string, unknown>> };
 type ChangeForm = { company: string; firstName: string; lastName: string; street: string; zip: string; city: string; country: string; deliveryCompany: string; deliveryFirstName: string; deliveryLastName: string; deliveryStreet: string; deliveryZip: string; deliveryCity: string; deliveryCountry: string; deliveryInstructions: string; vatId: string; invoiceEmail: string; projectNumber: string };
-type ComparisonField = { label: string; previous: string; next: string };
 
 function money(cents: number, currency: string) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(Number(cents || 0) / 100);
@@ -87,17 +87,17 @@ function changeForm(change: Record<string, unknown>, billingCase: BillingCase): 
   const requestedDelivery = record(requested.deliveryAddress);
   const currentAddress = record(billingCase.billing_address);
   const currentDelivery = record(billingCase.delivery_address);
-  const billingName = splitName(requestedAddress.name ?? currentAddress.name);
-  const deliveryName = splitName(requestedDelivery.name ?? currentDelivery.name);
+  const billingName = splitName(requestedAddress.name ?? requestedAddress.contactName ?? currentAddress.name ?? currentAddress.contactName);
+  const deliveryName = splitName(requestedDelivery.name ?? requestedDelivery.contactName ?? currentDelivery.name ?? currentDelivery.contactName);
   return {
-    company: String(requestedAddress.company ?? currentAddress.company ?? ""),
+    company: String(requestedAddress.company ?? requestedAddress.contactCompany ?? currentAddress.company ?? currentAddress.contactCompany ?? ""),
     firstName: String(requestedAddress.firstName ?? currentAddress.firstName ?? billingName.firstName),
     lastName: String(requestedAddress.lastName ?? currentAddress.lastName ?? billingName.lastName),
     street: String(requestedAddress.street ?? currentAddress.street ?? ""),
     zip: String(requestedAddress.zip ?? currentAddress.zip ?? ""),
     city: String(requestedAddress.city ?? currentAddress.city ?? ""),
     country: String(requestedAddress.country ?? currentAddress.country ?? ""),
-    deliveryCompany: String(requestedDelivery.company ?? currentDelivery.company ?? ""),
+    deliveryCompany: String(requestedDelivery.company ?? requestedDelivery.contactCompany ?? currentDelivery.company ?? currentDelivery.contactCompany ?? ""),
     deliveryFirstName: String(requestedDelivery.firstName ?? currentDelivery.firstName ?? deliveryName.firstName),
     deliveryLastName: String(requestedDelivery.lastName ?? currentDelivery.lastName ?? deliveryName.lastName),
     deliveryStreet: String(requestedDelivery.street ?? currentDelivery.street ?? ""),
@@ -123,35 +123,8 @@ function changePayload(form: ChangeForm) {
   };
 }
 
-function comparisonValue(value: unknown) {
-  return String(value ?? "").trim().replace(/\s+/g, " ") || "–";
-}
-
-function addressComparisonFields(previous: Record<string, unknown>, next: Record<string, unknown>, delivery = false): ComparisonField[] {
-  const previousName = splitName(previous.name);
-  const nextName = splitName(next.name);
-  const fieldValue = (value: Record<string, unknown>, key: string, fallback = "") => comparisonValue(value[key] !== undefined ? value[key] : fallback);
-  const fields: ComparisonField[] = [
-    { label: delivery ? "Firma am Lieferort" : "Firma", previous: fieldValue(previous, "company"), next: fieldValue(next, "company") },
-    { label: "Vorname", previous: fieldValue(previous, "firstName", previousName.firstName), next: fieldValue(next, "firstName", nextName.firstName) },
-    { label: "Nachname", previous: fieldValue(previous, "lastName", previousName.lastName), next: fieldValue(next, "lastName", nextName.lastName) },
-    { label: "Straße und Hausnummer", previous: fieldValue(previous, "street"), next: fieldValue(next, "street") },
-    { label: "PLZ", previous: fieldValue(previous, "zip"), next: fieldValue(next, "zip") },
-    { label: "Ort", previous: fieldValue(previous, "city"), next: fieldValue(next, "city") },
-    { label: delivery ? "Lieferland" : "Rechnungsland", previous: fieldValue(previous, "country"), next: fieldValue(next, "country") },
-  ];
-  if (delivery) {
-    fields.push({
-      label: "Zusätzliche Lieferhinweise",
-      previous: fieldValue(previous, "deliveryInstructions", String(previous.note || "")),
-      next: fieldValue(next, "deliveryInstructions", String(next.note || "")),
-    });
-  }
-  return fields;
-}
-
 function ComparisonRow({ field, nextLabel }: { field: ComparisonField; nextLabel: string }) {
-  const changed = field.previous !== field.next;
+  const changed = comparisonFieldChanged(field);
   return <div className={`grid gap-3 px-4 py-4 md:grid-cols-[minmax(8rem,10rem)_minmax(0,1fr)_minmax(0,1fr)] ${changed ? "m-2 rounded-xl border border-rose-300 bg-rose-50/70 shadow-[0_1px_0_rgba(190,24,93,0.04)]" : "border-b border-stone-100 last:border-b-0"}`}>
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <strong className="text-xs font-semibold text-stone-950">{field.label}</strong>
@@ -163,7 +136,7 @@ function ComparisonRow({ field, nextLabel }: { field: ComparisonField; nextLabel
 }
 
 function ComparisonSection({ title, fields, nextLabel }: { title: string; fields: ComparisonField[]; nextLabel: string }) {
-  const changedCount = fields.filter((field) => field.previous !== field.next).length;
+  const changedCount = fields.filter(comparisonFieldChanged).length;
   return <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 bg-[#faf8f5] px-4 py-3">
       <h3 className="text-sm font-semibold text-stone-950">{title}</h3>
@@ -196,6 +169,18 @@ function ChangeRequestReview({ change, billingCase, previousValues, busy, onActi
   const finalDeliveryAddress = { ...previousValues.deliveryAddress, ...requestedDelivery, ...record(finalValues.deliveryAddress) };
   const requestVatValidation = record(finalValues.vatValidation || requested.vatValidation);
   const field = "h-10 rounded-xl border border-stone-300 bg-white px-3 text-sm outline-none focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/10";
+  const billingFields = addressComparisonFields(currentAddress, finalBillingAddress);
+  const deliveryFields = addressComparisonFields(previousValues.deliveryAddress, finalDeliveryAddress, true);
+  const additionalFields = [
+    comparisonField("Rechnungs-E-Mail", previousValues.invoiceEmail, finalValues.invoiceEmail ?? requested.invoiceEmail ?? previousValues.invoiceEmail),
+    comparisonField("USt-ID", previousValues.vatId, finalValues.vatId ?? requested.vatId ?? previousValues.vatId),
+    comparisonField("Projektnummer", previousValues.projectNumber, finalValues.projectNumber ?? requested.projectNumber ?? previousValues.projectNumber),
+  ];
+  const changedSummary = [
+    ...billingFields.map((entry) => ({ ...entry, section: "Rechnungsanschrift" })),
+    ...deliveryFields.map((entry) => ({ ...entry, section: "Lieferadresse" })),
+    ...additionalFields.map((entry) => ({ ...entry, section: "Weitere Rechnungsdaten" })),
+  ].filter(comparisonFieldChanged);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -221,13 +206,24 @@ function ChangeRequestReview({ change, billingCase, previousValues, busy, onActi
       </div>
     </div>
     {!editing ? <div className="space-y-4 bg-[#faf8f5] p-4 sm:p-5">
-      <ComparisonSection title="Rechnungsanschrift" fields={addressComparisonFields(currentAddress, finalBillingAddress)} nextLabel={decisionLabel} />
-      <ComparisonSection title="Lieferadresse" fields={addressComparisonFields(previousValues.deliveryAddress, finalDeliveryAddress, true)} nextLabel={decisionLabel} />
-      <ComparisonSection title="Weitere Rechnungsdaten" nextLabel={decisionLabel} fields={[
-        { label: "Rechnungs-E-Mail", previous: comparisonValue(previousValues.invoiceEmail), next: comparisonValue(finalValues.invoiceEmail ?? requested.invoiceEmail ?? previousValues.invoiceEmail) },
-        { label: "USt-ID", previous: comparisonValue(previousValues.vatId), next: comparisonValue(finalValues.vatId ?? requested.vatId ?? previousValues.vatId) },
-        { label: "Projektnummer", previous: comparisonValue(previousValues.projectNumber), next: comparisonValue(finalValues.projectNumber ?? requested.projectNumber ?? previousValues.projectNumber) },
-      ]} />
+      <section aria-label="Änderungen auf einen Blick" className="rounded-2xl border border-stone-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#b91c73]">Änderungen auf einen Blick</p>
+            <p className="mt-1 text-xs text-stone-500">Nur tatsächlich abweichende Werte werden hier angezeigt.</p>
+          </div>
+          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${changedSummary.length ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{changedSummary.length ? `${changedSummary.length} ${changedSummary.length === 1 ? "Änderung" : "Änderungen"}` : "Keine echte Änderung"}</span>
+        </div>
+        {changedSummary.length ? <div className="mt-3 grid gap-2">
+          {changedSummary.map((entry) => <div key={`${entry.section}:${entry.label}`} className="grid gap-2 rounded-xl border border-rose-200 bg-rose-50/70 px-3 py-3 md:grid-cols-[minmax(10rem,13rem)_minmax(0,1fr)]">
+            <p className="text-xs font-semibold text-rose-900">{entry.section} · {entry.label}</p>
+            <p className="min-w-0 break-words text-xs text-stone-700"><span className="text-stone-500">{entry.previous}</span><span aria-hidden="true" className="mx-2 text-rose-500">→</span><strong className="font-semibold text-rose-950">{entry.next}</strong></p>
+          </div>)}
+        </div> : <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-medium text-emerald-800">Die Schreibweisen sind semantisch identisch; es liegt keine fachliche Änderung vor.</p>}
+      </section>
+      <ComparisonSection title="Rechnungsanschrift" fields={billingFields} nextLabel={decisionLabel} />
+      <ComparisonSection title="Lieferadresse" fields={deliveryFields} nextLabel={decisionLabel} />
+      <ComparisonSection title="Weitere Rechnungsdaten" nextLabel={decisionLabel} fields={additionalFields} />
       {requestVatValidation.valid ? <div className={`rounded-xl border p-4 text-sm ${requestVatValidation.identityComparison === "MISMATCH" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
         <p className="font-semibold">USt-ID bei VIES gültig</p>
         {requestVatValidation.name ? <p className="mt-2"><strong>Gelistetes Unternehmen:</strong> {String(requestVatValidation.name)}</p> : null}
