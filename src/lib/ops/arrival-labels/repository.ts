@@ -1,6 +1,6 @@
 import { prepareFirstParcelSelection } from './first-parcel';
 import { randomUUID } from "node:crypto";
-import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
+import { SupabaseRestError, supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import {
   ARRIVAL_LABEL_TRELLO_TITLE_PATTERN_VERSION,
   type ArrivalCaseDecision,
@@ -160,16 +160,37 @@ export type ArrivalReviewNotificationRow = {
 };
 
 export async function enqueueArrivalReviewNotification(input: { caseId: string; notification: ArrivalReviewNotification }) {
-  const rows = await supabaseRpc<ArrivalReviewNotificationRow[]>("arrival_labels_enqueue_review_notification", {
-    p_case_id: input.caseId,
-    p_notification_key: input.notification.notificationKey,
-    p_recipient_email: input.notification.recipientEmail,
-    p_subject: input.notification.subject,
-    p_body_text: input.notification.bodyText,
-    p_shopify_order_url: input.notification.shopifyOrderUrl,
-  });
-  if (!rows[0]) throw new Error("Pruefmail konnte nicht in die Outbox eingereiht werden.");
-  return rows[0];
+  try {
+    const rows = await supabaseRpc<ArrivalReviewNotificationRow[]>("arrival_labels_enqueue_review_notification", {
+      p_case_id: input.caseId,
+      p_notification_key: input.notification.notificationKey,
+      p_recipient_email: input.notification.recipientEmail,
+      p_subject: input.notification.subject,
+      p_body_text: input.notification.bodyText,
+      p_shopify_order_url: input.notification.shopifyOrderUrl,
+    });
+    if (!rows[0]) throw new Error("Pruefmail konnte nicht in die Outbox eingereiht werden.");
+    return rows[0];
+  } catch (error) {
+    if (!(error instanceof SupabaseRestError) || error.status !== 400 || typeof error.details !== "string") throw error;
+    let details: { code?: string; message?: string } | null;
+    try { details = JSON.parse(error.details); } catch { throw error; }
+    if (details?.code !== "P0001" || details.message !== "review notification idempotency key belongs to different input") throw error;
+
+    // The key binds the blocking decision, not mutable display text (e.g. Trello URL).
+    // Keep the original outbox snapshot and delivery state; never requeue or resend it.
+    const existing = await supabaseRequest<ArrivalReviewNotificationRow[]>("arrival_label_review_notifications", undefined, {
+      select: "*",
+      notification_key: `eq.${input.notification.notificationKey}`,
+      limit: 2,
+    });
+    const row = existing[0];
+    if (existing.length !== 1 || row.case_id !== input.caseId
+      || row.notification_key !== input.notification.notificationKey
+      || row.recipient_email !== input.notification.recipientEmail
+      || row.shopify_order_url !== input.notification.shopifyOrderUrl) throw error;
+    return row;
+  }
 }
 
 export async function claimArrivalReviewNotification(input: { workerId: string; leaseSeconds?: number }) {

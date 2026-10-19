@@ -101,3 +101,11 @@ test("country blocks identify Switzerland and avoid promising an automatic deliv
   assert.match(notification.bodyText, /Zielland: CH \(switzerland\)/);
   assert.match(notification.bodyText, /Lieferschein: nicht automatisch geplant/);
 });
+
+test("a changed Trello display link keeps the same blocking-decision key", () => {
+  const decision = blockedDecision();
+  const original = buildArrivalReviewNotification(decision);
+  const updated = buildArrivalReviewNotification({ ...decision, trelloCard: { ...decision.trelloCard!, url: "https://trello.com/c/otherlink" } });
+  assert.equal(original?.notificationKey, updated?.notificationKey);
+  assert.notEqual(original?.bodyText, updated?.bodyText);
+});
