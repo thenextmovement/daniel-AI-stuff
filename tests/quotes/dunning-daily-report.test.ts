@@ -100,3 +100,19 @@ test("manual legacy audit evidence is retained when the projection is behind", (
   assert.equal(c.stage,2);
   assert.equal(c.stage_source,'legacy');
 });
+
+test("retryable enrolled cases remain in the blocked-work email until a successful send", () => {
+  for (const status of ["enrolled", "regular_intake"]) {
+    const r = run(fixture());
+    r.audit_record.metadata.cases[0] = {
+      ...r.audit_record.metadata.cases[0],
+      status:"sender_blocked", sender_blocked:true,
+      automation:{status}, note:"Versand blockiert: QONTO_AMBIGUOUS_POSSIBLE_PAYMENT.",
+    };
+    const result = report(r);
+    assert.equal(result.length, 1);
+    assert.match(result[0].json.emailSubject, /1 Fälle zur Prüfung/);
+    assert.match(result[0].json.emailBody, /QONTO_AMBIGUOUS_POSSIBLE_PAYMENT/);
+    assert.doesNotMatch(result[0].json.emailBody, /Fälle im automatischen Ablauf/);
+  }
+});
