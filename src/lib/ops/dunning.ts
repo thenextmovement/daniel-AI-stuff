@@ -1539,6 +1539,38 @@ async function pagedRequest<T>(
   return rows;
 }
 
+export async function loadDunningEmailEvidence(
+  query: Record<string, string | number>,
+) {
+  // A fixed ingestion cutoff and immutable cursor keep concurrent mail imports
+  // from shifting pages. Never classify a case from a silently truncated scan.
+  const cutoff = new Date().toISOString();
+  const rows: CustomerEmailRow[] = [];
+  let afterId: string | null = null;
+  while (true) {
+    const page: CustomerEmailRow[] = await supabaseRequest<CustomerEmailRow[]>(
+      "customer_email_messages",
+      undefined,
+      {
+        ...query,
+        created_at: `lte.${cutoff}`,
+        order: "id.asc",
+        limit: 1000,
+        ...(afterId ? { id: `gt.${afterId}` } : {}),
+      },
+    );
+    if (!Array.isArray(page))
+      throw new Error("Mahnwesen-Mailnachweise unvollständig: ungültige Antwort.");
+    for (const row of page) {
+      if (typeof row.id !== "string" || !row.id || (afterId && row.id <= afterId))
+        throw new Error("Mahnwesen-Mailnachweise unvollständig: Seitenfolge widersprüchlich.");
+      afterId = row.id;
+      rows.push(row);
+    }
+    if (page.length < 1000) return rows;
+  }
+}
+
 function inFilter(values: string[]) {
   return `in.(${values.join(",")})`;
 }
@@ -2094,28 +2126,18 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       action: "in.(customer_stage_sent_verified,customer_send_blocked_preclaim,customer_reply_decision)",
       order: "created_at.asc",
     }),
-    pagedRequest<CustomerEmailRow>(
-      "customer_email_messages",
-      {
-        select:
-          "id,message_id,internet_message_id,conversation_id,direction,from_email,from_name,to_emails,cc_emails,bcc_emails,subject,body_preview,received_at,sent_at,message_created_at,source,created_at",
-        subject: "ilike.*NEONT*",
-        order: "message_created_at.asc",
-      },
-      6000,
-    ),
-    pagedRequest<CustomerEmailRow>(
-      "customer_email_messages",
-      {
-        select:
-          "id,message_id,internet_message_id,conversation_id,direction,from_email,from_name,to_emails,cc_emails,bcc_emails,subject,body_preview,received_at,sent_at,message_created_at,source,created_at",
-        direction: "eq.outbound",
-        source: "eq.outlook",
-        sent_at: "gte.2026-08-05T15:30:00.000Z",
-        order: "sent_at.asc",
-      },
-      6000,
-    ),
+    loadDunningEmailEvidence({
+      select:
+        "id,message_id,internet_message_id,conversation_id,direction,from_email,from_name,to_emails,cc_emails,bcc_emails,subject,body_preview,received_at,sent_at,message_created_at,source,created_at",
+      subject: "ilike.*NEONT*",
+    }),
+    loadDunningEmailEvidence({
+      select:
+        "id,message_id,internet_message_id,conversation_id,direction,from_email,from_name,to_emails,cc_emails,bcc_emails,subject,body_preview,received_at,sent_at,message_created_at,source,created_at",
+      direction: "eq.outbound",
+      source: "eq.outlook",
+      sent_at: "gte.2026-08-05T15:30:00.000Z",
+    }),
     loadLatestDunningInsolvencyChecks(),
     loadDunningCourtEvents(),
     supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
@@ -2440,16 +2462,11 @@ export async function getDunningCaseDetail(
       order: "sent_at.asc",
       limit: 1000,
     }),
-    pagedRequest<CustomerEmailRow>(
-      "customer_email_messages",
-      {
-        select:
-          "id,message_id,internet_message_id,conversation_id,direction,from_email,from_name,to_emails,cc_emails,bcc_emails,subject,body_preview,received_at,sent_at,message_created_at,source,created_at",
-        subject: `ilike.*${normalized.slice(1)}*`,
-        order: "message_created_at.asc",
-      },
-      3000,
-    ),
+    loadDunningEmailEvidence({
+      select:
+        "id,message_id,internet_message_id,conversation_id,direction,from_email,from_name,to_emails,cc_emails,bcc_emails,subject,body_preview,received_at,sent_at,message_created_at,source,created_at",
+      subject: `ilike.*${normalized.slice(1)}*`,
+    }),
     summary.shopifyOrderId
       ? supabaseRequest<T099LockRow[]>("email_locks", undefined, {
           select:

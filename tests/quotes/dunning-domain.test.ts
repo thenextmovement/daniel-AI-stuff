@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildDunningCases,
+  loadDunningEmailEvidence,
   createDunningActionPreview,
   dunningCaseMatchesQuery,
   dunningPaymentExceptionTag,
@@ -913,4 +914,87 @@ test("OPS preserves historical continuation stage and reply waiting period",()=>
  c.continuation={schema:"dunning.historical.candidate.v1",stage_model:"current_6",cycle_id:"R20261014T35",cycle_prefix:key.replace(":S1",""),anchor:{stage:1,sent_at:"2026-10-14T12:00:00Z",message_id:"modern-message",internet_message_id:"modern-internet",conversation_id:"modern-conversation"}};
  e.audits.push({id:"reply1",document_id:"1234567890",workflow_name:"TICKET-099 Existing Ledger Sender",action:"customer_reply_decision",status:"success",error_message:null,created_at:"2026-10-19T13:00:00Z",metadata:{schema:"t268.reply-decision.v1",lock_key:key.replace(":S1",":S2"),decision:"continue_dunning",reply_received_at:"2026-10-19T12:00:00Z",payment_received_cents:0,amount_due_cents:11900}});
  const [r]=buildDunningCases(input({...e,candidates:[c],now:new Date("2026-10-20T13:00:00Z")}));assert.equal(r?.nextStage,2);assert.equal(r?.scheduledAt,"2026-10-22T12:00:00.000Z");assert.equal(r?.sendEligible,false);
+});
+
+
+test("OPS verifies modern S4 after more than 6000 older mail records", async (t) => {
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_URL = "https://supabase.invalid";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "synthetic-test-only";
+  t.after(() => {
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+  });
+  const evidence = modernEvidence(4);
+  const id = (n: number) => "00000000-0000-0000-0000-" + String(n).padStart(12, "0");
+  const older = Array.from({length: 6000}, (_, n) => ({
+    ...evidence.messages[0], id: id(n + 1), message_id: "unrelated-" + n,
+    internet_message_id: "<unrelated-" + n + ">", conversation_id: "unrelated",
+    subject: "Andere Rechnung #NEONT9000", sent_at: "2026-08-01T12:00:00Z"
+  }));
+  const all = [...older, {...evidence.messages[0], id: id(6001)}];
+  const requests: URL[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+    const parsed = new URL(String(url));
+    assert.equal(parsed.origin, "https://supabase.invalid");
+    requests.push(parsed);
+    const after = parsed.searchParams.get("id")?.replace(/^gt\./, "");
+    if (requests.length === 2) all.unshift({...evidence.messages[0], id: id(0), created_at:"2100-01-01T00:00:00Z"});
+    const cutoff = parsed.searchParams.get("created_at")?.slice(4);
+    const selected = all.filter(row => (!after || row.id > after) && (!cutoff || Date.parse(row.created_at || "") <= Date.parse(cutoff)));
+    const offset = Number(parsed.searchParams.get("offset") || 0);
+    return new Response(JSON.stringify(selected.slice(offset, offset + 1000)), {status: 200});
+  });
+  const messages = await loadDunningEmailEvidence({select: "*", direction: "eq.outbound"});
+  const [entry] = buildDunningCases(input({...evidence, messages, now:new Date("2026-10-19T10:00:00Z")}));
+  assert.equal(entry?.currentStageLabel, "1. Mahnung");
+  assert.equal(entry?.source, "t099");
+  assert.equal(entry?.state, "scheduled");
+  assert.equal(entry?.nextStage, 5);
+  assert.equal(entry?.scheduledAt, "2026-10-21T14:20:27.000Z");
+  assert.equal(messages.length, 6001);
+  assert.equal(requests.length, 7);
+  const cutoff = requests[0].searchParams.get("created_at");
+  assert.ok(cutoff?.startsWith("lte."));
+  for (const request of requests) {
+    assert.equal(request.searchParams.get("created_at"), cutoff);
+    assert.equal(request.searchParams.get("direction"), "eq.outbound");
+    assert.equal(request.searchParams.get("order"), "id.asc");
+    assert.equal(request.searchParams.has("offset"), false);
+  }
+  // An import arriving during pagination is outside this snapshot, even if
+  // its ID sorts before the cursor; the next dashboard read will include it.
+  assert.equal(requests[1].searchParams.get("id"), "gt." + id(1000));
+  for (const orders of [[order({financial_status:"paid",total_outstanding:0})],
+                        [order({tags:"Nicht mahnen"})]]) {
+    const [protectedCase] = buildDunningCases(input({...evidence, messages, orders, now:new Date("2026-10-22T10:00:00Z")}));
+    assert.notEqual(protectedCase?.sendEligible, true);
+  }
+});
+
+test("incomplete or non-progressing mail pages fail instead of returning partial evidence", async (t) => {
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_URL = "https://supabase.invalid";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "synthetic-test-only";
+  t.after(() => {
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+  });
+  let mode = "null";
+  let pageCount = 0;
+  const page = Array.from({length:1000}, (_, n) => ({id:String(n + 1).padStart(12, "0")}));
+  t.mock.method(globalThis, "fetch", async () => {
+    pageCount++;
+    if (mode === "http" && pageCount === 2) return new Response("failed", {status:400});
+    return new Response(JSON.stringify(mode === "null" ? null : page), {status:200});
+  });
+  await assert.rejects(loadDunningEmailEvidence({select:"id"}), /unvollständig/);
+  mode = "repeated";pageCount = 0;
+  await assert.rejects(loadDunningEmailEvidence({select:"id"}), /Seitenfolge/);
+  mode = "http";pageCount = 0;
+  await assert.rejects(loadDunningEmailEvidence({select:"id"}), /Supabase Anfrage fehlgeschlagen/);
 });
