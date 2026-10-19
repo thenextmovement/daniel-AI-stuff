@@ -1261,7 +1261,8 @@ export function buildDunningCases(input: {
     }
     const nextLockKey = nextStage ? (continuation?.cycle_prefix || T099_PREFIX + orderId) + ":S" + nextStage : null;
     const latestSendBlock = nextLockKey ? input.audits.filter(audit => audit.action === "customer_send_blocked_preclaim" && audit.metadata?.lock_key === nextLockKey).sort((a,b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] : undefined;
-    const senderBlockReasons = Array.isArray(latestSendBlock?.metadata?.reasons) ? latestSendBlock.metadata.reasons.map(String) : [];
+    const replyBlockResolved = replyDecision?.metadata?.policy === "t268.reply-classifier.2026-10-19.v2" && replyDecision.metadata.decision === "continue_dunning" && Number(replyDecision.metadata.confidence) >= 0.9 && replyDecision.metadata.validation_error == null && Array.isArray(replyDecision.metadata.risk_flags) && replyDecision.metadata.risk_flags.length === 0 && Date.parse(replyDecision.created_at) > Date.parse(latestSendBlock?.created_at || "");
+    const senderBlockReasons = (Array.isArray(latestSendBlock?.metadata?.reasons) ? latestSendBlock.metadata.reasons.map(String) : []).filter(reason => !(replyBlockResolved && (reason === "CUSTOMER_REPLY_AI_REVIEW_REQUIRED" || (reason === "MANUAL_DUNNING_HOLD" && !paused))));
     const senderBlockLabels: Record<string,string> = {
       QONTO_AMBIGUOUS_POSSIBLE_PAYMENT:"Mögliche Zahlung noch nicht eindeutig zugeordnet",
       QONTO_UNREFLECTED_EXACT_PAYMENT:"Bankzahlung noch nicht in der Abrechnung zugeordnet",

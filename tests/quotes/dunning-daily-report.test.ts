@@ -130,3 +130,29 @@ test("the report never claims regular enrollment when its intake candidate is ab
  const f:any=fixture();f["Read Daily Intake Snapshot"][0].body[0].metadata.candidates=[];
  const r=run(f),c=r.audit_record.metadata.cases[0];assert.equal(c.automation.status,"excluded");assert.equal(c.automation.reason,"REGULAR_INTAKE_MISSING");assert.equal(report(r).length,1);
 });
+
+function resolvedRequestFixture(){
+ const f:any=fixture(0),id="8439288856843";
+ f["Read Daily Dunning States"][0].body[0]={shopify_order_number:"#NEONT4581",mahnstufe:0,paused:false};
+ f["Read Daily Verified Stages"][0].body=[];f["Read Daily Verified Stages"][0].headers["content-range"]="*/0";
+ const o=f["Read Summary"][0].shopify.open[0];o.createdAt="2026-09-11T14:00:00Z";
+ f["Read Summary"][0].invoices=[{id:"invoice",order_number:"#NEONT4581",number:"PF-NEONT4581",type:"PROFORMA_INVOICE",created_at:"2026-09-11 16:35:58",is_draft:false}];
+ f["Read Daily Sender Issues"]=[{statusCode:200,headers:{"content-range":"0-1/2"},body:[
+ {document_id:id,action:"customer_send_blocked_preclaim",created_at:"2026-10-16T08:00:00Z",metadata:{stage:1,reasons:["CUSTOMER_REPLY_AI_REVIEW_REQUIRED","MANUAL_DUNNING_HOLD"]}},
+ {document_id:id,action:"customer_reply_decision",status:"success",created_at:"2026-10-16T09:00:00Z",metadata:{schema:"t268.reply-decision.v1",policy:"t268.reply-classifier.2026-10-19.v2",decision:"continue_dunning",confidence:0.95,validation_error:null,amount_due_cents:134232,payment_received_cents:0,easybill_document_id:"invoice",reason_codes:["document_request_fulfilled"],risk_flags:[],resolved_document_request_evidence:true,invoice_delivery:{sent_at:"2026-09-16T07:34:34Z",recipient:"billing@example.com"}}}
+ ]}];
+ return f;
+}
+test("daily report replaces resolved classifier hold with actual invoice-delivery deadline",()=>{
+ const c=run(resolvedRequestFixture()).audit_record.metadata.cases[0];
+ assert.equal(c.sender_blocked,false);assert.equal(c.status,"reminder_missing");
+ assert.equal(c.next_due_at,"2026-09-21T07:34:34.000Z");
+});
+test("daily report retains current manual hold after a resolved invoice-only request",()=>{
+ const f=resolvedRequestFixture();f["Read Daily Dunning States"][0].body[0].paused=true;
+ assert.equal(run(f).audit_record.metadata.cases[0].status,"held");
+});
+test("resolved invoice request never clears an unrelated bank blocker",()=>{
+ const f=resolvedRequestFixture();f["Read Daily Sender Issues"][0].body[0].metadata.reasons.push("QONTO_UNREFLECTED_EXACT_PAYMENT");
+ const c=run(f).audit_record.metadata.cases[0];assert.equal(c.sender_blocked,true);assert.match(c.note,/QONTO_UNREFLECTED_EXACT_PAYMENT/);
+});

@@ -67,12 +67,16 @@ const hold=Boolean(state?.paused)||(o.tags||[]).some(t=>/mahnstop|mahn.stop|kein
 let status=o.cancelledAt?'cancelled':test?'test':o.displayFinancialStatus==='PAID'?'payment_data_conflict':remaining===0?'payment_recording_required':hold?'held':stageConflict?'stage_source_review':finalStage?'final_stage_review':stage>0||reminder?'reminder_evidenced':'reminder_missing';
 if(!['cancelled','test','payment_data_conflict','payment_recording_required','held','final_stage_review','stage_source_review'].includes(status)&&state?.next_due_at&&String(state.next_due_at)<now.slice(0,10))status='follow_up_due';
 
+const replyDecision=senderIssues.filter(a=>a.action==='customer_reply_decision'&&a.status==='success'&&String(a.document_id)===String(o.legacyResourceId)&&a.metadata?.schema==='t268.reply-decision.v1'&&Number(a.metadata.amount_due_cents)===remaining&&docs.some(d=>String(d.id)===String(a.metadata.easybill_document_id))).sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at))[0];
+const continuedReply=Boolean(replyDecision?.metadata?.policy==='t268.reply-classifier.2026-10-19.v2'&&replyDecision.metadata.decision==='continue_dunning'&&replyDecision.metadata.confidence>=0.9&&replyDecision.metadata.validation_error==null&&Array.isArray(replyDecision.metadata.risk_flags)&&replyDecision.metadata.risk_flags.length===0);
+const resolvedInvoiceAt=continuedReply&&replyDecision.metadata.resolved_document_request_evidence===true&&replyDecision.metadata.reason_codes?.includes('document_request_fulfilled')?localInstant(replyDecision.metadata.invoice_delivery?.sent_at):null;
 let nextDue=state?.next_due_at||null;
 if(status==='reminder_missing'){
  const finalDocs=docs.filter(d=>d.type==='INVOICE'), relevantDocs=finalDocs.length?finalDocs:docs.filter(d=>d.type==='PROFORMA_INVOICE');
  if(relevantDocs.length===1){
   const d=relevantDocs[0],created=localInstant(d.created_at),orderCreated=localInstant(o.createdAt);
-  let firstDue=businessDays(created>orderCreated?created:orderCreated,3);
+  let baseline=created>orderCreated?created:orderCreated;if(resolvedInvoiceAt?.isValid&&resolvedInvoiceAt>baseline)baseline=resolvedInvoiceAt;
+  let firstDue=businessDays(baseline,3);
   if(/umdasch/i.test([o.email,o.billingAddress?.company,d.address?.company_name,d.address?.company].join(' '))||['2669065012','2669064937'].includes(String(d.customer_id))){
    let grace=created.plus({days:45}).startOf('day').set({hour:9});while(grace.isValid&&grace.weekday>5)grace=grace.plus({days:1});if(grace>firstDue)firstDue=grace;
   }
@@ -80,15 +84,17 @@ if(status==='reminder_missing'){
  }
 }
 const bankCandidates=src.bank.filter(b=>b.side==='credit'&&b.status==='completed'&&new RegExp('NEON\\s*T?\\s*'+digits+'(?![0-9])','i').test(String(b.reference||''))).map(b=>({transaction_id:b.transaction_id,amount:b.amount,settled_at:b.settled_at}));
-const latestBlocked=senderIssues.filter(a=>String(a.document_id)===String(o.legacyResourceId)).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))[0];
+const latestBlocked=senderIssues.filter(a=>a.action!=='customer_reply_decision'&&String(a.document_id)===String(o.legacyResourceId)).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))[0];
 const latestSent=[state?.last_sent_at,...validLogs.map(l=>l.sent_at),...proofs.map(a=>a.metadata.sent_at)].filter(Boolean).sort((a,b)=>Date.parse(b)-Date.parse(a))[0];
-const blockUnresolved=latestBlocked&&(!latestSent||Date.parse(latestBlocked.created_at)>Date.parse(latestSent));
+const replyBlockResolved=continuedReply&&Date.parse(replyDecision.created_at)>Date.parse(latestBlocked?.created_at);
+const outstandingBlockReasons=(latestBlocked?.metadata?.reasons||[]).filter(r=>!(replyBlockResolved&&(r==='CUSTOMER_REPLY_AI_REVIEW_REQUIRED'||(r==='MANUAL_DUNNING_HOLD'&&!hold))));
+const blockUnresolved=latestBlocked&&outstandingBlockReasons.length>0&&(!latestSent||Date.parse(latestBlocked.created_at)>Date.parse(latestSent));
 if(blockUnresolved&&!['cancelled','test','payment_data_conflict','payment_recording_required','held','final_stage_review','stage_source_review'].includes(status))status='sender_blocked';
 const permanentBlockReasons=new Set(['EXISTING_COMPANY_DOMAIN_PRIOR_PAID','SHOPIFY_CANCELLED','SHOPIFY_REFUND_OR_VOID_PRESENT','SHOPIFY_CHARGEBACK_OR_DISPUTE_PRESENT','EASYBILL_STORNO','EASYBILL_STORNO_RELATED','EASYBILL_FULL_CREDIT','EASYBILL_PARTIAL_CREDIT_REVIEW','EASYBILL_REPLACEMENT_INVOICE','CUSTOMER_EMAIL_INVALID','CUSTOMER_REPLIED_TO_PAYMENT_REMINDER','CUSTOMER_REPLY_BEFORE_T268_CUTOVER','T268_PARTIAL_BEFORE_CUTOVER']);
-const rawBlockReasons=latestBlocked?.metadata?.reasons||[];
+const rawBlockReasons=outstandingBlockReasons;
 const effectiveBlockReasons=rawBlockReasons.includes('SHOPIFY_LIVE_GATE_INCOMPLETE')&&!latestBlocked?.metadata?.live_evidence?.shopify_order_id?rawBlockReasons.filter(r=>!['SHOPIFY_REFUND_OR_VOID_PRESENT','CUSTOMER_EMAIL_INVALID'].includes(r)):rawBlockReasons;
 const senderBlockKind=blockUnresolved?(effectiveBlockReasons.some(r=>permanentBlockReasons.has(r))?'permanent':'technical'):null;
-const blockNote=blockUnresolved?'Automatischer Versand Stufe '+latestBlocked.metadata?.stage+' am '+latestBlocked.created_at+' blockiert: '+(latestBlocked.metadata?.reasons||[]).join(', ')+'. ':'';
+const blockNote=blockUnresolved?'Automatischer Versand Stufe '+latestBlocked.metadata?.stage+' am '+latestBlocked.created_at+' blockiert: '+outstandingBlockReasons.join(', ')+'. ':'';
 const stageNote=stageLabel+' | Ablauf: '+(stageSource==='t099'?'aktuell':stageSource==='legacy'?'Altbestand':stageSource==='mixed'?'Zuordnung prüfen':'noch unbelegt')+(nextDue&&!finalStage&&!stageConflict?' | Nächste Frist '+nextDue:'')+'. ';
 const note=stageNote+blockNote+(issues[digits]||(status==='follow_up_due'?'Nächste Mahnstufe seit '+state.next_due_at+' fällig; Versandlauf und Sperren prüfen.':!docs.length?'Kein eindeutig passender offener Easybill-Beleg; Zuordnung prüfen.':status==='not_due'?'Erste Erinnerung noch nicht fällig; geplanter Termin '+nextDue+'.':status==='reminder_missing'?'Keine Zahlungserinnerung im geprüften Versandnachweis; Zahlung/Beleg/Sperren vor Nachsendung prüfen.':status==='held'?'Bestehende Pause oder Shopify-Sperre beachten.':stageConflict?'Zuordnung zwischen Altbestand und aktuellem Ablauf prüfen; keine automatische Fortsetzung.':finalStage?'Letzte Mahnstufe erreicht; Folgeprüfung statt weiterer pauschaler Erinnerung.':'Versandverlauf vorhanden; nächste Fälligkeit und Sperren prüfen.'));
 cases.push({order:key,shopify_order_id:String(o.legacyResourceId),created_at:o.createdAt,customer:o.billingAddress?.company||[o.billingAddress?.firstName,o.billingAddress?.lastName].filter(Boolean).join(' '),email,gross_cents:gross,allocated_cents:allocated,remaining_cents:remaining,stage,stage_source:stageSource,stage_label:stageLabel,next_due_at:nextDue,status,note,sender_blocked:Boolean(blockUnresolved),sender_block_kind:senderBlockKind,invoice_count:docs.length,proforma_only:docs.length>0&&docs.every(d=>d.type==='PROFORMA_INVOICE'),last_reminder_at:[latestSent,reminder?.sent_at].filter(Boolean).sort((a,b)=>Date.parse(b)-Date.parse(a))[0]||null,bank_candidates:bankCandidates});

@@ -1007,3 +1007,14 @@ test("regular proforma with fulfilled invoice request shows the actual delivery 
  assert.equal(entry.email,"billing@example.com");
  assert.equal(entry.nextStage,1);
 });
+
+test("OPS clears only superseded reply and released hold blockers",()=>{
+ const data:any=input();
+ data.audits=[
+ {id:"block",document_id:"1234567890",action:"customer_send_blocked_preclaim",status:"blocked",created_at:"2026-08-23T10:00:00Z",metadata:{lock_key:"e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:1234567890:S1",reasons:["CUSTOMER_REPLY_AI_REVIEW_REQUIRED","MANUAL_DUNNING_HOLD"]}},
+ {id:"review",document_id:"1234567890",action:"customer_reply_decision",status:"success",created_at:"2026-08-24T10:00:00Z",metadata:{schema:"t268.reply-decision.v1",policy:"t268.reply-classifier.2026-10-19.v2",lock_key:"e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:1234567890:S1",decision:"continue_dunning",confidence:0.95,validation_error:null,risk_flags:[],payment_received_cents:0,amount_due_cents:11900}}
+ ];
+ assert.equal(buildDunningCases(data)[0].sendEligible,true);
+ data.audits[0].metadata.reasons.push("QONTO_UNREFLECTED_EXACT_PAYMENT");
+ const entry=buildDunningCases(data)[0];assert.equal(entry.sendEligible,false);assert.match(entry.blockers.join(" "),/Bankzahlung/);
+});
