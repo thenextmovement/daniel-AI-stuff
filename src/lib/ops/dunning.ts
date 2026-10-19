@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Temporal } from "@js-temporal/polyfill";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import {
   DUNNING_CASE_STATE_LABELS,
@@ -177,7 +178,18 @@ type CustomerEmailRow = {
   created_at: string | null;
 };
 
+type HistoricalContinuation = {
+  schema: "dunning.historical.candidate.v1";
+  stage_model: "current_6" | "legacy_4";
+  correspondence_review?: { audit_id: string; reviewed_at: string; outcome: string } | null;
+  cycle_prefix: string;
+  cycle_id: string;
+  anchor: { stage: number; sent_at: string; message_id: string; internet_message_id: string; conversation_id: string } | null;
+};
 type T099Candidate = {
+  continuation?: HistoricalContinuation;
+  automation_blocker?: string;
+  source_fresh?: boolean;
   shopify_order_id?: string;
   shopify_order_gid?: string;
   shopify_order_name?: string;
@@ -191,6 +203,7 @@ type T099Candidate = {
   easybill_document_created_at?: string;
   easybill_due_date?: string;
   amount_due_cents?: number;
+  payment_received_cents?: number;
   currency?: string;
   preliminary_only?: boolean;
 };
@@ -315,6 +328,8 @@ export type DunningDashboard = {
     intakeFreshUntil: string | null;
     intakeComplete: boolean;
     intakeFresh: boolean;
+    historicalFresh?: boolean;
+    historicalObservedAt?: string | null;
     candidateCount: number;
     legacyUpdatedAt: string | null;
     shopifyLive: boolean;
@@ -551,7 +566,7 @@ function parseOrderReferences(subject: string | null) {
 function t099LockIdentity(requestId: string) {
   const match = requestId.match(
     new RegExp(
-      `^${T099_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+):S([1-6])$`,
+      `^${T099_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)(?::C-[A-Za-z0-9-]+)?:S([1-6])$`,
     ),
   );
   return match ? { shopifyOrderId: match[1]!, stage: Number(match[2]) } : null;
@@ -562,33 +577,28 @@ function sentAtForLock(lock: T099LockRow) {
   return validIso(lock.lease_until) || validIso(lock.updated_at);
 }
 
+function berlinDateTime(value: string) {
+  try { return Temporal.Instant.from(value).toZonedDateTimeISO("Europe/Berlin"); } catch { return null; }
+}
+function plusBerlinDays(value: string, days: number) {
+  return berlinDateTime(value)?.add({days}).toInstant().toString({smallestUnit:"millisecond"}) || null;
+}
 function addBusinessDays(value: string, days: number) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
+  let date = berlinDateTime(value);
+  if (!date) return null;
   let remaining = Math.max(0, days);
-  while (remaining > 0) {
-    date.setUTCDate(date.getUTCDate() + 1);
-    const weekday = date.getUTCDay();
-    if (weekday !== 0 && weekday !== 6) remaining -= 1;
-  }
-  return date.toISOString();
+  while (remaining > 0) { date = date.add({days:1}); if (date.dayOfWeek <= 5) remaining -= 1; }
+  return date.toInstant().toString({smallestUnit:"millisecond"});
 }
-
 function nextBusinessDayOrSame(value: string) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  while (date.getUTCDay() === 0 || date.getUTCDay() === 6)
-    date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString();
+  let date = berlinDateTime(value);
+  if (!date) return null;
+  while (date.dayOfWeek > 5) date = date.add({days:1});
+  return date.toInstant().toString({smallestUnit:"millisecond"});
 }
-
 function atNineBerlinDate(value: string | null, addDays = 0) {
   if (!value) return null;
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return null;
-  const date = new Date(`${match[1]}-${match[2]}-${match[3]}T08:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + addDays);
-  return date.toISOString();
+  try { return Temporal.PlainDate.from(value.slice(0,10)).add({days:addDays}).toZonedDateTime({timeZone:"Europe/Berlin",plainTime:"09:00"}).toInstant().toString({smallestUnit:"millisecond"}); } catch { return null; }
 }
 
 export function nextDunningSchedule(input: {
@@ -610,15 +620,11 @@ export function nextDunningSchedule(input: {
   if (nextStage === 4) {
     const orderBoundary = input.orderCreatedAt
       ? nextBusinessDayOrSame(
-          new Date(
-            Date.parse(input.orderCreatedAt) + 14 * 86_400_000,
-          ).toISOString(),
+          plusBerlinDays(input.orderCreatedAt, 14) || "",
         )
       : null;
     const previousBoundary = nextBusinessDayOrSame(
-      new Date(
-        Date.parse(input.previousStageSentAt) + 7 * 86_400_000,
-      ).toISOString(),
+      plusBerlinDays(input.previousStageSentAt, 7) || "",
     );
     const dueBoundary = nextBusinessDayOrSame(
       atNineBerlinDate(input.dueDate, 1) || "",
@@ -631,9 +637,7 @@ export function nextDunningSchedule(input: {
     );
   }
   return nextBusinessDayOrSame(
-    new Date(
-      Date.parse(input.previousStageSentAt) + 7 * 86_400_000,
-    ).toISOString(),
+    plusBerlinDays(input.previousStageSentAt, 7) || "",
   );
 }
 
@@ -836,6 +840,8 @@ export function buildDunningCases(input: {
   messages: CustomerEmailRow[];
   candidates: T099Candidate[];
   intakeFresh: boolean;
+  historicalFresh?: boolean;
+  automationExclusions?: ReadonlyMap<string,string>;
   insolvencyChecks?: ReadonlyMap<string, DunningInsolvencyCheck>;
   courtEvents?: ReadonlyMap<string, DunningCourtEvent[]>;
   shipments?: DunningShipmentRow[];
@@ -956,7 +962,14 @@ export function buildDunningCases(input: {
       (a, b) => Date.parse(a.sent_at) - Date.parse(b.sent_at),
     );
     const latestSendlog = sendlogs.at(-1) || null;
-    const locks = orderId ? locksByOrderId.get(orderId) || [] : [];
+    const priorContinuation = input.audits.filter(audit => audit.action === "customer_stage_sent_verified" && audit.status === "sent" && String(audit.document_id) === orderId && recordValue(audit.metadata?.continuation).schema === "dunning.historical.candidate.v1").sort((a,b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0]?.metadata?.continuation as HistoricalContinuation | undefined;
+    const continuation = candidate?.continuation?.schema === "dunning.historical.candidate.v1" ? candidate.continuation : priorContinuation || null;
+    const allLocks = orderId ? locksByOrderId.get(orderId) || [] : [];
+    const locks = continuation ? allLocks.filter(lock => lock.request_id.startsWith(continuation.cycle_prefix + ":S")) : allLocks;
+    const anchor = continuation?.anchor || null;
+    const anchorMessage = anchor ? input.messages.find(message => message.message_id === anchor.message_id && message.direction === "outbound" && message.source === "outlook" && message.internet_message_id === anchor.internet_message_id && message.conversation_id === anchor.conversation_id && validIso(message.sent_at) === validIso(anchor.sent_at) && message.to_emails?.length === 1 && normalizeEmail(message.to_emails[0]) === normalizeEmail(candidate?.shopify_email_hint || order?.email) && !(message.cc_emails || []).length && !(message.bcc_emails || []).length) : null;
+    const anchorValid = !anchor || Boolean(anchorMessage);
+    const endpoint = continuation?.stage_model === "legacy_4" ? 4 : 6;
     const messages = messagesByOrder.get(orderNumber) || [];
     const currentT099Stage = stageFromLocks(
       locks,
@@ -987,17 +1000,14 @@ export function buildDunningCases(input: {
     const hasLegacy = Boolean(legacyStage > 0 || legacySendlogs.length);
     const hasT099 = Boolean(candidate || locks.length);
     const source = sourceForCase(hasLegacy, hasT099);
-    const currentStage = Math.max(currentT099Stage, legacyStage, 0);
+    const currentStage = Math.max(currentT099Stage, legacyStage, anchorValid ? anchor?.stage || 0 : 0);
     const stageSourcesConflict =
-      hasLegacy &&
-      hasT099 &&
-      (legacyStage !== currentT099Stage ||
-        (legacyStage >= 4 && currentT099Stage > 0));
+      continuation ? legacyStage > Math.max(currentT099Stage, anchor?.stage || 0) : hasLegacy && hasT099 && (legacyStage !== currentT099Stage || (legacyStage >= 4 && currentT099Stage > 0));
     const currentStageLabel = stageSourcesConflict
       ? `Mahnstufe ${currentStage} (Zuordnung prüfen)`
       : dunningStageLabel(
           currentStage,
-          currentT099Stage > 0 ? "t099" : hasLegacy ? "legacy" : source,
+          continuation?.stage_model === "legacy_4" ? "legacy" : continuation || currentT099Stage > 0 ? "t099" : hasLegacy ? "legacy" : source,
         );
     const currentLock = lastVerifiedLock(
       locks,
@@ -1036,14 +1046,18 @@ export function buildDunningCases(input: {
       ...outboundMessages.map((row) => row.sent_at || row.created_at),
     );
     const lastContactAt = latestIso(lastReplyAt, lastOutboundAt);
-    const customerReplied = Boolean(
-      lastReplyAt &&
+    const replyDecision = continuation ? input.audits.filter(audit => audit.action === "customer_reply_decision" && audit.status === "success" && audit.metadata?.schema === "t268.reply-decision.v1" && String(audit.metadata?.lock_key || "").startsWith(T099_PREFIX + orderId + ":") && Number(audit.metadata?.amount_due_cents) === Number(candidate?.amount_due_cents) && Number(audit.metadata?.payment_received_cents) === Number(candidate?.payment_received_cents || 0)).sort((a,b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] : undefined;
+    const continuedReplyAt = replyDecision?.metadata?.decision === "continue_dunning" ? validIso(replyDecision.metadata.reply_received_at) : null;
+    const replyDecisionBlocked = ["stop_dunning", "uncertain"].includes(String(replyDecision?.metadata?.decision));
+    const reviewedCorrespondenceAt = continuation?.correspondence_review?.audit_id === "8a19fc8c-1dbf-4bb2-bdbd-2325a04c179c" ? validIso(continuation.correspondence_review.reviewed_at) : null;
+    const customerReplied = replyDecisionBlocked || Boolean(
+      lastReplyAt && (!reviewedCorrespondenceAt || Date.parse(lastReplyAt) > Date.parse(reviewedCorrespondenceAt)) && (!continuedReplyAt || Date.parse(lastReplyAt) > Date.parse(continuedReplyAt)) &&
       (!lastOutboundAt ||
         Date.parse(lastReplyAt) >= Date.parse(lastOutboundAt)),
     );
     const tags = cleanText(order?.tags, 2000) || "";
     const normalizedTags = normalizedDunningTags(tags);
-    const stopTag = normalizedTags.includes("keine zahlungserinnerung n8n");
+    const stopTag = normalizedTags.some(tag => /mahnstop|mahn.stop|keine.?mahnung|keine.?zahlungserinnerung|nicht.?mahnen|inkasso|insolven|warten.?auf.?zahlung|mit.*anwalt/i.test(tag));
     const waitingPaymentTag = dunningPaymentExceptionTag(tags);
     const paused = Boolean(statusRow?.paused);
     const pauseMode = ["manual", "until_date"].includes(
@@ -1064,7 +1078,8 @@ export function buildDunningCases(input: {
     const pauseUpdatedAt = validIso(statusRow?.updated_at);
     const pauseSnapshotHash = createHash("sha256").update(JSON.stringify({ orderNumber, paused, pauseMode, pauseUntil, pauseNote, pausedAt, pausedBy, pauseVersion, pauseUpdatedAt })).digest("hex");
     const email = normalizeEmail(
-      order?.kunde_email ||
+      candidate?.shopify_email_hint ||
+        order?.kunde_email ||
         order?.email ||
         latestSendlog?.email ||
         candidate?.shopify_email_hint,
@@ -1214,8 +1229,8 @@ export function buildDunningCases(input: {
     const daysOverdue = daysSince(atNineBerlinDate(dueDate), now);
     const orderAgeDays = daysSince(orderCreatedAt, now);
     const nextStage =
-      !closed && candidate && currentT099Stage < 6 && !stageSourcesConflict
-        ? currentT099Stage + 1
+      !closed && candidate && (continuation ? currentStage < endpoint && anchorValid : currentT099Stage < 6) && !stageSourcesConflict
+        ? (continuation ? currentStage : currentT099Stage) + 1
         : null;
     const previousStageLock =
       currentT099Stage > 0
@@ -1228,8 +1243,8 @@ export function buildDunningCases(input: {
         : null;
     const previousStageSentAt = previousStageLock
       ? verifiedLockSentAt(previousStageLock, input.audits, input.messages)
-      : null;
-    const scheduledAt = nextStage
+      : anchorValid ? validIso(anchor?.sent_at) : null;
+    let scheduledAt = nextStage
       ? nextDunningSchedule({
           nextStage,
           orderCreatedAt,
@@ -1238,8 +1253,23 @@ export function buildDunningCases(input: {
           previousStageSentAt,
         })
       : null;
+    if (continuation && continuedReplyAt && scheduledAt) {
+      const replyEarliest = nextDunningSchedule({ nextStage:1, orderCreatedAt:continuedReplyAt, easybillCreatedAt:continuedReplyAt, dueDate, previousStageSentAt:null });
+      if (replyEarliest && Date.parse(replyEarliest) > Date.parse(scheduledAt)) scheduledAt = replyEarliest;
+    }
+    const nextLockKey = nextStage ? (continuation?.cycle_prefix || T099_PREFIX + orderId) + ":S" + nextStage : null;
+    const latestSendBlock = nextLockKey ? input.audits.filter(audit => audit.action === "customer_send_blocked_preclaim" && audit.metadata?.lock_key === nextLockKey).sort((a,b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] : undefined;
+    const senderBlockReasons = Array.isArray(latestSendBlock?.metadata?.reasons) ? latestSendBlock.metadata.reasons.map(String) : [];
+    const senderBlockLabels: Record<string,string> = {
+      QONTO_AMBIGUOUS_POSSIBLE_PAYMENT:"Mögliche Zahlung noch nicht eindeutig zugeordnet",
+      QONTO_UNREFLECTED_EXACT_PAYMENT:"Bankzahlung noch nicht in der Abrechnung zugeordnet",
+      EXISTING_COMPANY_DOMAIN_PRIOR_PAID:"Bestandskundenschutz: bezahlter Vorauftrag derselben Firma",
+      CUSTOMER_REPLY_AI_REVIEW_REQUIRED:"Kundenantwort muss zuerst geprüft werden",
+      CUSTOMER_REPLY_BEFORE_T268_CUTOVER:"Historische Kundenantwort muss zuerst geprüft werden",
+    };
+    const senderBlocker = senderBlockReasons.length ? "Versand blockiert: " + senderBlockReasons.map(reason => senderBlockLabels[reason] || reason).join(", ") : null;
     const finalStageReached =
-      !stageSourcesConflict && (legacyStage >= 4 || currentT099Stage >= 6);
+      !stageSourcesConflict && (continuation ? currentStage >= endpoint : legacyStage >= 4 || currentT099Stage >= 6);
     const finalReminderSentAt = finalStageReached ? lastSentAt : null;
     const legalReviewDueAt = plusCalendarDays(finalReminderSentAt, 7);
     const finalReminderWaiting = Boolean(
@@ -1261,7 +1291,11 @@ export function buildDunningCases(input: {
       Date.parse(legalReviewDueAt) <= now.getTime(),
     );
     const courtReview = legalReviewReady;
+    const automationBlocker = input.automationExclusions?.get(orderNumber) || candidate?.automation_blocker;
     const blockers: string[] = [];
+    if (senderBlocker) blockers.push(senderBlocker);
+    if (automationBlocker) blockers.push(automationBlocker);
+    if (!anchorValid) blockers.push("Letzter Versandnachweis für die automatische Fortsetzung fehlt");
     if (paymentException)
       blockers.push(
         `Shopify-Ausnahmetag ${waitingPaymentTag} trotz ausgeglichener Forderung`,
@@ -1276,7 +1310,7 @@ export function buildDunningCases(input: {
       blockers.push(
         "Nicht im aktuellen Shopify-/Easybill-Live-Kandidatenbestand",
       );
-    if (!input.intakeFresh)
+    if (!(input.intakeFresh && input.historicalFresh !== false && candidate?.source_fresh !== false))
       blockers.push("Live-Kandidatenbestand ist nicht frisch");
     if (stageSourcesConflict)
       blockers.push("Alt- und Neuverlauf haben unterschiedliche Mahnstufen");
@@ -1306,7 +1340,8 @@ export function buildDunningCases(input: {
     else if (
       !candidate ||
       !email ||
-      !input.intakeFresh ||
+      !(input.intakeFresh && input.historicalFresh !== false && candidate?.source_fresh !== false) ||
+      Boolean(automationBlocker || senderBlocker) || !anchorValid ||
       !scheduledAt ||
       stageSourcesConflict ||
       finalStageReached
@@ -1351,7 +1386,7 @@ export function buildDunningCases(input: {
     ) {
       nextActionKind = "customer_email";
       nextActionAt = scheduledAt;
-      nextActionLabel = `Stufe ${nextStage} E-Mail: ${dunningStageLabel(nextStage, "t099")}`;
+      nextActionLabel = "Automatisch: Stufe " + nextStage + " – " + dunningStageLabel(nextStage, continuation?.stage_model === "legacy_4" ? "legacy" : "t099");
     } else if (uniqueBlockers.length) nextActionLabel = uniqueBlockers[0]!;
     const courtNextAction = dunningCourtNextAction(courtEvent);
     if (
@@ -1406,7 +1441,7 @@ export function buildDunningCases(input: {
       currentStage,
       currentStageLabel,
       nextStage,
-      nextStageLabel: nextStage ? dunningStageLabel(nextStage, "t099") : null,
+      nextStageLabel: nextStage ? dunningStageLabel(nextStage, continuation?.stage_model === "legacy_4" ? "legacy" : "t099") : null,
       scheduledAt,
       lastSentAt,
       lastActivityAt,
@@ -2024,6 +2059,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     senderMessages,
     insolvencyChecks,
     courtEvents,
+    historicalAudits,
   ] = await Promise.all([
     supabaseRequest<DunningStatusRow[]>("dunning_status", undefined, {
       select:
@@ -2055,8 +2091,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       select:
         "id,document_id,workflow_name,action,status,error_message,metadata,created_at",
       workflow_name: "eq.TICKET-099 Existing Ledger Sender",
-      action: "eq.customer_stage_sent_verified",
-      status: "eq.sent",
+      action: "in.(customer_stage_sent_verified,customer_send_blocked_preclaim,customer_reply_decision)",
       order: "created_at.asc",
     }),
     pagedRequest<CustomerEmailRow>(
@@ -2083,13 +2118,41 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     ),
     loadLatestDunningInsolvencyChecks(),
     loadDunningCourtEvents(),
+    supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
+      select:"id,action,status,metadata,created_at",
+      action:"eq.daily_35_day_dunning_audit", order:"created_at.desc", limit:1,
+    }),
   ]);
 
   const latestAudit = latestIntakeAudits[0] || null;
   const metadata = latestAudit?.metadata || {};
-  const candidates = Array.isArray(metadata.candidates)
+  const normalCandidates = Array.isArray(metadata.candidates)
     ? (metadata.candidates as T099Candidate[])
     : [];
+  const historicalAudit = historicalAudits[0];
+  const historical = recordValue(historicalAudit?.metadata?.continuation);
+  const historicalValid = historicalAudit?.status === "success" && historical.schema === "dunning.historical.snapshot.v1" && Boolean(validIso(historical.observed_at)) && Boolean(validIso(historical.fresh_until)) && Date.parse(String(historical.fresh_until)) - Date.parse(String(historical.observed_at)) === 26 * 3600000 && Date.parse(String(historical.observed_at)) <= Date.now();
+  const historicalFresh = historicalValid && Date.parse(String(historical.fresh_until)) >= Date.now();
+  const historicalCandidates = historicalValid && Array.isArray(historical.candidates) ? (historical.candidates as T099Candidate[]).map(candidate => ({...candidate, source_fresh:historicalFresh})) : [];
+  const historicalIds = new Set(historicalCandidates.map(candidate => candidate.shopify_order_id));
+  const exclusionLabels: Record<string,string> = {
+    BILLING_ROUTE_REVIEW_REQUIRED:"Rechnungsroute vor Folgemahnung klären; kein Versand",
+    CORRESPONDENCE_REVIEW_HOLD:"Kundenkorrespondenz erfordert Klärung; kein Versand",
+    PAYMENT_RECORDING_REQUIRED:"Zahlungszuordnung erforderlich; kein Versand",
+    payment_recording_required:"Zahlung belegt; Buchungszuordnung erforderlich",
+    payment_data_conflict:"Widersprüchliche Zahlungsdaten; kein Versand",
+    PAYMENT_OR_AMOUNT_MISMATCH:"Zahlung oder Restbetrag stimmen nicht überein",
+    HISTORICAL_SEND_PROOF_MISSING:"Historischer Versandnachweis fehlt; keine automatische Fortsetzung",
+    REVIEWED_SEND_PROOF_INCOMPLETE:"Versandnachweis der Erinnerung unvollständig",
+    DOCUMENT_NOT_UNIQUE:"Offener Rechnungsbeleg ist nicht eindeutig",
+    DOCUMENT_CHANGED_SINCE_REMINDER:"Beleg seit letzter Erinnerung geändert; Zuordnung prüfen",
+    sender_blocked:"Automatischer Versand blockiert; letzten Prüfgrund prüfen",
+  };
+  const exclusions = historicalValid && Array.isArray(historical.excluded) ? historical.excluded as Array<{order:string;reason:string}> : [];
+  const candidates: T099Candidate[] = [...normalCandidates.filter(candidate => !historicalIds.has(candidate.shopify_order_id)),...historicalCandidates].map(candidate => {
+    const exclusion = exclusions.find(row => row.order === candidate.shopify_order_name && row.reason !== "REGULAR_INTAKE");
+    return exclusion ? {...candidate,automation_blocker:exclusionLabels[exclusion.reason] || "Automatik ausgeschlossen: " + exclusion.reason} : candidate;
+  });
   const intakeObservedAt = validIso(metadata.observed_at);
   const intakeFreshUntil = validIso(metadata.fresh_until);
   const intakeComplete =
@@ -2166,6 +2229,8 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     messages,
     candidates,
     intakeFresh,
+    historicalFresh,
+    automationExclusions: new Map(exclusions.filter(row => !["REGULAR_INTAKE","final_stage_review","held","cancelled","test"].includes(row.reason)).map(row => [row.order, exclusionLabels[row.reason] || "Automatik ausgeschlossen: " + row.reason])),
     insolvencyChecks,
     courtEvents,
     shipments,
@@ -2179,6 +2244,8 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       intakeFreshUntil,
       intakeComplete,
       intakeFresh,
+      historicalFresh,
+      historicalObservedAt: validIso(historical.observed_at),
       candidateCount: candidates.length,
       legacyUpdatedAt: latestIso(...statuses.map((row) => row.updated_at)),
       shopifyLive: shopifyRefresh.live,

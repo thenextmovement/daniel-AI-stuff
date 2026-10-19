@@ -2423,6 +2423,7 @@ export function DunningOpsClient({
   );
   const liveSourcesFresh = Boolean(
     dashboard?.sourceHealth.intakeFresh &&
+      dashboard?.sourceHealth.historicalFresh !== false &&
       dashboard?.sourceHealth.shopifyLive,
   );
 
@@ -2842,7 +2843,8 @@ export function DunningOpsClient({
                     Seite aktualisiert {dateLabel(dashboard.generatedAt, true)} ·
                     Shopify {dateLabel(dashboard.sourceHealth.shopifyObservedAt, true)} ·
                     Bankstand {dateLabel(dashboard.sourceHealth.bankObservedAt, true)} ·
-                    {dashboard.sourceHealth.candidateCount} Live-Kandidaten
+                    Gesamtabgleich {dateLabel(dashboard.sourceHealth.historicalObservedAt || null, true)} ·
+                    {dashboard.sourceHealth.candidateCount} Automatik-Kandidaten
                   </p>
                 </div>
               </div>

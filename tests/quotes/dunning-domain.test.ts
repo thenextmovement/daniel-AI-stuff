@@ -872,3 +872,45 @@ test("legacy S5 is not labelled as a modern second reminder", () => {
   assert.equal(entry?.currentStageLabel, 'Mahnstufe 5 (Altbestand)');
   assert.equal(entry?.state, 'court_review');
 });
+
+test("OPS uses the original reviewed cycle and shows automatic S2 after the proven S1", () => {
+  const c:any=candidate({easybill_document_created_at:"2026-09-01T10:00:00Z"});
+  const anchor={stage:1,sent_at:"2026-10-14T12:00:00Z",message_id:"historical-mail",internet_message_id:"<historical-mail>",conversation_id:"historical-thread"};
+  c.continuation={schema:"dunning.historical.candidate.v1",stage_model:"current_6",cycle_prefix:"e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:1234567890:C-R20261014T35",cycle_id:"R20261014T35",anchor};
+  const mail:any={...anchor,direction:"outbound",source:"outlook",to_emails:["kunde@example.com"],cc_emails:[],bcc_emails:[],subject:"Zahlungserinnerung #NEONT5000"};
+  const [row]=buildDunningCases(input({candidates:[c],messages:[mail],statuses:[{shopify_order_number:"#NEONT5000",mahnstufe:1,last_sent_at:anchor.sent_at,next_due_at:"2026-10-20",paused:false,note:null,updated_by:null,updated_at:anchor.sent_at}],now:new Date("2026-10-19T12:00:00Z")}));
+  assert.equal(row?.currentStage,1);assert.equal(row?.nextStage,2);assert.equal(row?.scheduledAt,"2026-10-20T12:00:00.000Z");assert.equal(row?.state,"scheduled");assert.match(row?.nextActionLabel||"",/Automatisch/);
+});
+test("OPS exposes a payment reconciliation exclusion instead of presenting an automatic send",()=>{
+ const c:any=candidate();c.automation_blocker="Zahlungszuordnung erforderlich; kein Versand";
+ const [row]=buildDunningCases(input({candidates:[c]}));assert.equal(row?.sendEligible,false);assert.equal(row?.state,"data_issue");assert.match(row?.primaryBlocker||"",/Zahlungszuordnung/);
+});
+
+test("OPS and sender preserve Berlin send time across the October clock change",()=>{
+ assert.equal(nextDunningSchedule({nextStage:5,orderCreatedAt:"2026-09-01T10:00:00Z",easybillCreatedAt:null,dueDate:"2026-09-15",previousStageSentAt:"2026-10-21T14:00:00Z"}),"2026-10-28T15:00:00.000Z");
+});
+test("verified cycle-specific legacy final stays final after leaving the candidate snapshot",()=>{
+ const e=modernEvidence(4);const key=e.locks[0]!.request_id.replace(":S4",":C-H88001:S4");e.locks[0]!.request_id=key;e.audits[0]!.metadata!.lock_key=key;
+ e.audits[0]!.metadata!.continuation={schema:"dunning.historical.candidate.v1",stage_model:"legacy_4",cycle_id:"H88001",cycle_prefix:key.replace(":S4",""),anchor:null};
+ const [r]=buildDunningCases(input({...e,candidates:[],now:new Date("2026-10-16T10:00:00Z")}));
+ assert.equal(r?.currentStageLabel,"Letzte Mahnung vor Inkasso (Altbestand)");assert.equal(r?.nextStage,null);assert.equal(r?.state,"final_wait");
+});
+test("OPS displays an exclusion even when the case is absent from both candidate sources",()=>{
+ const [r]=buildDunningCases(input({candidates:[],automationExclusions:new Map([["#NEONT5000","Zahlungszuordnung erforderlich; kein Versand"]])}));
+ assert.match(r?.primaryBlocker||"",/Zahlungszuordnung/);assert.equal(r?.sendEligible,false);
+});
+test("stale historical source cannot be shown as send eligible despite fresh ordinary intake",()=>{
+ const [r]=buildDunningCases(input({historicalFresh:false}));assert.equal(r?.sendEligible,false);assert.equal(r?.state,"data_issue");
+});
+
+test("OPS immediately exposes the sender's payment block without waiting for tomorrow's report",()=>{
+ const e=modernEvidence(4);e.audits.push({id:"blocked1",document_id:"1234567890",workflow_name:"TICKET-099 Existing Ledger Sender",action:"customer_send_blocked_preclaim",status:"blocked",error_message:null,created_at:"2026-10-21T14:25:00Z",metadata:{lock_key:"e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:1234567890:S5",reasons:["QONTO_AMBIGUOUS_POSSIBLE_PAYMENT"]}});
+ const [r]=buildDunningCases(input({...e,now:new Date("2026-10-21T14:30:00Z")}));assert.equal(r?.sendEligible,false);assert.equal(r?.state,"data_issue");assert.match(r?.primaryBlocker||"",/Zahlung/);assert.doesNotMatch(r?.nextActionLabel||"",/^Automatisch/);
+});
+
+test("OPS preserves historical continuation stage and reply waiting period",()=>{
+ const e=modernEvidence(1,"2026-10-14T12:00:00Z");const c:any=candidate();const key=e.locks[0]!.request_id.replace(":S1",":C-R20261014T35:S1");e.locks[0]!.request_id=key;e.audits[0]!.metadata!.lock_key=key;
+ c.continuation={schema:"dunning.historical.candidate.v1",stage_model:"current_6",cycle_id:"R20261014T35",cycle_prefix:key.replace(":S1",""),anchor:{stage:1,sent_at:"2026-10-14T12:00:00Z",message_id:"modern-message",internet_message_id:"modern-internet",conversation_id:"modern-conversation"}};
+ e.audits.push({id:"reply1",document_id:"1234567890",workflow_name:"TICKET-099 Existing Ledger Sender",action:"customer_reply_decision",status:"success",error_message:null,created_at:"2026-10-19T13:00:00Z",metadata:{schema:"t268.reply-decision.v1",lock_key:key.replace(":S1",":S2"),decision:"continue_dunning",reply_received_at:"2026-10-19T12:00:00Z",payment_received_cents:0,amount_due_cents:11900}});
+ const [r]=buildDunningCases(input({...e,candidates:[c],now:new Date("2026-10-20T13:00:00Z")}));assert.equal(r?.nextStage,2);assert.equal(r?.scheduledAt,"2026-10-22T12:00:00.000Z");assert.equal(r?.sendEligible,false);
+});
