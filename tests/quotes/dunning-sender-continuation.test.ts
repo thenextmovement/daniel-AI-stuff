@@ -72,3 +72,36 @@ test("a fulfilled invoice request keeps the original cycle and waits from actual
  f.data["Read Sender Evidence Audits"]=[f.page([{id:"decision",workflow_name:"TICKET-099 Existing Ledger Sender",action:"customer_reply_decision",status:"success",created_at:"2026-10-19T12:00:00Z",metadata:{lock_key:"e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:123:S1",schema:"t268.reply-decision.v1",shopify_order_id:"123",decision:"continue_dunning",reply_message_id:"request",reply_received_at:"2026-09-16T07:04:31Z",reason_codes:["document_request_fulfilled"],invoice_delivery:{sent_at:"2026-09-16T07:34:34Z"},payment_received_cents:0,amount_due_cents:10000}}])];
  const r=run(f)[0].json;assert.equal(r.stage,1);assert.equal(r.lock_key,prefix+"123:S1");assert.equal(r.scheduled_at,"2026-09-21T07:34:34.000Z");
 });
+
+function pausedRegular(now="2026-10-30T09:00:00+01:00") {
+ const f:any=fixture(now);
+ const c={...f.candidate,continuation:undefined,intake_evidence:undefined,cycle_kind:"initial",cycle_id:"INITIAL",easybill_document_created_at:"2026-09-30T08:00:00Z"};
+ const h=f.data["Read Latest Historical Control"][0].body[0].metadata.continuation;
+ h.candidates=[]; h.excluded=[{order:"#NEONT9000",reason:"held"}];
+ const m=f.data["Read Latest Live Complete Intake"][0].body[0].metadata;m.candidates=[c];m.union.candidate_count=1;
+ f.data["Read All Manual Dunning Holds"]=[f.page([{shopify_order_number:"#NEONT9000",paused:true,pause_mode:"until_date",pause_until:"2026-10-30T00:00:00+01:00",pause_reason:"Approved review date",paused_by:"Rahim",pause_version:1,updated_at:"2026-10-19T20:00:00Z"}])];
+ return f;
+}
+test("expired managed pause reaches auto-resume despite historical held snapshot",()=>{
+ const f=pausedRegular();const out=run(f);assert.equal(out.length,1);
+ assert.equal(out[0].json.stage,1);assert.equal(out[0].json.pause_resume_required,true);
+ assert.equal(out[0].json.pause_resume_expected_version,1);
+});
+test("future, manual, malformed pauses and payment exclusions remain blocked",()=>{
+ for(const mutation of [
+  (f:any)=>f.data["Read All Manual Dunning Holds"][0].body[0].pause_until="2026-10-31T00:00:00+01:00",
+  (f:any)=>f.data["Read All Manual Dunning Holds"][0].body[0].pause_mode="manual",
+  (f:any)=>f.data["Read All Manual Dunning Holds"][0].body[0].pause_version=0,
+  (f:any)=>f.data["Read All Manual Dunning Holds"][0].body[0].updated_at="invalid",
+  (f:any)=>f.data["Read Latest Historical Control"][0].body[0].metadata.continuation.excluded[0].reason="payment_recording_required",
+  (f:any)=>f.data["Read Latest Historical Control"][0].body[0].metadata.continuation.excluded[0].reason="MANUAL_OR_TAG_HOLD",
+ ]) {const f=pausedRegular();mutation(f);assert.equal(run(f).length,0);}
+ assert.equal(run(pausedRegular("2026-10-29T12:00:00+01:00")).length,0);
+});
+test("unresolved reply stays blocked; reviewed reply allows S1 after managed pause",()=>{
+ const f=pausedRegular();
+ const decision:any={id:"reply-reviewed",workflow_name:"TICKET-099 Existing Ledger Sender",action:"customer_reply_decision",status:"success",created_at:"2026-10-19T20:00:00Z",metadata:{schema:"t268.reply-decision.v1",lock_key:prefix+"123:S1",shopify_order_id:"123",decision:"uncertain",reply_message_id:"tracking-question",reply_received_at:"2026-10-15T07:09:14Z",payment_received_cents:0,amount_due_cents:10000}};
+ f.data["Read Sender Evidence Audits"]=[f.page([decision])];assert.equal(run(f).length,0);
+ decision.metadata.decision="continue_dunning";
+ const out=run(f);assert.equal(out.length,1);assert.equal(out[0].json.stage,1);assert.equal(out[0].json.cycle_trigger_reply_id,"tracking-question");
+});
