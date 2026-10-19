@@ -776,6 +776,11 @@ function CaseTable({
                   <p className="mt-1 text-xs text-stone-500">
                     {relativeDue(entry)}
                   </p>
+                  {(entry.waivedCents || 0) > 0 ? (
+                    <div className="text-sm text-emerald-700">
+                      Erlass {money(entry.waivedCents || 0, entry.currency)} – kein Zahlungseingang
+                    </div>
+                  ) : null}
                   {entry.reviewedPaymentCents > 0 ? (
                     <p className="mt-1 text-xs font-semibold text-emerald-700">
                       Zahlung {money(entry.reviewedPaymentCents, entry.currency)} aus geprüftem Abgleich berücksichtigt
@@ -791,7 +796,7 @@ function CaseTable({
                   <ShipmentSummary entry={entry} />
                   <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
                     <WalletCards className="h-3.5 w-3.5" />
-                    {entry.financialStatus}
+                    {entry.financialStatus === "settled_by_waiver" ? "Durch Erlass ausgeglichen" : entry.financialStatus}
                   </div>
                 </td>
                 <td className="px-4 py-4">
@@ -912,7 +917,12 @@ function CaseTable({
                 <p className="mt-1 font-semibold text-stone-950">
                   {money(entry.amountCents, entry.currency)}
                 </p>
-                {entry.reviewedPaymentCents > 0 ? (
+                {(entry.waivedCents || 0) > 0 ? (
+                    <div className="text-sm text-emerald-700">
+                      Erlass {money(entry.waivedCents || 0, entry.currency)} – kein Zahlungseingang
+                    </div>
+                  ) : null}
+                  {entry.reviewedPaymentCents > 0 ? (
                     <p className="mt-1 text-xs font-semibold text-emerald-700">
                       Zahlung {money(entry.reviewedPaymentCents, entry.currency)} aus geprüftem Abgleich berücksichtigt
                     </p>
@@ -1589,7 +1599,12 @@ function DetailDrawer({
               <p className="mt-2 text-xl font-semibold">
                 {money(entry.amountCents, entry.currency)}
               </p>
-              {entry.reviewedPaymentCents > 0 ? (
+              {(entry.waivedCents || 0) > 0 ? (
+                    <div className="text-sm text-emerald-700">
+                      Erlass {money(entry.waivedCents || 0, entry.currency)} – kein Zahlungseingang
+                    </div>
+                  ) : null}
+                  {entry.reviewedPaymentCents > 0 ? (
                     <p className="mt-1 text-xs font-semibold text-emerald-700">
                       Zahlung {money(entry.reviewedPaymentCents, entry.currency)} aus geprüftem Abgleich berücksichtigt
                     </p>
@@ -1648,7 +1663,7 @@ function DetailDrawer({
               </p>
               <p className="mt-2 text-sm text-stone-700">
                 Lieferung: {entry.fulfillmentStatus} · Zahlung:{" "}
-                {entry.financialStatus}
+                {entry.financialStatus === "settled_by_waiver" ? "Durch Erlass ausgeglichen" : entry.financialStatus}
               </p>
               <p className="mt-2 text-sm font-semibold text-stone-900">
                 {entry.nextActionLabel}
