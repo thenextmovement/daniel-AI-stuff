@@ -14,6 +14,8 @@ const TRACKING = "5065735500";
 
 async function withTrelloEnvironment<T>(fetchImplementation: typeof fetch, run: () => Promise<T>) {
   const names = [
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
     "TRELLO_API_KEY",
     "TRELLO_TOKEN",
     "ARRIVAL_LABEL_TRELLO_BOARD_ID",
@@ -27,7 +29,10 @@ async function withTrelloEnvironment<T>(fetchImplementation: typeof fetch, run: 
   process.env.ARRIVAL_LABEL_TRELLO_BOARD_ID = BOARD_ID;
   process.env.ARRIVAL_LABEL_TRELLO_SIGN_SHIPPED_LIST_ID = SOURCE_LIST_ID;
   process.env.ARRIVAL_LABEL_TRELLO_SIGN_ARRIVED_LIST_ID = TARGET_LIST_ID;
-  globalThis.fetch = fetchImplementation;
+  process.env.SUPABASE_URL = 'https://database.example.invalid';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only';
+  globalThis.fetch = async (input, init) => String(input).includes('/rest/v1/arrival_label_first_parcels')
+    ? Response.json([]) : fetchImplementation(input, init);
   try {
     return await run();
   } finally {
@@ -171,4 +176,21 @@ test("Trello move has no automatic retry after dispatch begins", async () => {
     );
   });
   assert.equal(moveCalls, 1);
+});
+
+test('a pinned multi-parcel card never moves, even after its first print', async () => {
+  let mutations = 0;
+  await withTrelloEnvironment(async (input, init) => {
+    if (init?.method === 'PUT') mutations++;
+    return exactReadResponse(String(input));
+  }, async () => {
+    const oldFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => String(input).includes('/rest/v1/arrival_label_first_parcels')
+      ? Response.json([{trello_card_id:CARD_ID,tracking_numbers:[TRACKING,'1123456789','2234567890'],blocked_reason:null}])
+      : oldFetch(input, init);
+    await assert.rejects(inspectExactTrelloArrivalTarget({cardId:CARD_ID,expectedTrackingNumber:TRACKING}),
+      (e: unknown) => e instanceof TrelloArrivalProjectionError && e.code === 'trello_arrival_partial_parcels');
+    await assert.rejects(moveInspectedTrelloCardToSignArrivedTopOnce({cardId:CARD_ID,targetListId:TARGET_LIST_ID,alreadyAtTarget:false,authentication:{key:'test',token:'test'}}), /manuell/);
+  });
+  assert.equal(mutations, 0);
 });

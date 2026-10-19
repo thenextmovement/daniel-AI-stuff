@@ -91,3 +91,14 @@ test("processed artifacts use a controlled case directory and full DHL number", 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('first-of-three overlay retains six digits and manual parcel count inside the safe area', async () => {
+  const result = await annotateDpdLabelPdf(await syntheticLabel(), '0012345678', layout, 'main', 3);
+  assert.equal(result.qa.overlayText, '345678 Paket 1 von 3');
+  assert.equal(result.qa.ok, true);
+  const text = await extractPdfText(result.pdf);
+  assert.match(text, /345678/);
+  assert.match(text, /Paket 1 von 3/);
+  assert.match(text, /01476817678011/);
+  await assert.rejects(annotateDpdLabelPdf(await syntheticLabel(), '0012345678', layout, 'acrylic_table_device', 3), /manuell/);
+});

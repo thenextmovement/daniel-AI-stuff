@@ -1,4 +1,4 @@
-import { resolveCardDhlTracking } from "./tracking";
+import { cardDhlNumbers, resolveCardDhlTracking } from "./tracking";
 import { createHash } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 
@@ -541,7 +541,10 @@ function dateTextMatches(text: string, localDate: string) {
 }
 
 export function findTrelloCardForTracking(cards: TrelloCardEvidence[], trackingNumber: string) {
-  const matches = cards.filter((card) => resolveCardDhlTracking(card.name, card.trackingField).trackingNumber === trackingNumber);
+  const matches = cards.filter((card) => cardDhlNumbers(card.name, card.trackingField).includes(trackingNumber));
+  if (matches.length === 1 && resolveCardDhlTracking(matches[0].name, matches[0].trackingField).trackingNumber !== trackingNumber) {
+    return { card: null, error: "Nur die erste DHL-Nummer im Trackingfeld darf automatisch bearbeitet werden." };
+  }
   if (matches.length === 1) return { card: matches[0], error: null as string | null };
   if (matches.length === 0) return { card: null, error: `Keine Trello-Karte enthaelt ${trackingNumber}.` };
   return { card: null, error: `${matches.length} Trello-Karten enthalten ${trackingNumber}.` };

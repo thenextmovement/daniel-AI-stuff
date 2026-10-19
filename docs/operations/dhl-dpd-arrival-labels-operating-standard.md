@@ -143,3 +143,15 @@ The existing n8n 17TRACK time gate was separately changed to 09:00, 11:00, 13:00
 Device priority/fallback, private Kai error-outbox integration, scoped Leo API access and Daniel/Fabienne device acceptance remain open. Existing local scheduler and printers are not deactivated or replaced by this candidate. Do not identify unit tests as a real carrier purchase/print test.
 
 Candidate follow-up: before carrier-gated purchase or print dispatch, re-read the live Quentin board and require the same unique card/tracking association and a known non-manual list. Changed/conflicting tracking, a duplicate card, archived/missing card, foreign board or unavailable list evidence blocks dispatch. This uses the existing Trello reader and remains behind the carrier-release flag. Two regression tests failed before the fix; all 41 carrier/dispatch tests and TypeScript passed afterward. No production activation.
+
+## First parcel of a multi-DHL card — 2026-10-19 candidate
+
+Rahim approved the first DHL number in the Tracking custom field as the sole automatic outgoing parcel; all remaining parcels stay manual. The first number must have its own current Germany/customs release. Title numbers must belong to the field list, and duplicate card associations still block release.
+
+Before creating the first purchase plan, persist the complete ordered list in `arrival_label_first_parcels`. Once pinned, reordering, replacing or removing numbers blocks dispatch rather than selecting another parcel. Existing purchase, label or print evidence on the card requires manual reconciliation. Database locking binds the card to one purchase case, including concurrent retries. Multi-parcel cards do not automatically create an acrylic-table-device second label; single-parcel behavior is unchanged.
+
+The main label contains its six DHL suffix digits plus `Paket 1 von N`, on two lines inside the existing protected layout. Artifact registration requires this exact QA text. Both projection enqueue and the live Trello writer keep the shared card open for manual parcels. No historical queue is reset or replayed.
+
+Candidate verification: focused TypeScript/PDF tests and disposable, network-isolated PostgreSQL tests using the real migrations cover concurrency, immutable selection, historical evidence, exact overlay registration, open partial cards and unchanged single-card acrylic behavior. This is not a real purchase or physical print acceptance.
+
+Deployment requires exact-commit approval. Check for in-flight purchases/prints and defer the schema/application switch if needed; apply `20261019160000_arrival_first_parcel.sql` before the matching application and align the pinned DHL worker. Preserve the immutable selection and purchase evidence on rollback; disable new preparation/dispatch before reverting software. No n8n workflow activation change is part of this candidate. Existing private alert paths and digest limits remain unchanged.
