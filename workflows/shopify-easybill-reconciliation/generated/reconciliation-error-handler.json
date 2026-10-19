@@ -1,0 +1,203 @@
+{
+  "name": "NEONTRIP Shopify ↔ Easybill Reconciliation Error Alert v1.0",
+  "nodes": [
+    {
+      "id": "error-trigger",
+      "name": "Reconciliation Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        20,
+        260
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "prepare-technical-alert",
+      "name": "Prepare Technical Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        260
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first().json || {};\nconst execution = input.execution || {};\nconst workflow = input.workflow || {};\nconst error = execution.error || input.error || {};\nconst escapeHtml = (value) => String(value ?? '')\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;')\n  .replace(/'/g, '&#039;');\nconst day = $now.setZone('Europe/Berlin').toISODate();\nconst fingerprint = [day, workflow.id || workflow.name, execution.lastNodeExecuted, error.message].join(':');\nreturn [{ json: {\n  subject: 'Easy Bill & Shopify Abweichung',\n  alertFingerprint: fingerprint,\n  workflowId: workflow.id || null,\n  workflowName: workflow.name || null,\n  executionId: execution.id || null,\n  failedNode: execution.lastNodeExecuted || null,\n  errorMessage: error.message || 'Unbekannter technischer Fehler',\n  body_html: '<h2>Easybill &amp; Shopify Abweichung</h2>' +\n    '<p>Der taegliche Abgleich konnte technisch nicht abgeschlossen werden.</p>' +\n    '<ul><li>Workflow: ' + escapeHtml(workflow.name || workflow.id || 'unbekannt') + '</li>' +\n    '<li>Execution: ' + escapeHtml(execution.id || 'unbekannt') + '</li>' +\n    '<li>Knoten: ' + escapeHtml(execution.lastNodeExecuted || 'unbekannt') + '</li>' +\n    '<li>Fehler: ' + escapeHtml(error.message || 'unbekannt') + '</li></ul>' +\n    '<p>Es wurden keine Shopify- oder Easybill-Daten veraendert.</p>',\n} }];"
+      }
+    },
+    {
+      "id": "technical-idempotency",
+      "name": "Technical Alert Idempotency",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        260
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first().json;\nconst state = $getWorkflowStaticData('global');\nstate.sentAlerts = state.sentAlerts || {};\nconst sentAt = state.sentAlerts[item.alertFingerprint] || null;\nreturn [{ json: { ...item, shouldSend: !sentAt, alreadySentAt: sentAt } }];"
+      }
+    },
+    {
+      "id": "technical-should-send",
+      "name": "Should Send Technical Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        740,
+        260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "technical-should-send-condition",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.shouldSend }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-technical-alert",
+      "name": "Send Technical Alert",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        980,
+        180
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "info@NeonTrip.de",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.body_html }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      }
+    },
+    {
+      "id": "mark-technical-sent",
+      "name": "Mark Technical Alert Sent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1220,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const alert = $('Technical Alert Idempotency').first().json;\nconst state = $getWorkflowStaticData('global');\nstate.sentAlerts = state.sentAlerts || {};\nstate.sentAlerts[alert.alertFingerprint] = $now.toISO();\nreturn [{ json: { status: 'technical_alert_sent', alertFingerprint: alert.alertFingerprint } }];"
+      }
+    },
+    {
+      "id": "technical-suppressed",
+      "name": "Duplicate Technical Alert Suppressed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        340
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { status: 'duplicate_technical_alert_suppressed', alertFingerprint: $json.alertFingerprint, alreadySentAt: $json.alreadySentAt } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Reconciliation Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Technical Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Technical Alert": {
+      "main": [
+        [
+          {
+            "node": "Technical Alert Idempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Technical Alert Idempotency": {
+      "main": [
+        [
+          {
+            "node": "Should Send Technical Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send Technical Alert?": {
+      "main": [
+        [
+          {
+            "node": "Send Technical Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate Technical Alert Suppressed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Technical Alert": {
+      "main": [
+        [
+          {
+            "node": "Mark Technical Alert Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true
+  }
+}
