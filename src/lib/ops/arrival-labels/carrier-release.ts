@@ -1,3 +1,4 @@
+import { assertFirstParcelDispatch } from './first-parcel';
 import { supabaseRequest, supabaseRpc } from '@/lib/quotes/supabase-rest';
 import { ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID, assessTrelloAutomationGate, findTrelloCardForTracking, type DhlArrival, type TrelloCardEvidence } from './domain';
 import { createTrelloClient } from './clients';
@@ -35,7 +36,7 @@ export async function loadCarrierReleasedArrivals(cards: TrelloCardEvidence[], l
   }
   const arrivals: DhlArrival[] = [];
   for (const [tracking, matchingCards] of candidates) {
-    if (matchingCards.length !== 1) continue;
+    if (matchingCards.length !== 1 || !findTrelloCardForTracking(cards, tracking).card) continue;
     const card = matchingCards[0];
     const shipment = await shipmentForTracking(tracking);
     if (!shipment) {
@@ -68,4 +69,5 @@ export async function assertCarrierReleaseForCase(caseId: string) {
     || !card.listId || !card.listName || assessTrelloAutomationGate(card).blocked) {
     throw new Error('Aktuelle Trello-Zuordnung oder Listenfreigabe fehlt; kein Dispatch.');
   }
+  await assertFirstParcelDispatch(card, row.incoming_dhl_tracking_number);
 }

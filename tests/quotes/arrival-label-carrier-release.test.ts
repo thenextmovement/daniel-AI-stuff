@@ -88,7 +88,7 @@ test('card resolver finds a custom-field-only number and rejects title/field con
   assert.equal(findTrelloCardForTracking([{...card,name:'1123456789'}], '0012345678').card,null);
 });
 
-async function integration(options: {present?:boolean; persist?:boolean; wrongCard?:boolean; duplicate?:boolean; released?:boolean; listId?:string; foreignBoard?:boolean; assertion?:boolean; changedTracking?:boolean; conflictingTracking?:boolean; manualList?:boolean; missingCard?:boolean; archivedCard?:boolean; duplicateLiveCard?:boolean; missingList?:boolean} = {}) {
+async function integration(options: {multi?:boolean; present?:boolean; persist?:boolean; wrongCard?:boolean; duplicate?:boolean; released?:boolean; listId?:string; foreignBoard?:boolean; assertion?:boolean; changedTracking?:boolean; conflictingTracking?:boolean; manualList?:boolean; missingCard?:boolean; archivedCard?:boolean; duplicateLiveCard?:boolean; missingList?:boolean} = {}) {
   const previousFetch = globalThis.fetch;
   const trelloEnvNames = ['TRELLO_API_KEY','TRELLO_TOKEN','ARRIVAL_LABEL_TRELLO_BOARD_ID'] as const;
   const previousTrelloEnv = Object.fromEntries(trelloEnvNames.map(key=>[key,process.env[key]]));
@@ -109,6 +109,7 @@ async function integration(options: {present?:boolean; persist?:boolean; wrongCa
       }
       throw new Error('Unexpected Trello endpoint');
     }
+    if (url.pathname.endsWith('arrival_label_first_parcels')) return Response.json([]);
     if (url.pathname.endsWith('arrival_label_cases')) return Response.json([{incoming_dhl_tracking_number:'0012345678',trello_card_id:'card1'}]);
     if (url.pathname.endsWith('inbound_shipments')) return Response.json(options.present === false ? [] : [{id:'shipment1',trello_card_id:options.wrongCard?'old-card':'card1',tracking_number:'0012345678',last_checked_at:new Date().toISOString(),status_reason:null}]);
     if (url.pathname.endsWith('inbound_tracking_events')) return Response.json(options.released === false ? [] : [event('Arrived at DHL Sort Facility',new Date(Date.now()-3600000).toISOString()),event('Clearance processing complete',new Date(Date.now()-3000000).toISOString())]);
@@ -116,7 +117,7 @@ async function integration(options: {present?:boolean; persist?:boolean; wrongCa
     throw new Error('Unexpected request');
   };
   try {
-    const card = {id:'card1',name:'#NEONT123',trackingField:'DHL 0012345678',url:'https://trello.example.invalid/card1',boardId:options.foreignBoard?'foreign':'62bae9b97705e7419ed64593',listId:options.listId || '69ff17bfab2afaaf96f7033a'};
+    const card = {id:'card1',name:'#NEONT123',trackingField:options.multi?'DHL 0012345678, DHL 1123456789, DHL 2234567890':'DHL 0012345678',url:'https://trello.example.invalid/card1',boardId:options.foreignBoard?'foreign':'62bae9b97705e7419ed64593',listId:options.listId || '69ff17bfab2afaaf96f7033a'};
     if (options.assertion) { await assertCarrierReleaseForCase('case1'); return {arrivals:[],calls,writes}; }
     const arrivals = await loadCarrierReleasedArrivals(options.duplicate ? [card,{...card,id:'card2'}]:[card], '2026-10-07',options.persist || false);
     return {arrivals,calls,writes};
@@ -159,4 +160,27 @@ test('dispatch stops when the live Trello tracking or card no longer matches the
 test('dispatch respects a newly selected manual Trello list and unavailable list evidence', async () => {
   await assert.rejects(integration({assertion:true,manualList:true}),/Trello/);
   await assert.rejects(integration({assertion:true,missingList:true}),/Trello/);
+});
+
+const three = 'DHL 0012345678, DHL 1123456789, DHL 2234567890';
+test('multiple parcels use exactly the first field number, preserving the ordered set', () => {
+  const resolved = resolveCardDhlTracking('#NEONT123', three);
+  assert.equal(resolved.trackingNumber, '0012345678');
+  assert.deepEqual(resolved.trackingNumbers, ['0012345678','1123456789','2234567890']);
+  assert.equal(resolveCardDhlTracking('1123456789 | #NEONT123', three).trackingNumber, '0012345678');
+  assert.equal(resolveCardDhlTracking('3345678901 | #NEONT123', three).trackingNumber, null);
+  assert.equal(resolveCardDhlTracking('#NEONT123', three + ', FedEx 3345678901').trackingNumber, null);
+  assert.equal(resolveCardDhlTracking('#NEONT123', three + ', 123').trackingNumber, null);
+});
+test('a secondary number on another card blocks ambiguous primary ownership', () => {
+  const card = {id:'one',name:'#NEONT123',url:'https://trello.example.invalid/one',trackingField:three};
+  assert.equal(findTrelloCardForTracking([card], '0012345678').card?.id, 'one');
+  assert.equal(findTrelloCardForTracking([card], '1123456789').card, null);
+  assert.equal(findTrelloCardForTracking([card,{...card,id:'two',trackingField:'DHL 3345678901, DHL 0012345678'}], '0012345678').card, null);
+});
+
+test('only the first package own carrier evidence can release a multi-package card', async () => {
+  const released = await integration({multi:true});
+  assert.deepEqual(released.arrivals.map(a=>a.trackingNumber),['0012345678']);
+  assert.equal((await integration({multi:true,released:false})).arrivals.length,0);
 });

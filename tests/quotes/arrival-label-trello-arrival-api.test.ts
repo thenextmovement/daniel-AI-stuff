@@ -81,6 +81,7 @@ test("Trello arrival processor marks dispatching before exactly one move", async
     const actions: string[] = [];
     globalThis.fetch = async (input, init) => {
       const url = String(input);
+      if (url.includes("/arrival_label_first_parcels")) return Response.json([]);
       if (url.includes("/rpc/arrival_labels_claim_trello_arrival")) {
         actions.push("claim");
         return Response.json([{
@@ -124,6 +125,7 @@ test("post-dispatch Trello failure becomes manual review and is not retried", as
     let moveCalls = 0;
     globalThis.fetch = async (input, init) => {
       const url = String(input);
+      if (url.includes("/arrival_label_first_parcels")) return Response.json([]);
       if (url.includes("/rpc/arrival_labels_claim_trello_arrival")) {
         return Response.json([{ id: JOB_ID, trello_card_id: CARD_ID, expected_tracking_number: TRACKING, status: "claimed" }]);
       }

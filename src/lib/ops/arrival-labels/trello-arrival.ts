@@ -1,3 +1,4 @@
+import { loadFirstParcelSelection } from "./first-parcel";
 import { ArrivalIntegrationError, fetchWithRetry, requiredEnv } from "./clients";
 import {
   ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID,
@@ -94,6 +95,9 @@ export async function inspectExactTrelloArrivalTarget(input: {
     throw new TrelloArrivalProjectionError("Trello-Karte oder DHL-Sendungsnummer ist ungueltig.", "trello_arrival_target_invalid");
   }
 
+  if (await loadFirstParcelSelection(cardId)) {
+    throw new TrelloArrivalProjectionError("Weitere Pakete bleiben manuell; Trello-Karte bleibt offen.", "trello_arrival_partial_parcels");
+  }
   const authentication = { key: requiredEnv("TRELLO_API_KEY"), token: requiredEnv("TRELLO_TOKEN") };
   const boardId = configuredId("ARRIVAL_LABEL_TRELLO_BOARD_ID", ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID);
   const sourceListId = configuredId("ARRIVAL_LABEL_TRELLO_SIGN_SHIPPED_LIST_ID", ARRIVAL_LABEL_SIGN_SHIPPED_LIST_ID);
@@ -170,6 +174,9 @@ export async function inspectExactTrelloArrivalTarget(input: {
 export async function moveInspectedTrelloCardToSignArrivedTopOnce(target: InspectedTrelloArrivalTarget) {
   if (target.alreadyAtTarget) return { movedCardId: target.cardId, alreadyAtTarget: true };
 
+  if (await loadFirstParcelSelection(target.cardId)) {
+    throw new TrelloArrivalProjectionError("Weitere Pakete bleiben manuell; Trello-Karte bleibt offen.", "trello_arrival_partial_parcels");
+  }
   const url = trelloUrl(`/1/cards/${encodeURIComponent(target.cardId)}`, target.authentication);
   const body = new URLSearchParams({ idList: target.targetListId, pos: "top" });
   let response: Response;

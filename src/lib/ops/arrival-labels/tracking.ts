@@ -1,16 +1,23 @@
 // DHL Express uses ten-digit waybills. Never coerce these identifiers to numbers.
+export function cardDhlNumbers(title: string, field?: string | null) {
+  return [...new Set(`${title} ${field || ''}`.match(/(?<![\d+])\d{10}(?!\d)/g) || [])];
+}
+
 export function resolveCardDhlTracking(title: string, field?: string | null) {
-  const numbers = (value: string) => [...new Set(value.match(/(?<![\d+])\d{10}(?!\d)/g) || [])];
-  const titleNumbers = numbers(title);
+  const titleNumbers = cardDhlNumbers(title);
   const raw = String(field || '').trim();
-  const fieldNumbers = numbers(raw);
-  if (raw && (/\b(fedex|dpd|ups|usps)\b/i.test(raw) || fieldNumbers.length !== 1)) {
-    return { trackingNumber: null, reason: 'invalid_tracking_field' };
+  const fieldNumbers = cardDhlNumbers('', raw);
+  const invalid = (reason: string) => ({ trackingNumber: null, trackingNumbers: [] as string[], reason });
+  // Preserve single-number fields. Multi-package fields must be a complete DHL-only list.
+  if (raw && (/\b(fedex|dpd|ups|usps)\b/i.test(raw) || !fieldNumbers.length || fieldNumbers.length > 99
+    || (fieldNumbers.length > 1 && !/^(?:DHL\s*)?\d{10}(?:[\s,;|/]+(?:DHL\s*)?\d{10})*$/i.test(raw)))) {
+    return invalid('invalid_tracking_field');
   }
-  if (titleNumbers.length > 1 || (fieldNumbers.length && titleNumbers.length && fieldNumbers[0] !== titleNumbers[0])) {
-    return { trackingNumber: null, reason: 'conflicting_tracking' };
+  if ((!raw && titleNumbers.length > 1) || (raw && titleNumbers.some(n => !fieldNumbers.includes(n)))) {
+    return invalid('conflicting_tracking');
   }
-  return { trackingNumber: fieldNumbers[0] || titleNumbers[0] || null, reason: null };
+  const trackingNumbers = raw ? fieldNumbers : titleNumbers;
+  return { trackingNumber: trackingNumbers[0] || null, trackingNumbers, reason: null };
 }
 
 export type DhlReleaseEvent = { event_time: string; event_location: string | null; carrier_status_text: string | null };
