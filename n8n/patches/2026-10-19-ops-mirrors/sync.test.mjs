@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {validateBankItems,validateShopifyPages,verifyMirrorWrite} from './sync.mjs';
+import {validateBankItems,validateShopifyPages,verifyMirrorWrite,patchWorkflow} from './sync.mjs';
 const tx={id:'01a15049-e8d4-72c4-b2df-fcfe2cac4031',transaction_id:'bank-tx-1',amount:119,side:'credit',currency:'EUR'};
 test('bank rejects partial/error rows and duplicates before any upsert',()=>{
  assert.equal(validateBankItems([{json:tx}]).length,1);
@@ -28,4 +28,15 @@ test('mirror alerts report process and required action without customer data or 
  const r=mirrorFailureAlert({workflow:{id:'FyZCGkPNoA6EQI3N'},execution:{id:'123',error:{message:'SECRET_CUSTOMER_DATA'}}});
  assert.equal(r.emailRecipient,'support@neontrip.de');assert.match(r.emailSubject,/Bankspiegel/);assert.doesNotMatch(JSON.stringify(r),/SECRET_CUSTOMER_DATA/);assert.match(r.emailBody,/vollständigen Abgleich/);
  assert.equal(mirrorFailureAlert({workflow:{id:'unrelated'}}),null);
+});
+
+test('credit balances remain valid Shopify source data',()=>{
+ assert.equal(validateShopifyPages([page([{...order(1),total_outstanding:'-444.00'}])],1).length,1);
+});
+test('mirror writes are throttled without touching existing nodes',()=>{
+ const untouched={id:'other',name:'Other',parameters:{keep:true}};
+ const original={id:'FyZCGkPNoA6EQI3N',nodes:[{id:'map',parameters:{jsCode:'const items = $input.all(); return items;'}},{id:'qonto',name:'Qonto: Transaktionen',parameters:{}},{id:'sb',parameters:{url:'https://example.invalid?on_conflict=id',headerParameters:{parameters:[{name:'Prefer',value:'old'}]},options:{}}},untouched],connections:{},settings:{}};
+ const patched=patchWorkflow(original,'bank');
+ assert.deepEqual(patched.nodes.find(n=>n.id==='sb').parameters.options.batching,{batch:{batchSize:1,batchInterval:1000}});
+ assert.deepEqual(patched.nodes.find(n=>n.id==='other'),untouched);
 });

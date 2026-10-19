@@ -20,7 +20,7 @@ export function validateShopifyPages(items, expectedCount) {
     const hasNext=/rel="next"/.test(link);
     if (hasNext !== (index < items.length-1)) throw Error('SHOPIFY_MIRROR_TERMINAL_PAGE_MISSING');
     for (const o of p.body.orders) {
-      if (!/^\d+$/.test(String(o.id||'')) || ids.has(String(o.id)) || !o.name || [o.total_outstanding,o.total_price].some(v=>v==null||String(v).trim()===''||!Number.isFinite(Number(v))||Number(v)<0) || !/^[A-Z]{3}$/.test(o.currency||'') || typeof o.test!=='boolean' || !Number.isFinite(Date.parse(o.updated_at))) throw Error('SHOPIFY_MIRROR_ORDER_INVALID');
+      if (!/^\d+$/.test(String(o.id||'')) || ids.has(String(o.id)) || !o.name || [o.total_outstanding,o.total_price].some(v=>v==null||String(v).trim()===''||!Number.isFinite(Number(v))) || Number(o.total_price)<0 || !/^[A-Z]{3}$/.test(o.currency||'') || typeof o.test!=='boolean' || !Number.isFinite(Date.parse(o.updated_at))) throw Error('SHOPIFY_MIRROR_ORDER_INVALID');
       ids.add(String(o.id));
     }
     out.push({json:p.body});
@@ -74,7 +74,7 @@ export function patchWorkflow(original,source) {
   w.connections['Mirror every 15 minutes']={main:[[{node:source==='bank'?'Qonto: Transaktionen':'Prepare Sync Scope',type:'main',index:0}]]};
   write.parameters.url+='&select='+(source==='bank'?'id':'shopify_order_id');
   write.parameters.headerParameters.parameters.find(h=>h.name==='Prefer').value='resolution=merge-duplicates,return=representation';
-  write.parameters.options={...write.parameters.options,timeout:60000,response:{response:{responseFormat:'json',fullResponse:true}}};
+  write.parameters.options={...write.parameters.options,timeout:60000,batching:{batch:{batchSize:1,batchInterval:1000}},response:{response:{responseFormat:'json',fullResponse:true}}};
   w.nodes.push({id:'verify-sync-write',name:'Verify Mirror Write',type:'n8n-nodes-base.code',typeVersion:2,position:[940,300],parameters:{jsCode:'return ('+verifyMirrorWrite.toString()+')($input.all(),$(\'Mappen + Batchen\').all(),'+JSON.stringify(source)+');'}});
   w.nodes.push({id:'sync-audit',name:'Record Verified Sync',type:'n8n-nodes-base.httpRequest',typeVersion:4.2,position:[1160,300],retryOnFail:true,maxTries:3,credentials:write.credentials,parameters:{method:'POST',url:'https://klibiejfisijpagzkxls.supabase.co/rest/v1/workflow_audit_log',authentication:'genericCredentialType',genericAuthType:'httpHeaderAuth',sendHeaders:true,headerParameters:{parameters:[{name:'Content-Type',value:'application/json'},{name:'Prefer',value:'return=minimal'}]},sendBody:true,specifyBody:'json',jsonBody:'={{ JSON.stringify($json) }}',options:{timeout:60000}}});
   w.connections['Supabase: Upsert']={main:[[{node:'Verify Mirror Write',type:'main',index:0}]]};
