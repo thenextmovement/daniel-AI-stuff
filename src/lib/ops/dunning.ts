@@ -848,6 +848,36 @@ export function dunningCaseMatchesQuery(
     });
 }
 
+type PaymentReviewRow = Pick<WorkflowAuditRow, "id" | "action" | "status" | "metadata" | "created_at">;
+
+function fullyPaidReview(review: PaymentReviewRow | undefined, order: ShopifyOrderRow | null,
+  invoiceId: unknown, now: Date) {
+  const m = review?.metadata;
+  if (!m || review?.status !== "success" || review.action !== "ops_dunning_payment_review" ||
+      m.schema !== "dunning.payment-review.v1" || m.source !== "easybill_live" || m.outcome !== "paid" ||
+      !order || m.shopify_order_id !== order.shopify_order_id ||
+      normalizeDunningOrderNumber(m.order_number) !== normalizeDunningOrderNumber(order.name) ||
+      m.currency !== order.currency || !cleanText(m.reviewed_by) ||
+      !/^[0-9]+$/.test(String(m.invoice_id || "")) ||
+      (invoiceId && String(invoiceId) !== m.invoice_id)) return false;
+  const gross = numericCents(order.total_price), paidAt = validIso(m.paid_at), observed = validIso(m.observed_at);
+  if (!gross || m.gross_cents !== gross || m.paid_cents !== gross || m.fee_cents !== 0 ||
+      !paidAt || !observed || Date.parse(paidAt) > Date.parse(observed) ||
+      Date.parse(observed) > now.getTime() || !validIso(review.created_at) ||
+      Date.parse(review.created_at) < Date.parse(observed) || Date.parse(review.created_at) > now.getTime() ||
+      !Array.isArray(m.payments) || !m.payments.length) return false;
+  const ids = new Set<string>();
+  let total = 0;
+  for (const value of m.payments) {
+    const p = recordValue(value), id = String(p.id || ""), at = validIso(p.payment_at);
+    if (!/^[0-9]+$/.test(id) || ids.has(id) || p.is_overdue_fee !== false ||
+        !Number.isSafeInteger(p.amount_cents) || Number(p.amount_cents) <= 0 ||
+        !at || Date.parse(at) > Date.parse(observed)) return false;
+    ids.add(id); total += Number(p.amount_cents);
+  }
+  return total === gross;
+}
+
 export function buildDunningCases(input: {
   orders: ShopifyOrderRow[];
   statuses: DunningStatusRow[];
@@ -866,9 +896,18 @@ export function buildDunningCases(input: {
   shipments?: DunningShipmentRow[];
   bankPayments?: QontoPaymentCreditRow[];
   reviewedPayments?: ReadonlyMap<string, ReviewedPayment>;
+  paymentReviews?: PaymentReviewRow[];
   now?: Date;
 }) {
   const now = input.now || new Date();
+  // The newest review wins, including a revoked/invalid review. A later
+  // reconciliation can therefore withdraw a previous settlement explicitly.
+  const paymentReviewByOrder = new Map<string, PaymentReviewRow>();
+  for (const review of [...(input.paymentReviews || [])].sort((a,b) =>
+    Date.parse(b.created_at) - Date.parse(a.created_at) || b.id.localeCompare(a.id))) {
+    const number = normalizeDunningOrderNumber(review.metadata?.order_number);
+    if (number && !paymentReviewByOrder.has(number)) paymentReviewByOrder.set(number, review);
+  }
   const statusByOrder = new Map(
     input.statuses.map((row) => [
       normalizeDunningOrderNumber(row.shopify_order_number),
@@ -1188,6 +1227,9 @@ export function buildDunningCases(input: {
     const bankRemainingCents = matchingBankCents > 0 ? Math.min(sourceAmountCents,
       Math.max(0, orderTotalCents - matchingBankCents)) : sourceAmountCents;
     const bankPaymentsCents = sourceAmountCents - bankRemainingCents;
+    // A reviewed ledger receipt is a settled invoice, not a new bank receipt
+    // to subtract a second time. Keep the provider fields and all holds intact.
+    if (fullyPaidReview(paymentReviewByOrder.get(orderNumber), order, candidate?.easybill_document_id, now)) continue;
     const review = input.reviewedPayments?.get(orderNumber);
     const validReview = review && review.shopifyOrderId === orderId &&
       review.grossCents === orderTotalCents &&
@@ -2150,6 +2192,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     courtEvents,
     historicalAudits,
     phoneCallAudits,
+    paymentReviews,
   ] = await Promise.all([
     supabaseRequest<DunningStatusRow[]>("dunning_status", undefined, {
       select:
@@ -2203,6 +2246,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       action:"eq.daily_35_day_dunning_audit", order:"created_at.desc", limit:1,
     }),
     loadCompleteMirror<WorkflowAuditRow>("workflow_audit_log", "id", "id,metadata,created_at", { action: "eq.ops_dunning_phone_call" }),
+    loadCompleteMirror<PaymentReviewRow>("workflow_audit_log", "id", "id,action,status,metadata,created_at", { action: "eq.ops_dunning_payment_review" }),
   ]);
 
   const latestAudit = latestIntakeAudits[0] || null;
@@ -2345,6 +2389,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     shipments,
     bankPayments: bankPaymentRefresh.payments,
     reviewedPayments,
+    paymentReviews,
     invoiceEvidence,
   });
   for (const entry of cases) entry.phoneCalls = phoneCallAudits

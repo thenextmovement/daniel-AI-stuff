@@ -1158,3 +1158,41 @@ test("hold tag matching preserves whitespace and unicode normalization", () => {
     assert.ok(entry.blockers.some(reason => reason.includes(tags.replace(/\s+/g, " "))));
   }
 });
+
+function paymentReview(overrides: Record<string, unknown> = {}) {
+  return { id: 'payment-review-1', action: 'ops_dunning_payment_review', status: 'success', created_at: '2026-08-24T10:00:00Z',
+    metadata: {schema:'dunning.payment-review.v1', order_number:'#NEONT5000', shopify_order_id:'1234567890',
+      outcome:'paid', currency:'EUR', gross_cents:11900, paid_cents:11900, fee_cents:0, invoice_id:'88001',
+      invoice_number:'#NEONT5000', paid_at:'2026-08-20', observed_at:'2026-08-24T09:59:00Z', source:'easybill_live',
+      reviewed_by:'operator', payments:[{id:'901',amount_cents:11900,is_overdue_fee:false,payment_at:'2026-08-20'}], ...overrides} };
+}
+
+test('verified full Easybill receipt excludes an unpaid Shopify mirror from open receivables', () => {
+  const cases = buildDunningCases({...input(), paymentReviews:[paymentReview()]} as BuildInput);
+  assert.equal(cases.length, 0);
+});
+
+test('fee rows and mismatched or revoked receipt reviews never close an unpaid order', () => {
+  for (const overrides of [
+    {outcome:'unpaid'}, {shopify_order_id:'999'}, {gross_cents:12000}, {currency:'USD'},
+    {paid_cents:11800}, {paid_at:null}, {source:'email_claim'},
+    {payments:[{id:'901',amount_cents:-500,is_overdue_fee:true,payment_at:'2026-08-20'}]},
+    {payments:[{id:'901',amount_cents:11900,is_overdue_fee:true,payment_at:'2026-08-20'}]},
+    {payments:[{id:'901',amount_cents:11900,is_overdue_fee:false,payment_at:'2026-08-20'}, {id:'901',amount_cents:11900,is_overdue_fee:false,payment_at:'2026-08-20'}]},
+  ]) assert.equal(buildDunningCases({...input(),paymentReviews:[paymentReview(overrides)]} as BuildInput).length,1);
+  const revoked = {...paymentReview({outcome:'revoked'}),id:'new',created_at:'2026-08-25T10:00:00Z'};
+  assert.equal(buildDunningCases({...input(),paymentReviews:[paymentReview(),revoked]} as BuildInput).length,1);
+});
+
+test('settlement review clears the positive-balance paid anomaly without clearing a separate unpaid hold', () => {
+  assert.equal(buildDunningCases({...input({orders:[order({financial_status:'paid'})]}),paymentReviews:[paymentReview()]} as BuildInput).length,0);
+  const paused = {shopify_order_number:'#NEONT5000',mahnstufe:1,last_sent_at:null,next_due_at:null,paused:true,note:'Kundeneinwand',updated_by:'operator',updated_at:'2026-08-20T10:00:00Z'};
+  const [held] = buildDunningCases({...input({statuses:[paused]}),paymentReviews:[paymentReview({outcome:'unpaid'})]} as BuildInput);
+  assert.equal(held.paused,true); assert.equal(held.sendEligible,false); assert.equal(held.amountCents,11900);
+});
+
+test('future evidence and payment reviews for another invoice never hide a receivable', () => {
+  for (const patch of [{invoice_id:'999'}, {observed_at:'2027-01-01'}, {payments:[]}, {fee_cents:500}]) {
+    assert.equal(buildDunningCases({...input(),paymentReviews:[paymentReview(patch)]} as BuildInput).length,1);
+  }
+});
