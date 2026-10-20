@@ -81,8 +81,14 @@ export function validManualPaidClaim(value: unknown): value is ManualPaidClaimRe
 export function validManualPaidCompletion(value: unknown): value is ManualPaidCompletion {
   if (!object(value) || value.scope !== MANUAL_PAID_SCOPE || !text(value.leaseToken, 1, 100) || !orderId(value.executionId) ||
     !integer(value.inputGeneration, 1, 2_147_483_647) || !fingerprint(value.inputFingerprint) || !fingerprint(value.bindingFingerprint) ||
-    !["EXACT_INVOICE_PAID", "NOT_MANUAL_PAID", "EASYBILL_PROJECTION_VERIFIED", "BILLING_PAYMENTS_REGISTERED", "REVIEW_REQUIRED", "OUTCOME_UNKNOWN", "EXECUTION_FAILED"].includes(String(value.outcome)) ||
+    !["EXACT_INVOICE_PAID", "NOT_MANUAL_PAID", "EASYBILL_PROJECTION_VERIFIED", "BILLING_PAYMENTS_REGISTERED", "REVIEW_REQUIRED", "OUTCOME_UNKNOWN", "EXECUTION_FAILED", "READ_RETRY_REQUIRED"].includes(String(value.outcome)) ||
     (value.reasonCode != null && !text(value.reasonCode, 1, 200))) return false;
+  if (value.outcome === "READ_RETRY_REQUIRED") {
+    const proof = value.proof;
+    if (!object(proof) || proof.stage !== "READ_SHOPIFY_TRANSACTIONS" || proof.requestMethod !== "GET" ||
+      proof.httpStatus !== 429 || proof.sideEffectsStarted !== false || !orderId(proof.shopifyOrderId) ||
+      !integer(proof.retryAfterSeconds, 300, 900) || value.reasonCode !== "SHOPIFY_READ_RATE_LIMIT") return false;
+  }
   if (value.outcome === "EXACT_INVOICE_PAID") {
     const proof = value.proof;
     if (!object(proof) || !orderId(proof.easybillDocumentId) || !integer(proof.invoiceAmountCents, 1, 999_999_999_999_999) ||

@@ -4,6 +4,8 @@ import { NextRequest } from "next/server";
 import { POST as claim } from "@/app/api/internal/billing/jobs/claim/route";
 import { POST as complete } from "@/app/api/internal/billing/jobs/[jobId]/complete/route";
 import { validManualPaidClaim, validManualPaidCompletion, manualPaidSourceRevision } from "@/lib/ops/billing/manual-paid-reconciliation";
+// @ts-expect-error Existing n8n JavaScript source has no TypeScript declaration.
+import { readRateLimitContext } from "../../scripts/manual_paid_read_rate_limit.mjs";
 
 const base = { scope: "MANUAL_SHOPIFY_PAID", operation: "claim", worker: "manual-paid-test", executionId: "42", jobTypes: ["RECONCILE"], candidates: [] };
 const candidate = { origin: "handoff", shopifyOrderId: "8000", shopifyOrderName: "#NEONT8000", amountCents: 1000, currency: "EUR" };
@@ -31,6 +33,28 @@ test("Outlook acceptance requires the direct true result, not an invented messag
   const paid = { ...completion, outcome: "EXACT_INVOICE_PAID", alert: null, proof: { easybillDocumentId: "123", easybillNumber: "#NEONT8000", invoiceAmountCents: 1000, expectedAmountCents: 1000, paidCents: 1000, currency: "EUR" } };
   assert.equal(validManualPaidCompletion(paid), true);
   assert.equal(validManualPaidCompletion({ ...paid, proof: { ...paid.proof, paidCents: 999 } }), false);
+});
+
+test("only a proven Shopify GET 429 before effects may defer the existing job", () => {
+  const meta = { shopifyOrderId: "8000", _manualPaidMode: "canonical", _manualPaidReconcile: completion };
+  const ctx = readRateLimitContext({ error: { httpCode: "429" } }, meta);
+  const retry = { ...completion, alert: null, outcome: ctx._manualPaidOutcome, reasonCode: ctx.reasonCode, proof: ctx._manualPaidProof };
+  assert.equal(validManualPaidCompletion(retry), true);
+  for (const proof of [
+    { ...retry.proof, requestMethod: "POST" }, { ...retry.proof, stage: "REGISTER_PAYMENT" },
+    { ...retry.proof, httpStatus: 500 }, { ...retry.proof, sideEffectsStarted: true },
+    { ...retry.proof, retryAfterSeconds: 299 }, { ...retry.proof, retryAfterSeconds: 901 },
+    { ...retry.proof, retryAfterSeconds: 300.5 }, { ...retry.proof, shopifyOrderId: "" },
+  ]) assert.equal(validManualPaidCompletion({ ...retry, proof }), false);
+  assert.equal(validManualPaidCompletion({ ...retry, alert: completion.alert }), false);
+  for (const input of [{}, { error: "429" }, { error: { httpCode: 401 } }, { error: { httpCode: 500 } },
+    { error: { httpCode: 429, statusCode: 502 } }, { error: { message: "timeout" } }]) {
+    assert.throws(() => readRateLimitContext(input, meta));
+  }
+  assert.throws(() => readRateLimitContext({ error: { httpCode: 429 } }, { ...meta, _manualPaidReconcile: null }));
+  assert.throws(() => readRateLimitContext({ error: { httpCode: 429 } }, { ...meta, _manualPaidMode: "legacy" }));
+  assert.equal(readRateLimitContext({ error: { statusCode: 429, headers: { "Retry-After": "600" } } }, meta)._manualPaidProof.retryAfterSeconds, 600);
+  assert.throws(() => readRateLimitContext({ error: { statusCode: 429, headers: { "Retry-After": "901" } } }, meta));
 });
 
 test("existing authenticated routes dispatch only the explicit scope and never retry POST", async () => {
