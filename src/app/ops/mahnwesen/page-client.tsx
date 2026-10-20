@@ -4,6 +4,7 @@ import { nominationBlockers } from "@/lib/ops/dunning-court-nomination";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type ReactNode,
@@ -81,6 +82,7 @@ type Filters = {
   orderAge: DunningOrderAgeFilter;
   orderYear: DunningOrderYearFilter;
   hideCreatedCourtApplications: boolean;
+  hideBlocked: boolean;
   onlyCourtNominations: boolean;
   delivery: "all" | "fulfilled" | "tracking" | "delivered" | "evidence_missing";
   insolvency: "all" | "pending" | "checked" | "notice" | "review" | "failed";
@@ -93,7 +95,8 @@ const INITIAL_FILTERS: Filters = {
   stage: "all",
   orderAge: "all",
   orderYear: "all",
-  hideCreatedCourtApplications: false,
+  hideCreatedCourtApplications: true,
+  hideBlocked: true,
   onlyCourtNominations: false,
   delivery: "all",
   insolvency: "all",
@@ -197,6 +200,7 @@ function OrderLinks({ entry }: { entry: DunningCaseSummary }) {
 function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
   const visible = cases.filter((entry) => {
     if (filters.onlyCourtNominations && !entry.courtNomination) return false;
+    if (filters.hideBlocked && (entry.paused || entry.stopTag)) return false;
     if (!caseMatchesQuery(entry, filters.query)) return false;
     if (!matchesDunningStatus(entry, filters.status)) return false;
     if (!matchesDunningStage(entry.currentStage, filters.stage)) return false;
@@ -206,7 +210,7 @@ function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
       return false;
     if (
       filters.hideCreatedCourtApplications &&
-      hasCreatedDunningCourtApplication(entry.courtEvents)
+      (Boolean(entry.courtNomination) || hasCreatedDunningCourtApplication(entry.courtEvents))
     )
       return false;
     if (
@@ -410,6 +414,7 @@ function FilterPanel({
     filters.orderYear !== "all",
     filters.hideCreatedCourtApplications,
     filters.onlyCourtNominations,
+    filters.hideBlocked,
     filters.delivery !== "all",
     filters.insolvency !== "all",
   ].filter(Boolean).length;
@@ -633,25 +638,28 @@ function FilterPanel({
             <option value="failed">Technischer Fehler</option>
           </SelectField>
           <label className="flex items-center gap-2 rounded-xl border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs font-semibold">
-            <input type="checkbox" checked={filters.onlyCourtNominations} onChange={event => update("onlyCourtNominations", event.target.checked)} />
+            <input type="checkbox" checked={filters.onlyCourtNominations} onChange={event => { const checked = event.target.checked; setFilters(current => ({...current, onlyCourtNominations: checked, hideCreatedCourtApplications: checked ? false : current.hideCreatedCourtApplications})); }} />
             Gelber Brief: nur vorgemerkt
+          </label>
+          <label className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold">
+            <input type="checkbox" checked={filters.hideBlocked} onChange={event => update("hideBlocked", event.target.checked)} />
+            Gesperrte Fälle ausblenden
           </label>
           <label className="flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2 sm:col-span-2 lg:col-span-3 xl:col-span-2">
             <input
               type="checkbox"
               checked={filters.hideCreatedCourtApplications}
               onChange={(event) =>
-                update("hideCreatedCourtApplications", event.target.checked)
+                setFilters(current => ({...current, hideCreatedCourtApplications: event.target.checked, onlyCourtNominations: event.target.checked ? false : current.onlyCourtNominations}))
               }
               className="h-4 w-4 rounded border-stone-300 accent-stone-950"
             />
             <span className="grid gap-0.5">
               <span className="text-xs font-semibold text-stone-700">
-                Erstellte Mahnanträge ausblenden
+                Gerichtsfälle und Vormerkungen ausblenden
               </span>
               <span className="text-xs font-normal text-stone-500">
-                Verhindert, dass bereits gerichtliche Fälle erneut ausgewählt
-                werden.
+                Vorgemerkte, erstellte und eingereichte Anträge aus der Liste nehmen.
               </span>
             </span>
           </label>
@@ -2514,6 +2522,10 @@ export function DunningOpsClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DunningCaseDetail | null>(null);
+  const [openingCase, setOpeningCase] = useState<DunningCaseSummary | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const detailRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => detailRequest.current?.abort(), []);
   const [insolvencyCase, setInsolvencyCase] =
     useState<DunningCaseSummary | null>(null);
   const [detailLoadingKey, setDetailLoadingKey] = useState<string | null>(null);
@@ -2592,7 +2604,26 @@ export function DunningOpsClient({
     }
   }
 
+  function closeCase() {
+    detailRequest.current?.abort();
+    detailRequest.current = null;
+    setOpeningCase(null);
+    setSelected(null);
+    setDetailLoadingKey(null);
+    setDetailError(null);
+    setPreview(null);
+    setCourtPreview(null);
+    setCourtProfileOpen(false);
+    cancelPauseAction();
+  }
+
   async function openCase(entry: DunningCaseSummary) {
+    detailRequest.current?.abort();
+    const request = new AbortController();
+    detailRequest.current = request;
+    setSelected(null);
+    setOpeningCase(entry);
+    setDetailError(null);
     setDetailLoadingKey(entry.key);
     setActionError(null);
     setNotice(null);
@@ -2609,22 +2640,25 @@ export function DunningOpsClient({
     try {
       const response = await fetch(
         `/api/ops/dunning/${encodeURIComponent(entry.key)}`,
-        { cache: "no-store" },
+        { cache: "no-store", signal: request.signal },
       );
       const payload = await response.json();
       if (!response.ok || !payload.ok)
         throw new Error(
           payload.error || "Fallakte konnte nicht geladen werden.",
         );
+      if (request.signal.aborted) return;
       setSelected(payload.detail);
+      setOpeningCase(null);
     } catch (detailError) {
-      setError(
+      if (request.signal.aborted) return;
+      setDetailError(
         detailError instanceof Error
           ? detailError.message
           : "Fallakte konnte nicht geladen werden.",
       );
     } finally {
-      setDetailLoadingKey(null);
+      if (detailRequest.current === request) setDetailLoadingKey(null);
     }
   }
 
@@ -3068,6 +3102,17 @@ Es wird jetzt kein Antrag erstellt oder versandt. Vor der späteren Erstellung m
             {error}
           </p>
         ) : null}
+        {openingCase ? (
+          <div className="fixed inset-0 z-50 flex justify-end bg-stone-950/40 backdrop-blur-sm" onMouseDown={event => { if (event.currentTarget === event.target) closeCase(); }}>
+            <section role="dialog" aria-modal="true" aria-labelledby="dunning-loading-title" aria-busy={!detailError} className="h-full w-full max-w-3xl overflow-y-auto bg-[#f7f4ee] p-5 shadow-2xl md:p-6">
+              <header className="flex items-start justify-between gap-4">
+                <div><p className="text-xs font-semibold text-[#b91c73]">Mahnfall</p><h2 id="dunning-loading-title" className="mt-1 text-2xl font-semibold">{openingCase.orderNumber}</h2><p className="mt-1 text-sm text-stone-500">{openingCase.company || openingCase.customerName}</p></div>
+                <button type="button" aria-label="Fall schließen" onClick={closeCase} className="rounded-xl border border-stone-300 bg-white p-2"><X className="h-5 w-5" /></button>
+              </header>
+              {detailError ? <div role="alert" className="mt-6 rounded-xl border border-rose-200 bg-rose-50 p-4"><p>{detailError}</p><button type="button" className="mt-3 rounded-lg border bg-white px-3 py-2" onClick={() => void openCase(openingCase)}>Erneut laden</button></div> : <div role="status" className="mt-6"><p>Aktuelle Fallakte wird geladen …</p><p className="mt-2 text-sm text-stone-500">Zahlungsstand, Sperren und Verlauf werden geprüft.</p><div className="mt-5 h-32 animate-pulse rounded-2xl bg-stone-200" /></div>}
+            </section>
+          </div>
+        ) : null}
         {selected ? (
           <DetailDrawer
             detail={selected}
@@ -3082,13 +3127,7 @@ Es wird jetzt kein Antrag erstellt oder versandt. Vor der späteren Erstellung m
             error={actionError}
             notice={notice}
             pauseAction={pauseAction}
-            onClose={() => {
-              setSelected(null);
-              setPreview(null);
-              setCourtPreview(null);
-              setCourtProfileOpen(false);
-              cancelPauseAction();
-            }}
+            onClose={closeCase}
             onInsolvencyOpen={setInsolvencyCase}
             onPreview={() => void previewNextStage()}
             onSend={() => void sendNextStage()}

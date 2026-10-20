@@ -85,6 +85,7 @@ const dashboard={generatedAt:new Date().toISOString(),cases,stats,sendConfigured
 const browser=await chromium.launch({headless:true});
 const context=await browser.newContext({viewport:{width:1600,height:1000},permissions:["clipboard-read","clipboard-write"]});
 await context.addCookies([{name:"neontrip_ops_session",value:createHash("sha256").update("neontrip:ops:isolated-preview-only").digest("hex"),url:"http://127.0.0.1:3198"}]);
+let failDetail=false; let holdDetail=false; let releaseDetail: (()=>void)|null=null;
 const page=await context.newPage(); page.setDefaultTimeout(10000); const errors:string[]=[]; const actions:any[]=[];
 page.on("pageerror",e=>errors.push(e.message));
 await page.route("**/api/ops/**",async route=>{
@@ -92,10 +93,31 @@ await page.route("**/api/ops/**",async route=>{
  let payload:any={ok:true};
  if(path==="/api/ops/dunning") payload={ok:true,dashboard};
  else if(path.endsWith("/actions")){const body=request.postDataJSON();actions.push(body);if(body.action==="nominate_court") cases[0].courtNomination={id:body.idempotencyKey,actor:"Fabienne",at:new Date().toISOString()};payload={ok:true};}
- else if(path.startsWith("/api/ops/dunning/")){const entry=cases.find(x=>x.key===decodeURIComponent(path.split("/").pop()!))||cases[0];payload={ok:true,detail:{case:entry,timeline:[],courtProfile:null,courtDraftJob:null,generatedAt:new Date().toISOString()}};}
+ else if(path.startsWith("/api/ops/dunning/")){if(failDetail){await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:"Fallakte vorübergehend nicht verfügbar"})});return;}if(holdDetail) await new Promise<void>(resolve=>{releaseDetail=resolve;});const entry=cases.find(x=>x.key===decodeURIComponent(path.split("/").pop()!))||cases[0];payload={ok:true,detail:{case:entry,timeline:[],courtProfile:null,courtDraftJob:null,generatedAt:new Date().toISOString()}};}
  await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(payload)});
 });
 await page.goto("http://127.0.0.1:3198/ops/mahnwesen",{waitUntil:"networkidle"});
+holdDetail=true;
+await page.getByRole("button",{name:/^(Nächste Stufe|Details|Prüfung öffnen)$/}).first().click();
+await page.getByRole("dialog").waitFor({timeout:800});
+assert.ok(await page.getByText("Aktuelle Fallakte wird geladen …",{exact:true}).isVisible());
+assert.equal(await page.getByRole("button",{name:"Angerufen speichern",exact:true}).count(),0);
+await page.getByRole("button",{name:"Fall schließen",exact:true}).click();
+holdDetail=false; if(releaseDetail) (releaseDetail as ()=>void)();
+await page.waitForTimeout(200);
+assert.equal(await page.getByRole("dialog").count(),0,"Late response must not reopen a closed drawer");
+failDetail=true;
+await page.getByRole("button",{name:/^(Nächste Stufe|Details|Prüfung öffnen)$/}).first().click();
+await page.getByRole("button",{name:"Erneut laden",exact:true}).waitFor();
+assert.equal(await page.getByRole("button",{name:"Angerufen speichern",exact:true}).count(),0);
+failDetail=false;
+await page.getByRole("button",{name:"Erneut laden",exact:true}).click();
+await page.getByLabel("Gesprächsnotiz").waitFor();
+await page.getByRole("button",{name:"Fall schließen",exact:true}).click();
+await page.locator("summary").filter({hasText:"Weitere Filter"}).click();
+assert.equal(await page.getByLabel("Gerichtsfälle und Vormerkungen ausblenden").isChecked(),true);
+assert.equal(await page.getByLabel("Gesperrte Fälle ausblenden",{exact:true}).isChecked(),true);
+await page.locator("summary").filter({hasText:"Weitere Filter"}).click();
 const year=page.locator("label").filter({has:page.locator("span",{hasText:/^Bestelljahr$/})}).locator("select"); await year.waitFor();
 for(const value of ["2024","2025","2026"]){await year.selectOption(value);assert.equal(await page.locator("tbody tr").count(),1);}
 await year.selectOption("all"); assert.equal(await page.locator("tbody tr").count(),3);
@@ -119,14 +141,16 @@ await page.getByRole("button",{name:"Gelber Brief",exact:true}).first().click();
 assert.equal(actions.length,countBefore,"Cancel has no write");
 page.once("dialog",dialog=>{assert.match(dialog.message(),/kein Antrag erstellt oder versandt/);void dialog.accept();});
 await page.getByRole("button",{name:"Gelber Brief",exact:true}).first().click();
-await page.getByRole("button",{name:"Vorgemerkt",exact:true}).first().waitFor();
+await page.waitForFunction(() => document.querySelectorAll("tbody tr").length===2);
 assert.equal(actions.at(-1)?.action,"nominate_court");
 assert.ok(!actions.some(a=>["prepare_court_application","send_next_stage"].includes(a.action)));
 await page.reload({waitUntil:"networkidle"});
-await page.getByRole("button",{name:"Vorgemerkt",exact:true}).first().waitFor();
-await page.getByText("Weitere Filter",{exact:true}).click();
+assert.equal(await page.locator("tbody tr").count(),2);
+await page.locator("summary").filter({hasText:"Weitere Filter"}).click();
 await page.getByLabel("Gelber Brief: nur vorgemerkt",{exact:true}).check();
 assert.equal(await page.locator("tbody tr").count(),1);
+await page.getByRole("button",{name:"Vorgemerkt",exact:true}).first().waitFor();
+assert.equal(await page.getByLabel("Gerichtsfälle und Vormerkungen ausblenden").isChecked(),false);
 await page.getByLabel("Gelber Brief: nur vorgemerkt",{exact:true}).uncheck();
 mkdirSync("artifacts/dunning-actions",{recursive:true});
 await page.locator("table").scrollIntoViewIfNeeded();
@@ -144,12 +168,14 @@ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>docume
 await page.getByRole("button",{name:"Fall schließen",exact:true}).click();
 cases[0].paused=true; cases[1].stopTag=true;
 await page.getByRole("button",{name:"Aktualisieren",exact:true}).click();await page.waitForTimeout(300);
+assert.equal(await page.locator("article").count(),1,"Held cases hidden by default");
+await page.getByLabel("Gesperrte Fälle ausblenden",{exact:true}).uncheck();
 const cards=page.locator("button").filter({hasText:/^\+1 Woche$/});
 const disabled=await cards.evaluateAll(buttons=>buttons.filter(b=>(b as HTMLButtonElement).disabled).length);
 assert.ok(disabled>=2,"existing pauses and stop tags disable quick pauses");
 await page.locator("article").first().scrollIntoViewIfNeeded();
 await page.screenshot({path:"artifacts/dunning-actions/mobile-list.png",fullPage:false});
-assert.deepEqual(errors,[]);console.log("PASS: 2024/2025/2026, clipboard, one/two-week payloads, nomination confirmation/cancellation/persistence/filter and Shopify/offer links, mobile overflow, no runtime errors");
+assert.deepEqual(errors,[]);console.log("PASS: immediate drawer during held response, close ignores late result, failure/retry without actions, default hidden nominations/held cases, 2024/2025/2026, clipboard, one/two-week payloads, nomination confirmation/cancellation/persistence/filter and Shopify/offer links, mobile overflow, no runtime errors");
 await browser.close();
 
 }

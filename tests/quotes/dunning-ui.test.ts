@@ -29,7 +29,7 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   assert.match(client, /Exakt Stufe/);
   assert.match(client, /Mindestens Stufe/);
   assert.match(client, /matchesDunningStage\(entry\.currentStage, filters\.stage\)/);
-  assert.match(client, /Erstellte Mahnanträge ausblenden/);
+  assert.match(client, /Gerichtsfälle und Vormerkungen ausblenden/);
   assert.match(client, /hasCreatedDunningCourtApplication\(entry\.courtEvents\)/);
   assert.match(client, /Versandnachweis/);
   assert.match(client, /Sendungsnummer vorhanden/);
