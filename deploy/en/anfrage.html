@@ -53,31 +53,8 @@
   <script id="Cookiebot" src="https://consent.cookiebot.com/uc.js" data-cbid="4f26624a-11f0-49f6-9377-353b340cebd1" data-blockingmode="auto" type="text/javascript"></script>
 
   <!-- OpenAI Ads Measurement Pixel (explicit Cookiebot consent) -->
-  <script>
-  (function(){
-    var openAiAdsInitialized=false;
-    function syncOpenAiAdsConsent(){
-      var cb=window.Cookiebot;
-      if(!cb||!cb.consent)return;
-      var granted=cb.hasResponse===true&&cb.consent.marketing===true;
-      if(!openAiAdsInitialized){
-        // Wait for restored consent: a temporary false deletes the stored ad click ID.
-        if(cb.hasResponse!==true)return;
-        !function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");
-        oaiq("consent",granted);
-        oaiq("init",{pixelId:"6GqgnrdSPjJSGdthY89B9Y"});
-        openAiAdsInitialized=true;
-        return;
-      }
-      oaiq("consent",granted);
-    }
-    window.addEventListener("CookiebotOnConsentReady",syncOpenAiAdsConsent);
-    window.addEventListener("CookiebotOnAccept",syncOpenAiAdsConsent);
-    window.addEventListener("CookiebotOnDecline",syncOpenAiAdsConsent);
-    if(window.Cookiebot&&window.Cookiebot.hasResponse===true)syncOpenAiAdsConsent();
-  })();
-  </script>
-  <script defer src="/assets/js/nt-business-email.js?v=78b9b0ce"></script>
+
+  <script defer src="/assets/js/nt-business-email.js?v=20261016-hints1"></script>
 
   <!-- Google Analytics 4 + Google Ads Tag (Consent Mode steuert Datenerhebung) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-NEEVFC08VX"></script>
@@ -565,7 +542,8 @@
   <!-- ClickCease Click Fraud Protection -->
   <script>function loadCC(){var s=document.createElement('script');s.src='https://ob.brilliantchap.com/i/281092490251912af433a9e3a26f799f.js';s.className='ct_clicktrue';document.head.appendChild(s);}if('requestIdleCallback' in window){setTimeout(function(){requestIdleCallback(loadCC,{timeout:8000});},8000);}else{setTimeout(loadCC,8000);}</script>
   <noscript><iframe src="https://ob.brilliantchap.com/ns/281092490251912af433a9e3a26f799f.html?ch=" width="0" height="0" style="display:none" title="Click Fraud Protection"></iframe></noscript>
-<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=efd2b0ffba35"></script></head>
+<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=4105556a9003"></script><script defer data-cookieconsent="ignore" src="/assets/js/nt-openai-ads.js?v=ee56a713ec48"></script>
+</head>
 <body>
 
 
@@ -1245,12 +1223,12 @@
     <div class="flex flex-col sm:flex-row items-center sm:justify-between gap-3 pt-3 pb-1">
       <div class="flex flex-col sm:flex-row items-center gap-2 sm:gap-6 text-xs text-gray-500">
         <span>© NEONTRIP <span data-year></span></span>
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-4" style="flex-wrap:wrap;justify-content:center;row-gap:10px;max-width:100%">
           <a href="/agb.html" class="hover:text-gray-300 transition-colors">Terms</a>
           <button onclick="openCookieSettings()" class="hover:text-gray-300 transition-colors">Cookie Settings</button>
           <a href="/datenschutz.html" class="hover:text-gray-300 transition-colors">Privacy</a>
           <a href="/impressum.html" class="hover:text-gray-300 transition-colors">Imprint</a>
-          <a href="/widerruf.html" class="hover:text-gray-300 transition-colors">Right of Withdrawal</a>
+          <a href="/widerrufsrecht" class="hover:text-gray-300 transition-colors">Right of Withdrawal</a>
         </div>
       </div>
     </div>
@@ -1276,7 +1254,7 @@
 
     <!-- Logo -->
     <div class="flex justify-center mb-3">
-      <img src="/assets/logo_affiliate.png" alt="NEONTRIP" class="h-5 w-auto" width="100" height="20" loading="lazy" decoding="async">
+      <img src="/assets/logo_affiliate.webp" alt="NEONTRIP" class="h-5 w-auto" width="100" height="20" loading="lazy" decoding="async">
     </div>
 
     <!-- Photo -->
@@ -1537,28 +1515,8 @@
 
   // ═══════ Enhanced Conversions Helper ═══════
   function fireOpenAiLeadConversion(submitId, email) {
-    try {
-      if (!submitId || typeof window.oaiq !== 'function') return;
-      if (!window.Cookiebot || !Cookiebot.consent || Cookiebot.consent.marketing !== true) return;
-      const measure = function() {
-        try { window.oaiq('measure', 'lead_created', { type: 'customer_action' }, { event_id: submitId }); } catch(e) {}
-      };
-      const normalizedEmail = String(email || '').trim().toLowerCase();
-      if (!normalizedEmail || !window.crypto || !crypto.subtle || typeof TextEncoder !== 'function') {
-        measure();
-        return;
-      }
-      crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalizedEmail))
-        .then(function(buffer) {
-          const emailSha256 = Array.from(new Uint8Array(buffer))
-            .map(function(byte) { return byte.toString(16).padStart(2, '0'); })
-            .join('');
-          try { window.oaiq('init', { user: { email_sha256: emailSha256 } }); } catch(e) {}
-          measure();
-        })
-        .catch(measure);
-    } catch(e) {}
-  }
+      try { window.ntOpenAiAds?.lead(submitId, email); } catch (_) {}
+    }
 
   function fireEnhancedConversion(label, email, phone, firstName, lastName, submitId) {
     fireOpenAiLeadConversion(submitId, email);
@@ -2209,7 +2167,6 @@
   const urlParams = new URLSearchParams(window.location.search);
 
   window.addEventListener('load', () => {
-    const validProducts = ['neonschild', 'front-buchstaben', 'halo-buchstaben', 'leuchtkasten', 'sonderanfertigung', 'marquee', 'halo-lampe', 'gesamtkonzept'];
     const validBranche = ['geschaeft', 'buero', 'gastro', 'messe', 'zuhause', 'sonstiges'];
     const validOrt = ['innen', 'aussen'];
 
@@ -2218,19 +2175,7 @@
       state.data.urlSource = window.location.search;
     }
 
-    // ?produkt=X → Pre-select product on Step 1
-    const hasProduktParam = urlParams.get('produkt');
-    if (hasProduktParam && validProducts.includes(hasProduktParam.toLowerCase())) {
-      const productValue = hasProduktParam.toLowerCase();
-      const productCard = document.querySelector(`.product-card[data-product="${productValue}"]`);
-      if (productCard) {
-        document.querySelectorAll('.product-card').forEach(c => c.classList.remove('selected'));
-        productCard.classList.add('selected');
-        state.data.product = productValue;
-        updateNav();
-        setTimeout(() => productCard.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
-      }
-    }
+    // Product links open the normal first step; only an explicit card choice selects a product.
 
     // ?branche=X → Pre-select use-case pill (for Step 3)
     const brancheParam = urlParams.get('branche');

@@ -66,7 +66,7 @@
 
 {{OPENAI_ADS_PIXEL_SETUP}}
 
-  <script defer src="/assets/js/nt-business-email.js?v=78b9b0ce"></script>
+  <script defer src="/assets/js/nt-business-email.js?v=20261016-hints1"></script>
 
   <!-- Google Analytics 4 + Google Ads Tag (Consent Mode steuert Datenerhebung) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-NEEVFC08VX"></script>
@@ -116,6 +116,25 @@
     header{position:fixed;top:0;left:0;right:0;z-index:50}
     .hidden{display:none}.flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}
     img,video{max-width:100%;height:auto;display:block}
+    /* Keep narrow-screen stats and contact actions inside their own columns. */
+    .lp-stats p, .footer-stats p { overflow-wrap: anywhere; hyphens: auto; }
+    .contact-advisor-content { min-width: 0; }
+    .contact-advisor-actions { flex-wrap: wrap; }
+    .faq-cta-actions { max-width: 100%; flex-wrap: wrap; justify-content: center; }
+    .faq-cta-actions > button { max-width: 100%; white-space: normal; }
+    @media (max-width: 479px) {
+      .lp-stats .grid { gap: 12px; }
+      .lp-stats [data-count], .lp-stats [data-count-static] { font-size: 22px; }
+      .lp-stats p { font-size: 11px; letter-spacing: 0.025em; }
+      #kontakt .contact-details { grid-template-columns: minmax(0, 1fr); }
+    }
+
+    /* Keep the mobile inquiry action readable on narrow phones. */
+    @media (max-width: 479px) {
+      #mobile-sticky-cta .mobile-advisor-copy { display: none; }
+      #mobile-sticky-cta .mobile-inquiry-link { flex: 1; min-width: 0; text-align: center; padding-left: 10px !important; padding-right: 10px !important; }
+    }
+    #mobile-sticky-cta a[aria-label="WhatsApp"] { width: 44px !important; height: 44px !important; }
   </style>
 
   <!-- Tailwind CSS (Production Build) -->
@@ -246,6 +265,8 @@
     /* Scroll reveal */
     .reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
     .reveal.visible { opacity: 1; transform: translateY(0); }
+    /* Above-the-fold content must not wait for scroll observers or animation. */
+    #hero .reveal { opacity: 1; transform: none; transition: none; }
     /* Fallback: show content if JS fails */
     .no-js .reveal { opacity: 1; transform: none; transition: none; }
     .no-js .stagger-children > * { opacity: 1; transform: none; }
@@ -532,7 +553,7 @@
     @media (min-width: 768px) { section#hero h1 { font-size: 80px !important; } }
 
     /* Noise overlay for card-in-card dark sections */
-    .noise-overlay { background-image: url('../assets/images/grain-texture.png'); background-size: 256px 256px; background-repeat: repeat; opacity: 0.05; pointer-events: none; }
+    .noise-overlay { background-image:none; background-size: 256px 256px; background-repeat: repeat; opacity: 0.05; pointer-events: none; }
 
     /* Grain texture overlay for dark sections — adds depth */
     .grain { position: relative; }
@@ -643,7 +664,9 @@
   pintrk('load', '2614194923903');
   pintrk('page');
   </script>
-<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=efd2b0ffba35"></script></head>
+<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=4105556a9003"></script>  <script type="module" src="/js/nt-cro-page.js?v=20261014-clarity3"></script>
+<script type="module" data-cookieconsent="ignore" src="/js/nt-x-page.js?v=20261016-x1"></script>
+</head>
 <body class="bg-white text-dark">
 
 <!-- Announcement Bar -->
@@ -872,31 +895,7 @@
     // ═══════ Enhanced Conversions Helper ═══════
     // Sends hashed user data with conversion events for better attribution
     function fireOpenAiLeadConversion(submitId, email) {
-      try {
-        if (!submitId || typeof window.oaiq !== 'function') return;
-        if (!window.Cookiebot || !Cookiebot.consent || Cookiebot.consent.marketing !== true) return;
-
-        const measure = function() {
-          try {
-            window.oaiq('measure', 'lead_created', { type: 'customer_action' }, { event_id: submitId });
-          } catch(e) {}
-        };
-        const normalizedEmail = String(email || '').trim().toLowerCase();
-        if (!normalizedEmail || !window.crypto || !crypto.subtle || typeof TextEncoder !== 'function') {
-          measure();
-          return;
-        }
-
-        crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalizedEmail))
-          .then(function(buffer) {
-            const emailSha256 = Array.from(new Uint8Array(buffer))
-              .map(function(byte) { return byte.toString(16).padStart(2, '0'); })
-              .join('');
-            try { window.oaiq('init', { user: { email_sha256: emailSha256 } }); } catch(e) {}
-            measure();
-          })
-          .catch(measure);
-      } catch(e) {}
+      try { window.ntOpenAiAds?.lead(submitId, email); } catch (_) {}
     }
 
     function fireEnhancedConversion(label, email, phone, fullName, submitId) {
@@ -916,7 +915,7 @@
         convData.user_data = userData;
       }
       try { gtag('event', 'conversion', convData); } catch(e) {}
-      try { gtag('event', 'generate_lead', { currency: 'EUR', value: 280 }); } catch(e) {}
+      try { if (!window.ntCro) gtag('event', 'generate_lead', { currency: 'EUR', value: 280 }); } catch(e) {}
       try { gtag('event', 'nerdy form submitted', { event_category: 'lead', event_label: label, value: 280 }); } catch(e) {}
       // Pinterest lead tracking (mit Enhanced Matching) — guarded
       try {
@@ -1600,7 +1599,10 @@
         data.customer_id &&
         leadRequestId === submitId
       );
-      if (confirmed) return data;
+      if (confirmed) {
+        try { window.ntXAds?.lead(Object.assign({}, data, {submit_id:submitId})); } catch(e) {}
+        return data;
+      }
       var err = new Error('HTTP 502 | persistence_unconfirmed');
       err.status = 502;
       err.code = 'persistence_unconfirmed';
@@ -1683,6 +1685,7 @@
       return recovery;
     };
     window.ntSubmitForm = function(form, formData, formName) {
+      try { window.ntCro?.startForm(form); } catch(e) {}
       var submitId = window.ntEnsureClientSubmitId(formData);
       var action = form && form.getAttribute('action') ? form.getAttribute('action') : '/api/c';
       var url = new URL(action, window.location.href);
@@ -1744,6 +1747,7 @@
       }).then(function(result) {
         result = result || {};
         result.submit_id = submitId;
+        try { window.ntCro?.lead(form, result); } catch(e) {}
         return result;
       }).catch(function(err) {
         var message = (err && err.message) || String(err || 'unknown');
@@ -1754,6 +1758,7 @@
         err.elapsedMs = Date.now() - startedAt;
         err.message = message + ' | form=' + formName + ' | submit_id=' + submitId + ' | attempts=' + attempts + ' | phase=' + phase + ' | network_retry=' + networkRetryAttempted + ' | elapsed_ms=' + err.elapsedMs;
         err.clientSubmitId = err.clientSubmitId || submitId;
+        try { window.ntCro?.error('form', err, submitId); } catch(e) {}
         throw err;
       });
     };
@@ -1991,7 +1996,7 @@
             return;
           }
         }
-        const target = document.querySelector(href);
+        const target = document.getElementById(new URL(href, window.location.href).hash.slice(1));
         if (target) {
           const offset = 80;
           const position = target.getBoundingClientRect().top + window.pageYOffset - offset;
@@ -2012,7 +2017,7 @@
         if (window.matchMedia && !window.matchMedia('(max-width: 767px)').matches) return;
         window.requestAnimationFrame(function() {
           var submit = form.querySelector('button[type="submit"]');
-          var target = n === 2 && submit ? submit : form;
+          var target = n === (steps[2] ? 2 : 1) && submit ? submit : form;
           var rect = target.getBoundingClientRect();
           var margin = 18;
           if (rect.bottom > window.innerHeight - margin || rect.top < margin) {
@@ -2026,12 +2031,14 @@
         bars.forEach(function(b, i) { if (b) b.style.background = i <= n ? '#fa31a2' : 'rgba(10,10,10,0.08)'; });
         keepHeroFormVisible(n);
       }
-      var n1 = document.getElementById('hero-next-1'); if (n1) n1.onclick = function() { var g = form.querySelector('[name="groesse"]'); if (g && !g.value) { g.focus(); g.style.borderColor = '#fa31a2'; setTimeout(function() { g.style.borderColor = ''; }, 2000); return; } goStep(1); };
+      var n1 = document.getElementById('hero-next-1'); if (n1) n1.onclick = function() { var g = steps[0].querySelector('[name="groesse"]'); if (g && !g.value) { g.focus(); g.style.borderColor = '#fa31a2'; setTimeout(function() { g.style.borderColor = ''; }, 2000); return; } goStep(1); };
       var n2 = document.getElementById('hero-next-2'); if (n2) n2.onclick = function() { goStep(2); };
       var b2 = document.getElementById('hero-back-2'); if (b2) b2.onclick = function() { goStep(0); };
       var b3 = document.getElementById('hero-back-3'); if (b3) b3.onclick = function() { goStep(1); };
       form.onsubmit = function(e) {
         e.preventDefault();
+        var size = form.querySelector('[name="groesse"]');
+        if (size && !size.value) { size.focus(); size.style.borderColor = '#fa31a2'; setTimeout(function() { size.style.borderColor = ''; }, 2000); return; }
         var nameVal = (form.querySelector('[name="name"]').value || '').trim();
         var emailVal = (form.querySelector('[name="email"]').value || '').trim();
         var telefonVal = (form.querySelector('[name="telefon"]').value || '').trim();
@@ -2060,7 +2067,7 @@
             var barsW = document.getElementById('hero-bars-wrapper');
             if (header) header.remove();
             if (barsW) barsW.remove();
-            steps.forEach(function(s) { s.classList.add('hidden'); });
+            steps.forEach(function(s) { if (s) s.classList.add('hidden'); });
             var success = document.createElement('div');
             success.className = 'text-center py-6';
             success.innerHTML = '<div class="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4"><svg class="w-7 h-7 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><h3 class="text-xl font-semibold text-dark tracking-[-0.03em] mb-1">Übermittlung angenommen!</h3><p class="text-sm font-medium text-dark/40 tracking-tight mb-5">Ihre Anfrage wird jetzt verarbeitet.</p>';
@@ -2532,49 +2539,41 @@
     // ═══════ HOVER SLIDESHOW ON PRODUCT TILES ═══════
     (function() {
       const slideshowState = new Map();
-
-      // Preload images for smooth transitions
-      Object.values(productGalleryData).forEach(product => {
-        if (product.images) {
-          product.images.forEach(src => { const img = new Image(); img.src = src; });
-        }
-      });
-
       document.querySelectorAll('.product-tile').forEach(card => {
-        const productKey = card.dataset.product;
-        const product = productGalleryData[productKey];
-        if (!product || !product.images || product.images.length === 0) return;
-
+        const product = productGalleryData[card.dataset.product];
         const imgContainer = card.querySelector('.rounded-lg');
-        if (!imgContainer) return;
+        if (!product || !product.images || !product.images.length || !imgContainer) return;
+        let overlayImgs = [];
 
-        // Create overlay images
-        const overlayImgs = product.images.map(src => {
-          const img = document.createElement('img');
-          img.src = src;
-          img.alt = product.title + ' Beispiel';
-          img.className = 'slideshow-img';
-          img.draggable = false;
-          imgContainer.appendChild(img);
-          return img;
-        });
-
-        card.addEventListener('mouseenter', () => {
+        // Mobile never needs hover images; desktop loads only the hovered product.
+        card.addEventListener('mouseenter', async () => {
           if (window.matchMedia('(hover: none)').matches) return;
+          if (!overlayImgs.length) {
+            overlayImgs = product.images.map(src => {
+              const img = document.createElement('img');
+              img.src = src;
+              img.alt = product.title + ' Beispiel';
+              img.className = 'slideshow-img';
+              img.decoding = 'async';
+              img.draggable = false;
+              imgContainer.appendChild(img);
+              return img;
+            });
+          }
+          await Promise.all(overlayImgs.map(img => img.decode().catch(() => {})));
+          if (!card.matches(':hover') || slideshowState.has(card)) return;
+          const loadedImgs = overlayImgs.filter(img => img.naturalWidth > 0);
+          if (!loadedImgs.length) return;
           let index = 0;
-          overlayImgs.forEach(img => img.classList.remove('active'));
-          overlayImgs[0].classList.add('active');
+          loadedImgs[0].classList.add('active');
           card.classList.add('slideshow-active');
-
           const interval = setInterval(() => {
-            overlayImgs[index].classList.remove('active');
-            index = (index + 1) % overlayImgs.length;
-            overlayImgs[index].classList.add('active');
+            loadedImgs[index].classList.remove('active');
+            index = (index + 1) % loadedImgs.length;
+            loadedImgs[index].classList.add('active');
           }, 1500);
-
           slideshowState.set(card, { interval, overlayImgs });
         });
-
         card.addEventListener('mouseleave', () => {
           const s = slideshowState.get(card);
           if (s) {
@@ -2797,10 +2796,10 @@ if (window.innerWidth < 768) {
   <div style="background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(0,0,0,0.06);padding:14px 16px;padding-bottom:max(14px, env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;box-shadow:0 -4px 24px rgba(0,0,0,0.08)">
     <!-- Fabienne Photo -->
     <div style="width:42px;height:42px;flex-shrink:0">
-      <img src="../assets/images/fabienne-trapp-small.png" alt="Fabienne — Ihre Beraterin" style="width:42px;height:42px;border-radius:50%;object-fit:cover" width="42" height="42" loading="lazy">
+      <img src="../assets/images/fabienne-trapp-small.webp" alt="Fabienne — Ihre Beraterin" style="width:42px;height:42px;border-radius:50%;object-fit:cover" width="42" height="42" loading="lazy">
     </div>
     <!-- Text -->
-    <div style="flex:1;min-width:0">
+    <div class="mobile-advisor-copy" style="flex:1;min-width:0">
       <p style="font-size:13px;font-weight:600;color:#0A0A0A;line-height:1.2;margin:0">Fabienne berät Sie</p>
       <p style="font-size:11px;color:rgba(10,10,10,0.45);font-weight:500;margin:2px 0 0;display:flex;align-items:center;gap:4px">
         <span style="width:6px;height:6px;background:#22c55e;border-radius:50%;display:inline-block;flex-shrink:0"></span>
@@ -2808,7 +2807,7 @@ if (window.innerWidth < 768) {
       </p>
     </div>
     <!-- CTA Button -->
-    <a href="#hero" style="flex-shrink:0;background:#fa31a2;color:white;font-size:14px;font-weight:700;padding:14px 20px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(250,49,162,0.3)">
+    <a href="#hero" class="mobile-inquiry-link" style="flex-shrink:0;background:#fa31a2;color:white;font-size:14px;font-weight:700;padding:14px 20px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(250,49,162,0.3)">
       Anfrage starten
     </a>
     <!-- WhatsApp Button -->
@@ -2822,7 +2821,7 @@ if (window.innerWidth < 768) {
 <div class="contact-sticky" id="contact-sticky">
   <div style="background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(0,0,0,0.08);padding:12px 14px;display:flex;align-items:center;gap:12px;border-radius:20px;box-shadow:0 8px 32px rgba(0,0,0,0.12)">
     <div style="width:44px;height:44px;flex-shrink:0">
-      <img src="../assets/images/fabienne-trapp-small.png" alt="Fabienne — Ihre Beraterin" style="width:44px;height:44px;border-radius:50%;object-fit:cover" width="44" height="44" loading="lazy">
+      <img src="../assets/images/fabienne-trapp-small.webp" alt="Fabienne — Ihre Beraterin" style="width:44px;height:44px;border-radius:50%;object-fit:cover" width="44" height="44" loading="lazy">
     </div>
     <div style="min-width:0">
       <p style="font-size:13px;font-weight:600;color:#0A0A0A;line-height:1.2;margin:0">Fabienne berät Sie</p>

@@ -15,6 +15,8 @@ function createBaseContext(fetchImpl, source) {
     Error,
     TypeError,
     setTimeout,
+    clearTimeout,
+    AbortController,
     File,
     FormData,
     Headers,
