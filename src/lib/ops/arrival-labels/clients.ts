@@ -380,25 +380,48 @@ export function createShopifyClient(): ArrivalDataClients["shopify"] {
     async listRecentOrders(localDate, cards = []) {
       const config = shopifyConfig();
       const executePage = async (query: string, after: string | null): Promise<ShopifyOrdersPage> => {
-        const response = await fetchWithRetry(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": config.token },
-          body: JSON.stringify({ query: ARRIVAL_ORDERS_QUERY, variables: { first: 250, query, after } }),
-        }, { integration: "shopify_admin_graphql" });
-        const payload = await response.json() as JsonRecord;
-        const errors = Array.isArray(payload.errors) ? payload.errors : [];
-        if (errors.length) throw new ArrivalIntegrationError("Shopify GraphQL lieferte Fehler.", "shopify_graphql_error");
-        const data = payload.data as JsonRecord | undefined;
-        const orders = data?.orders as JsonRecord | undefined;
-        const nodes = orders?.nodes;
-        const pageInfo = orders?.pageInfo as JsonRecord | undefined;
-        return {
-          nodes: Array.isArray(nodes) ? nodes as JsonRecord[] : [],
-          pageInfo: {
-            hasNextPage: pageInfo?.hasNextPage === true,
-            endCursor: typeof pageInfo?.endCursor === "string" ? pageInfo.endCursor : null,
-          },
-        };
+        for (let attempt = 0; ; attempt += 1) {
+          const response = await fetchWithRetry(`https://${config.domain}/admin/api/${config.version}/graphql.json`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": config.token },
+            body: JSON.stringify({ query: ARRIVAL_ORDERS_QUERY, variables: { first: 250, query, after } }),
+          }, { integration: "shopify_admin_graphql" });
+          const payload = await response.json() as JsonRecord;
+          const errors = Array.isArray(payload.errors) ? payload.errors : [];
+          if (errors.length) {
+            // Shopify can throttle GraphQL reads with HTTP 200. Retry only that
+            // explicit condition, on the same page; never accept partial data.
+            const throttled = errors.every(error => error?.extensions?.code === "THROTTLED");
+            if (!throttled) throw new ArrivalIntegrationError("Shopify GraphQL lieferte Fehler.", "shopify_graphql_error");
+            if (attempt >= 3) throw new ArrivalIntegrationError(
+              "Shopify-Abfrage bleibt gedrosselt; Labelvorbereitung spaeter erneut versuchen.",
+              "shopify_graphql_throttled", true,
+            );
+            const cost = (payload.extensions as JsonRecord | undefined)?.cost as JsonRecord | undefined;
+            const throttle = cost?.throttleStatus as JsonRecord | undefined;
+            const requested = cost?.requestedQueryCost;
+            const available = throttle?.currentlyAvailable;
+            const restoreRate = throttle?.restoreRate;
+            const waitMs = typeof requested === "number" && Number.isFinite(requested) && requested > 0
+              && typeof available === "number" && Number.isFinite(available) && available >= 0
+              && typeof restoreRate === "number" && Number.isFinite(restoreRate) && restoreRate > 0
+              ? Math.ceil(Math.max(0, requested - available) / restoreRate * 1000) + 250
+              : 1000 * (2 ** attempt);
+            await delay(Math.min(10_000, Math.max(1000, waitMs)));
+            continue;
+          }
+          const data = payload.data as JsonRecord | undefined;
+          const orders = data?.orders as JsonRecord | undefined;
+          const nodes = orders?.nodes;
+          const pageInfo = orders?.pageInfo as JsonRecord | undefined;
+          return {
+            nodes: Array.isArray(nodes) ? nodes as JsonRecord[] : [],
+            pageInfo: {
+              hasNextPage: pageInfo?.hasNextPage === true,
+              endCursor: typeof pageInfo?.endCursor === "string" ? pageInfo.endCursor : null,
+            },
+          };
+        }
       };
 
       const explicitNames = [...new Set(cards.map((card) => orderNameFromTrelloCard(card.name)).filter((value): value is string => Boolean(value)))]
@@ -407,7 +430,10 @@ export function createShopifyClient(): ArrivalDataClients["shopify"] {
       for (let index = 0; index < explicitNames.length; index += 25) {
         queries.push(explicitNames.slice(index, index + 25).map((value) => `name:${value}`).join(" OR "));
       }
-      const rawOrders = (await Promise.all(queries.map((query) => collectShopifyOrderNodes(query, executePage)))).flat();
+      // Each search reserves its requested cost before Shopify refunds unused
+      // points. Concurrent windows can exhaust the bucket even for few matches.
+      const rawOrders: JsonRecord[] = [];
+      for (const query of queries) rawOrders.push(...await collectShopifyOrderNodes(query, executePage));
       const mapped = rawOrders.map((raw) => mapShopifyOrder(raw as JsonRecord, config.domain)).filter((order): order is ShopifyOrderEvidence => Boolean(order));
       return [...new Map(mapped.map((order) => [order.id, order])).values()];
     },
