@@ -10,7 +10,7 @@ import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufactur
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
 import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261008-shopping1';
-import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent,readCheckoutAttribution} from './checkout-client.js?v=20261016-x1';
+import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent,readCheckoutAttribution,readCheckoutMeasurement} from './checkout-client.js?v=20261016-x1';
 import { buildBackingContour, tabletopContour, buildFreestandingSupports, buildPreviewBackingContour, cachePreviewBackingContour } from './backing-contour.js?v=20261016-preview-worker1';
 import {createColorExample} from './color-examples.js?v=20261015-outline2';
 import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261009-purchase2';
@@ -2751,8 +2751,17 @@ const checkoutClient=createCheckoutClient({
   saveSession:token=>saveAssetIfMissing(CHECKOUT_SESSION_KEY,token),
   readVisitorConsent:()=>cookiebotVisitorConsent(window.Cookiebot),
   readAttribution:()=>readCheckoutAttribution(window),
+  readMeasurement:attribution=>readCheckoutMeasurement(window,attribution),
   readFile:async(id,kind)=>(await getDraftAsset(id,kind)).file
 });
+let measurementConsent=cookiebotVisitorConsent(window.Cookiebot);
+for(const event of ['CookiebotOnConsentReady','CookiebotOnAccept','CookiebotOnDecline']){
+  window.addEventListener(event,()=>{
+    const consent=cookiebotVisitorConsent(window.Cookiebot);
+    if(measurementConsent?.analytics===true&&consent?.analytics!==true||measurementConsent?.marketing===true&&consent?.marketing!==true)void checkoutClient.revokeMeasurement();
+    measurementConsent=consent;
+  });
+}
 // Freeze exactly the current design when the user opens the mail dialog. No
 // request, contact capture or marketing event occurs before explicit submission.
 const designEmailClient=createDesignEmailClient({apiBaseUrl:checkoutApiOrigin===window.location.origin?'':checkoutApiOrigin,

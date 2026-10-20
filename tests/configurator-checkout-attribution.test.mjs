@@ -7,18 +7,19 @@ const moduleUrl=process.env.NEONTRIP_CONFIGURATOR_ROOT
   ? pathToFileURL(resolve(process.env.NEONTRIP_CONFIGURATOR_ROOT,'checkout-client.js'))
   : new URL('../deploy/configurator/checkout-client.js',import.meta.url);
 assert.equal(readFileSync(moduleUrl,'utf8'),readFileSync(new URL('../deploy/configurator/checkout-client.js',import.meta.url),'utf8'),'Test the exact committed handoff source with the verified release dependencies');
-const {readCheckoutAttribution,createCheckoutClient,rememberCheckoutAttribution,initCheckoutAttribution}=await import(moduleUrl);
+const {readCheckoutAttribution,readCheckoutMeasurement,createCheckoutClient,rememberCheckoutAttribution,initCheckoutAttribution}=await import(moduleUrl);
 
 const granted={analytics:true,marketing:true,preferences:true};
 const denied={analytics:true,marketing:false,preferences:false};
 function browser(search='',gtag=()=>{}){
   return {location:{hostname:'anfrage.neontrip.de',search},Cookiebot:{hasResponse:true,consent:{statistics:true,marketing:true,preferences:true}},gtag};
 }
-function checkout({choice=granted,attribution={gclid:'TestClick_123'},respond=()=>{}}={}){
+function checkout({choice=granted,attribution={gclid:'TestClick_123'},respond=()=>{},measurement}={}){
   const state={choice,requests:[],reads:0};
   const items=[{quantity:2,design:{mode:'text',text:'TEST',fontId:'Waikiki'},snapshot:{mode:'text',text:'TEST',font:{id:'Waikiki'},sign:{glyphs:[]},plate:{},mount:{}}}];
   const client=createCheckoutClient({readSession:async()=>'a'.repeat(43),saveSession:async v=>v,readFile:async()=>{throw Error('no upload');},
     readVisitorConsent:()=>state.choice,readAttribution:async()=>{state.reads++;return typeof attribution==='function'?attribution(state):attribution;},
+    readMeasurement:async()=>measurement,
     fetcher:async(_url,options)=>{
       const body=JSON.parse(options.body);state.requests.push(body);
       const receipt={id:'b'.repeat(64),status:'CREATED',priceVersion:'approved-v1',currency:'EUR',subtotalCents:32310,blockers:[],delivery:body.delivery,visitorConsent:body.visitorConsent,checkoutUrl:'https://www.neontrip.de/cart/c/test?key=keep&_cs=consent%2Bkeep'};
@@ -27,6 +28,32 @@ function checkout({choice=granted,attribution={gclid:'TestClick_123'},respond=()
     }});
   return {state,prepare:()=>client.prepare(items,{dateIso:'2026-10-29',businessDays:15},32310)};
 }
+
+test('measurement reads supported analytics IDs only with consent and allows one consented click',async()=>{
+  const calls=[];
+  const r=browser('',(...args)=>{calls.push(args.slice(0,3));args[3](args[2]==='client_id'?'123.456':'1792500000');});
+  assert.deepEqual(await readCheckoutMeasurement(r,{gclid:'G'.repeat(30),gbraid:'B'.repeat(30),email:'never@example.invalid'}),{
+    version:1,gclid:'G'.repeat(30),client_id:'123.456',session_id:'1792500000'
+  });
+  assert.equal(calls.length,2);
+  r.Cookiebot.consent={statistics:false,marketing:false,preferences:false};
+  assert.deepEqual(await readCheckoutMeasurement(r,{gclid:'G'.repeat(30)}),{version:1});
+  assert.equal(calls.length,2);
+});
+test('withdrawal during analytics lookup strips identifiers before the checkout request',async()=>{
+  const r=browser('',(...args)=>{r.Cookiebot.consent={statistics:false,marketing:false,preferences:false};args[3]('123.456');});
+  assert.deepEqual(await readCheckoutMeasurement(r,{gclid:'G'.repeat(30)}),{version:1});
+});
+test('measurement context is a separate request field; a consent change during preparation revokes the owned checkout',async()=>{
+  const measurement={version:1,client_id:'123.456',session_id:'1792500000',gclid:'G'.repeat(30)};
+  const r=checkout({measurement});await r.prepare();
+  assert.deepEqual(r.state.requests[0].measurement,measurement);
+  assert.equal('measurement' in r.state.requests[0].items[0],false);
+  const changed=checkout({measurement,respond:(_receipt,state)=>{state.choice=denied;}});
+  await assert.rejects(changed.prepare(),{code:'CONSENT_CHANGED'});
+  assert.equal(changed.state.requests.length,2);
+  assert.deepEqual(changed.state.requests[1],{action:'revoke_measurement',checkoutId:'b'.repeat(64)});
+});
 
 test('current click IDs and campaign survive; private design, email, fragment and linker are excluded',async()=>{
   const result=await readCheckoutAttribution(browser('?gclid=Click-1&gbraid=Braid_2&wbraid=Braid.3&utm_source=google&utm_campaign=Konfigurator+DE&email=private%40example.com&text=PRIVATE&_gl=expired&key=bad'));
