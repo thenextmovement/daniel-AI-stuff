@@ -2209,7 +2209,6 @@
   const urlParams = new URLSearchParams(window.location.search);
 
   window.addEventListener('load', () => {
-    const validProducts = ['neonschild', 'front-buchstaben', 'halo-buchstaben', 'leuchtkasten', 'sonderanfertigung', 'marquee', 'halo-lampe', 'gesamtkonzept'];
     const validBranche = ['geschaeft', 'buero', 'gastro', 'messe', 'zuhause', 'sonstiges'];
     const validOrt = ['innen', 'aussen'];
 
@@ -2218,19 +2217,7 @@
       state.data.urlSource = window.location.search;
     }
 
-    // ?produkt=X → Pre-select product on Step 1
-    const hasProduktParam = urlParams.get('produkt');
-    if (hasProduktParam && validProducts.includes(hasProduktParam.toLowerCase())) {
-      const productValue = hasProduktParam.toLowerCase();
-      const productCard = document.querySelector(`.product-card[data-product="${productValue}"]`);
-      if (productCard) {
-        document.querySelectorAll('.product-card').forEach(c => c.classList.remove('selected'));
-        productCard.classList.add('selected');
-        state.data.product = productValue;
-        updateNav();
-        setTimeout(() => productCard.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
-      }
-    }
+    // Product links open the normal first step; only an explicit card choice selects a product.
 
     // ?branche=X → Pre-select use-case pill (for Step 3)
     const brancheParam = urlParams.get('branche');
