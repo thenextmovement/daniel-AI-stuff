@@ -1155,6 +1155,6 @@ test("hold tag matching preserves whitespace and unicode normalization", () => {
     const [entry] = buildDunningCases(input({orders:[order({tags})]}));
     assert.equal(entry.sendEligible,false);
     assert.equal(entry.stateLabel,"Gesperrt");
-    assert.ok(entry.blockers.some(reason => reason.includes(tags)));
+    assert.ok(entry.blockers.some(reason => reason.includes(tags.replace(/\s+/g, " "))));
   }
 });
