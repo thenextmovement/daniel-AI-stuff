@@ -381,11 +381,13 @@ function FilterPanel({
   filters,
   setFilters,
   count,
+  openCount,
   total,
 }: {
   filters: Filters;
   setFilters: Dispatch<SetStateAction<Filters>>;
   count: number;
+  openCount: number;
   total: number;
 }) {
   const update = <K extends keyof Filters>(key: K, value: Filters[K]) =>
@@ -456,7 +458,10 @@ function FilterPanel({
         </div>
         <div className="flex items-center gap-2 text-sm text-stone-500">
           <Filter className="h-4 w-4" />
-          <strong className="text-stone-900">{count}</strong> von {total} Fällen
+          <div role="status" aria-live="polite" aria-atomic="true">
+            <p><strong className="text-stone-900">{openCount}</strong> offene {openCount === 1 ? "Forderung" : "Forderungen"} gefunden</p>
+            <p className="text-xs">{count} von {total} Fällen angezeigt{count > openCount ? ` · zusätzlich ${count - openCount} ohne offenen Betrag zur Klärung` : ""}</p>
+          </div>
         </div>
         <button
           type="button"
@@ -3010,6 +3015,7 @@ export function DunningOpsClient({
               filters={filters}
               setFilters={setFilters}
               count={visibleCases.length}
+              openCount={visibleCases.filter((entry) => entry.amountCents > 0).length}
               total={dashboard.cases.length}
             />
             <CaseTable
