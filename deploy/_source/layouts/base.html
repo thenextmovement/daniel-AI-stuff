@@ -846,7 +846,7 @@
           const rawHref = link.getAttribute('href');
           if (!rawHref || rawHref.startsWith('#') || rawHref.startsWith('mailto:') || rawHref.startsWith('tel:')) return;
           const target = new URL(rawHref, window.location.href);
-          if (target.origin === window.location.origin && /^\/anfrage(?:\.html)?\/?$/.test(target.pathname)) {
+          if (target.origin === window.location.origin && (/^\/anfrage(?:\.html)?\/?$/.test(target.pathname) || (link.hasAttribute('data-configurator-link') && target.pathname === '/configurator/'))) {
             link.href = appendTrackingParams(rawHref);
           }
         });
@@ -2590,7 +2590,7 @@
     const productGalleryData = {
       'neonschild': {
         title: 'LED Neonschild',
-        price: 'ab 299€',
+        price: '{{GALLERY_PRICE_299}}',
         desc: 'Individuelles Neon Flex LED-Schild nach Ihrem Design. Für Innen und Außen.',
         images: [
           '../assets/images/beispiele/neonschild/01-kueche-luxemburg.webp',
@@ -2601,7 +2601,7 @@
       },
       'front-buchstaben': {
         title: '3D Buchstaben (Front)',
-        price: 'ab 499€',
+        price: '{{GALLERY_PRICE_499}}',
         desc: 'Frontbeleuchtete 3D-Profilbuchstaben aus Aluminium oder Acryl.',
         images: [
           '../assets/images/projekte/eiscafe-maria-frontlit.webp',
@@ -2612,7 +2612,7 @@
       },
       'halo-buchstaben': {
         title: '3D Buchstaben (Rückbeleuchtet)',
-        price: 'ab 499€',
+        price: '{{GALLERY_PRICE_499}}',
         desc: 'Rückbeleuchtete 3D-Buchstaben mit Premium Halo-Lichteffekt.',
         images: [
           '../assets/images/projekte/apotheke-halo.webp',
@@ -2623,7 +2623,7 @@
       },
       'leuchtkasten': {
         title: 'Leuchtkasten',
-        price: 'ab 499€',
+        price: '{{GALLERY_PRICE_499}}',
         desc: 'Beleuchtete Nasenschilder und Leuchtkästen für Fassade und Außenwerbung.',
         images: [
           '../assets/images/messe/billie-messestand.webp',
@@ -2634,7 +2634,7 @@
       },
       'marquee': {
         title: 'Marquee-Buchstaben',
-        price: 'ab 299€',
+        price: '{{GALLERY_PRICE_299}}',
         desc: 'Retro-Glühbirnen-Buchstaben im Hollywood-Stil. Perfekt für Events.',
         images: [
           '../assets/images/beispiele/marquee/01-marry-me.webp',
@@ -2645,7 +2645,7 @@
       },
       'halo-lampe': {
         title: 'Neon-Halo',
-        price: 'ab 399€',
+        price: '{{GALLERY_PRICE_399}}',
         desc: 'Leuchtende Ring- und Sonderformen als Showroom-Highlight.',
         images: [
           '../assets/images/beispiele/neon-halo/01-decke-rund.webp',
@@ -2656,7 +2656,7 @@
       },
       'sonderanfertigung': {
         title: 'Vollflächig beleuchtet',
-        price: 'ab 499€',
+        price: '{{GALLERY_PRICE_499}}',
         desc: 'Buchstaben und Logos vollflächig von vorne beleuchtet — maximale Leuchtkraft.',
         images: [
           '../assets/images/fitness/contact-gym-stretch.webp',
@@ -2667,7 +2667,7 @@
       },
       'gesamtkonzept': {
         title: 'Unbeleuchtet',
-        price: 'ab 299€',
+        price: '{{GALLERY_PRICE_299}}',
         desc: 'Hochwertige 3D-Buchstaben und Logos ohne Beleuchtung — clean und zeitlos.',
         images: [
           '../assets/images/beispiele/gesamtkonzept/01-anthrazit-3d.webp',

@@ -240,6 +240,10 @@ function replaceVariables(html, config) {
     '{{EVENTS_SUBLINE_MOBILE}}': config.events_subline_mobile || 'Bekannte Marken & Events vertrauen auf NEONTRIP Neon Schilder.',
     '{{PRODUKTE_SUBLINE}}': config.produkte_subline || 'Neon Schilder, LED Schriftzüge & mehr — klicken Sie für Beispiele und direkte Anfrage.',
     '{{PRODUCT_GRID_ORDER}}': config.product_grid_order || '',
+    '{{GALLERY_PRICE_299}}': config.gallery_price_label || 'ab 299€',
+    '{{GALLERY_PRICE_499}}': config.gallery_price_label || 'ab 499€',
+    '{{GALLERY_PRICE_399}}': config.gallery_price_label || 'ab 399€',
+
   };
 
   let result = html;
