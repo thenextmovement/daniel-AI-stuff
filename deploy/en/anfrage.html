@@ -77,7 +77,7 @@
     if(window.Cookiebot&&window.Cookiebot.hasResponse===true)syncOpenAiAdsConsent();
   })();
   </script>
-  <script defer src="/assets/js/nt-business-email.js?v=78b9b0ce"></script>
+  <script defer src="/assets/js/nt-business-email.js?v=20261016-hints1"></script>
 
   <!-- Google Analytics 4 + Google Ads Tag (Consent Mode steuert Datenerhebung) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-NEEVFC08VX"></script>
@@ -565,7 +565,7 @@
   <!-- ClickCease Click Fraud Protection -->
   <script>function loadCC(){var s=document.createElement('script');s.src='https://ob.brilliantchap.com/i/281092490251912af433a9e3a26f799f.js';s.className='ct_clicktrue';document.head.appendChild(s);}if('requestIdleCallback' in window){setTimeout(function(){requestIdleCallback(loadCC,{timeout:8000});},8000);}else{setTimeout(loadCC,8000);}</script>
   <noscript><iframe src="https://ob.brilliantchap.com/ns/281092490251912af433a9e3a26f799f.html?ch=" width="0" height="0" style="display:none" title="Click Fraud Protection"></iframe></noscript>
-<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=efd2b0ffba35"></script></head>
+<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=4105556a9003"></script></head>
 <body>
 
 
@@ -1245,12 +1245,12 @@
     <div class="flex flex-col sm:flex-row items-center sm:justify-between gap-3 pt-3 pb-1">
       <div class="flex flex-col sm:flex-row items-center gap-2 sm:gap-6 text-xs text-gray-500">
         <span>© NEONTRIP <span data-year></span></span>
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-4" style="flex-wrap:wrap;justify-content:center;row-gap:10px;max-width:100%">
           <a href="/agb.html" class="hover:text-gray-300 transition-colors">Terms</a>
           <button onclick="openCookieSettings()" class="hover:text-gray-300 transition-colors">Cookie Settings</button>
           <a href="/datenschutz.html" class="hover:text-gray-300 transition-colors">Privacy</a>
           <a href="/impressum.html" class="hover:text-gray-300 transition-colors">Imprint</a>
-          <a href="/widerruf.html" class="hover:text-gray-300 transition-colors">Right of Withdrawal</a>
+          <a href="/widerrufsrecht" class="hover:text-gray-300 transition-colors">Right of Withdrawal</a>
         </div>
       </div>
     </div>
@@ -1276,7 +1276,7 @@
 
     <!-- Logo -->
     <div class="flex justify-center mb-3">
-      <img src="/assets/logo_affiliate.png" alt="NEONTRIP" class="h-5 w-auto" width="100" height="20" loading="lazy" decoding="async">
+      <img src="/assets/logo_affiliate.webp" alt="NEONTRIP" class="h-5 w-auto" width="100" height="20" loading="lazy" decoding="async">
     </div>
 
     <!-- Photo -->
@@ -2209,7 +2209,6 @@
   const urlParams = new URLSearchParams(window.location.search);
 
   window.addEventListener('load', () => {
-    const validProducts = ['neonschild', 'front-buchstaben', 'halo-buchstaben', 'leuchtkasten', 'sonderanfertigung', 'marquee', 'halo-lampe', 'gesamtkonzept'];
     const validBranche = ['geschaeft', 'buero', 'gastro', 'messe', 'zuhause', 'sonstiges'];
     const validOrt = ['innen', 'aussen'];
 
@@ -2218,19 +2217,7 @@
       state.data.urlSource = window.location.search;
     }
 
-    // ?produkt=X → Pre-select product on Step 1
-    const hasProduktParam = urlParams.get('produkt');
-    if (hasProduktParam && validProducts.includes(hasProduktParam.toLowerCase())) {
-      const productValue = hasProduktParam.toLowerCase();
-      const productCard = document.querySelector(`.product-card[data-product="${productValue}"]`);
-      if (productCard) {
-        document.querySelectorAll('.product-card').forEach(c => c.classList.remove('selected'));
-        productCard.classList.add('selected');
-        state.data.product = productValue;
-        updateNav();
-        setTimeout(() => productCard.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
-      }
-    }
+    // Product links open the normal first step; only an explicit card choice selects a product.
 
     // ?branche=X → Pre-select use-case pill (for Step 3)
     const brancheParam = urlParams.get('branche');
