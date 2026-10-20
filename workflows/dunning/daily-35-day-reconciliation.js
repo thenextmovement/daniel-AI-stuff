@@ -193,9 +193,34 @@ for (const c of cases) {
  if(regular&&!regularVerified)c.note+=' Aufnahme im aktuellen Versandlauf nicht bestätigt: '+c.automation.reason+'.';
 }
 
+// Read-only invoice projection for every order, including held and terminal cases.
+// This does not add any sender candidates or change payment/stage/hold decisions.
+function buildInvoiceDisplayEvidence(documents) {
+  const grouped = new Map(), rows = [], unresolved = [];
+  const date = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
+  for (const d of documents) {
+    const raw = String(d.order_number || '').trim();
+    if (!/^(?:#?NEONT)?\d+$/i.test(raw) || d.is_draft !== false || d.cancel_id || !['INVOICE','PROFORMA_INVOICE'].includes(d.type)) continue;
+    const order = '#NEONT' + raw.replace(/\D/g,'');
+    grouped.set(order, [...(grouped.get(order) || []), d]);
+  }
+  for (const [order, documents] of grouped) {
+    const invoices = documents.filter(d => d.type === 'INVOICE');
+    const relevant = invoices.length ? invoices : documents;
+    if (relevant.length !== 1) { unresolved.push({order,reason:'DOCUMENT_NOT_UNIQUE'}); continue; }
+    const d = relevant[0];
+    const immediate = d.type === 'PROFORMA_INVOICE' && d.due_date == null && d.due_in_days === 0 && /(?:^|[\n\r])\s*Zahlbar sofort[.!](?:\s|$)/i.test(String(d.text || '').replace(/<br\s*\/?\s*>|<\/p>/gi,'\n').replace(/<[^>]*>/g,' ').trim());
+    const due = immediate ? d.document_date : d.due_date;
+    if (!date(due) || !date(d.document_date) || !d.id || !String(d.number || '').trim()) { unresolved.push({order,reason:'DOCUMENT_FIELDS_MISSING'}); continue; }
+    rows.push({order,document_id:String(d.id),number:d.number,document_date:d.document_date,due_date:due,due_basis:immediate?'explicit_immediate_proforma':'document_due_date'});
+  }
+  return {schema:'dunning.invoice-display.v1',rows,unresolved};
+}
+const invoiceDisplayEvidence = buildInvoiceDisplayEvidence([...src.invoices,...src.proformas]);
+
 const active=cases.filter(c=>!['cancelled','test','payment_data_conflict','payment_recording_required'].includes(c.status));
 const noteRows=cases.map(c=>{const old=states.find(s=>norm(s.shopify_order_number)===c.order);const prior=String(old?.note||'').replace(/\n?\[35-TAGE-KONTROLLE\][\s\S]*?\[\/35-TAGE-KONTROLLE\]/g,'').trim();const note='[35-TAGE-KONTROLLE] '+now.slice(0,10)+' | '+c.status+' | Arbeitsrest '+(c.remaining_cents/100).toFixed(2)+' EUR | '+c.note+' [/35-TAGE-KONTROLLE]';return{shopify_order_number:c.order,note:[prior,note].filter(Boolean).join('\n'),updated_by:'n8n:35-day-dunning-control',updated_at:now};});
 const orderRows=src.shopify.orders.map(o=>({shopify_order_id:String(o.legacyResourceId),name:o.name,financial_status:String(o.displayFinancialStatus||'').toLowerCase(),total_price:Number(o.currentTotalPriceSet.shopMoney.amount),total_outstanding:Number(o.totalOutstandingSet.shopMoney.amount),currency:o.totalOutstandingSet.shopMoney.currencyCode,email:o.email||null,tags:(o.tags||[]).join(', '),created_at:o.createdAt,cancelled_at:o.cancelledAt||null,ingested_at:now}));
 const totals={orders_checked:src.shopify.total,raw_positive:cases.length,excluded_cancelled:cases.filter(c=>c.status==='cancelled').length,excluded_tests:cases.filter(c=>c.status==='test').length,payment_recording_required:cases.filter(c=>c.status==='payment_recording_required').length,open_or_review:active.length,working_amount_cents:active.reduce((s,c)=>s+c.remaining_cents,0),sender_blocked:active.filter(c=>c.sender_blocked).length,missing_reminder_evidence:active.filter(c=>c.status==='reminder_missing').length,held:active.filter(c=>c.status==='held').length,not_due:active.filter(c=>c.status==='not_due').length,intake_missing:active.filter(c=>['REGULAR_INTAKE_MISSING','REGULAR_INTAKE_STALE'].includes(c.automation.reason)).length,follow_up_due:active.filter(c=>c.status==='follow_up_due').length};
-const record={document_id:now.slice(0,10),workflow_name:'NEONTRIP Daily 35-Day Dunning Control',action:'daily_35_day_dunning_audit',status:'success',metadata:{schema:'dunning.35day.control.v1',scope:'all_open_orders',cutoff:src.shopify.cutoff,observed_at:now,continuation,totals,stages:[...new Set([0,1,2,3,4,5,6,...active.map(c=>c.stage)])].sort((a,b)=>a-b).map(stage=>({stage,count:active.filter(c=>c.stage===stage).length,amount_cents:active.filter(c=>c.stage===stage).reduce((s,c)=>s+c.remaining_cents,0)})),cases,source_counts:{shopify_pages:src.shopify.pages,invoices:src.invoices.length,proformas:src.proformas.length,unique_bank_transactions:src.bank.length,messages:mails.length}}};
+const record={document_id:now.slice(0,10),workflow_name:'NEONTRIP Daily 35-Day Dunning Control',action:'daily_35_day_dunning_audit',status:'success',metadata:{schema:'dunning.35day.control.v1',scope:'all_open_orders',cutoff:src.shopify.cutoff,observed_at:now,continuation,invoice_display_evidence:invoiceDisplayEvidence,totals,stages:[...new Set([0,1,2,3,4,5,6,...active.map(c=>c.stage)])].sort((a,b)=>a-b).map(stage=>({stage,count:active.filter(c=>c.stage===stage).length,amount_cents:active.filter(c=>c.stage===stage).reduce((s,c)=>s+c.remaining_cents,0)})),cases,source_counts:{shopify_pages:src.shopify.pages,invoices:src.invoices.length,proformas:src.proformas.length,unique_bank_transactions:src.bank.length,messages:mails.length}}};
 return[{json:{order_rows:orderRows,note_rows:noteRows,audit_record:record,totals}}];

@@ -859,6 +859,7 @@ export function buildDunningCases(input: {
   intakeFresh: boolean;
   historicalFresh?: boolean;
   mirrorsFresh?: boolean;
+  invoiceEvidence?: ReadonlyMap<string, {documentId:string;invoiceNumber:string;invoiceDate:string|null;dueDate:string|null}>;
   automationExclusions?: ReadonlyMap<string,string>;
   insolvencyChecks?: ReadonlyMap<string, DunningInsolvencyCheck>;
   courtEvents?: ReadonlyMap<string, DunningCourtEvent[]>;
@@ -1085,8 +1086,8 @@ export function buildDunningCases(input: {
         Date.parse(lastReplyAt) >= Date.parse(lastOutboundAt)),
     );
     const tags = cleanText(order?.tags, 2000) || "";
-    const normalizedTags = normalizedDunningTags(tags);
-    const stopTag = normalizedTags.some(tag => /mahnstop|mahn.stop|keine.?mahnung|keine.?zahlungserinnerung|nicht.?mahnen|inkasso|insolven|warten.?auf.?zahlung|mit.*anwalt/i.test(tag));
+    const stopTags = tags.split(",").map(tag => tag.trim()).filter(tag => /mahnstop|mahn.stop|keine.?mahnung|keine.?zahlungserinnerung|nicht.?mahnen|inkasso|insolven|warten.?auf.?zahlung|mit.*anwalt/i.test(normalizedDunningTags(tag)[0] || ""));
+    const stopTag = stopTags.length > 0;
     const waitingPaymentTag = dunningPaymentExceptionTag(tags);
     const paused = Boolean(statusRow?.paused);
     const pauseMode = ["manual", "until_date"].includes(
@@ -1271,7 +1272,10 @@ export function buildDunningCases(input: {
             ? "tracking_only"
             : "shipment_record_only",
       }));
-    const dueDate = cleanText(candidate?.easybill_due_date, 20);
+    // Display-only evidence must never enroll or schedule an excluded case.
+    const displayInvoice = input.invoiceEvidence?.get(orderNumber);
+    const invoiceEvidence = !candidate?.easybill_document_id || String(candidate.easybill_document_id) === displayInvoice?.documentId ? displayInvoice : undefined;
+    const dueDate = cleanText(candidate?.easybill_due_date, 20) || invoiceEvidence?.dueDate || null;
     const daysOverdue = daysSince(atNineBerlinDate(dueDate), now);
     const orderAgeDays = daysSince(orderCreatedAt, now);
     const nextStage =
@@ -1295,13 +1299,13 @@ export function buildDunningCases(input: {
           nextStage,
           orderCreatedAt,
           easybillCreatedAt: validIso(candidate?.easybill_document_created_at),
-          dueDate,
+          dueDate: cleanText(candidate?.easybill_due_date, 20),
           previousStageSentAt,
         })
       : null;
     const replyWaitFrom = resolvedInvoiceAt || (continuation ? continuedReplyAt : null);
     if (replyWaitFrom && scheduledAt) {
-      const replyEarliest = nextDunningSchedule({ nextStage:1, orderCreatedAt:replyWaitFrom, easybillCreatedAt:replyWaitFrom, dueDate, previousStageSentAt:null });
+      const replyEarliest = nextDunningSchedule({ nextStage:1, orderCreatedAt:replyWaitFrom, easybillCreatedAt:replyWaitFrom, dueDate:cleanText(candidate?.easybill_due_date, 20), previousStageSentAt:null });
       if (replyEarliest && Date.parse(replyEarliest) > Date.parse(scheduledAt)) scheduledAt = replyEarliest;
     }
     const nextLockKey = nextStage ? (continuation?.cycle_prefix || T099_PREFIX + orderId) + ":S" + nextStage : null;
@@ -1354,8 +1358,8 @@ export function buildDunningCases(input: {
         waitingPaymentTag ? `Shopify-Ausnahmetag ${waitingPaymentTag} trotz ausgeglichener Forderung` : "Zahlung belegt; Buchungszuordnung erforderlich",
       );
     if (closed) blockers.push("Forderung ist nicht mehr offen");
-    if (paused) blockers.push("Mahnwesen ist pausiert");
-    if (stopTag) blockers.push("Shopify-Sperrtag ist gesetzt");
+    if (paused) blockers.push("Gesperrt: " + (pauseNote || "Manuelle Pause ohne dokumentierten Grund") + (pauseUntil ? " · bis " + pauseUntil : ""));
+    if (stopTag) blockers.push("Gesperrt: Shopify-Tag „" + stopTags.join("“, „") + "“");
     if (customerReplied)
       blockers.push("Neue Kundenantwort muss zuerst geprüft werden");
     if (!email) blockers.push("Gültige Kunden-E-Mail fehlt");
@@ -1401,7 +1405,7 @@ export function buildDunningCases(input: {
     )
       state = "data_issue";
 
-    const easybillDocumentId = cleanText(candidate?.easybill_document_id, 40);
+    const easybillDocumentId = cleanText(candidate?.easybill_document_id, 40) || invoiceEvidence?.documentId || null;
     const lastActivityAt = latestIso(
       statusRow?.updated_at,
       lastSentAt,
@@ -1422,7 +1426,7 @@ export function buildDunningCases(input: {
     } else if (closed) {
       nextActionKind = "none";
       nextActionLabel = "Keine Aktion – Forderung erledigt";
-    } else if (paused || stopTag) nextActionLabel = "Pause oder Sperre prüfen";
+    } else if (paused || stopTag) nextActionLabel = blockers.filter(reason => reason.startsWith("Gesperrt:")).join(" · ");
     else if (customerReplied) nextActionLabel = "Kundenantwort bearbeiten";
     else if (legalReviewReady) {
       nextActionKind = "court_review";
@@ -1489,7 +1493,7 @@ export function buildDunningCases(input: {
       lastBankPaymentAt,
       fulfillmentStatus,
       orderCreatedAt,
-      invoiceDate: validIso(candidate?.easybill_document_created_at),
+      invoiceDate: validIso(candidate?.easybill_document_created_at) || validIso(invoiceEvidence?.invoiceDate),
       orderAgeDays,
       dueDate,
       daysOverdue,
@@ -1523,7 +1527,7 @@ export function buildDunningCases(input: {
       source,
       sourceLabel: sourceLabel(source),
       state,
-      stateLabel: DUNNING_CASE_STATE_LABELS[state],
+      stateLabel: state === "paused" ? "Gesperrt" : DUNNING_CASE_STATE_LABELS[state],
       sendEligible,
       blockers: uniqueBlockers,
       primaryBlocker: uniqueBlockers[0] || null,
@@ -1545,7 +1549,7 @@ export function buildDunningCases(input: {
       courtEvents,
       courtEvent,
       easybillDocumentId,
-      easybillInvoiceNumber: cleanText(candidate?.easybill_invoice_number, 120),
+      easybillInvoiceNumber: cleanText(candidate?.easybill_invoice_number, 120) || invoiceEvidence?.invoiceNumber || null,
       shopifyUrl: orderId
         ? `https://admin.shopify.com/store/galaxybuzzdk/orders/${encodeURIComponent(orderId)}`
         : null,
@@ -2311,6 +2315,19 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       });
     }
   }
+  const invoiceEvidence = new Map<string, {documentId:string;invoiceNumber:string;invoiceDate:string|null;dueDate:string|null}>();
+  const displayEvidence = recordValue(historicalAudit?.metadata?.invoice_display_evidence);
+  if (historicalFresh && displayEvidence.schema === "dunning.invoice-display.v1" && Array.isArray(displayEvidence.rows)) {
+    for (const value of displayEvidence.rows) {
+      const row = recordValue(value);
+      const order = normalizeDunningOrderNumber(row.order);
+      const documentId = cleanText(row.document_id, 40);
+      const invoiceNumber = cleanText(row.number, 120);
+      const dueDate = cleanText(row.due_date, 10);
+      if (!order || !documentId || !invoiceNumber || !dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || !validIso(dueDate)) continue;
+      invoiceEvidence.set(order, {documentId, invoiceNumber, invoiceDate:validIso(row.document_date), dueDate});
+    }
+  }
   const cases = buildDunningCases({
     orders,
     statuses,
@@ -2328,6 +2345,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     shipments,
     bankPayments: bankPaymentRefresh.payments,
     reviewedPayments,
+    invoiceEvidence,
   });
   for (const entry of cases) entry.phoneCalls = phoneCallAudits
     .filter(row => row.metadata?.order_number === entry.orderNumber)

@@ -141,7 +141,7 @@ test("manual stage actions require auth, same-origin, a fresh snapshot, confirma
   assert.match(domain, /DUNNING_MANUAL_SEND_ALLOWED_HOSTS/);
   assert.match(domain, /redirect: "error"/);
   assert.match(domain, /X-Idempotency-Key/);
-  assert.match(domain, /Shopify-Sperrtag ist gesetzt/);
+  assert.match(domain, /Gesperrt: Shopify-Tag/);
   assert.match(domain, /Neue Kundenantwort muss zuerst geprüft werden/);
   assert.match(domain, /Alt- und Neuverlauf haben unterschiedliche Mahnstufen/);
 });

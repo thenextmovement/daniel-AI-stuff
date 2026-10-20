@@ -1744,11 +1744,11 @@ function DetailDrawer({
                   ) : (
                     <Play className="h-5 w-5 text-emerald-700" />
                   )}
-                  {entry.paused ? "Mahnprozess pausiert" : "Mahnprozess läuft"}
+                  {entry.paused || entry.stopTag ? "Gesperrt" : "Mahnprozess steuern"}
                 </h3>
                 <p className="mt-2 text-sm leading-6 text-stone-600">
-                  {entry.paused
-                    ? "Solange diese Pause aktiv ist, darf der automatische Workflow keine Kundenmail versenden."
+                  {entry.paused || entry.stopTag
+                    ? entry.blockers.filter(reason => reason.startsWith("Gesperrt:")).join(" · ")
                     : "Eine Pause sperrt alle automatischen Mahn-E-Mails für diesen Fall."}
                 </p>
               </div>
