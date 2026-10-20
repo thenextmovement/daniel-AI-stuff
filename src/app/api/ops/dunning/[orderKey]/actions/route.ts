@@ -1,8 +1,9 @@
+import { nominationBlockers } from "@/lib/ops/dunning-court-nomination";
 import { courtPreparationBlockers } from "@/lib/ops/dunning-operator-actions";
 import { scanDunningInsolvencyCandidate } from "@/lib/ops/dunning-insolvency";
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured, resolveOpsRequestActor } from "@/lib/ops/auth";
-import { recordDunningPhoneCall, createDunningActionPreview, getDunningCaseDetail, normalizeDunningOrderNumber, requestDunningStageSend } from "@/lib/ops/dunning";
+import { recordDunningCourtNomination, recordDunningPhoneCall, createDunningActionPreview, getDunningCaseDetail, normalizeDunningOrderNumber, requestDunningStageSend } from "@/lib/ops/dunning";
 import { applyDunningPauseAction, type DunningPauseMode } from "@/lib/ops/dunning-pause";
 import {
   createDunningCourtApplicationPreview,
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 type ActionBody = {
   action:
+    | "nominate_court"
     | "record_phone_call"
     | "check_court_insolvency"
     | "preview_next_stage"
@@ -47,6 +49,7 @@ function parseBody(value: unknown): ActionBody | null {
   if (Object.keys(input).some((key) => !allowedKeys.has(key))) return null;
   const action = input.action;
   if (
+    action !== "nominate_court" &&
     action !== "record_phone_call" &&
     action !== "check_court_insolvency" &&
     action !== "preview_next_stage" &&
@@ -96,6 +99,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const detail = await getDunningCaseDetail(orderKey);
     if (!detail) return NextResponse.json({ ok: false, error: "dunning_case_not_found" }, { status: 404 });
+    if (body.action === "nominate_court") {
+      const actor = await resolveOpsRequestActor(host, request.headers);
+      if (!actor) return NextResponse.json({ ok: false, error: "personal_login_required" }, { status: 403 });
+      if (body.confirmation !== `VORMERKEN ${detail.case.orderNumber}` || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(body.idempotencyKey || ""))
+        return NextResponse.json({ ok: false, error: "confirmation_mismatch" }, { status: 422 });
+      const blockers = nominationBlockers(detail.case);
+      if (blockers.length) return NextResponse.json({ ok: false, error: "DUNNING_COURT_BLOCKED", blockers }, { status: 409 });
+      if (!detail.case.courtNomination) await recordDunningCourtNomination({ id: body.idempotencyKey!, orderNumber: detail.case.orderNumber, actor }).catch(async (error: unknown) => {
+        await sendDunningOperatorAlert(detail.case.orderNumber, "nomination");
+        throw error;
+      });
+      return NextResponse.json({ ok: true });
+    }
     if (body.action === "record_phone_call") {
       const actor = await resolveOpsRequestActor(host, request.headers);
       if (!actor) return NextResponse.json({ ok: false, error: "personal_login_required" }, { status: 403 });

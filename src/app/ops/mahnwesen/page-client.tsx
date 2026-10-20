@@ -1,5 +1,6 @@
 "use client";
 
+import { nominationBlockers } from "@/lib/ops/dunning-court-nomination";
 import {
   useEffect,
   useMemo,
@@ -80,6 +81,7 @@ type Filters = {
   orderAge: DunningOrderAgeFilter;
   orderYear: DunningOrderYearFilter;
   hideCreatedCourtApplications: boolean;
+  onlyCourtNominations: boolean;
   delivery: "all" | "fulfilled" | "tracking" | "delivered" | "evidence_missing";
   insolvency: "all" | "pending" | "checked" | "notice" | "review" | "failed";
   sort: DunningCaseSort;
@@ -92,6 +94,7 @@ const INITIAL_FILTERS: Filters = {
   orderAge: "all",
   orderYear: "all",
   hideCreatedCourtApplications: false,
+  onlyCourtNominations: false,
   delivery: "all",
   insolvency: "all",
   sort: "priority",
@@ -184,8 +187,16 @@ function relativeDue(entry: DunningCaseSummary) {
   return `${entry.daysOverdue} Tage überfällig`;
 }
 
+function OrderLinks({ entry }: { entry: DunningCaseSummary }) {
+  return <div className="grid justify-items-start gap-1">
+    {entry.shopifyUrl ? <a href={entry.shopifyUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-stone-950 underline-offset-4 hover:underline" title="Bestellung in Shopify öffnen">{entry.orderNumber}</a> : <span className="font-semibold text-stone-950">{entry.orderNumber}</span>}
+    {entry.offerUrl ? <a href={entry.offerUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-stone-600 underline underline-offset-2">Angebot öffnen</a> : <span className="text-xs text-stone-400">Kein Angebotslink hinterlegt</span>}
+  </div>;
+}
+
 function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
   const visible = cases.filter((entry) => {
+    if (filters.onlyCourtNominations && !entry.courtNomination) return false;
     if (!caseMatchesQuery(entry, filters.query)) return false;
     if (!matchesDunningStatus(entry, filters.status)) return false;
     if (!matchesDunningStage(entry.currentStage, filters.stage)) return false;
@@ -398,6 +409,7 @@ function FilterPanel({
     filters.orderAge !== "all",
     filters.orderYear !== "all",
     filters.hideCreatedCourtApplications,
+    filters.onlyCourtNominations,
     filters.delivery !== "all",
     filters.insolvency !== "all",
   ].filter(Boolean).length;
@@ -620,6 +632,10 @@ function FilterPanel({
             <option value="review">Treffer oder Daten prüfen</option>
             <option value="failed">Technischer Fehler</option>
           </SelectField>
+          <label className="flex items-center gap-2 rounded-xl border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs font-semibold">
+            <input type="checkbox" checked={filters.onlyCourtNominations} onChange={event => update("onlyCourtNominations", event.target.checked)} />
+            Gelber Brief: nur vorgemerkt
+          </label>
           <label className="flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2 sm:col-span-2 lg:col-span-3 xl:col-span-2">
             <input
               type="checkbox"
@@ -782,12 +798,7 @@ function CaseTable({
                 className="align-top transition hover:bg-[#fcfaf7]"
               >
                 <td className="px-4 py-4">
-                  <button
-                    onClick={() => onOpen(entry)}
-                    className="font-semibold text-stone-950 underline-offset-4 hover:underline"
-                  >
-                    {entry.orderNumber}
-                  </button>
+                  <OrderLinks entry={entry} />
                   <p className="mt-1 text-xs text-stone-500">
                     {dateLabel(entry.orderCreatedAt)}
                   </p>
@@ -895,7 +906,8 @@ function CaseTable({
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                   <QuickPauses entry={entry} busy={actionBusy} onPause={onQuickPause} />
-                  <button type="button" onClick={() => onOpenCourt(entry)} disabled={actionBusy} className="mt-2 rounded-lg border border-yellow-400 bg-yellow-50 px-2 py-1.5 text-xs font-semibold disabled:opacity-40">Gelber Brief</button>
+                  <button type="button" onClick={() => onOpenCourt(entry)} title={nominationBlockers(entry).join(" ") || "Nur vormerken – kein Antrag und kein Versand"} disabled={actionBusy || Boolean(entry.courtNomination) || nominationBlockers(entry).length > 0} className="mt-2 rounded-lg border border-yellow-400 bg-yellow-50 px-2 py-1.5 text-xs font-semibold disabled:opacity-40">{entry.courtNomination ? "Vorgemerkt" : "Gelber Brief"}</button>
+                  {entry.courtNomination ? <p className="mt-1 max-w-48 text-xs text-amber-800">Vorgemerkt – noch nicht erstellt/versandt<br />{dateLabel(entry.courtNomination.at, true)} · {entry.courtNomination.actor}</p> : null}
                 </td>
               </tr>
             ))}
@@ -907,12 +919,7 @@ function CaseTable({
           <article key={entry.key} className="p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <button
-                  onClick={() => onOpen(entry)}
-                  className="text-left text-base font-semibold text-stone-950"
-                >
-                  {entry.orderNumber}
-                </button>
+                <OrderLinks entry={entry} />
                 <p className="mt-1 text-sm text-stone-700">
                   {entry.company || entry.customerName || "Kunde unbekannt"}
                 </p>
@@ -991,7 +998,8 @@ function CaseTable({
             </button>
             <QuickPauses entry={entry} busy={actionBusy} onPause={onQuickPause} />
             <p className="mt-2 text-xs">{entry.phoneCalls?.[0] ? `Angerufen ${dateLabel(entry.phoneCalls[0].at, true)}: ${entry.phoneCalls[0].note}` : "Noch kein Anruf erfasst"}</p>
-            <button type="button" onClick={() => onOpenCourt(entry)} disabled={actionBusy} className="mt-2 rounded-lg border border-yellow-400 bg-yellow-50 px-3 py-2 text-sm font-semibold">Gelber Brief</button>
+            <button type="button" onClick={() => onOpenCourt(entry)} title={nominationBlockers(entry).join(" ") || "Nur vormerken – kein Antrag und kein Versand"} disabled={actionBusy || Boolean(entry.courtNomination) || nominationBlockers(entry).length > 0} className="mt-2 rounded-lg border border-yellow-400 bg-yellow-50 px-3 py-2 text-sm font-semibold">{entry.courtNomination ? "Vorgemerkt" : "Gelber Brief"}</button>
+                  {entry.courtNomination ? <p className="mt-1 max-w-48 text-xs text-amber-800">Vorgemerkt – noch nicht erstellt/versandt<br />{dateLabel(entry.courtNomination.at, true)} · {entry.courtNomination.actor}</p> : null}
           </article>
         ))}
       </div>
@@ -2779,6 +2787,26 @@ export function DunningOpsClient({
     }
   }
 
+  async function nominateCourt(entry: DunningCaseSummary) {
+    if (actionBusy || entry.courtNomination) return;
+    if (!window.confirm(`${entry.orderNumber} für einen gelben Brief vormerken?
+
+Es wird jetzt kein Antrag erstellt oder versandt. Vor der späteren Erstellung müssen Zahlung, Kundenkommunikation, Adresse und Insolvenz geprüft werden.`)) return;
+    setActionBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/ops/dunning/${encodeURIComponent(entry.key)}/actions`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "nominate_court", confirmation: `VORMERKEN ${entry.orderNumber}`, idempotencyKey: crypto.randomUUID() }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.blockers?.join(" ") || payload.error || "Vormerkung konnte nicht gespeichert werden.");
+      await loadDashboard();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Vormerkung konnte nicht bestätigt werden. Bitte neu laden.");
+    } finally { setActionBusy(false); }
+  }
+
   async function previewCourtApplication() {
     if (!selected) return;
     setActionBusy(true);
@@ -3023,7 +3051,7 @@ export function DunningOpsClient({
               onQuickPause={(entry, weeks) => void submitPauseAction(weeks, entry)}
               cases={visibleCases}
               onOpen={(entry) => { setCourtOpen(false); void openCase(entry); }}
-              onOpenCourt={(entry) => { setCourtOpen(true); void openCase(entry); }}
+              onOpenCourt={(entry) => { void nominateCourt(entry); }}
               onInsolvencyOpen={setInsolvencyCase}
               loadingKey={detailLoadingKey}
             />
