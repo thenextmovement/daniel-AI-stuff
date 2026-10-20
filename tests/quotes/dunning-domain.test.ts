@@ -510,7 +510,7 @@ test("stopped and conflicting cases fail closed", () => {
     input({ orders: [order({ tags: "VIP, Keine Zahlungserinnerung n8n" })] }),
   );
   assert.equal(stopped?.state, "paused");
-  assert.ok(stopped?.blockers.includes("Shopify-Sperrtag ist gesetzt"));
+  assert.ok(stopped?.blockers.includes("Gesperrt: Shopify-Tag „Keine Zahlungserinnerung n8n“"));
 
   const statuses: BuildInput["statuses"] = [
     {
@@ -1128,3 +1128,33 @@ for (const year of [2024, 2025, 2026]) {
     assert.equal(buildDunningCases(input({ orders: [order({ created_at: `${year}-01-01T10:00:00Z`, financial_status: "paid", total_outstanding: 0 })], candidates: [] })).length, 0);
   });
 }
+
+test("historical invoice evidence supplies dates without enrolling a blocked case", () => {
+  const [entry] = buildDunningCases(input({
+    orders: [order({created_at:"2024-05-18T10:00:00Z",tags:"Mahnstop"})],
+    candidates: [],
+    invoiceEvidence: new Map([["#NEONT5000", {documentId:"88001",invoiceNumber:"R-2024",invoiceDate:"2024-05-18",dueDate:"2024-06-01"}]]),
+  }));
+  assert.equal(entry.dueDate,"2024-06-01");
+  assert.ok(entry.daysOverdue! > 700);
+  assert.equal(entry.sendEligible,false);
+  assert.equal(entry.stateLabel,"Gesperrt");
+  assert.ok(entry.blockers.some(reason => reason.includes("Mahnstop")));
+});
+
+test("invoice display evidence cannot create a sender candidate or reopen paid orders", () => {
+  const evidence = new Map([["#NEONT5000", {documentId:"88001",invoiceNumber:"R-2024",invoiceDate:"2024-05-18",dueDate:"2024-06-01"}]]);
+  const [entry] = buildDunningCases(input({candidates:[],invoiceEvidence:evidence}));
+  assert.equal(entry.sendEligible,false);
+  assert.equal(entry.nextStage,null);
+  assert.deepEqual(buildDunningCases(input({orders:[order({financial_status:"paid",total_outstanding:0})],candidates:[],invoiceEvidence:evidence})),[]);
+});
+
+test("hold tag matching preserves whitespace and unicode normalization", () => {
+  for (const tags of ["Keine  Zahlungserinnerung", "Ｍａｈｎｓｔｏｐ"]) {
+    const [entry] = buildDunningCases(input({orders:[order({tags})]}));
+    assert.equal(entry.sendEligible,false);
+    assert.equal(entry.stateLabel,"Gesperrt");
+    assert.ok(entry.blockers.some(reason => reason.includes(tags)));
+  }
+});
