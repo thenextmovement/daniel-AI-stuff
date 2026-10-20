@@ -730,7 +730,11 @@ const signature = [
   '',
   'FOR UNIQUE BRANDING AND LIGHTING'
 ];
-const message = ['Guten Tag,','',...messages[kind],'',...common,'',...signature].join('\n');
+// Düsseldorf accepts one PDF per email and rejects active links in the message.
+const pdfOnlyMailbox = recipient === 'erechnung@duesseldorf.de';
+const message = pdfOnlyMailbox
+  ? 'Guten Tag,\n\nanbei erhalten Sie den Beleg als PDF. Alle abrechnungsrelevanten Angaben stehen im Dokument.\n\nFreundliche Grüße\nNEONTRIP / DARA NOVA GmbH'
+  : ['Guten Tag,','',...messages[kind],'',...common,'',...signature].join('\n');
 const output = {
   hasJob:true,
   job,
