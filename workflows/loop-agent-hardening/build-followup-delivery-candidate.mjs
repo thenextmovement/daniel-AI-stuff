@@ -145,7 +145,7 @@ const nodes = [
     "const now = new Date();",
     "const oldestAllowed = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);",
     "const replyAnchor = parsedReplyAnchor && Number.isFinite(parsedReplyAnchor.getTime()) && parsedReplyAnchor <= now ? parsedReplyAnchor : oldestAllowed;",
-    "const replySearchFrom = (replyAnchor < oldestAllowed ? oldestAllowed : replyAnchor).toISOString();",
+    "const replySearchFrom = replyAnchor.toISOString();",
     "const reservedDomain = /(^|\\.)example(?:\\.|$)|\\.(?:invalid|localhost|test)$|^(?:invalid|localhost|test)$/i.test(emailDomain);",
     "const validEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) && !/@(?:neontrip\\.de|riesenobjekte\\.de)$/i.test(email) && !reservedDomain;",
     "const modernLink = /^https:\\/\\/angebote\\.neontrip\\.de\\/offer\\/[^/?#]+$/i.test(rawLink);",

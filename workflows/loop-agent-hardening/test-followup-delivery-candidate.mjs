@@ -137,6 +137,53 @@ assert.equal(validPrepared[0].json.preflight_route, "modern");
 assert.equal(validPrepared[0].json.customer_email, "ada@customer-domain.de");
 assert.equal(validPrepared[0].json.ai_copy_allowed, false);
 
+const replyCheckTime = "2026-10-20T12:00:04.684Z";
+class ReplyCheckDate extends Date {
+  constructor(...args) {
+    super(...(args.length ? args : [replyCheckTime]));
+  }
+}
+const prepareAtReplyCheck = new AsyncFunction(
+  "$json",
+  "Date",
+  node("PrepareCandidate").parameters.jsCode,
+);
+async function prepareReplyContext(enriched_context) {
+  return (await prepareAtReplyCheck({
+    candidate: { ...validPrepared[0].json, enriched_context },
+  }, ReplyCheckDate))[0].json;
+}
+// Delayed follow-ups must still inspect replies since the last actual send.
+const delayedReplyContext = await prepareReplyContext({
+  first_sent_at: "2026-08-04T11:00:37.689Z",
+  last_followup_sent_at: "2026-09-08T10:30:09.528Z",
+});
+assert.equal(
+  delayedReplyContext.reply_search_from,
+  "2026-09-08T10:30:09.528Z",
+);
+assert.equal(
+  (await prepareReplyContext({ first_sent_at: "2026-08-04T11:00:37.689Z" })).reply_search_from,
+  "2026-08-04T11:00:37.689Z",
+);
+assert.equal(
+  (await prepareReplyContext({
+    first_sent_at: "2026-08-04T11:00:37.689Z",
+    last_followup_sent_at: "2026-10-19T10:30:09.528Z",
+  })).reply_search_from,
+  "2026-10-19T10:30:09.528Z",
+);
+for (const context of [
+  {},
+  { last_followup_sent_at: "invalid" },
+  { last_followup_sent_at: "2026-10-21T10:30:09.528Z" },
+]) {
+  assert.equal(
+    (await prepareReplyContext(context)).reply_search_from,
+    "2026-09-20T12:00:04.684Z",
+  );
+}
+
 const blockedPrepared = await prepare({
   followup_queue_id: "00000000-0000-4000-8000-000000000003",
   claim_token: "00000000-0000-4000-8000-000000000004",
@@ -260,6 +307,24 @@ const noReply = await analyze(
 );
 assert.equal(noReply[0].json.reply_preflight_safe, true);
 assert.equal(noReply[0].json.offer_link, modernGood[0].json.offer_link);
+
+const delayedReply = {
+  id: "reply-after-delayed-followup",
+  from: { emailAddress: { address: "ada@customer-domain.de" } },
+  subject: "Re: NEONTRIP Angebot A/N 14100",
+  bodyPreview: "Wir haben das Projekt nach hinten verschoben und melden uns wieder.",
+  receivedDateTime: "2026-09-08T10:36:02.000Z",
+};
+const repliesInDelayedWindow = [delayedReply]
+  .filter(reply => new Date(reply.receivedDateTime) > new Date(delayedReplyContext.reply_search_from))
+  .map(json => ({ json }));
+const delayedReplyResult = await analyze(
+  { first: () => ({ json: {} }) },
+  analyzeLookup(repliesInDelayedWindow, delayedReplyContext),
+);
+assert.equal(delayedReplyResult[0].json.reply_preflight_safe, false);
+assert.equal(delayedReplyResult[0].json.reply_route, "classify");
+assert.equal(delayedReplyResult[0].json.reply_message_id, delayedReply.id);
 
 const hasReply = await analyze(
   { first: () => ({ json: {} }) },
