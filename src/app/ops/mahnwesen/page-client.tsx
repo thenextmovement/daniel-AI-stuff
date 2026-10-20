@@ -83,7 +83,7 @@ type Filters = {
   orderYear: DunningOrderYearFilter;
   hideCreatedCourtApplications: boolean;
   hideBlocked: boolean;
-  onlyCourtNominations: boolean;
+  hideCourtNominations: boolean;
   delivery: "all" | "fulfilled" | "tracking" | "delivered" | "evidence_missing";
   insolvency: "all" | "pending" | "checked" | "notice" | "review" | "failed";
   sort: DunningCaseSort;
@@ -97,7 +97,7 @@ const INITIAL_FILTERS: Filters = {
   orderYear: "all",
   hideCreatedCourtApplications: true,
   hideBlocked: true,
-  onlyCourtNominations: false,
+  hideCourtNominations: true,
   delivery: "all",
   insolvency: "all",
   sort: "priority",
@@ -207,7 +207,7 @@ function OfferLink({ entry }: { entry: DunningCaseSummary }) {
 
 function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
   const visible = cases.filter((entry) => {
-    if (filters.onlyCourtNominations && !entry.courtNomination) return false;
+    if (filters.hideCourtNominations && entry.courtNomination) return false;
     if (filters.hideBlocked && (entry.paused || entry.stopTag)) return false;
     if (!caseMatchesQuery(entry, filters.query)) return false;
     if (!matchesDunningStatus(entry, filters.status)) return false;
@@ -218,7 +218,7 @@ function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
       return false;
     if (
       filters.hideCreatedCourtApplications &&
-      (Boolean(entry.courtNomination) || hasCreatedDunningCourtApplication(entry.courtEvents))
+      hasCreatedDunningCourtApplication(entry.courtEvents)
     )
       return false;
     if (
@@ -421,7 +421,7 @@ function FilterPanel({
     filters.orderAge !== "all",
     filters.orderYear !== "all",
     filters.hideCreatedCourtApplications,
-    filters.onlyCourtNominations,
+    filters.hideCourtNominations,
     filters.hideBlocked,
     filters.delivery !== "all",
     filters.insolvency !== "all",
@@ -524,7 +524,17 @@ function FilterPanel({
           Shopify-Ausnahmetags bleiben als Klärfälle sichtbar.
         </span>
       </div>
-      <div className="border-t border-[#e6e0d8] px-4 py-3 sm:max-w-xs">
+      <details className="border-t border-[#e6e0d8]">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-stone-700 marker:content-none">
+          <Filter className="h-4 w-4" />
+          Weitere Filter
+          {advancedCount ? (
+            <span className="rounded-full bg-stone-950 px-2 py-0.5 text-xs text-white">
+              {advancedCount}
+            </span>
+          ) : null}
+        </summary>
+        <div className="grid gap-3 border-t border-[#eee8df] bg-[#faf7f2] p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <SelectField
             label="Bestelljahr"
             value={filters.orderYear}
@@ -541,18 +551,6 @@ function FilterPanel({
               ),
             )}
           </SelectField>
-      </div>
-      <details className="border-t border-[#e6e0d8]">
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-stone-700 marker:content-none">
-          <Filter className="h-4 w-4" />
-          Weitere Filter
-          {advancedCount ? (
-            <span className="rounded-full bg-stone-950 px-2 py-0.5 text-xs text-white">
-              {advancedCount}
-            </span>
-          ) : null}
-        </summary>
-        <div className="grid gap-3 border-t border-[#eee8df] bg-[#faf7f2] p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <SelectField
             label="Status"
             value={filters.status}
@@ -646,8 +644,8 @@ function FilterPanel({
             <option value="failed">Technischer Fehler</option>
           </SelectField>
           <label className="flex items-center gap-2 rounded-xl border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs font-semibold">
-            <input type="checkbox" checked={filters.onlyCourtNominations} onChange={event => { const checked = event.target.checked; setFilters(current => ({...current, onlyCourtNominations: checked, hideCreatedCourtApplications: checked ? false : current.hideCreatedCourtApplications})); }} />
-            Gelber Brief: nur vorgemerkt
+            <input type="checkbox" checked={filters.hideCourtNominations} onChange={event => update("hideCourtNominations", event.target.checked)} />
+            Vorgemerkte gelbe Briefe ausblenden
           </label>
           <label className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold">
             <input type="checkbox" checked={filters.hideBlocked} onChange={event => update("hideBlocked", event.target.checked)} />
@@ -658,16 +656,16 @@ function FilterPanel({
               type="checkbox"
               checked={filters.hideCreatedCourtApplications}
               onChange={(event) =>
-                setFilters(current => ({...current, hideCreatedCourtApplications: event.target.checked, onlyCourtNominations: event.target.checked ? false : current.onlyCourtNominations}))
+                update("hideCreatedCourtApplications", event.target.checked)
               }
               className="h-4 w-4 rounded border-stone-300 accent-stone-950"
             />
             <span className="grid gap-0.5">
               <span className="text-xs font-semibold text-stone-700">
-                Gerichtsfälle und Vormerkungen ausblenden
+                Erstellte/eingereichte Mahnanträge ausblenden
               </span>
               <span className="text-xs font-normal text-stone-500">
-                Vorgemerkte, erstellte und eingereichte Anträge aus der Liste nehmen.
+                Erstellte und bereits eingereichte Anträge aus der Liste nehmen.
               </span>
             </span>
           </label>
