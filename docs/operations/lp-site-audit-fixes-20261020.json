@@ -1,0 +1,139 @@
+{
+  "business": "NEONTRIP",
+  "status": "PREPARED_PENDING_EXACT_COMMIT_RELEASE_APPROVAL",
+  "date": "2026-10-20",
+  "contract": {
+    "business": "NEONTRIP",
+    "goal": "Fix F1-F7 from site-audit-20261020",
+    "neighbor": "Preserve current live main forms, scroll effects, consent, conversion semantics, pricing and checkout",
+    "effect": "Correct request handling and visible feedback; validated existing reporting path; no production messages during local QA",
+    "allowed": "Audited public page HTML, maintained matching templates, existing submit synchronization and focused tests; complete release artifact overlay only; four existing served image assets recovered after artifact completeness check; stale duplicate favicon references removed",
+    "worktree": "/Users/danielklesse/codex-worktrees/neontrip-ops-lp-audit-fixes-20261020-20261020-102230",
+    "base_commit": "1f2ab96b8d5282f6eafc36ccf7b599cb3e33ccdf",
+    "live_commit": "7d326f497b6636f692e503b990641feeb40d5da4",
+    "live_deployment": "a9934e22-98f6-444f-84ce-91c25198ba68",
+    "source_strategy": "Restore only audited editable files from exact published package; preserve current main elsewhere; apply minimal patches to matching published source templates. Do not merge unrelated release history or rebuild whole site from stale repository deploy."
+  },
+  "baseline_alignment_commit": "054dc230a34180b531cd0e53a9896b94cdcc58e1",
+  "form_repair_commit": "56646412289a5baa06f71050196286c4d6be38a4",
+  "release_artifact": "/Users/danielklesse/Documents/Codex/2026-10-14/neontrip-landingpage-weiterarbeit/work/site-fixes-20261020/release-candidate",
+  "artifact_policy": "Publish this complete verified overlay, never raw repository deploy; preserve unchanged Functions and other assets. Recheck production baseline before publishing.",
+  "release_changes": {
+    "site-release/agb.html": "b41be38f79cbb87c2757d3e9166c12f5059cbb63457fe3578c8d88272853d073",
+    "site-release/anfrage.html": "4c473f56763e2785a60693a547da08018be2e87897a7f896118aef452695ce86",
+    "site-release/batteriehinweise.html": "8ba87703f2b53829debc62b9cea39d74755e872fedf2f915bb8362c1521dca5f",
+    "site-release/blog/index.html": "94935b26130b12a30f99447dfd3eb0f89f5a675c29fde8c76e13699135ef1d3c",
+    "site-release/configurator/index.html": "4fe63bc4057975f580ea4ea786399b82f1746bc1f1f8ca3806d931ec96a8ebc7",
+    "site-release/configurator/neon-cafe-kaffee.html": "efe3ff6923d989812e27424912992b25065b564a9e07142918888812441efd49",
+    "site-release/configurator/neon-empfang-bewegraum.html": "e78b298ce0af8d2dc00c677864e3bd153fbf758b6f38ef4565e1f74224e2515a",
+    "site-release/configurator/neon-hochzeit-forever-together.html": "4a2ad9ea2da13ba6f947cb4a3b5fcf399871770fa99d25adce69112b1153498d",
+    "site-release/configurator/neon-studio-im-gespraech.html": "a72c513cf8f28c46171407ff86be7565a1c063316f176bf6a99c0f342f548f41",
+    "site-release/configurator/neon-wunschname-emma.html": "b83d2ada773b8e9a5bcddc9451cacc4812330fd642125ed89d7e79080c654df1",
+    "site-release/configurator/neon-zuhause-stay-golden.html": "5a119c586b3ab286e526b890b7a55102eba39a195552fabc87678750d55bffb3",
+    "site-release/cookie-einstellungen.html": "1d431e6e1e431c0963513d519ff6a096049a6cb229eb31309e7437d08b56463c",
+    "site-release/datenschutz.html": "0bac9812a4f383b09ebddf6b06dc62921c31022092feabd3e781d771776b3ad0",
+    "site-release/en/anfrage.html": "19a7b58315a0e84e3cb7d758f701569c6574d12b87b80f8e85c97d15ec00c4f1",
+    "site-release/en/index.html": "22cb709e863de6ac3119dd904bc11103278aa7edc60795f2ce5f6f2e33d62c27",
+    "site-release/firmenlogo-beleuchtet/index.html": "710086df37c21cffcc0d48dc64f418fc6c430c5d8070ff6994d61e3a3b4aacc2",
+    "site-release/firmenschilder/index.html": "075f86f2bb9f88c34d7fd49004315e0675affd30ee8ec4feb7d49ea8c7e382be",
+    "site-release/impressum.html": "76e455060387d55cc0d810f10ab9bf03f8db7209c8413b01a617451bf848198d",
+    "site-release/index.html": "be4dea568d7aae0fea43acc86b09443352703216961589d748d1513920fd82e1",
+    "site-release/leuchtbuchstaben/index.html": "d4bdf64ac6f298583902382ca5e29100bb1b1357ccaa71bcaa83af6bf51d2964",
+    "site-release/leuchtkaesten/index.html": "3154df1640bc56601bf46a0d69c886b8a37ae2c062a3caafc94dd8200a3fc01f",
+    "site-release/leuchtreklame-kaufen/index.html": "3d4bdbb6654e6c4dc00be83c47f8b6a26932bb3817c6a56792e0de798bff4f52",
+    "site-release/leuchtreklame/index.html": "cd99be28ca7cdf46fe62987e88b8c2b5e04d2b8e9f03e59fd1e6181b16125000",
+    "site-release/lexikon/index.html": "21054a06d9dca590b4c22b81a6262253ca669c5f3b201bf5e56978eb956c1c1b",
+    "site-release/logo/index.html": "f2202a76bba2b1d1b3c68276bb16d851371ea11a0ecde3dfc4380d773f9d70a0",
+    "site-release/messe-event/index.html": "110d0a96ab18ad680a0c035d9b03db858d84ab62fe81eafa78612f7ac5ec3d75",
+    "site-release/neon-schild-personalisieren/index.html": "f5a7ad460be085be336f64b7bfdee35f16f354d39c6b95da43971b2366e39906",
+    "site-release/neon-schilder/index.html": "56bcbe7f486df2783adc1e77d2448ebc161cd0a239ab5849690af2fd9d915003",
+    "site-release/ueber-uns.html": "2f4e174aee8a5ad59256508270120ba8be4a1e5c954448f13bda7c9b8338bf62",
+    "site-release/widerrufsrecht.html": "c25da6f04f697aed383aa94bf6da9e9d94a93472c1bc8a16a7684dc42c9b62b0",
+    "site-release/assets/neonschild-anfrage/20261013-v1/assets/live/assets/logo_weiss_neontrip.png": "a96542e243024c9a9892c18090cb7b228d282b90edae8b0333464032292a51a6",
+    "site-release/assets/neonschild-anfrage/20261013-v1/assets/modules/express-chat/google-color.png": "fd4d9d732e7a4af52746ebabe6bb16941ee71ae3e919131af700cf4e1228a16a",
+    "site-release/assets/neonschild-anfrage/20261013-v1/assets/modules/inquiry-b/google-color.png": "fd4d9d732e7a4af52746ebabe6bb16941ee71ae3e919131af700cf4e1228a16a",
+    "site-release/assets/neonschild-anfrage/20261013-v1/assets/modules/led-neon-usecases-v2/google-color.png": "fd4d9d732e7a4af52746ebabe6bb16941ee71ae3e919131af700cf4e1228a16a"
+  },
+  "asset_provenance": [
+    {
+      "path": "assets/neonschild-anfrage/20261013-v1/assets/modules/express-chat/google-color.png",
+      "sha256": "fd4d9d732e7a4af52746ebabe6bb16941ee71ae3e919131af700cf4e1228a16a",
+      "bytes": 3831,
+      "source": "https://anfrage.neontrip.de/assets/neonschild-anfrage/20261013-v1/assets/modules/express-chat/google-color.png",
+      "published_preview_status": 404,
+      "reason": "Preserve currently served image bytes missing in the previous deployment artifact"
+    },
+    {
+      "path": "assets/neonschild-anfrage/20261013-v1/assets/modules/led-neon-usecases-v2/google-color.png",
+      "sha256": "fd4d9d732e7a4af52746ebabe6bb16941ee71ae3e919131af700cf4e1228a16a",
+      "bytes": 3831,
+      "source": "https://anfrage.neontrip.de/assets/neonschild-anfrage/20261013-v1/assets/modules/led-neon-usecases-v2/google-color.png",
+      "published_preview_status": 404,
+      "reason": "Preserve currently served image bytes missing in the previous deployment artifact"
+    },
+    {
+      "path": "assets/neonschild-anfrage/20261013-v1/assets/modules/inquiry-b/google-color.png",
+      "sha256": "fd4d9d732e7a4af52746ebabe6bb16941ee71ae3e919131af700cf4e1228a16a",
+      "bytes": 3831,
+      "source": "https://anfrage.neontrip.de/assets/neonschild-anfrage/20261013-v1/assets/modules/inquiry-b/google-color.png",
+      "published_preview_status": 404,
+      "reason": "Preserve currently served image bytes missing in the previous deployment artifact"
+    },
+    {
+      "path": "assets/neonschild-anfrage/20261013-v1/assets/live/assets/logo_weiss_neontrip.png",
+      "sha256": "a96542e243024c9a9892c18090cb7b228d282b90edae8b0333464032292a51a6",
+      "bytes": 39465,
+      "source": "https://anfrage.neontrip.de/assets/neonschild-anfrage/20261013-v1/assets/live/assets/logo_weiss_neontrip.png",
+      "published_preview_status": 404,
+      "reason": "Preserve currently served image bytes missing in the previous deployment artifact"
+    }
+  ],
+  "verification": {
+    "focused_tests": 244,
+    "actual_submit_callback_tests": 16,
+    "callback_tests_before_fix_failed": 16,
+    "callback_tests_against_final_artifact_passed": 16,
+    "public_routes": 32,
+    "browser_layout_observations": 67,
+    "horizontal_overflow_after": 0,
+    "logo_pages": 8,
+    "http_paths_checked": 308,
+    "anchor_references_checked": 575,
+    "inline_scripts_parsed": 216,
+    "artifact_files": 1882,
+    "functions_unchanged": true,
+    "routing_unchanged": true,
+    "source_sync_idempotent": true,
+    "native_iphone_safari_verified": false,
+    "production_test_inquiry_sent": false,
+    "customer_error_emails_added": false,
+    "workflow_changed": false
+  },
+  "interaction_proof": {
+    "anchor": {
+      "hash": "#anfrage",
+      "headerBottom": 47.5,
+      "heading": "Produkte.",
+      "headingTop": 155.7890625,
+      "viewport": 390
+    },
+    "keyboard_back": {
+      "page": "/neon-schilder/",
+      "action": "Enter on hero-back-d-3",
+      "result": "step d-2 visible, step d-3 hidden"
+    },
+    "english_labels": [
+      "Color",
+      "Desired Size (cm)",
+      "Back to project"
+    ],
+    "form_cases": [
+      "messe-event mobile: rejection, retained fields, manual retry succeeds with same ID",
+      "en: rejection and unconfirmed report shown in English",
+      "leuchtkaesten desktop: network failure, retained fields, submit reenabled"
+    ],
+    "external_messages_sent": false
+  },
+  "evidence_directory": "/Users/danielklesse/Documents/Codex/2026-10-14/neontrip-landingpage-weiterarbeit/work/site-fixes-20261020",
+  "remaining_release_proof": "Exact-SHA approval, guarded release, deployed byte comparison and live browser checks remain required; local mock receipt/report acknowledgements are not live mail delivery proof."
+}
