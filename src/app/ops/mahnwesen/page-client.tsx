@@ -91,7 +91,7 @@ const INITIAL_FILTERS: Filters = {
   stage: "all",
   orderAge: "all",
   orderYear: "all",
-  hideCreatedCourtApplications: false,
+  hideCreatedCourtApplications: true,
   delivery: "all",
   insolvency: "all",
   sort: "priority",
