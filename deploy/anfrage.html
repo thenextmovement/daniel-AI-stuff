@@ -92,7 +92,7 @@
     if(window.Cookiebot&&window.Cookiebot.hasResponse===true)syncOpenAiAdsConsent();
   })();
   </script>
-  <script defer src="/assets/js/nt-business-email.js?v=78b9b0ce"></script>
+  <script defer src="/assets/js/nt-business-email.js?v=20261016-hints1"></script>
 
   <!-- Google Analytics 4 + Google Ads Tag (Consent Mode steuert Datenerhebung) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-NEEVFC08VX"></script>
@@ -590,7 +590,9 @@
   <!-- ClickCease Click Fraud Protection -->
   <script>function loadCC(){var s=document.createElement('script');s.src='https://ob.brilliantchap.com/i/281092490251912af433a9e3a26f799f.js';s.className='ct_clicktrue';document.head.appendChild(s);}if('requestIdleCallback' in window){setTimeout(function(){requestIdleCallback(loadCC,{timeout:8000});},8000);}else{setTimeout(loadCC,8000);}</script>
   <noscript><iframe src="https://ob.brilliantchap.com/ns/281092490251912af433a9e3a26f799f.html?ch=" width="0" height="0" style="display:none" title="Click Fraud Protection"></iframe></noscript>
-<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=efd2b0ffba35"></script></head>
+<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=4105556a9003"></script>  <script type="module" src="/js/nt-cro-page.js?v=20261014-clarity3"></script>
+<script type="module" data-cookieconsent="ignore" src="/js/nt-x-page.js?v=20261016-x1"></script>
+</head>
 <body>
 
 
@@ -602,7 +604,7 @@
   <div class="px-4 lg:px-8 py-5 lg:py-5 flex items-center justify-between">
     <!-- Logo (left) - white on all devices -->
     <a href="/" id="headerLogo" class="flex items-center">
-      <img src="assets/logo_weiss_neontrip.png" alt="NEONTRIP" class="h-8 lg:h-10 w-auto" width="160" height="40" decoding="async">
+      <img src="/assets/logo_weiss_neontrip.webp" alt="NEONTRIP" class="h-8 lg:h-10 w-auto" width="160" height="40" decoding="async">
     </a>
 
     <!-- Progress Bar (desktop only, in header) -->
@@ -973,55 +975,7 @@
       </div>
 
       <!-- Größe -->
-      <div class="mb-8">
-        <label for="groesseInput" class="block text-xs font-semibold text-black/50 uppercase tracking-wider mb-3">Gewünschte Größe</label>
-        <select id="groesseInput" class="form-input w-full border-2 border-black/10 rounded-xl px-4 py-3 text-sm font-medium bg-white appearance-none cursor-pointer focus:border-accent/50 transition-all" style="background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23999%22 stroke-width=%222%22><path d=%22M6 9l6 6 6-6%22/></svg>'); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px;" onchange="document.getElementById('groesseCustom2').style.display=this.value==='Individuelle Größe'?'block':'none'">
-          <option value="" disabled selected>Größe wählen</option>
-          <option value="Kleinstmögliche Größe">Kleinstmögliche Größe</option>
-          <option value="50 cm">50 cm</option>
-          <option value="55 cm">55 cm</option>
-          <option value="60 cm">60 cm</option>
-          <option value="65 cm">65 cm</option>
-          <option value="70 cm">70 cm</option>
-          <option value="75 cm">75 cm</option>
-          <option value="80 cm">80 cm</option>
-          <option value="85 cm">85 cm</option>
-          <option value="90 cm">90 cm</option>
-          <option value="95 cm">95 cm</option>
-          <option value="100 cm">100 cm</option>
-          <option value="105 cm">105 cm</option>
-          <option value="110 cm">110 cm</option>
-          <option value="115 cm">115 cm</option>
-          <option value="120 cm">120 cm</option>
-          <option value="125 cm">125 cm</option>
-          <option value="130 cm">130 cm</option>
-          <option value="135 cm">135 cm</option>
-          <option value="140 cm">140 cm</option>
-          <option value="145 cm">145 cm</option>
-          <option value="150 cm">150 cm</option>
-          <option value="155 cm">155 cm</option>
-          <option value="160 cm">160 cm</option>
-          <option value="165 cm">165 cm</option>
-          <option value="170 cm">170 cm</option>
-          <option value="175 cm">175 cm</option>
-          <option value="180 cm">180 cm</option>
-          <option value="185 cm">185 cm</option>
-          <option value="190 cm">190 cm</option>
-          <option value="195 cm">195 cm</option>
-          <option value="200 cm">200 cm</option>
-          <option value="205 cm">205 cm</option>
-          <option value="210 cm">210 cm</option>
-          <option value="215 cm">215 cm</option>
-          <option value="220 cm">220 cm</option>
-          <option value="225 cm">225 cm</option>
-          <option value="230 cm">230 cm</option>
-          <option value="235 cm">235 cm</option>
-          <option value="240 cm">240 cm</option>
-          <option value="> 240 cm">&gt; 240 cm</option>
-          <option value="Individuelle Größe">Individuelle Größe</option>
-        </select>
-        <input type="text" id="groesseCustom2" class="form-input w-full border-2 border-black/10 rounded-xl px-4 py-3 text-sm font-medium placeholder:text-black/30 focus:border-accent/50 transition-all mt-2" placeholder="Gewünschte Größe eingeben" style="display:none">
-      </div>
+
 
       <!-- Farbe -->
       <div class="mb-8">
@@ -1085,6 +1039,11 @@
       <div class="text-center mb-8">
         <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-2">Fast geschafft!</h2>
         <p class="text-black/50">Wie erreichen wir Sie für das Angebot?</p>
+      </div>
+
+      <div id="wizard-submit-error" role="alert" tabindex="-1" hidden class="mb-6 rounded-xl border bg-red-50 p-4 text-sm text-dark" style="border-color:#fecaca">
+        <p class="font-semibold">Übermittlung nicht bestätigt</p>
+        <p class="mt-1 leading-relaxed">Ihre Eingaben und Dateien sind weiterhin vorhanden. Bitte versuchen Sie es erneut oder kontaktieren Sie uns unter <a href="tel:+4921154257240" class="underline">+49 211 54257240</a> oder <a href="mailto:support@neontrip.de" class="underline">support@neontrip.de</a>.</p>
       </div>
 
       <!-- Contact Form -->
@@ -1177,12 +1136,12 @@
         <!-- Fabienne Online -->
         <div class="mt-6 flex items-center justify-center gap-3 bg-black/[0.03] rounded-2xl px-5 py-3.5">
           <div class="relative flex-shrink-0">
-            <img src="/assets/images/team/fabienne-trapp.png" alt="Fabienne Trapp" class="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm" width="40" height="40" loading="lazy" decoding="async">
+            <img src="/assets/images/lp-speed/fabienne-trapp-192.webp" alt="Fabienne Trapp" class="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm" width="40" height="40" loading="lazy" decoding="async">
             <span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-white"></span>
           </div>
           <div>
-            <p class="text-sm font-semibold text-dark leading-tight">Fabienne ist online</p>
-            <p class="text-xs text-black/50 leading-tight">Bearbeitet Ihre Anfrage sofort</p>
+            <p class="text-sm font-semibold text-dark leading-tight">Ihre persönliche Ansprechpartnerin</p>
+            <p class="text-xs text-black/50 leading-tight">Fabienne Trapp begleitet Ihre Anfrage</p>
           </div>
         </div>
 
@@ -1315,7 +1274,7 @@
 
     <!-- Large Logo -->
     <div class="flex items-center justify-center overflow-hidden">
-      <img src="assets/logo_weiss_neontrip.png" class="w-full opacity-90" alt="NEONTRIP" width="1200" height="200" loading="lazy" decoding="async">
+      <img src="/assets/images/lp-speed/logo_weiss_neontrip-1904.webp" class="w-full opacity-90" alt="NEONTRIP" width="1200" height="200" loading="lazy" decoding="async" srcset="/assets/images/lp-speed/logo_weiss_neontrip-800.webp 800w, /assets/images/lp-speed/logo_weiss_neontrip-1904.webp 1904w" sizes="(min-width: 1464px) 1400px, (min-width: 768px) calc(100vw - 64px), calc(100vw - 40px)">
     </div>
 
     <!-- Copyright & Legal Links -->
@@ -1359,7 +1318,7 @@
     <!-- Photo -->
     <div class="flex justify-center mb-4">
       <div class="w-20 h-20 rounded-full overflow-hidden border-2 border-white shadow-lg">
-        <img src="/assets/images/team/fabienne-trapp.png" alt="Fabienne Trapp" class="w-full h-full object-cover" width="80" height="80" loading="lazy" decoding="async">
+        <img src="/assets/images/lp-speed/fabienne-trapp-192.webp" alt="Fabienne Trapp" class="w-full h-full object-cover" width="80" height="80" loading="lazy" decoding="async">
       </div>
     </div>
 
@@ -1653,7 +1612,7 @@
       convData.user_data = userData;
     }
     gtag('event', 'conversion', convData);
-    gtag('event', 'generate_lead', { currency: 'EUR', value: 280 });
+    if (!window.ntCro) gtag('event', 'generate_lead', { currency: 'EUR', value: 280 });
     gtag('event', 'nerdy form submitted', { event_category: 'lead', event_label: label, value: 280 });
   }
 
@@ -1671,7 +1630,6 @@
       details: {
         ort: null,
         usecase: null,
-        groesse: '',
         farbe: 'wie-im-design',
         farbeCustom: '',
         zeit: null
@@ -1736,7 +1694,7 @@
 
     // Update inline submit button
     if (inlineSubmitBtn && state.currentStep === 4) {
-      inlineSubmitBtn.disabled = !canProceed;
+      inlineSubmitBtn.disabled = !canProceed || Boolean(window.__ntWizardSubmitting);
     }
 
     // Show/hide back button (legacy - only if exists)
@@ -1901,11 +1859,20 @@
     document.head.appendChild(script);
   }
 
+  // Keep the intake UUID when a customer manually retries an uncertain submission.
+  let wizardSubmitId = null;
   function showSuccess() {
     if (window.__ntWizardSubmitting) return;
     const businessEmailInput = document.getElementById('email');
     if (!window.ntBusinessEmail || !window.ntBusinessEmail.validateInput(businessEmailInput, { focus: true })) return;
     window.__ntWizardSubmitting = true;
+    const submittedStep = state.currentStep;
+    const progressBarSection = document.getElementById('progressBarSection');
+    const previousNavDisplay = formNav ? formNav.style.display : '';
+    const previousProgressDisplay = progressBarSection ? progressBarSection.style.display : '';
+    const errorBanner = document.getElementById('wizard-submit-error');
+    if (errorBanner) errorBanner.hidden = true;
+    updateNav();
 
     const formData = new FormData();
     const gclidMatch = document.cookie.match(/(?:^|; )_neontrip_gclid=([^;]*)/);
@@ -1921,14 +1888,12 @@
       state.data.designText ? 'Design-Idee: ' + state.data.designText : '',
       'Ort: ' + (state.data.details.ort || ''),
       'Usecase: ' + (state.data.details.usecase || ''),
-      'Groesse: ' + (state.data.details.groesse || ''),
       'Farbe: ' + (state.data.details.farbe === 'andere' ? (state.data.details.farbeCustom || 'Andere') : (document.getElementById('farbeSelect')?.selectedOptions[0]?.text || state.data.details.farbe || '')),
       'Zeit: ' + (state.data.details.zeit || ''),
       state.data.contact.message ? 'Nachricht: ' + state.data.contact.message : '',
       'Quelle: ' + (state.data.source || 'Formular anfrage.html'),
       'URL: ' + (state.data.urlSource || window.location.search)
     ].filter(Boolean).join('\n'));
-    formData.append('groesse', state.data.details.groesse || '');
     formData.append('ort', state.data.details.ort || '');
     formData.append('zeit', state.data.details.zeit || '');
     formData.append('produkt', state.data.product || '');
@@ -1944,8 +1909,15 @@
       state.data.uploadedFiles.forEach(file => formData.append('datei', file));
     }
 
-    window.ntSubmitStandaloneForm(formData, 'anfrage_wizard')
+    if (wizardSubmitId) formData.set('request_id', wizardSubmitId);
+    try { window.ntCro?.startForm(document.querySelector('main')); } catch(e) {}
+    const submission = window.ntSubmitStandaloneForm(formData, 'anfrage_wizard');
+    // The existing helper assigns its canonical UUID synchronously before preparing files.
+    wizardSubmitId = formData.get('request_id') || wizardSubmitId;
+    return submission
       .then(function(result) {
+        try { window.ntXAds?.lead(result); } catch(e) {}
+        try { window.ntCro?.lead(document.querySelector('main'), result); } catch(e) {}
         const successState = document.getElementById('successState');
         document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
         successState.classList.add('active');
@@ -1973,15 +1945,23 @@
         else launchConfetti();
       })
       .catch(function(err) {
-        const successState = document.getElementById('successState');
-        document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-        successState.classList.add('active');
-        if (formNav) formNav.style.display = 'none';
-        const progressBarSection = document.getElementById('progressBarSection');
-        if (progressBarSection) progressBarSection.style.display = 'none';
-        window.ntReportSubmitFailure('anfrage_wizard', err);
-        window.ntShowFailureBanner(successState);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        try { window.ntCro?.error('form', err, err.clientSubmitId); } catch(e) {}
+        window.__ntWizardSubmitting = false;
+        state.currentStep = submittedStep;
+        document.getElementById('successState').classList.remove('active');
+        document.querySelectorAll('.step').forEach(s => {
+          s.classList.toggle('active', Number(s.dataset.step) === submittedStep);
+        });
+        if (formNav) formNav.style.display = previousNavDisplay;
+        if (progressBarSection) progressBarSection.style.display = previousProgressDisplay;
+        updateProgress();
+        updateNav();
+        try { window.ntReportSubmitFailure('anfrage_wizard', err); } catch (_) {}
+        if (errorBanner) {
+          errorBanner.hidden = false;
+          errorBanner.focus({ preventScroll: true });
+          errorBanner.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
       });
   }
   // EVENT LISTENERS
@@ -2102,24 +2082,6 @@
   ideaField.querySelector('textarea')?.addEventListener('input', (e) => {
     state.data.designText = e.target.value;
   });
-
-  // Größe select dropdown
-  const groesseInput = document.getElementById('groesseInput');
-  const groesseCustom2 = document.getElementById('groesseCustom2');
-  if (groesseInput) {
-    groesseInput.addEventListener('change', (e) => {
-      const val = e.target.value;
-      state.data.details.groesse = val;
-      if (val === 'Individuelle Größe' && groesseCustom2) {
-        groesseCustom2.focus();
-      }
-    });
-  }
-  if (groesseCustom2) {
-    groesseCustom2.addEventListener('input', (e) => {
-      state.data.details.groesse = 'Individuelle Größe: ' + e.target.value.trim();
-    });
-  }
 
   // Farbe select dropdown
   const farbeSelect = document.getElementById('farbeSelect');
@@ -2662,7 +2624,8 @@
   // ═══════════════════════════════════════
   (function() {
     const slideshowProducts = ['neonschild', 'front-buchstaben', 'halo-buchstaben', 'marquee', 'neon-halo', 'gesamtkonzept'];
-    const slideshowState = new Map(); // card -> { interval, index, images }
+    const slideshowState = new Map(); // card -> { interval, index }
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
     // Skip slideshow setup on touch devices (no hover available)
     if (window.matchMedia('(hover: none)').matches) return;
@@ -2675,53 +2638,75 @@
       if (!product || !product.images || product.images.length === 0) return;
 
       const imgContainer = card.querySelector('.relative');
+      if (!imgContainer) return;
       const originalImg = imgContainer.querySelector('img');
-      if (!imgContainer || !originalImg) return;
+      if (!originalImg) return;
 
-      // Create overlay images for the slideshow (one per gallery image)
-      const overlayImgs = product.images.map(src => {
-        const img = document.createElement('img');
-        img.src = src;
-        img.alt = product.title + ' Beispiel';
-        img.className = 'slideshow-img';
-        img.loading = 'lazy';
-        img.draggable = false;
-        imgContainer.appendChild(img);
-        return img;
-      });
+      let overlayImgs = null;
+      const readyImages = new Set();
+
+      function startReadySlideshow() {
+        const state = slideshowState.get(card);
+        if (!state || !overlayImgs || reducedMotion.matches || window.matchMedia('(hover: none)').matches) return;
+        if (state.index < 0) {
+          const firstReady = overlayImgs.findIndex(img => readyImages.has(img));
+          if (firstReady < 0) return; // Keep the original while gallery images load.
+          state.index = firstReady;
+          overlayImgs[firstReady].classList.add('active');
+          card.classList.add('slideshow-active');
+        }
+        if (state.interval) return;
+        state.interval = setInterval(() => {
+          for (let offset = 1; offset < overlayImgs.length; offset++) {
+            const next = (state.index + offset) % overlayImgs.length;
+            if (!readyImages.has(overlayImgs[next])) continue;
+            overlayImgs[state.index].classList.remove('active');
+            state.index = next;
+            overlayImgs[next].classList.add('active');
+            break;
+          }
+        }, 1500);
+      }
 
       card.addEventListener('mouseenter', () => {
-        // Don't start slideshow on touch devices
-        if (window.matchMedia('(hover: none)').matches) return;
+        if (window.matchMedia('(hover: none)').matches || reducedMotion.matches || slideshowState.has(card)) return;
+        slideshowState.set(card, { interval: null, index: -1 });
 
-        let index = 0;
-        // Show the first slideshow image immediately
-        overlayImgs.forEach(img => img.classList.remove('active'));
-        overlayImgs[0].classList.add('active');
-        card.classList.add('slideshow-active');
-
-        const interval = setInterval(() => {
-          // Fade out current
-          overlayImgs[index].classList.remove('active');
-          // Advance to next
-          index = (index + 1) % overlayImgs.length;
-          // Fade in next
-          overlayImgs[index].classList.add('active');
-        }, 1500);
-
-        slideshowState.set(card, { interval, overlayImgs });
+        // Only the hovered card requests its slideshow images, once.
+        if (!overlayImgs) overlayImgs = product.images.map(src => {
+          const img = document.createElement('img');
+          const loaded = () => {
+            if (!img.naturalWidth) return;
+            const ready = () => { readyImages.add(img); startReadySlideshow(); };
+            if (typeof img.decode === 'function') img.decode().then(ready).catch(() => {});
+            else ready();
+          };
+          img.addEventListener('load', loaded, { once: true });
+          img.alt = product.title + ' Beispiel';
+          img.className = 'slideshow-img';
+          img.loading = 'lazy';
+          img.draggable = false;
+          img.src = src;
+          imgContainer.appendChild(img);
+          return img;
+        });
+        startReadySlideshow();
       });
 
-      card.addEventListener('mouseleave', () => {
+      function stopSlideshow() {
         const s = slideshowState.get(card);
         if (s) {
           clearInterval(s.interval);
           // Fade out all overlays, restore original
-          s.overlayImgs.forEach(img => img.classList.remove('active'));
+          overlayImgs.forEach(img => img.classList.remove('active'));
           card.classList.remove('slideshow-active');
           slideshowState.delete(card);
         }
-      });
+      }
+      card.addEventListener('mouseleave', stopSlideshow);
+      const motionChanged = () => { if (reducedMotion.matches) stopSlideshow(); };
+      if (reducedMotion.addEventListener) reducedMotion.addEventListener('change', motionChanged);
+      else if (reducedMotion.addListener) reducedMotion.addListener(motionChanged);
     });
   })();
 

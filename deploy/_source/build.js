@@ -161,54 +161,6 @@ function generateOpenAiAdsPixelSetup(config) {
   </script>`;
 }
 
-function generateProjectContextFields(config, variant) {
-  if (!config.enable_b2b_project_context) return '';
-
-  const isContact = variant === 'contact';
-  const isDesktop = variant === 'desktop';
-  const idSuffix = isContact ? 'kontakt' : isDesktop ? 'hero-d' : 'hero';
-  const labelClass = isContact
-    ? 'text-xs font-medium text-dark tracking-tight mb-1 block'
-    : isDesktop
-      ? 'text-[12px] font-semibold text-dark tracking-[-0.01em] block mb-1'
-      : 'text-[11px] font-semibold text-dark block mb-1';
-  const inputClass = isContact
-    ? 'w-full bg-[#F5F5F5] rounded-[10px] px-3.5 py-2 text-base md:text-sm font-medium tracking-tight text-dark outline-none focus:ring-1 focus:ring-gray-300'
-    : isDesktop
-      ? 'w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-dark outline-none focus:border-dark/20 focus:bg-white transition-all duration-200'
-      : 'w-full bg-dark/[0.03] border border-black/[0.06] rounded-xl px-3 py-2.5 text-[14px] font-medium text-dark';
-
-  return `<div>
-                  <label for="${idSuffix}-project-context" class="${labelClass}">Anwendungsfall <span class="font-normal text-dark/40">(optional)</span></label>
-                  <select name="project_context" id="${idSuffix}-project-context" class="${inputClass}">
-                    <option value="" selected>Bitte wählen</option>
-                    <option value="Empfang, Büro oder Showroom">Empfang, Büro oder Showroom</option>
-                    <option value="Ladenbau, Retail oder Gastronomie">Ladenbau, Retail oder Gastronomie</option>
-                    <option value="Messe, Event oder Pop-up">Messe, Event oder Pop-up</option>
-                    <option value="Außenfassade oder Werbeanlage">Außenfassade oder Werbeanlage</option>
-                    <option value="Filial- oder Serien-Rollout">Filial- oder Serien-Rollout</option>
-                    <option value="Sonstiger gewerblicher Einsatz">Sonstiger gewerblicher Einsatz</option>
-                  </select>
-                </div>
-                <div class="grid grid-cols-2 gap-2${isContact ? '.5' : ''}">
-                  <div>
-                    <label for="${idSuffix}-quantity-band" class="${labelClass}">Menge / Rollout <span class="font-normal text-dark/40">(optional)</span></label>
-                    <select name="quantity_band" id="${idSuffix}-quantity-band" class="${inputClass}">
-                      <option value="" selected>Bitte wählen</option>
-                      <option value="Einzelanfertigung">1 Stück</option>
-                      <option value="Kleinserie 2–5 Stück">2–5 Stück</option>
-                      <option value="Rollout 6–20 Stück">6–20 Stück</option>
-                      <option value="Serienproduktion 21+ Stück">21+ / Serie</option>
-                      <option value="Menge noch offen">Noch offen</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label for="${idSuffix}-desired-deadline" class="${labelClass}">Wunschtermin <span class="font-normal text-dark/40">(optional)</span></label>
-                    <input type="date" name="desired_deadline" id="${idSuffix}-desired-deadline" class="${inputClass}">
-                  </div>
-                </div>`;
-}
-
 // ─── Replace template variables ───
 function replaceVariables(html, config) {
   const vars = {
@@ -257,9 +209,6 @@ function replaceVariables(html, config) {
     '{{AI_CITABLE_MATERIAL}}': config.ai_citable_material || 'Material: Hochwertiges LED Neon Flex auf Acrylglasplatte. Energiesparend, bruchsicher und langlebig.',
     '{{AI_CITABLE_PROOF}}': config.ai_citable_proof || 'Über 8.247 realisierte Projekte für Marken wie Campari, Amazon, Aperol und Mercedes-Benz. 4,9 von 5 Sternen bei 236 Google-Bewertungen.',
     '{{WHATSAPP_MESSAGE}}': encodeURIComponent(config.whatsapp_message || 'Hallo, ich interessiere mich für ein individuelles Neonschild. Können Sie mich beraten?'),
-    '{{PROJECT_CONTEXT_FIELDS_MOBILE}}': generateProjectContextFields(config, 'mobile'),
-    '{{PROJECT_CONTEXT_FIELDS_DESKTOP}}': generateProjectContextFields(config, 'desktop'),
-    '{{PROJECT_CONTEXT_FIELDS_CONTACT}}': generateProjectContextFields(config, 'contact'),
     '{{FOOTER_TAGLINE}}': config.footer_tagline,
     '{{FOOTER_PRODUCTS}}': config.footer_products,
     '{{FAQ_CTA_TITLE}}': config.faq_cta_title || '',

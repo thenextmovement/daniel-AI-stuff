@@ -66,7 +66,7 @@
 
 {{OPENAI_ADS_PIXEL_SETUP}}
 
-  <script defer src="/assets/js/nt-business-email.js?v=78b9b0ce"></script>
+  <script defer src="/assets/js/nt-business-email.js?v=20261016-hints1"></script>
 
   <!-- Google Analytics 4 + Google Ads Tag (Consent Mode steuert Datenerhebung) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-NEEVFC08VX"></script>
@@ -116,6 +116,25 @@
     header{position:fixed;top:0;left:0;right:0;z-index:50}
     .hidden{display:none}.flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}
     img,video{max-width:100%;height:auto;display:block}
+    /* Keep narrow-screen stats and contact actions inside their own columns. */
+    .lp-stats p, .footer-stats p { overflow-wrap: anywhere; hyphens: auto; }
+    .contact-advisor-content { min-width: 0; }
+    .contact-advisor-actions { flex-wrap: wrap; }
+    .faq-cta-actions { max-width: 100%; flex-wrap: wrap; justify-content: center; }
+    .faq-cta-actions > button { max-width: 100%; white-space: normal; }
+    @media (max-width: 479px) {
+      .lp-stats .grid { gap: 12px; }
+      .lp-stats [data-count], .lp-stats [data-count-static] { font-size: 22px; }
+      .lp-stats p { font-size: 11px; letter-spacing: 0.025em; }
+      #kontakt .contact-details { grid-template-columns: minmax(0, 1fr); }
+    }
+
+    /* Keep the mobile inquiry action readable on narrow phones. */
+    @media (max-width: 479px) {
+      #mobile-sticky-cta .mobile-advisor-copy { display: none; }
+      #mobile-sticky-cta .mobile-inquiry-link { flex: 1; min-width: 0; text-align: center; padding-left: 10px !important; padding-right: 10px !important; }
+    }
+    #mobile-sticky-cta a[aria-label="WhatsApp"] { width: 44px !important; height: 44px !important; }
   </style>
 
   <!-- Tailwind CSS (Production Build) -->
@@ -124,6 +143,8 @@
   {{DKI_SCRIPT}}
 
   {{STRUCTURED_DATA}}
+
+
 
   <style>
     /* CookieBot: kompaktes Popup */
@@ -246,6 +267,8 @@
     /* Scroll reveal */
     .reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
     .reveal.visible { opacity: 1; transform: translateY(0); }
+    /* Above-the-fold content must not wait for scroll observers or animation. */
+    #hero .reveal { opacity: 1; transform: none; transition: none; }
     /* Fallback: show content if JS fails */
     .no-js .reveal { opacity: 1; transform: none; transition: none; }
     .no-js .stagger-children > * { opacity: 1; transform: none; }
@@ -532,7 +555,7 @@
     @media (min-width: 768px) { section#hero h1 { font-size: 80px !important; } }
 
     /* Noise overlay for card-in-card dark sections */
-    .noise-overlay { background-image: url('../assets/images/grain-texture.png'); background-size: 256px 256px; background-repeat: repeat; opacity: 0.05; pointer-events: none; }
+    .noise-overlay { background-image:none; background-size: 256px 256px; background-repeat: repeat; opacity: 0.05; pointer-events: none; }
 
     /* Grain texture overlay for dark sections — adds depth */
     .grain { position: relative; }
@@ -643,7 +666,9 @@
   pintrk('load', '2614194923903');
   pintrk('page');
   </script>
-<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=efd2b0ffba35"></script></head>
+<script defer data-cookieconsent="ignore" src="/assets/js/nt-clarity-identifiers.js?v=4105556a9003"></script>  <script type="module" src="/js/nt-cro-page.js?v=20261014-clarity3"></script>
+<script type="module" data-cookieconsent="ignore" src="/js/nt-x-page.js?v=20261016-x1"></script>
+</head>
 <body class="bg-white text-dark">
 
 <!-- Announcement Bar -->
@@ -674,6 +699,16 @@
     var bar = document.getElementById('announcement-bar');
     var header = document.getElementById('header');
     if (bar && header) header.style.top = bar.offsetHeight + 'px';
+    // The announcement already occupies document flow; reserve only the fixed header.
+    if (header) {
+      var syncHeaderHeight = function() {
+        document.documentElement.style.setProperty('--nt-header-height', header.getBoundingClientRect().height + 'px');
+      };
+      syncHeaderHeight();
+      if ('ResizeObserver' in window) new ResizeObserver(syncHeaderHeight).observe(header);
+      else window.addEventListener('resize', syncHeaderHeight);
+    }
+
     // Marquee: Items klonen bis Track-Breite >= 2x Viewport (verhindert Leer-Lücke)
     var track = document.getElementById('announcement-track');
     if (track) {
@@ -916,7 +951,7 @@
         convData.user_data = userData;
       }
       try { gtag('event', 'conversion', convData); } catch(e) {}
-      try { gtag('event', 'generate_lead', { currency: 'EUR', value: 280 }); } catch(e) {}
+      try { if (!window.ntCro) gtag('event', 'generate_lead', { currency: 'EUR', value: 280 }); } catch(e) {}
       try { gtag('event', 'nerdy form submitted', { event_category: 'lead', event_label: label, value: 280 }); } catch(e) {}
       // Pinterest lead tracking (mit Enhanced Matching) — guarded
       try {
@@ -1348,8 +1383,36 @@
         }
       });
 
+      const Motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      let Visible = false;
+      let Running = false;
+      const Timers = { starts: [], intervals: [], swaps: [], frames: [] };
+      function Allowed() { return Visible && !document.hidden && !Motion.matches; }
+      function Stop() {
+        Running = false;
+        Timers.starts.forEach(clearTimeout);
+        Timers.intervals.forEach(clearInterval);
+        Timers.swaps.forEach(clearTimeout);
+        Timers.frames.forEach(cancelAnimationFrame);
+        Object.keys(Timers).forEach(key => { Timers[key] = []; });
+        columns.forEach(column => {
+          const slot = column.querySelector('.logo-slot');
+          slot.style.opacity = '1'; slot.style.filter = 'blur(0px)'; slot.style.transform = 'translateY(0)';
+        });
+      }
+      function Sync() {
+        if (!Allowed()) { Stop(); return; }
+        if (Running) return;
+        Running = true;
+        columns.forEach((_, i) => {
+          Timers.starts[i] = setTimeout(() => {
+            if (Allowed()) Timers.intervals[i] = setInterval(() => animateColumn(i), cycleInterval);
+          }, i * 2000);
+        });
+      }
       // Animate column
       function animateColumn(colIndex) {
+        if (!Allowed()) return;
         const column = columns[colIndex];
         if (!column) return;
 
@@ -1361,7 +1424,8 @@
         slot.style.filter = 'blur(6px)';
         slot.style.transform = 'translateY(-10%)';
 
-        setTimeout(() => {
+        Timers.swaps[colIndex] = setTimeout(() => {
+          if (!Allowed()) return;
           // Update index
           currentIndices[colIndex] = (currentIndices[colIndex] + 1) % colLogos.length;
 
@@ -1373,7 +1437,8 @@
           slot.style.transform = 'translateY(10%)';
 
           // Small delay then fade in
-          requestAnimationFrame(() => {
+          Timers.frames[colIndex] = requestAnimationFrame(() => {
+            if (!Allowed()) return;
             slot.style.opacity = '1';
             slot.style.filter = 'blur(0px)';
             slot.style.transform = 'translateY(0)';
@@ -1381,13 +1446,12 @@
         }, 300);
       }
 
-      // Start staggered animations for each column
-      columns.forEach((_, colIndex) => {
-        const delay = colIndex * 2000; // 2 seconds between each logo change
-        setTimeout(() => {
-          setInterval(() => animateColumn(colIndex), cycleInterval);
-        }, delay);
-      });
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(entries => { Visible = entries[0].isIntersecting; Sync(); }).observe(logoCarousel);
+      }
+      document.addEventListener('visibilitychange', Sync);
+      if (Motion.addEventListener) Motion.addEventListener('change', Sync);
+      else if (Motion.addListener) Motion.addListener(Sync);
     })();
 
     // Anfrage-Quick Logo Carousel (fade in/out)
@@ -1437,20 +1501,50 @@
         }
       });
 
+      const aMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      let aVisible = false;
+      let aRunning = false;
+      const aTimers = { starts: [], intervals: [], swaps: [], frames: [] };
+      function aAllowed() { return aVisible && !document.hidden && !aMotion.matches; }
+      function aStop() {
+        aRunning = false;
+        aTimers.starts.forEach(clearTimeout);
+        aTimers.intervals.forEach(clearInterval);
+        aTimers.swaps.forEach(clearTimeout);
+        aTimers.frames.forEach(cancelAnimationFrame);
+        Object.keys(aTimers).forEach(key => { aTimers[key] = []; });
+        aCols.forEach(column => {
+          const slot = column.querySelector('.anfrage-logo-slot');
+          slot.style.opacity = '1'; slot.style.filter = 'blur(0px)'; slot.style.transform = 'translateY(0)';
+        });
+      }
+      function aSync() {
+        if (!aAllowed()) { aStop(); return; }
+        if (aRunning) return;
+        aRunning = true;
+        aCols.forEach((_, i) => {
+          aTimers.starts[i] = setTimeout(() => {
+            if (aAllowed()) aTimers.intervals[i] = setInterval(() => animateAnfrageCol(i), 12000);
+          }, i * 2500);
+        });
+      }
       // Animate
       function animateAnfrageCol(ci) {
+        if (!aAllowed()) return;
         const col = aCols[ci];
         if (!col) return;
         const slot = col.querySelector('.anfrage-logo-slot');
         slot.style.opacity = '0';
         slot.style.filter = 'blur(6px)';
         slot.style.transform = 'translateY(-10%)';
-        setTimeout(() => {
+        aTimers.swaps[ci] = setTimeout(() => {
+          if (!aAllowed()) return;
           aIndices[ci] = (aIndices[ci] + 1) % aColLogos[ci].length;
           slot.innerHTML = '';
           slot.appendChild(createAnfrageLogoEl(aColLogos[ci][aIndices[ci]]));
           slot.style.transform = 'translateY(10%)';
-          requestAnimationFrame(() => {
+          aTimers.frames[ci] = requestAnimationFrame(() => {
+            if (!aAllowed()) return;
             slot.style.opacity = '1';
             slot.style.filter = 'blur(0px)';
             slot.style.transform = 'translateY(0)';
@@ -1458,11 +1552,13 @@
         }, 300);
       }
 
-      aCols.forEach((_, ci) => {
-        setTimeout(() => {
-          setInterval(() => animateAnfrageCol(ci), 12000);
-        }, ci * 2500);
-      });
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(entries => { aVisible = entries[0].isIntersecting; aSync(); }).observe(anfrageCarousel);
+      }
+      document.addEventListener('visibilitychange', aSync);
+      if (aMotion.addEventListener) aMotion.addEventListener('change', aSync);
+      else if (aMotion.addListener) aMotion.addListener(aSync);
+
     }
 
     // Project Filter
@@ -1515,45 +1611,63 @@
     // form submission to an n8n monitoring webhook AND shows a visible red
     // banner with tel/mail fallback so the visitor can still reach us.
     window.ntReportSubmitFailure = function(formName, error) {
-      try { console.error('[NT][form-fail]', formName, error); } catch (e) {}
-      try {
+      // One attempt only: retrying an ambiguous mail send can duplicate alerts.
+      if (error && error.notificationPromise) return error.notificationPromise;
+      var report = Promise.resolve().then(function() {
+        if (error && error.notification && error.notification.attempted) return error.notification;
         var payload = JSON.stringify({
           form: formName,
           error: (error && (error.message || String(error))) || 'unknown',
-          status: error && error.status ? error.status : null,
-          error_code: error && error.code ? error.code : null,
-          request_id: error && error.requestId ? error.requestId : null,
-          client_submit_id: error && error.clientSubmitId ? error.clientSubmitId : null,
+          status: error && error.status || null,
+          error_code: error && error.code || null,
+          request_id: error && error.requestId || null,
+          client_submit_id: error && error.clientSubmitId || null,
           recovery_attempted: Boolean(error && error.recoveryAttempted),
           network_retry_attempted: Boolean(error && error.networkRetryAttempted),
-          attempts: error && typeof error.attempts === 'number' ? error.attempts : null,
-          phase: error && error.phase ? error.phase : null,
-          elapsed_ms: error && typeof error.elapsedMs === 'number' ? error.elapsedMs : null,
+          attempts: error && error.attempts,
+          phase: error && error.phase,
+          elapsed_ms: error && error.elapsedMs,
           url: window.location.href,
           referrer: document.referrer || '',
           ua: navigator.userAgent,
           ts: new Date().toISOString()
         });
-        var endpoint = '/api/r';
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon(endpoint, new Blob([payload], { type: 'application/json' }));
-        } else {
-          fetch(endpoint, { method: 'POST', body: payload, headers: { 'Content-Type': 'application/json' }, keepalive: true }).catch(function(){});
-        }
-      } catch (e) {}
+        var controller = new AbortController();
+        var timer = setTimeout(function() { controller.abort(); }, 15000);
+        return fetch('/api/r', {
+          method: 'POST', body: payload, headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin', keepalive: true, signal: controller.signal
+        }).then(function(response) {
+          return response.json().then(function(data) {
+            return { attempted: true, internal: response.ok && data.internal === 'provider_accepted' ? 'provider_accepted' : 'unconfirmed' };
+          });
+        }).finally(function() { clearTimeout(timer); });
+      }).catch(function() { return { attempted: true, internal: 'unconfirmed' }; });
+      if (error) error.notificationPromise = report;
+      return report;
     };
-    window.ntShowFailureBanner = function(container) {
-      if (!container || container.dataset.ntFailShown === '1') return;
-      container.dataset.ntFailShown = '1';
-      // Replace container content entirely: the optimistic success UI
-      // may already be visible — we don't want the user seeing both
-      // "Anfrage erhalten!" and "fehlgeschlagen" at the same time.
-      container.innerHTML = '';
+    window.ntShowFailureBanner = function(container, error) {
+      if (!container) return;
+      var old = container.querySelector('[data-nt-submit-error]');
+      if (old) old.remove();
+      // Preserve all fields and files so a deliberate retry keeps the same request ID.
       var banner = document.createElement('div');
+      banner.setAttribute('data-nt-submit-error', '');
       banner.setAttribute('role', 'alert');
-      banner.className = 'text-center py-8 px-4';
-      banner.innerHTML = '<div class="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4"><svg class="w-7 h-7 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3 class="text-xl font-semibold text-dark tracking-[-0.03em] mb-1">Übermittlung fehlgeschlagen</h3><p class="text-sm font-medium text-dark/50 tracking-tight mb-5 max-w-[320px] mx-auto">Ihre Anfrage konnte nicht übertragen werden. Bitte kontaktieren Sie uns direkt — wir melden uns sofort mit Ihrem Angebot:</p><div class="flex flex-col items-center gap-3"><a href="tel:+4921154257240" class="inline-flex items-center gap-2 px-5 py-3 bg-accent text-white rounded-full font-semibold text-[14px] tracking-tight shadow-[0_6px_20px_rgba(250,49,162,0.35)]"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>+49 211 54257240</a><a href="mailto:support@neontrip.de" class="text-[13px] font-semibold text-dark/60 hover:text-dark underline decoration-dark/20 underline-offset-2">support@neontrip.de</a></div>';
+      banner.setAttribute('tabindex', '-1');
+      banner.className = 'text-center py-6 px-4';
+      banner.style.cssText = 'margin-top:16px;border:1px solid #fecaca;border-radius:16px;background:#fff7f7;color:#171717;';
+      banner.innerHTML = '<h3 class="text-xl font-semibold tracking-tight mb-2">Übermittlung nicht bestätigt</h3><p class="text-sm mb-3">Wir konnten den Eingang Ihrer Anfrage nicht bestätigen. Ihre Eingaben bleiben erhalten. Sie können erneut senden oder uns direkt kontaktieren.</p><p data-nt-report-status class="text-sm mb-4">Die automatische Fehlermeldung wird übermittelt.</p><div class="flex flex-col items-center gap-3"><a href="tel:+4921154257240" class="inline-flex items-center gap-2 px-5 py-3 bg-accent text-white rounded-full font-semibold text-[14px]">+49 211 54257240</a><a href="mailto:support@neontrip.de" class="text-[13px] font-semibold underline">support@neontrip.de</a></div>';
       container.appendChild(banner);
+      banner.focus();
+      banner.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+      var status = banner.querySelector('[data-nt-report-status]');
+      Promise.resolve(error && error.notificationPromise).then(function(result) {
+        if (!banner.isConnected) return;
+        status.textContent = result && result.internal === 'provider_accepted'
+          ? 'Die Fehlermeldung wurde an unser Team übermittelt.'
+          : 'Auch die automatische Fehlermeldung konnte nicht bestätigt werden. Bitte kontaktieren Sie uns direkt.';
+      });
     };
     window.ntShowContactRecoveryBanner = function(container) {
       if (!container) return;
@@ -1581,6 +1695,7 @@
           err.code = data.error || 'http_error';
           err.requestId = data.request_id || response.headers.get('X-Request-Id') || null;
           err.clientSubmitId = data.client_submit_id || null;
+          err.notification = data.notification || null;
           throw err;
         }
         data.http_status = response.status;
@@ -1600,7 +1715,10 @@
         data.customer_id &&
         leadRequestId === submitId
       );
-      if (confirmed) return data;
+      if (confirmed) {
+        try { window.ntXAds?.lead(Object.assign({}, data, {submit_id:submitId})); } catch(e) {}
+        return data;
+      }
       var err = new Error('HTTP 502 | persistence_unconfirmed');
       err.status = 502;
       err.code = 'persistence_unconfirmed';
@@ -1683,7 +1801,29 @@
       return recovery;
     };
     window.ntSubmitForm = function(form, formData, formName) {
+      try { window.ntCro?.startForm(form); } catch(e) {}
+      if (form && form.__ntSubmitPending) return form.__ntSubmitPending;
+      if (form && form.__ntClientSubmitId) {
+        formData.set('custom_6703e7e2e253b1_87194328', form.__ntClientSubmitId);
+        formData.set('request_id', form.__ntClientSubmitId);
+        formData.set('nt_client_submit_id', form.__ntClientSubmitId);
+      }
       var submitId = window.ntEnsureClientSubmitId(formData);
+      if (form) form.__ntClientSubmitId = submitId;
+      var oldError = form && form.querySelector && form.querySelector('[data-nt-submit-error]');
+      if (oldError) oldError.remove();
+      var controller = new AbortController();
+      var expired = false;
+      var timer;
+      var deadline = new Promise(function(_resolve, reject) {
+        timer = setTimeout(function() {
+          expired = true;
+          var timeoutError = new Error('submission_timeout');
+          timeoutError.code = 'submission_timeout';
+          reject(timeoutError);
+          controller.abort();
+        }, 45000);
+      });
       var action = form && form.getAttribute('action') ? form.getAttribute('action') : '/api/c';
       var url = new URL(action, window.location.href);
       var headers = { 'Accept': 'application/json' };
@@ -1696,12 +1836,14 @@
       var startedAt = Date.now();
       var canRetryNetwork = url.origin === window.location.origin && url.pathname === '/api/c';
       function request(body, allowNetworkRetry) {
+        if (expired) return Promise.reject(new Error('submission_timeout'));
         attempts += 1;
         phase = 'request';
         return fetch(url.href, {
           method: 'POST',
           body: body,
           headers: headers,
+          signal: controller.signal,
           credentials: url.origin === window.location.origin ? 'same-origin' : 'omit'
         })
           .catch(function(err) {
@@ -1721,7 +1863,7 @@
           return window.ntRequirePersistedReceipt(result, submitId);
         });
       }
-      return window.ntPrepareSubmitFormData(formData).then(function(body) { return send(body, true); }).catch(function(err) {
+      var operation = Promise.resolve().then(function() { return window.ntPrepareSubmitFormData(formData); }).then(function(body) { return send(body, true); }).catch(function(err) {
         var canRecover = err && err.status === 400 && err.code === 'invalid_body' && window.ntHasSubmitFiles(formData);
         if (!canRecover) throw err;
         var recoveryBody = window.ntBuildContactRecoveryFormData(formData, submitId, err.requestId);
@@ -1741,9 +1883,11 @@
           recoveryError.recoveryAttempted = true;
           throw recoveryError;
         });
-      }).then(function(result) {
+      });
+      var pending = Promise.race([operation, deadline]).then(function(result) {
         result = result || {};
         result.submit_id = submitId;
+        try { window.ntCro?.lead(form, result); } catch(e) {}
         return result;
       }).catch(function(err) {
         var message = (err && err.message) || String(err || 'unknown');
@@ -1754,8 +1898,47 @@
         err.elapsedMs = Date.now() - startedAt;
         err.message = message + ' | form=' + formName + ' | submit_id=' + submitId + ' | attempts=' + attempts + ' | phase=' + phase + ' | network_retry=' + networkRetryAttempted + ' | elapsed_ms=' + err.elapsedMs;
         err.clientSubmitId = err.clientSubmitId || submitId;
+        try { window.ntCro?.error('form', err, submitId); } catch(e) {}
         throw err;
+      }).finally(function() {
+        clearTimeout(timer);
+        if (form) form.__ntSubmitPending = null;
       });
+      if (form) form.__ntSubmitPending = pending;
+      return pending;
+    };
+
+    window.ntRequireContactFields = function(form) {
+      var fields = [['name', 'Bitte geben Sie Ihren Namen an.'], ['email', 'Bitte geben Sie Ihre geschäftliche E-Mail-Adresse an.'], ['telefon', 'Bitte geben Sie Ihre Telefonnummer für Rückfragen an.']];
+      var firstInvalid = null;
+      fields.forEach(function(entry) {
+        var field = form.querySelector('[name="' + entry[0] + '"]');
+        if (!field) return;
+        var errorId = form.id + '-' + entry[0] + '-required-error';
+        var error = form.querySelector('#' + errorId);
+        function clearError() {
+          if (error) error.remove();
+          field.removeAttribute('aria-invalid');
+          var descriptions = (field.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(id) { return id && id !== errorId; });
+          if (descriptions.length) field.setAttribute('aria-describedby', descriptions.join(' '));
+          else field.removeAttribute('aria-describedby');
+        }
+        if (error) clearError();
+        var missing = !field.value.trim();
+        if (!missing && field.checkValidity()) return;
+        error = document.createElement('p');
+        error.id = errorId;
+        error.setAttribute('role', 'alert');
+        error.style.cssText = 'font-size:13px;line-height:1.4;color:#a21c48;margin:6px 0 0;text-shadow:none';
+        error.textContent = missing ? entry[1] : (entry[0] === 'email' ? 'Bitte prüfen Sie Ihre geschäftliche E-Mail-Adresse.' : entry[1]);
+        field.insertAdjacentElement('afterend', error);
+        field.setAttribute('aria-invalid', 'true');
+        field.setAttribute('aria-describedby', ((field.getAttribute('aria-describedby') || '') + ' ' + errorId).trim());
+        field.addEventListener('input', clearError, {once: true});
+        if (!firstInvalid) firstInvalid = field;
+      });
+      if (firstInvalid) { firstInvalid.focus(); return false; }
+      return true;
     };
 
     // Multi-Step Form (only on anfrage.html)
@@ -1819,7 +2002,7 @@
     form.addEventListener('submit', function(e) {
       e.preventDefault();
       var formData = new FormData(form);
-      if (formData.get('website')) return;
+
       window.ntSubmitForm(form, formData, 'multi_step_form')
         .then(function(result) {
           window.ntFireConversionOnce(result.submit_id, function() {
@@ -1830,7 +2013,7 @@
         })
         .catch(function(err) {
           window.ntReportSubmitFailure('multi_step_form', err);
-          window.ntShowFailureBanner(form);
+          window.ntShowFailureBanner(form, err);
         });
     });
     } // end if (form)
@@ -1937,7 +2120,7 @@
         submitBtn.disabled = true;
 
         const formData = new FormData(quickAnfrageForm);
-        if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+
         window.ntSubmitForm(quickAnfrageForm, formData, 'quick_anfrage_form')
           .then((result) => {
             window.ntFireConversionOnce(result.submit_id, function() {
@@ -1947,8 +2130,9 @@
             else quickAnfrageForm.innerHTML = '<div class="text-center py-6"><svg class="w-14 h-14 text-green-500 mx-auto mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><h3 class="text-2xl font-semibold text-dark mb-2 tracking-tight">Übermittlung angenommen!</h3><p class="text-sm text-dark/50 tracking-tight mb-6">Ihre Anfrage wird jetzt verarbeitet.</p><div class="flex items-center gap-3 bg-light rounded-xl p-4 mb-4"><img src="../assets/images/fabienne-trapp.png" class="w-10 h-10 rounded-full object-cover shrink-0" alt="Fabienne Trapp"><div class="text-left"><p class="text-sm font-semibold text-dark tracking-tight">Fabienne meldet sich bei Ihnen</p><p class="text-xs text-dark/40">Kostenlose 3D-Vorschau innerhalb von 24h</p></div></div><a href="tel:+4921154257240" class="inline-flex items-center gap-2 text-sm font-medium text-dark/50 hover:text-dark transition-colors"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>Dringend? Jetzt anrufen</a></div>';
           })
           .catch((err) => {
+            submitBtn.innerHTML = originalText; submitBtn.disabled = false;
             window.ntReportSubmitFailure('quick_anfrage_form', err);
-            window.ntShowFailureBanner(quickAnfrageForm);
+            window.ntShowFailureBanner(quickAnfrageForm, err);
           });
       });
     }
@@ -1991,7 +2175,7 @@
             return;
           }
         }
-        const target = document.querySelector(href);
+        const target = document.getElementById(new URL(href, window.location.href).hash.slice(1));
         if (target) {
           const offset = 80;
           const position = target.getBoundingClientRect().top + window.pageYOffset - offset;
@@ -2012,7 +2196,7 @@
         if (window.matchMedia && !window.matchMedia('(max-width: 767px)').matches) return;
         window.requestAnimationFrame(function() {
           var submit = form.querySelector('button[type="submit"]');
-          var target = n === 2 && submit ? submit : form;
+          var target = n === (steps[2] ? 2 : 1) && submit ? submit : form;
           var rect = target.getBoundingClientRect();
           var margin = 18;
           if (rect.bottom > window.innerHeight - margin || rect.top < margin) {
@@ -2026,27 +2210,20 @@
         bars.forEach(function(b, i) { if (b) b.style.background = i <= n ? '#fa31a2' : 'rgba(10,10,10,0.08)'; });
         keepHeroFormVisible(n);
       }
-      var n1 = document.getElementById('hero-next-1'); if (n1) n1.onclick = function() { var g = form.querySelector('[name="groesse"]'); if (g && !g.value) { g.focus(); g.style.borderColor = '#fa31a2'; setTimeout(function() { g.style.borderColor = ''; }, 2000); return; } goStep(1); };
+      var n1 = document.getElementById('hero-next-1'); if (n1) n1.onclick = function() {  goStep(1); };
       var n2 = document.getElementById('hero-next-2'); if (n2) n2.onclick = function() { goStep(2); };
       var b2 = document.getElementById('hero-back-2'); if (b2) b2.onclick = function() { goStep(0); };
       var b3 = document.getElementById('hero-back-3'); if (b3) b3.onclick = function() { goStep(1); };
       form.onsubmit = function(e) {
         e.preventDefault();
-        var nameVal = (form.querySelector('[name="name"]').value || '').trim();
-        var emailVal = (form.querySelector('[name="email"]').value || '').trim();
-        var telefonVal = (form.querySelector('[name="telefon"]').value || '').trim();
-        if (!nameVal || !emailVal || !telefonVal) {
-          if (!nameVal) form.querySelector('[name="name"]').focus();
-          else if (!emailVal) form.querySelector('[name="email"]').focus();
-          else form.querySelector('[name="telefon"]').focus();
-          return;
-        }
+
+        if (!window.ntRequireContactFields(form)) return;
         var btn = form.querySelector('button[type="submit"]');
         var orig = btn.innerHTML;
         btn.innerHTML = '<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Wird gesendet...</span>';
         btn.disabled = true;
         var fd = new FormData(form);
-        if (fd.get('website')) { btn.innerHTML = orig; btn.disabled = false; return; }
+
         window.ntSubmitForm(form, fd, 'hero_form_mobile')
           .then(function(result) {
             window.ntFireConversionOnce(result.submit_id, function() {
@@ -2060,15 +2237,16 @@
             var barsW = document.getElementById('hero-bars-wrapper');
             if (header) header.remove();
             if (barsW) barsW.remove();
-            steps.forEach(function(s) { s.classList.add('hidden'); });
+            steps.forEach(function(s) { if (s) s.classList.add('hidden'); });
             var success = document.createElement('div');
             success.className = 'text-center py-6';
             success.innerHTML = '<div class="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4"><svg class="w-7 h-7 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><h3 class="text-xl font-semibold text-dark tracking-[-0.03em] mb-1">Übermittlung angenommen!</h3><p class="text-sm font-medium text-dark/40 tracking-tight mb-5">Ihre Anfrage wird jetzt verarbeitet.</p>';
             form.appendChild(success);
           })
           .catch(function(err) {
+            btn.innerHTML = orig; btn.disabled = false;
             window.ntReportSubmitFailure('hero_form_mobile', err);
-            window.ntShowFailureBanner(form);
+            window.ntShowFailureBanner(form, err);
           });
       };
     })();
@@ -2109,7 +2287,7 @@
       const backD2 = document.getElementById('hero-back-d-2');
       const nextD2 = document.getElementById('hero-next-d-2');
       const backD3 = document.getElementById('hero-back-d-3');
-      if (nextD1) nextD1.addEventListener('click', () => { const g = heroFormD.querySelector('[name="groesse"]'); if (g && !g.value) { g.focus(); g.style.borderColor = '#fa31a2'; setTimeout(() => { g.style.borderColor = ''; }, 2000); return; } heroGoToStep(2); });
+      if (nextD1) nextD1.addEventListener('click', () => {  heroGoToStep(2); });
       if (backD2) backD2.addEventListener('click', () => { heroGoToStep(1); });
       if (nextD2) nextD2.addEventListener('click', () => { heroGoToStep(3); });
       if (backD3) backD3.addEventListener('click', () => { heroGoToStep(2); });
@@ -2130,21 +2308,13 @@
       heroFormD.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (heroCurrentStep !== 3) { heroGoToStep(3); return; }
-        const nameVal = (heroFormD.querySelector('#hero-name-d').value || '').trim();
-        const emailVal = (heroFormD.querySelector('#hero-email-d').value || '').trim();
-        const telefonVal = (heroFormD.querySelector('[name="telefon"]').value || '').trim();
-        if (!nameVal || !emailVal || !telefonVal) {
-          if (!nameVal) heroFormD.querySelector('#hero-name-d').focus();
-          else if (!emailVal) heroFormD.querySelector('#hero-email-d').focus();
-          else heroFormD.querySelector('[name="telefon"]').focus();
-          return;
-        }
+        if (!window.ntRequireContactFields(heroFormD)) return;
         const submitBtn = heroFormD.querySelector('button[type="submit"]');
         const originalText = submitBtn.innerHTML;
         submitBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Wird gesendet...</span>';
         submitBtn.disabled = true;
         const formData = new FormData(heroFormD);
-        if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+
         window.ntSubmitForm(heroFormD, formData, 'hero_form_desktop')
           .then((result) => {
             window.ntFireConversionOnce(result.submit_id, function() {
@@ -2168,8 +2338,9 @@
             requestAnimationFrame(() => { success.style.opacity = '1'; success.style.transform = 'translateY(0)'; });
           })
           .catch((err) => {
+            submitBtn.innerHTML = originalText; submitBtn.disabled = false;
             window.ntReportSubmitFailure('hero_form_desktop', err);
-            window.ntShowFailureBanner(heroFormD);
+            window.ntShowFailureBanner(heroFormD, err);
           });
       });
     })();
@@ -2194,7 +2365,7 @@
         submitBtn.innerHTML = '<svg class="w-4 h-4 animate-spin inline mr-2" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Wird gesendet...';
         submitBtn.disabled = true;
         const formData = new FormData(kontaktForm);
-        if (formData.get('website')) { submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+
         window.ntSubmitForm(kontaktForm, formData, 'kontakt_form')
           .then((result) => {
             window.ntFireConversionOnce(result.submit_id, function() {
@@ -2204,8 +2375,9 @@
             else kontaktForm.innerHTML = '<div class="text-center py-8"><div class="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4"><svg class="w-7 h-7 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><h3 class="text-xl font-semibold text-dark tracking-tight mb-1">Übermittlung angenommen!</h3><p class="text-sm font-medium text-dark/40 tracking-tight">Ihre Anfrage wird jetzt verarbeitet.</p></div>';
           })
           .catch((err) => {
+            submitBtn.innerHTML = originalText; submitBtn.disabled = false;
             window.ntReportSubmitFailure('kontakt_form', err);
-            window.ntShowFailureBanner(kontaktForm);
+            window.ntShowFailureBanner(kontaktForm, err);
           });
       });
     }
@@ -2334,7 +2506,7 @@
           e.preventDefault();
           const submitBtn = quickForm.querySelector('button[type="submit"]');
           const formData = new FormData(quickForm);
-          if (formData.get('website')) return;
+
           window.ntSubmitForm(quickForm, formData, 'quick_form_section')
             .then((result) => {
               window.ntFireConversionOnce(result.submit_id, function() {
@@ -2359,7 +2531,7 @@
             })
             .catch((err) => {
               window.ntReportSubmitFailure('quick_form_section', err);
-              window.ntShowFailureBanner(quickForm);
+              window.ntShowFailureBanner(quickForm, err);
             });
         });
       }
@@ -2532,49 +2704,41 @@
     // ═══════ HOVER SLIDESHOW ON PRODUCT TILES ═══════
     (function() {
       const slideshowState = new Map();
-
-      // Preload images for smooth transitions
-      Object.values(productGalleryData).forEach(product => {
-        if (product.images) {
-          product.images.forEach(src => { const img = new Image(); img.src = src; });
-        }
-      });
-
       document.querySelectorAll('.product-tile').forEach(card => {
-        const productKey = card.dataset.product;
-        const product = productGalleryData[productKey];
-        if (!product || !product.images || product.images.length === 0) return;
-
+        const product = productGalleryData[card.dataset.product];
         const imgContainer = card.querySelector('.rounded-lg');
-        if (!imgContainer) return;
+        if (!product || !product.images || !product.images.length || !imgContainer) return;
+        let overlayImgs = [];
 
-        // Create overlay images
-        const overlayImgs = product.images.map(src => {
-          const img = document.createElement('img');
-          img.src = src;
-          img.alt = product.title + ' Beispiel';
-          img.className = 'slideshow-img';
-          img.draggable = false;
-          imgContainer.appendChild(img);
-          return img;
-        });
-
-        card.addEventListener('mouseenter', () => {
+        // Mobile never needs hover images; desktop loads only the hovered product.
+        card.addEventListener('mouseenter', async () => {
           if (window.matchMedia('(hover: none)').matches) return;
+          if (!overlayImgs.length) {
+            overlayImgs = product.images.map(src => {
+              const img = document.createElement('img');
+              img.src = src;
+              img.alt = product.title + ' Beispiel';
+              img.className = 'slideshow-img';
+              img.decoding = 'async';
+              img.draggable = false;
+              imgContainer.appendChild(img);
+              return img;
+            });
+          }
+          await Promise.all(overlayImgs.map(img => img.decode().catch(() => {})));
+          if (!card.matches(':hover') || slideshowState.has(card)) return;
+          const loadedImgs = overlayImgs.filter(img => img.naturalWidth > 0);
+          if (!loadedImgs.length) return;
           let index = 0;
-          overlayImgs.forEach(img => img.classList.remove('active'));
-          overlayImgs[0].classList.add('active');
+          loadedImgs[0].classList.add('active');
           card.classList.add('slideshow-active');
-
           const interval = setInterval(() => {
-            overlayImgs[index].classList.remove('active');
-            index = (index + 1) % overlayImgs.length;
-            overlayImgs[index].classList.add('active');
+            loadedImgs[index].classList.remove('active');
+            index = (index + 1) % loadedImgs.length;
+            loadedImgs[index].classList.add('active');
           }, 1500);
-
           slideshowState.set(card, { interval, overlayImgs });
         });
-
         card.addEventListener('mouseleave', () => {
           const s = slideshowState.get(card);
           if (s) {
@@ -2682,8 +2846,7 @@
   const dotsContainer = document.getElementById('review-dots');
   if (!carousel || !dotsContainer) return;
 
-  // Wait for DOM to settle
-  setTimeout(function() {
+  (function() {
     const track = carousel.querySelector('.review-track');
     if (!track) return;
     // Get only visible (non-aria-hidden) cards
@@ -2701,8 +2864,14 @@
     var currentIdx = 0;
     var autoScrollTimer = null;
     var userTouching = false;
+    var touchTimer = null;
+    var visible = false;
+    var motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    var mobile = window.matchMedia('(max-width: 767px)');
+    function allowed() { return visible && !document.hidden && !motion.matches && mobile.matches && !userTouching; }
 
     function scrollToCard(idx) {
+      if (!allowed()) return;
       if (idx < 0 || idx >= cards.length) idx = 0;
       currentIdx = idx;
       var cardLeft = cards[idx].offsetLeft;
@@ -2720,9 +2889,9 @@
     }
 
     function startAutoScroll() {
-      stopAutoScroll();
+      if (!allowed() || autoScrollTimer || touchTimer) return;
       autoScrollTimer = setInterval(function() {
-        if (userTouching) return;
+        if (!allowed()) { stopAutoScroll(); return; }
         currentIdx = (currentIdx + 1) % cards.length;
         scrollToCard(currentIdx);
       }, 4000);
@@ -2730,14 +2899,18 @@
 
     function stopAutoScroll() {
       if (autoScrollTimer) { clearInterval(autoScrollTimer); autoScrollTimer = null; }
+      if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
     }
 
     // Pause on touch, resume after
     carousel.addEventListener('touchstart', function() { userTouching = true; stopAutoScroll(); }, { passive: true });
     carousel.addEventListener('touchend', function() {
       userTouching = false;
+      if (!allowed()) return;
       // Detect which card is most visible
-      setTimeout(function() {
+      touchTimer = setTimeout(function() {
+        touchTimer = null;
+        if (!allowed()) return;
         var carouselRect = carousel.getBoundingClientRect();
         var center = carouselRect.left + carouselRect.width / 2;
         var closest = 0, closestDist = Infinity;
@@ -2752,25 +2925,94 @@
       }, 300);
     }, { passive: true });
 
-    // Start
-    startAutoScroll();
-  }, 500);
+    carousel.addEventListener('touchcancel', function() { userTouching = false; sync(); }, { passive: true });
+    function sync() { if (allowed()) startAutoScroll(); else stopAutoScroll(); }
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function(entries) { visible = entries[0].isIntersecting; sync(); }).observe(carousel);
+    }
+    document.addEventListener('visibilitychange', sync);
+    [motion, mobile].forEach(function(query) {
+      if (query.addEventListener) query.addEventListener('change', sync);
+      else if (query.addListener) query.addListener(sync);
+    });
+  })();
 })();
 </script>
 
 
-<script>
-window.addEventListener('load', function() {
-  ['hero-video-desktop', 'hero-video-mobile'].forEach(function(id) {
-    var vd = document.getElementById(id);
-    if (!vd) return;
-    if (vd.dataset.src) vd.src = vd.dataset.src;
-    function markLoaded() { vd.classList.add('video-loaded'); }
-    if (vd.readyState >= 3) { markLoaded(); }
-    vd.addEventListener('canplay', markLoaded);
-    vd.play().catch(function(){});
-  });
-});
+<script data-hero-media-loader>
+(function() {
+  var video = document.getElementById('hero-video-desktop');
+  var hero = document.getElementById('hero');
+  if (!video || !hero) return;
+  var source = video.querySelector('source[data-src]');
+  if (!source) return;
+  var desktop = window.matchMedia('(min-width: 768px)');
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  var visible = false;
+  var ready = false;
+  var queued = false;
+  var loaded = false;
+  function allowed() {
+    return ready && visible && !document.hidden && desktop.matches && !reducedMotion.matches &&
+      !(connection && (connection.saveData || /^(slow-2g|2g|3g)$/.test(connection.effectiveType || '')));
+  }
+  function pause() {
+    video.pause();
+    video.style.opacity = '0';
+  }
+  function sync() {
+    if (!allowed()) { pause(); return; }
+    if (queued || !video.paused) return;
+    queued = true;
+    var start = function() {
+      queued = false;
+      if (!allowed()) return;
+      if (!loaded) {
+        loaded = true;
+        source.src = source.getAttribute('data-src');
+        video.load();
+      }
+      video.play().then(function() {
+        if (allowed()) { video.classList.add('video-loaded'); video.style.opacity = '1'; }
+        else pause();
+      }).catch(function() { video.style.opacity = '0'; });
+    };
+    if (window.requestIdleCallback) window.requestIdleCallback(start, { timeout: 2000 });
+    else window.setTimeout(start, 1500);
+  }
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function(entries) {
+      visible = entries[0].isIntersecting;
+      sync();
+    }).observe(hero);
+  } else {
+    var checkVisibility = function() {
+      var rect = hero.getBoundingClientRect();
+      visible = rect.bottom > 0 && rect.top < window.innerHeight;
+      sync();
+    };
+    checkVisibility();
+    window.addEventListener('scroll', checkVisibility, { passive: true });
+    window.addEventListener('resize', checkVisibility);
+  }
+  function listen(query) {
+    if (query.addEventListener) query.addEventListener('change', sync);
+    else if (query.addListener) query.addListener(sync);
+  }
+  listen(desktop);
+  listen(reducedMotion);
+  if (connection && connection.addEventListener) connection.addEventListener('change', sync);
+  document.addEventListener('visibilitychange', sync);
+  function afterLoad() {
+    window.requestAnimationFrame(function() {
+      window.requestAnimationFrame(function() { ready = true; sync(); });
+    });
+  }
+  if (document.readyState === 'complete') afterLoad();
+  else window.addEventListener('load', afterLoad, { once: true });
+})();
 </script>
 
 <script>
@@ -2797,18 +3039,18 @@ if (window.innerWidth < 768) {
   <div style="background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(0,0,0,0.06);padding:14px 16px;padding-bottom:max(14px, env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;box-shadow:0 -4px 24px rgba(0,0,0,0.08)">
     <!-- Fabienne Photo -->
     <div style="width:42px;height:42px;flex-shrink:0">
-      <img src="../assets/images/fabienne-trapp-small.png" alt="Fabienne — Ihre Beraterin" style="width:42px;height:42px;border-radius:50%;object-fit:cover" width="42" height="42" loading="lazy">
+      <img src="../assets/images/fabienne-trapp-small.webp" alt="Fabienne — Ihre Beraterin" style="width:42px;height:42px;border-radius:50%;object-fit:cover" width="42" height="42" loading="lazy">
     </div>
     <!-- Text -->
-    <div style="flex:1;min-width:0">
+    <div class="mobile-advisor-copy" style="flex:1;min-width:0">
       <p style="font-size:13px;font-weight:600;color:#0A0A0A;line-height:1.2;margin:0">Fabienne berät Sie</p>
       <p style="font-size:11px;color:rgba(10,10,10,0.45);font-weight:500;margin:2px 0 0;display:flex;align-items:center;gap:4px">
         <span style="width:6px;height:6px;background:#22c55e;border-radius:50%;display:inline-block;flex-shrink:0"></span>
-        Jetzt online
+        Persönliche Beratung
       </p>
     </div>
     <!-- CTA Button -->
-    <a href="#hero" style="flex-shrink:0;background:#fa31a2;color:white;font-size:14px;font-weight:700;padding:14px 20px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(250,49,162,0.3)">
+    <a href="#hero" class="mobile-inquiry-link" style="flex-shrink:0;background:#fa31a2;color:white;font-size:14px;font-weight:700;padding:14px 20px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(250,49,162,0.3)">
       Anfrage starten
     </a>
     <!-- WhatsApp Button -->
@@ -2822,13 +3064,13 @@ if (window.innerWidth < 768) {
 <div class="contact-sticky" id="contact-sticky">
   <div style="background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(0,0,0,0.08);padding:12px 14px;display:flex;align-items:center;gap:12px;border-radius:20px;box-shadow:0 8px 32px rgba(0,0,0,0.12)">
     <div style="width:44px;height:44px;flex-shrink:0">
-      <img src="../assets/images/fabienne-trapp-small.png" alt="Fabienne — Ihre Beraterin" style="width:44px;height:44px;border-radius:50%;object-fit:cover" width="44" height="44" loading="lazy">
+      <img src="../assets/images/fabienne-trapp-small.webp" alt="Fabienne — Ihre Beraterin" style="width:44px;height:44px;border-radius:50%;object-fit:cover" width="44" height="44" loading="lazy">
     </div>
     <div style="min-width:0">
       <p style="font-size:13px;font-weight:600;color:#0A0A0A;line-height:1.2;margin:0">Fabienne berät Sie</p>
       <p style="font-size:11px;color:rgba(10,10,10,0.45);font-weight:500;margin:2px 0 0;display:flex;align-items:center;gap:4px">
         <span style="width:6px;height:6px;background:#22c55e;border-radius:50%;display:inline-block;flex-shrink:0"></span>
-        Jetzt online
+        Persönliche Beratung
       </p>
     </div>
     <a href="#hero" style="flex-shrink:0;background:#fa31a2;color:white;font-size:13px;font-weight:700;padding:10px 18px;border-radius:50px;text-decoration:none;white-space:nowrap;box-shadow:0 4px 16px rgba(250,49,162,0.3)" onclick="typeof gtag==='function'&&gtag('event','sticky_cta_click',{event_category:'engagement',event_label:window.location.pathname})">
