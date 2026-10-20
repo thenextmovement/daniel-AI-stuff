@@ -193,8 +193,16 @@ function relativeDue(entry: DunningCaseSummary) {
 function OrderLinks({ entry }: { entry: DunningCaseSummary }) {
   return <div className="grid justify-items-start gap-1">
     {entry.shopifyUrl ? <a href={entry.shopifyUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-stone-950 underline-offset-4 hover:underline" title="Bestellung in Shopify öffnen">{entry.orderNumber}</a> : <span className="font-semibold text-stone-950">{entry.orderNumber}</span>}
-    {entry.offerUrl ? <a href={entry.offerUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-stone-600 underline underline-offset-2">Angebot öffnen</a> : <span className="text-xs text-stone-400">Kein Angebotslink hinterlegt</span>}
   </div>;
+}
+
+function OfferLink({ entry }: { entry: DunningCaseSummary }) {
+  const href = entry.offerAdminUrl || entry.offerUrl;
+  const label = entry.offerNumber ? `Angebot ${entry.offerNumber}` : "Angebot (Nummer fehlt)";
+  return <p className="mt-1 text-xs text-stone-600">
+    {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{label}</a>
+      : <span className="text-stone-400">{entry.offerNumber ? `${label} – Link fehlt` : "Kein Angebot zugeordnet"}</span>}
+  </p>;
 }
 
 function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
@@ -813,6 +821,7 @@ function CaseTable({
                   <p className="mt-1 text-xs font-medium text-stone-600">
                     Rechnung {entry.easybillInvoiceNumber || "nicht zugeordnet"}
                   </p>
+                  <OfferLink entry={entry} />
                 </td>
                 <td className="max-w-[18rem] px-4 py-4">
                   <p className="truncate text-sm font-semibold text-stone-850">
@@ -960,6 +969,7 @@ function CaseTable({
               <p className="mt-1 text-xs text-stone-500">
                 Rechnung {entry.easybillInvoiceNumber || "nicht zugeordnet"}
               </p>
+              <OfferLink entry={entry} />
             </div>
             <div className="mt-3 rounded-xl border border-stone-200 p-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">

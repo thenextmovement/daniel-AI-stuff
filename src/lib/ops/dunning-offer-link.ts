@@ -17,3 +17,22 @@ export function dunningOfferUrl(order: { customAttributes?: unknown; note?: unkn
   }
   return null;
 }
+
+export function dunningOfferReference(order: { customAttributes?: unknown; note?: unknown }) {
+  const attributes = Array.isArray(order.customAttributes) ? order.customAttributes : [];
+  function explicit(keys: string[], pattern: RegExp): string | null {
+    for (const attribute of attributes) {
+      if (attribute && keys.includes(attribute.key) && typeof attribute.value === "string" && attribute.value.trim()) {
+        return attribute.value.trim();
+      }
+    }
+    return typeof order.note === "string" ? order.note.match(pattern)?.[1]?.trim() || null : null;
+  }
+  const number = explicit(["NEONTRIP Offer Number", "NEONTRIP Angebot", "Offer Number", "offer_number", "offerNumber"], /(?:NEONTRIP\s+Offer\s+Number|NEONTRIP\s+Angebot|Angebotsnummer)\s*:?\s*(A\/N\s*\d+)/i);
+  const id = explicit(["NEONTRIP Offer ID", "Offer ID", "offer_id", "offerId"], /NEONTRIP\s+Offer\s+ID\s*:?\s*([a-z0-9_-]+)/i);
+  return {
+    number,
+    adminUrl: id && /^[A-Za-z0-9_-]{8,120}$/.test(id)
+      ? `/api/ops/customer-records/offers/${encodeURIComponent(id)}/admin` : null,
+  };
+}

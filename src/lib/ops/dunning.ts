@@ -1,5 +1,5 @@
 import { pendingCourtNomination, type CourtNomination } from "@/lib/ops/dunning-court-nomination";
-import { dunningOfferUrl } from "@/lib/ops/dunning-offer-link";
+import { dunningOfferUrl, dunningOfferReference } from "@/lib/ops/dunning-offer-link";
 import { createHash } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
@@ -47,6 +47,8 @@ type ShopifyOrderRow = {
   bill_address: Record<string, unknown> | null;
   phone: string | null;
   offer_url?: string | null;
+  offer_number?: string | null;
+  offer_admin_url?: string | null;
   shopify_updated_at?: string | null;
   test?: boolean;
 };
@@ -335,6 +337,8 @@ export type DunningCaseSummary = {
   easybillInvoiceNumber: string | null;
   shopifyUrl: string | null;
   offerUrl?: string | null;
+  offerNumber?: string | null;
+  offerAdminUrl?: string | null;
   easybillUrl: string | null;
 };
 
@@ -1598,6 +1602,8 @@ export function buildDunningCases(input: {
       easybillDocumentId,
       easybillInvoiceNumber: cleanText(candidate?.easybill_invoice_number, 120) || invoiceEvidence?.invoiceNumber || null,
       offerUrl: order?.offer_url || null,
+      offerNumber: order?.offer_number || null,
+      offerAdminUrl: order?.offer_admin_url || null,
       shopifyUrl: orderId
         ? `https://admin.shopify.com/store/galaxybuzzdk/orders/${encodeURIComponent(orderId)}`
         : null,
@@ -1887,6 +1893,8 @@ async function refreshShopifyOrdersLive(
         refreshed.set(id, {
           ...current,
           offer_url: dunningOfferUrl(node),
+          offer_number: dunningOfferReference(node).number,
+          offer_admin_url: dunningOfferReference(node).adminUrl,
           test: node.test === true,
           name: cleanText(node.name, 80) || current.name,
           financial_status:
@@ -2002,6 +2010,8 @@ async function refreshShopifyOrdersLive(
       additionalOrders.set(id, {
         shopify_order_id: id,
         offer_url: dunningOfferUrl(node),
+        offer_number: dunningOfferReference(node).number,
+        offer_admin_url: dunningOfferReference(node).adminUrl,
         test: node.test === true,
         name: cleanText(node.name, 80) || orderName,
         financial_status:

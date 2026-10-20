@@ -79,6 +79,8 @@ function input(overrides: Partial<BuildInput> = {}): BuildInput {
 
 async function main() {
 const cases: DunningCaseSummary[]=[2024,2025,2026].map((year,index)=>({...buildDunningCases(input({orders:[order({created_at:`${year}-08-01T10:00:00Z`})]}))[0],key:`NEONT${5000+index}`,orderNumber:`#NEONT${5000+index}`}));
+cases[0].offerNumber="A/N 15903";
+cases[0].offerAdminUrl="/api/ops/customer-records/offers/test12345/admin";
 cases[0].offerUrl="https://angebote.neontrip.de/offer/test12345";
 const stats={total:3,open:3,actionRequired:0,replies:0,paused:0,finalReminderWaiting:0,courtReview:0,dataIssues:3,totalOutstandingCents:35700};
 const dashboard={generatedAt:new Date().toISOString(),cases,stats,sendConfigured:false,sourceHealth:{intakeComplete:true,intakeFresh:true,historicalFresh:true,shopifyLive:true,bankFresh:true,bankComplete:true,shopifyMirrorFresh:true,candidateCount:3,bankCount:0,shopifyMirrorCount:3}};
@@ -134,7 +136,8 @@ await page.getByRole("button",{name:"+2 Wochen",exact:true}).first().click();awa
 const two=Date.parse(actions.at(-1).pauseUntil);assert.ok(two>Date.now()+13*86400000 && two<Date.now()+15*86400000);
 await page.getByRole("button",{name:"Fall schließen",exact:true}).click();
 assert.equal(await page.getByRole("link",{name:"#NEONT5000",exact:true}).first().getAttribute("href"),"https://admin.shopify.com/store/galaxybuzzdk/orders/1234567890");
-assert.equal(await page.getByRole("link",{name:"Angebot öffnen",exact:true}).first().getAttribute("href"),"https://angebote.neontrip.de/offer/test12345");
+assert.equal(await page.getByRole("link",{name:"Angebot A/N 15903",exact:true}).first().getAttribute("href"),"/api/ops/customer-records/offers/test12345/admin");
+assert.ok(await page.getByText("Kein Angebot zugeordnet",{exact:true}).count() > 0);
 const countBefore=actions.length;
 page.once("dialog",dialog=>dialog.dismiss());
 await page.getByRole("button",{name:"Gelber Brief",exact:true}).first().click();
