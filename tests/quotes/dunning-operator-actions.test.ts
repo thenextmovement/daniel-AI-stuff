@@ -58,19 +58,22 @@ test("manual insolvency failures alert support and a rejected alert remains an e
   const originalFetch = globalThis.fetch;
   const names = ["MICROSOFT_GRAPH_TENANT_ID", "MICROSOFT_GRAPH_CLIENT_ID", "MICROSOFT_GRAPH_CLIENT_SECRET", "MICROSOFT_GRAPH_MAILBOX"];
   const previous = names.map(name => process.env[name]); names.forEach(name => process.env[name] = "test");
-  let reject = false; let messages = 0;
+  let reject = false; let messages = 0; let nomination = false;
   globalThis.fetch = async (url, init) => {
     if (String(url).includes("oauth2")) return Response.json({ access_token: "fake" });
     const body = JSON.parse(String(init?.body));
     assert.equal(body.message.toRecipients[0].emailAddress.address, "support@neontrip.de");
-    assert.match(body.message.body.content, /Insolvenzprüfung/);
+    assert.match(body.message.body.content, nomination ? /Vormerkung.*nicht bestätigt/ : /Insolvenzprüfung/);
     messages++;
     return new Response(null, { status: reject ? 503 : 202 });
   };
   try {
     await sendDunningOperatorAlert("#NEONT5000");
+    nomination = true;
+    await sendDunningOperatorAlert("#NEONT5000", "nomination");
+    nomination = false;
     reject = true;
     await assert.rejects(sendDunningOperatorAlert("#NEONT5000"), /ALERT_UNCONFIRMED/);
-    assert.equal(messages, 2, "uncertain sends must not blindly retry");
+    assert.equal(messages, 3, "uncertain sends must not blindly retry");
   } finally { globalThis.fetch = originalFetch; names.forEach((name,index) => { if (previous[index] === undefined) delete process.env[name]; else process.env[name] = previous[index]; }); }
 });

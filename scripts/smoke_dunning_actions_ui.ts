@@ -2,6 +2,7 @@ import { chromium } from "playwright";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
+import type { DunningCaseSummary } from "../src/lib/ops/dunning";
 import { buildDunningCases } from "../src/lib/ops/dunning";
 type BuildInput = Parameters<typeof buildDunningCases>[0];
 
@@ -77,7 +78,8 @@ function input(overrides: Partial<BuildInput> = {}): BuildInput {
 
 
 async function main() {
-const cases=[2024,2025,2026].map((year,index)=>({...buildDunningCases(input({orders:[order({created_at:`${year}-08-01T10:00:00Z`})]}))[0],key:`NEONT${5000+index}`,orderNumber:`#NEONT${5000+index}`}));
+const cases: DunningCaseSummary[]=[2024,2025,2026].map((year,index)=>({...buildDunningCases(input({orders:[order({created_at:`${year}-08-01T10:00:00Z`})]}))[0],key:`NEONT${5000+index}`,orderNumber:`#NEONT${5000+index}`}));
+cases[0].offerUrl="https://angebote.neontrip.de/offer/test12345";
 const stats={total:3,open:3,actionRequired:0,replies:0,paused:0,finalReminderWaiting:0,courtReview:0,dataIssues:3,totalOutstandingCents:35700};
 const dashboard={generatedAt:new Date().toISOString(),cases,stats,sendConfigured:false,sourceHealth:{intakeComplete:true,intakeFresh:true,historicalFresh:true,shopifyLive:true,bankFresh:true,bankComplete:true,shopifyMirrorFresh:true,candidateCount:3,bankCount:0,shopifyMirrorCount:3}};
 const browser=await chromium.launch({headless:true});
@@ -89,7 +91,7 @@ await page.route("**/api/ops/**",async route=>{
  const request=route.request(), path=new URL(request.url()).pathname;
  let payload:any={ok:true};
  if(path==="/api/ops/dunning") payload={ok:true,dashboard};
- else if(path.endsWith("/actions")){const body=request.postDataJSON();actions.push(body);payload={ok:true};}
+ else if(path.endsWith("/actions")){const body=request.postDataJSON();actions.push(body);if(body.action==="nominate_court") cases[0].courtNomination={id:body.idempotencyKey,actor:"Fabienne",at:new Date().toISOString()};payload={ok:true};}
  else if(path.startsWith("/api/ops/dunning/")){const entry=cases.find(x=>x.key===decodeURIComponent(path.split("/").pop()!))||cases[0];payload={ok:true,detail:{case:entry,timeline:[],courtProfile:null,courtDraftJob:null,generatedAt:new Date().toISOString()}};}
  await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(payload)});
 });
@@ -109,9 +111,27 @@ await page.getByRole("button",{name:"Fall schließen",exact:true}).click();
 await page.getByRole("button",{name:"+2 Wochen",exact:true}).first().click();await page.waitForTimeout(300);
 const two=Date.parse(actions.at(-1).pauseUntil);assert.ok(two>Date.now()+13*86400000 && two<Date.now()+15*86400000);
 await page.getByRole("button",{name:"Fall schließen",exact:true}).click();
+assert.equal(await page.getByRole("link",{name:"#NEONT5000",exact:true}).first().getAttribute("href"),"https://admin.shopify.com/store/galaxybuzzdk/orders/1234567890");
+assert.equal(await page.getByRole("link",{name:"Angebot öffnen",exact:true}).first().getAttribute("href"),"https://angebote.neontrip.de/offer/test12345");
+const countBefore=actions.length;
+page.once("dialog",dialog=>dialog.dismiss());
 await page.getByRole("button",{name:"Gelber Brief",exact:true}).first().click();
-await page.getByText("Gelber Brief – gerichtlichen Mahnantrag vorbereiten",{exact:true}).waitFor();
-assert.ok(await page.locator("#court-preparation").getAttribute("open")!==null);
+assert.equal(actions.length,countBefore,"Cancel has no write");
+page.once("dialog",dialog=>{assert.match(dialog.message(),/kein Antrag erstellt oder versandt/);void dialog.accept();});
+await page.getByRole("button",{name:"Gelber Brief",exact:true}).first().click();
+await page.getByRole("button",{name:"Vorgemerkt",exact:true}).first().waitFor();
+assert.equal(actions.at(-1)?.action,"nominate_court");
+assert.ok(!actions.some(a=>["prepare_court_application","send_next_stage"].includes(a.action)));
+await page.reload({waitUntil:"networkidle"});
+await page.getByRole("button",{name:"Vorgemerkt",exact:true}).first().waitFor();
+await page.getByText("Weitere Filter",{exact:true}).click();
+await page.getByLabel("Gelber Brief: nur vorgemerkt",{exact:true}).check();
+assert.equal(await page.locator("tbody tr").count(),1);
+await page.getByLabel("Gelber Brief: nur vorgemerkt",{exact:true}).uncheck();
+mkdirSync("artifacts/dunning-actions",{recursive:true});
+await page.locator("table").scrollIntoViewIfNeeded();
+await page.screenshot({path:"artifacts/dunning-actions/nomination-list.png",fullPage:false});
+await page.getByRole("button",{name:/^(Nächste Stufe|Details|Prüfung öffnen)$/}).first().click();
 await page.getByLabel("Gesprächsnotiz").fill("Kunde erreicht, Rückruf vereinbart");
 await page.getByRole("button",{name:"Angerufen speichern",exact:true}).click();
 await page.waitForTimeout(300); assert.equal(actions.at(-1).action,"record_phone_call");
@@ -127,8 +147,9 @@ await page.getByRole("button",{name:"Aktualisieren",exact:true}).click();await p
 const cards=page.locator("button").filter({hasText:/^\+1 Woche$/});
 const disabled=await cards.evaluateAll(buttons=>buttons.filter(b=>(b as HTMLButtonElement).disabled).length);
 assert.ok(disabled>=2,"existing pauses and stop tags disable quick pauses");
+await page.locator("article").first().scrollIntoViewIfNeeded();
 await page.screenshot({path:"artifacts/dunning-actions/mobile-list.png",fullPage:false});
-assert.deepEqual(errors,[]);console.log("PASS: 2024/2025/2026, clipboard, one/two-week payloads, early court drawer, mobile overflow, no runtime errors");
+assert.deepEqual(errors,[]);console.log("PASS: 2024/2025/2026, clipboard, one/two-week payloads, nomination confirmation/cancellation/persistence/filter and Shopify/offer links, mobile overflow, no runtime errors");
 await browser.close();
 
 }

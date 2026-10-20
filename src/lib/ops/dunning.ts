@@ -1,3 +1,5 @@
+import { pendingCourtNomination, type CourtNomination } from "@/lib/ops/dunning-court-nomination";
+import { dunningOfferUrl } from "@/lib/ops/dunning-offer-link";
 import { createHash } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
@@ -44,6 +46,7 @@ type ShopifyOrderRow = {
   ship_address: Record<string, unknown> | null;
   bill_address: Record<string, unknown> | null;
   phone: string | null;
+  offer_url?: string | null;
   shopify_updated_at?: string | null;
   test?: boolean;
 };
@@ -265,6 +268,7 @@ export type DunningCaseSummary = {
   email: string | null;
   phone: string | null;
   hasPhone: boolean;
+  courtNomination?: CourtNomination | null;
   phoneCalls?: Array<{ id: string; at: string; actor: string; note: string }>;
   amountCents: number;
   orderTotalCents: number;
@@ -330,6 +334,7 @@ export type DunningCaseSummary = {
   easybillDocumentId: string | null;
   easybillInvoiceNumber: string | null;
   shopifyUrl: string | null;
+  offerUrl?: string | null;
   easybillUrl: string | null;
 };
 
@@ -1592,6 +1597,7 @@ export function buildDunningCases(input: {
       courtEvent,
       easybillDocumentId,
       easybillInvoiceNumber: cleanText(candidate?.easybill_invoice_number, 120) || invoiceEvidence?.invoiceNumber || null,
+      offerUrl: order?.offer_url || null,
       shopifyUrl: orderId
         ? `https://admin.shopify.com/store/galaxybuzzdk/orders/${encodeURIComponent(orderId)}`
         : null,
@@ -1821,6 +1827,8 @@ async function refreshShopifyOrdersLive(
                     email
                     phone
                     tags
+                    note
+                    customAttributes { key value }
                     createdAt
                     updatedAt
                     cancelledAt
@@ -1878,6 +1886,7 @@ async function refreshShopifyOrdersLive(
         matchedIds.add(id);
         refreshed.set(id, {
           ...current,
+          offer_url: dunningOfferUrl(node),
           test: node.test === true,
           name: cleanText(node.name, 80) || current.name,
           financial_status:
@@ -1931,6 +1940,8 @@ async function refreshShopifyOrdersLive(
                     email
                     phone
                     tags
+                    note
+                    customAttributes { key value }
                     createdAt
                     updatedAt
                     cancelledAt
@@ -1990,6 +2001,7 @@ async function refreshShopifyOrdersLive(
         throw new Error("Shopify Live-Abgleich: Zahlungsdaten fehlen.");
       additionalOrders.set(id, {
         shopify_order_id: id,
+        offer_url: dunningOfferUrl(node),
         test: node.test === true,
         name: cleanText(node.name, 80) || orderName,
         financial_status:
@@ -2192,6 +2204,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     courtEvents,
     historicalAudits,
     phoneCallAudits,
+    courtNominationAudits,
     paymentReviews,
   ] = await Promise.all([
     supabaseRequest<DunningStatusRow[]>("dunning_status", undefined, {
@@ -2246,6 +2259,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       action:"eq.daily_35_day_dunning_audit", order:"created_at.desc", limit:1,
     }),
     loadCompleteMirror<WorkflowAuditRow>("workflow_audit_log", "id", "id,metadata,created_at", { action: "eq.ops_dunning_phone_call" }),
+    loadCompleteMirror<WorkflowAuditRow>("workflow_audit_log", "id", "id,metadata,created_at", { action: "eq.ops_dunning_court_nomination" }),
     loadCompleteMirror<PaymentReviewRow>("workflow_audit_log", "id", "id,action,status,metadata,created_at", { action: "eq.ops_dunning_payment_review" }),
   ]);
 
@@ -2396,6 +2410,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     .filter(row => row.metadata?.order_number === entry.orderNumber)
     .map(row => ({ id: row.id, at: row.created_at, actor: cleanText(row.metadata?.actor, 200) || "Unbekannt", note: cleanText(row.metadata?.note, 500) || "" }))
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  for (const entry of cases) entry.courtNomination = pendingCourtNomination(entry.orderNumber, courtNominationAudits, entry.courtEvents);
   const openCases = cases.filter((entry) => !entry.paymentException);
   return {
     generatedAt: new Date().toISOString(),
@@ -2875,5 +2890,14 @@ export async function recordDunningPhoneCall(input: { id: string; orderNumber: s
     method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
     body: JSON.stringify({ id: input.id, workflow_name: "OPS Mahnwesen", action: "ops_dunning_phone_call", status: "success",
       metadata: { order_number: input.orderNumber, actor: input.actor, note: input.note.trim() } }),
+  }, { on_conflict: "id" });
+}
+
+export async function recordDunningCourtNomination(input: { id: string; orderNumber: string; actor: string }) {
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(input.id) || !normalizeDunningOrderNumber(input.orderNumber) || !input.actor.trim()) throw new Error("DUNNING_NOMINATION_INVALID");
+  await supabaseRequest("workflow_audit_log", {
+    method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+    body: JSON.stringify({ id: input.id, workflow_name: "OPS Mahnwesen", action: "ops_dunning_court_nomination", status: "success",
+      metadata: { order_number: input.orderNumber, actor: input.actor, note: "Vorgemerkt – noch nicht erstellt/versandt" } }),
   }, { on_conflict: "id" });
 }

@@ -773,13 +773,13 @@ export async function prepareDunningCourtApplication(input: {
 }
 
 // Use the existing working support route; the hyphenated domain is not deliverable.
-export async function sendDunningOperatorAlert(orderNumber: string) {
+export async function sendDunningOperatorAlert(orderNumber: string, process: "insolvency" | "nomination" = "insolvency") {
   const token = await graphToken();
   const response = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(requiredEnv("MICROSOFT_GRAPH_MAILBOX"))}/sendMail`, {
     method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ message: {
-      subject: `[OPS Mahnwesen] Insolvenzprüfung klären: ${clean(orderNumber, 40)}`,
-      body: { contentType: "Text", content: `Die manuell angeforderte Insolvenzprüfung für ${clean(orderNumber, 40)} ist nicht eindeutig abgeschlossen. Bitte den Prüfstatus in OPS öffnen und klären. Die Antragserstellung bleibt gesperrt. https://ops.neontrip.de/ops/mahnwesen` },
+      subject: `[OPS Mahnwesen] ${process === "nomination" ? "Vormerkung prüfen" : "Insolvenzprüfung klären"}: ${clean(orderNumber, 40)}`,
+      body: { contentType: "Text", content: process === "nomination" ? `Die Vormerkung für einen gelben Brief zu ${clean(orderNumber, 40)} konnte nicht bestätigt werden. Bitte den gespeicherten Status in OPS prüfen, bevor erneut vorgemerkt wird. Es wurde kein Antrag erstellt oder versandt. https://ops.neontrip.de/ops/mahnwesen` : `Die manuell angeforderte Insolvenzprüfung für ${clean(orderNumber, 40)} ist nicht eindeutig abgeschlossen. Bitte den Prüfstatus in OPS öffnen und klären. Die Antragserstellung bleibt gesperrt. https://ops.neontrip.de/ops/mahnwesen` },
       toRecipients: [{ emailAddress: { address: "support@neontrip.de" } }],
     }, saveToSentItems: true }), cache: "no-store", signal: AbortSignal.timeout(20_000),
   });
