@@ -4,7 +4,6 @@ import { NextRequest } from "next/server";
 import { POST as claim } from "@/app/api/internal/billing/jobs/claim/route";
 import { POST as complete } from "@/app/api/internal/billing/jobs/[jobId]/complete/route";
 import { validManualPaidClaim, validManualPaidCompletion, manualPaidSourceRevision } from "@/lib/ops/billing/manual-paid-reconciliation";
-// @ts-expect-error Existing n8n JavaScript source has no TypeScript declaration.
 import { readRateLimitContext } from "../../scripts/manual_paid_read_rate_limit.mjs";
 
 const base = { scope: "MANUAL_SHOPIFY_PAID", operation: "claim", worker: "manual-paid-test", executionId: "42", jobTypes: ["RECONCILE"], candidates: [] };
