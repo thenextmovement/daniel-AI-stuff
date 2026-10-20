@@ -1,3 +1,4 @@
+import { courtPreparationBlockers } from "./dunning-operator-actions";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { PDFDocument } from "pdf-lib";
@@ -156,16 +157,16 @@ export function createDunningCourtApplicationPreview(input: {
   latestJob: DunningCourtDraftJob | null;
 }): DunningCourtApplicationPreview {
   const { summary, profile, latestJob } = input;
-  const blockers: string[] = [];
+  const blockers: string[] = courtPreparationBlockers(summary);
   const warnings: string[] = [];
-  const invoiceDate = summary.invoiceDate || summary.orderCreatedAt || "";
+  const invoiceDate = summary.invoiceDate || "";
   const invoiceNumber = clean(
-    summary.easybillInvoiceNumber || summary.orderNumber,
+    summary.easybillInvoiceNumber || "",
     35,
   ).replace(/^#/, "");
 
-  if (!summary.legalReviewReady || summary.state !== "court_review")
-    blockers.push("Fall ist noch nicht für die gerichtliche Prüfung freigegeben");
+  if (!summary.legalReviewReady)
+    warnings.push("Manuelle Vorbereitung vor dem regulären Gerichtsschritt: Forderung, Frist und Kundenverlauf ausdrücklich prüfen.");
   if (summary.amountCents < 1 || summary.financialStatus === "paid")
     blockers.push("Offene Forderung ist nicht mehr belegt");
   if (summary.currency !== "EUR")
@@ -185,9 +186,13 @@ export function createDunningCourtApplicationPreview(input: {
   if (
     !summary.insolvencyCheck ||
     summary.insolvencyCheck.status !== "completed" ||
-    summary.insolvencyCheck.resultCode !== "no_public_notice_found"
+    summary.insolvencyCheck.resultCode !== "no_public_notice_found" ||
+    !summary.insolvencyCheck.checkedAt ||
+    !Number.isFinite(Date.parse(summary.insolvencyCheck.checkedAt)) ||
+    Date.now() - Date.parse(summary.insolvencyCheck.checkedAt) > 7 * 86_400_000 ||
+    Date.parse(summary.insolvencyCheck.checkedAt) > Date.now() + 300_000
   )
-    blockers.push("Amtliche Insolvenzprüfung ist nicht ohne Veröffentlichung abgeschlossen");
+    blockers.push("Aktuelle amtliche Insolvenzprüfung (höchstens 7 Tage) ist nicht ohne Veröffentlichung abgeschlossen");
   if (summary.customerReplied)
     blockers.push("Eine Kundenantwort muss vor dem Antrag geklärt werden");
   if (!summary.hasTracking)
@@ -217,6 +222,8 @@ export function createDunningCourtApplicationPreview(input: {
     currency: summary.currency,
     invoiceNumber,
     invoiceDate,
+    dueDate: summary.dueDate,
+    currentStage: summary.currentStage,
     profile: profile
       ? {
           legalName: profile.legalName,
@@ -763,4 +770,18 @@ export async function prepareDunningCourtApplication(input: {
       }).catch(() => null);
     throw error;
   }
+}
+
+// Use the existing working support route; the hyphenated domain is not deliverable.
+export async function sendDunningOperatorAlert(orderNumber: string) {
+  const token = await graphToken();
+  const response = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(requiredEnv("MICROSOFT_GRAPH_MAILBOX"))}/sendMail`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: {
+      subject: `[OPS Mahnwesen] Insolvenzprüfung klären: ${clean(orderNumber, 40)}`,
+      body: { contentType: "Text", content: `Die manuell angeforderte Insolvenzprüfung für ${clean(orderNumber, 40)} ist nicht eindeutig abgeschlossen. Bitte den Prüfstatus in OPS öffnen und klären. Die Antragserstellung bleibt gesperrt. https://ops.neontrip.de/ops/mahnwesen` },
+      toRecipients: [{ emailAddress: { address: "support@neontrip.de" } }],
+    }, saveToSentItems: true }), cache: "no-store", signal: AbortSignal.timeout(20_000),
+  });
+  if (response.status !== 202) throw new Error("DUNNING_COURT_ALERT_UNCONFIRMED");
 }

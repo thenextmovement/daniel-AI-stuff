@@ -768,6 +768,17 @@ test("official court PDF preparation fails closed and treats tracking-only evide
     assert.equal(preview.officialPortal, "https://www.online-mahnantrag.de/");
     assert.match(preview.snapshotHash, /^[a-f0-9]{64}$/);
 
+    const early = createDunningCourtApplicationPreview({
+      summary: { ...summary, currentStage: 2, legalReviewReady: false, courtReview: false, state: "scheduled" }, profile, latestJob: null,
+    });
+    assert.equal(early.allowed, true, "explicit manual preparation may precede the final email stage");
+    for (const patch of [{ paused: true }, { stopTag: true }, { paymentException: true },
+      { blockers: ["Bank- oder Shopify-Spiegel nicht vollständig aktuell"] },
+      { insolvencyCheck: { ...summary.insolvencyCheck!, checkedAt: "2020-01-01T00:00:00Z" } },
+    ]) {
+      assert.equal(createDunningCourtApplicationPreview({ summary: { ...summary, ...patch }, profile, latestJob: null }).allowed, false);
+    }
+
     delete process.env.DUNNING_COURT_INTERNAL_RECIPIENT;
     const blocked = createDunningCourtApplicationPreview({
       summary,
@@ -1107,3 +1118,13 @@ test("verified mirror snapshot excludes retained old rows and rejects an overlap
  const partial=mirrorSourceHealth(audit,"bank",[old,current,{id:"new",ingested_at:"2026-08-25T10:15:00Z"}]);
  assert.equal(partial.complete,false);
 });
+
+for (const year of [2024, 2025, 2026]) {
+  test(`open ${year} orders survive the full case builder without a live candidate`, () => {
+    const cases = buildDunningCases(input({ orders: [order({ created_at: `${year}-01-01T10:00:00Z` })], candidates: [] }));
+    assert.equal(cases.length, 1);
+    assert.equal(cases[0]?.orderCreatedAt, `${year}-01-01T10:00:00.000Z`);
+    assert.equal(cases[0]?.sendEligible, false);
+    assert.equal(buildDunningCases(input({ orders: [order({ created_at: `${year}-01-01T10:00:00Z`, financial_status: "paid", total_outstanding: 0 })], candidates: [] })).length, 0);
+  });
+}

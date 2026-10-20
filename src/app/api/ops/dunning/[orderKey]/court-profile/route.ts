@@ -1,3 +1,4 @@
+import { courtPreparationBlockers } from "@/lib/ops/dunning-operator-actions";
 import { NextRequest, NextResponse } from "next/server";
 import {
   hasOpsSession,
@@ -263,7 +264,7 @@ export async function POST(
         { ok: false, error: "dunning_case_not_found" },
         { status: 404 },
       );
-    if (!detail.case.courtReview || detail.case.courtEvent)
+    if (courtPreparationBlockers(detail.case).length || detail.case.courtEvent)
       return NextResponse.json(
         { ok: false, error: "court_profile_not_available" },
         { status: 409 },
