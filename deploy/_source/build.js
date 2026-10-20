@@ -141,6 +141,8 @@ function replaceVariables(html, config) {
     '{{META_DESCRIPTION}}': config.meta_description,
     '{{CANONICAL}}': config.canonical,
     '{{OG_TITLE}}': config.og_title,
+    '{{SHARE_IMAGE}}': 'https://anfrage.neontrip.de/assets/share/20261020/' + (config.lang === 'en' ? 'en' : 'neontrip') + '.jpg',
+    '{{SHARE_IMAGE_ALT}}': config.lang === 'en' ? 'NEONTRIP – Your idea. Our light. Custom illuminated signs.' : 'NEONTRIP – Deine Idee. Unser Licht. Leuchtschilder nach Maß.',
     '{{OG_DESCRIPTION}}': config.og_description,
     '{{HREFLANG_TAGS}}': config.hreflang_tags || '',
     '{{DKI_SCRIPT}}': generateDkiScript(config),

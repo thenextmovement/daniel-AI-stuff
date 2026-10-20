@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>NEONTRIP Share-Grafik</title>
+<style>
+@font-face{font-family:Inter;src:url(inter-latin.woff2) format("woff2");font-weight:100 900;font-style:normal;font-display:block}
+*{box-sizing:border-box}html,body{margin:0;width:1200px;height:630px;overflow:hidden;background:#0a0a0a;color:#fff;font-family:Inter,sans-serif}
+.card{position:relative;width:1200px;height:630px;padding:60px 68px;background:#0a0a0a}
+.logo{width:272px;height:44px;object-fit:contain;display:block}
+.label{position:absolute;top:74px;right:68px;font-size:17px;font-weight:500;letter-spacing:.04em;color:#b6b6b6}
+h1{position:absolute;left:63px;top:187px;margin:0;font-size:104px;font-weight:600;line-height:1.06;letter-spacing:-6px}
+h1 span{display:block;color:#fa31a2}
+.bolt{position:absolute;right:100px;top:170px;width:220px;height:336px;overflow:visible}
+.footer{position:absolute;left:68px;right:68px;bottom:52px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #333;padding-top:24px;font-size:22px;font-weight:400;letter-spacing:-.4px}
+.domain{font-size:18px;color:#a6a6a6}
+</style>
+<main class="card">
+  <img class="logo" src="logo-white.svg" alt="NEONTRIP">
+  <div class="label" id="label">INDIVIDUELL GEFERTIGT</div>
+  <h1 id="headline">Deine Idee.<span>Unser Licht.</span></h1>
+  <svg class="bolt" viewBox="110 30 155 312" aria-hidden="true">
+    <path fill="#fa31a2" d="M183.535156 170.886719 258.597656 36.234375 116.4375 201.417969H191.503906L116.4375 336.070312 258.597656 170.886719Z"/>
+  </svg>
+  <div class="footer"><span id="footer">Leuchtschilder nach Maß</span><span class="domain">neontrip.de</span></div>
+</main>
+<script>
+const kind=new URLSearchParams(location.search).get('kind');
+if(kind==='configurator'){
+  document.querySelector('#headline').innerHTML='Dein Text.<span>Dein Neon.</span>';
+  document.querySelector('#label').textContent='NEON-KONFIGURATOR';
+  document.querySelector('#footer').textContent='Deinen Schriftzug online gestalten';
+}else if(kind==='en'){
+  document.documentElement.lang='en';
+  document.querySelector('#headline').innerHTML='Your idea.<span>Our light.</span>';
+  document.querySelector('#label').textContent='MADE FOR YOU';
+  document.querySelector('#footer').textContent='Custom illuminated signs';
+}
+</script>
+</html>
