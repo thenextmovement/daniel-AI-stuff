@@ -99,6 +99,7 @@ await page.route("**/api/ops/**",async route=>{
  await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(payload)});
 });
 await page.goto("http://127.0.0.1:3198/ops/mahnwesen",{waitUntil:"networkidle"});
+assert.equal(await page.getByLabel("Bestelljahr",{exact:true}).isVisible(),false,"Year is inside collapsed advanced filters");
 holdDetail=true;
 await page.getByRole("button",{name:/^(Nächste Stufe|Details|Prüfung öffnen)$/}).first().click();
 await page.getByRole("dialog").waitFor({timeout:800});
@@ -117,9 +118,9 @@ await page.getByRole("button",{name:"Erneut laden",exact:true}).click();
 await page.getByLabel("Gesprächsnotiz").waitFor();
 await page.getByRole("button",{name:"Fall schließen",exact:true}).click();
 await page.locator("summary").filter({hasText:"Weitere Filter"}).click();
-assert.equal(await page.getByLabel("Gerichtsfälle und Vormerkungen ausblenden").isChecked(),true);
+assert.equal(await page.getByLabel("Erstellte/eingereichte Mahnanträge ausblenden").isChecked(),true);
 assert.equal(await page.getByLabel("Gesperrte Fälle ausblenden",{exact:true}).isChecked(),true);
-await page.locator("summary").filter({hasText:"Weitere Filter"}).click();
+assert.equal(await page.getByLabel("Vorgemerkte gelbe Briefe ausblenden",{exact:true}).isChecked(),true);
 const year=page.locator("label").filter({has:page.locator("span",{hasText:/^Bestelljahr$/})}).locator("select"); await year.waitFor();
 for(const value of ["2024","2025","2026"]){await year.selectOption(value);assert.equal(await page.locator("tbody tr").count(),1);}
 await year.selectOption("all"); assert.equal(await page.locator("tbody tr").count(),3);
@@ -150,11 +151,10 @@ assert.ok(!actions.some(a=>["prepare_court_application","send_next_stage"].inclu
 await page.reload({waitUntil:"networkidle"});
 assert.equal(await page.locator("tbody tr").count(),2);
 await page.locator("summary").filter({hasText:"Weitere Filter"}).click();
-await page.getByLabel("Gelber Brief: nur vorgemerkt",{exact:true}).check();
-assert.equal(await page.locator("tbody tr").count(),1);
+await page.getByLabel("Vorgemerkte gelbe Briefe ausblenden",{exact:true}).uncheck();
+assert.equal(await page.locator("tbody tr").count(),3);
 await page.getByRole("button",{name:"Vorgemerkt",exact:true}).first().waitFor();
-assert.equal(await page.getByLabel("Gerichtsfälle und Vormerkungen ausblenden").isChecked(),false);
-await page.getByLabel("Gelber Brief: nur vorgemerkt",{exact:true}).uncheck();
+assert.equal(await page.getByLabel("Erstellte/eingereichte Mahnanträge ausblenden").isChecked(),true);
 mkdirSync("artifacts/dunning-actions",{recursive:true});
 await page.locator("table").scrollIntoViewIfNeeded();
 await page.screenshot({path:"artifacts/dunning-actions/nomination-list.png",fullPage:false});
@@ -178,6 +178,21 @@ const disabled=await cards.evaluateAll(buttons=>buttons.filter(b=>(b as HTMLButt
 assert.ok(disabled>=2,"existing pauses and stop tags disable quick pauses");
 await page.locator("article").first().scrollIntoViewIfNeeded();
 await page.screenshot({path:"artifacts/dunning-actions/mobile-list.png",fullPage:false});
+cases[0].paused=false; cases[1].stopTag=false;
+cases[1].courtEvents=[{id:"court-test",orderNumber:cases[1].orderNumber,eventKey:"draft",eventType:"application_draft_created",eventLabel:"Entwurf",occurredOn:"2026-08-20",sourceReference:null,actor:"Test",note:null,createdAt:"2026-08-20T10:00:00Z"}];
+await page.getByRole("button",{name:"Aktualisieren",exact:true}).click();
+await page.getByRole("button",{name:"Zurücksetzen",exact:true}).click();
+await page.waitForTimeout(300);
+assert.equal(await page.locator("article").count(),1,"Reset hides nominations and draft applications");
+for(const label of ["Vorgemerkte gelbe Briefe ausblenden","Erstellte/eingereichte Mahnanträge ausblenden","Gesperrte Fälle ausblenden"])
+  assert.equal(await page.getByLabel(label,{exact:true}).isChecked(),true);
+await page.getByLabel("Vorgemerkte gelbe Briefe ausblenden",{exact:true}).uncheck();
+assert.equal(await page.locator("article").count(),2,"Unhiding nominations keeps court drafts hidden");
+await page.getByLabel("Erstellte/eingereichte Mahnanträge ausblenden",{exact:true}).uncheck();
+assert.equal(await page.locator("article").count(),3,"Both independently restored");
+await page.getByRole("button",{name:"Zurücksetzen",exact:true}).click();
+await page.locator("summary").filter({hasText:"Weitere Filter"}).scrollIntoViewIfNeeded();
+await page.screenshot({path:"artifacts/dunning-actions/filter-defaults.png",fullPage:false});
 assert.deepEqual(errors,[]);console.log("PASS: immediate drawer during held response, close ignores late result, failure/retry without actions, default hidden nominations/held cases, 2024/2025/2026, clipboard, one/two-week payloads, nomination confirmation/cancellation/persistence/filter and Shopify/offer links, mobile overflow, no runtime errors");
 await browser.close();
 
