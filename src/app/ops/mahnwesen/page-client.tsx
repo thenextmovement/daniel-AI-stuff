@@ -100,7 +100,7 @@ const INITIAL_FILTERS: Filters = {
   hideCourtNominations: true,
   delivery: "all",
   insolvency: "all",
-  sort: "priority",
+  sort: "overdue_asc",
 };
 
 function normalizedSearchValue(value: unknown) {

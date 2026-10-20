@@ -39,7 +39,7 @@ test("Ops exposes a dedicated searchable dunning work center", () => {
   const primaryControls = client.split("<details")[0] || "";
   assert.match(primaryControls, /label="Sortieren"/);
   assert.match(primaryControls, /Empfohlen: Priorität/);
-  assert.match(client, /sort: "priority"/);
+  assert.match(client, /sort: "overdue_asc"/);
   assert.match(primaryControls, /Höchster Betrag zuerst/);
   assert.match(primaryControls, /Niedrigster Betrag zuerst/);
   assert.match(primaryControls, /Höchste Mahnstufe zuerst/);
