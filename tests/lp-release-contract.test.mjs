@@ -57,19 +57,16 @@ function assertOptionalNamedControls(html, path, name, expectedCount) {
   }
 }
 
+const openAiHelper = await load('deploy/assets/js/nt-openai-ads.js');
+
 function assertTrackingContract(html, path, lang) {
   assert.doesNotMatch(html, /fuajob\.online\/webhook\/landing-anfrage/, path + ' has no direct upstream bypass');
-  assert.equal(occurrences(html, 'https://bzrcdn.openai.com/sdk/oaiq.min.js'), 1, path + ' pixel loader');
-  assert.equal(occurrences(html, '6GqgnrdSPjJSGdthY89B9Y'), 1, path + ' pixel id');
-  const consentResolved = Math.max(html.indexOf("oaiq('consent', granted)"), html.indexOf('oaiq("consent",granted)'));
-  const init = Math.max(html.indexOf("oaiq('init'"), html.indexOf('oaiq("init"'));
-  assert.ok(consentResolved >= 0 && consentResolved < init, path + ' sets resolved consent before init');
-  assert.match(html, /hasResponse\s*===\s*true/, path + ' requires a Cookiebot response');
-  assert.match(html, /CookiebotOnConsentReady/);
-  assert.match(html, /CookiebotOnAccept/);
-  assert.match(html, /CookiebotOnDecline/);
-  assert.match(html, /lead_created/);
-  assert.match(html, /event_id/);
+  assert.equal(occurrences(html, 'nt-openai-ads.js'), 1, path + ' shared pixel loader');
+  assert.equal(occurrences(html, 'https://bzrcdn.openai.com/sdk/oaiq.min.js'), 0, path + ' no second initializer');
+  assert.equal(occurrences(openAiHelper, '6GqgnrdSPjJSGdthY89B9Y'), 1);
+  assert.match(openAiHelper, /hasResponse === true/);
+  for (const event of ['CookiebotOnConsentReady','CookiebotOnAccept','CookiebotOnDecline','lead_created','event_id']) assert.ok(openAiHelper.includes(event), event);
+  assert.match(html, /ntOpenAiAds\?\.lead/);
   assert.match(html, /nt-business-email\.js\?v=78b9b0ce/);
   assert.match(html, /oppref/);
   assert.match(html, /campaign_id/);

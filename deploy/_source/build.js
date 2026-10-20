@@ -129,36 +129,8 @@ function generateStructuredData(config) {
 // ─── Generate OpenAI Ads Measurement Pixel setup ───
 function generateOpenAiAdsPixelSetup(config) {
   const pixelId = String(config.openai_ads_pixel_id || DEFAULT_OPENAI_ADS_PIXEL_ID).trim();
-  if (!pixelId) return '';
-  if (!/^[A-Za-z0-9_-]{10,80}$/.test(pixelId)) {
-    throw new Error(`Invalid OpenAI Ads pixel ID for ${config.slug}`);
-  }
-
-  return `  <!-- OpenAI Ads Measurement Pixel (explicit Cookiebot consent) -->
-  <script>
-  (function(){
-    var openAiAdsInitialized=false;
-    function syncOpenAiAdsConsent(){
-      var cb=window.Cookiebot;
-      if(!cb||!cb.consent)return;
-      var granted=cb.hasResponse===true&&cb.consent.marketing===true;
-      if(!openAiAdsInitialized){
-        // Wait for restored consent: a temporary false deletes the stored ad click ID.
-        if(cb.hasResponse!==true)return;
-        !function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");
-        oaiq("consent",granted);
-        oaiq("init",{pixelId:${JSON.stringify(pixelId)}});
-        openAiAdsInitialized=true;
-        return;
-      }
-      oaiq("consent",granted);
-    }
-    window.addEventListener("CookiebotOnConsentReady",syncOpenAiAdsConsent);
-    window.addEventListener("CookiebotOnAccept",syncOpenAiAdsConsent);
-    window.addEventListener("CookiebotOnDecline",syncOpenAiAdsConsent);
-    if(window.Cookiebot&&window.Cookiebot.hasResponse===true)syncOpenAiAdsConsent();
-  })();
-  </script>`;
+  if (pixelId !== DEFAULT_OPENAI_ADS_PIXEL_ID) throw new Error('NEONTRIP pages must use the existing shared OpenAI data source');
+  return "<script defer data-cookieconsent=\"ignore\" src=\"/assets/js/nt-openai-ads.js?v=ee56a713ec48\"></script>";
 }
 
 // ─── Replace template variables ───
@@ -240,6 +212,10 @@ function replaceVariables(html, config) {
     '{{EVENTS_SUBLINE_MOBILE}}': config.events_subline_mobile || 'Bekannte Marken & Events vertrauen auf NEONTRIP Neon Schilder.',
     '{{PRODUKTE_SUBLINE}}': config.produkte_subline || 'Neon Schilder, LED Schriftzüge & mehr — klicken Sie für Beispiele und direkte Anfrage.',
     '{{PRODUCT_GRID_ORDER}}': config.product_grid_order || '',
+    '{{GALLERY_PRICE_299}}': config.gallery_price_label || 'ab 299€',
+    '{{GALLERY_PRICE_499}}': config.gallery_price_label || 'ab 499€',
+    '{{GALLERY_PRICE_399}}': config.gallery_price_label || 'ab 399€',
+
   };
 
   let result = html;
