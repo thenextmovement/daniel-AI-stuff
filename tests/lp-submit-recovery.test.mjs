@@ -15,6 +15,8 @@ function createBaseContext(fetchImpl, source) {
     Error,
     TypeError,
     setTimeout,
+    clearTimeout,
+    AbortController,
     File,
     FormData,
     Headers,
@@ -71,7 +73,7 @@ function receipt(extra = {}) {
 }
 
 const variants = [['standalone', helperSource]];
-for (const file of ['deploy/_source/layouts/base.html', 'deploy/neon-schilder/index.html']) {
+for (const file of ['deploy/_source/layouts/base.html', 'deploy/index.html', ...['logo', 'neon-schilder', 'leuchtbuchstaben', 'firmenlogo-beleuchtet', 'firmenschilder', 'leuchtreklame', 'neon-schild-personalisieren', 'messe-event', 'leuchtkaesten', 'en'].map(slug => `deploy/${slug}/index.html`)]) {
   const html = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
   const start = html.indexOf('window.ntReportSubmitFailure =');
   const end = html.indexOf("const form = document.getElementById('multi-step-form');", start);
@@ -303,6 +305,79 @@ test('does not add another network retry to contact-only recovery', async () => 
   });
   assert.equal(calls, 2);
 });
+
+if (variant !== 'standalone') {
+  test('manual retry and overlapping submits retain the same logical request', async () => {
+    const ids = [];
+    let release;
+    const context = createContext((_url, options) => {
+      ids.push(options.body.get('request_id'));
+      return new Promise(resolve => { release = resolve; });
+    });
+    const form = { getAttribute: () => '/api/c' };
+    const data = new FormData(); data.set('email', 'internal@neontrip-test.de');
+    const first = context.ntSubmitForm(form, data, 'hero');
+    const same = context.ntSubmitForm(form, new FormData(), 'hero');
+    assert.equal(first, same);
+    while (!release) await new Promise(resolve => setImmediate(resolve));
+    release(new Response('{}', { status: 502 }));
+    await assert.rejects(first);
+    const retry = context.ntSubmitForm(form, new FormData(), 'hero');
+    while (ids.length < 2) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(ids[0], ids[1]);
+    release(receipt({ lead_request_id: ids[0] }));
+    await retry;
+  });
+
+  test('deadline stops a hanging request without an automatic retry', async () => {
+    let calls = 0;
+    const context = createContext(() => { calls++; return new Promise(() => {}); });
+    context.setTimeout = (fn, ms) => setTimeout(fn, ms === 45000 ? 5 : ms);
+    await assert.rejects(context.ntSubmitStandaloneForm(formWithFile(), 'hero'), err => {
+      assert.equal(err.code, 'submission_timeout');
+      assert.equal(err.clientSubmitId, clientSubmitId);
+      return true;
+    });
+    assert.equal(calls, 1);
+  });
+
+  test('deadline prevents a late file preparation from starting a request', async () => {
+    let calls = 0, release;
+    const context = createContext(async () => { calls++; return receipt(); });
+    context.setTimeout = (fn, ms) => setTimeout(fn, ms === 45000 ? 5 : ms);
+    context.ntPrepareSubmitFormData = () => new Promise(resolve => { release = resolve; });
+    await assert.rejects(context.ntSubmitStandaloneForm(formWithFile(), 'hero'), /submission_timeout/);
+    release(formWithFile());
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls, 0);
+  });
+
+  test('reporting waits for provider acceptance and never retries an ambiguous report', async () => {
+    for (const outcome of ['accepted', 'empty', 'rejected', 'offline']) {
+      let calls = 0;
+      const context = createContext(async () => {
+        calls++;
+        if (outcome === 'offline') throw new TypeError('offline');
+        return Response.json(outcome === 'accepted' ? { internal: 'provider_accepted' } : {}, { status: outcome === 'rejected' ? 502 : 200 });
+      });
+      const err = new Error('submit failed');
+      const first = context.ntReportSubmitFailure('hero', err);
+      assert.equal(first, context.ntReportSubmitFailure('hero', err));
+      const result = await first;
+      assert.equal(result.internal, outcome === 'accepted' ? 'provider_accepted' : 'unconfirmed');
+      assert.equal(calls, 1);
+    }
+  });
+
+  test('server report outcome is reused without a second client email attempt', async () => {
+    let calls = 0;
+    const context = createContext(async () => { calls++; return Response.json({}); });
+    const error = new Error('submit failed');
+    error.notification = { attempted: true, internal: 'unconfirmed' };
+    assert.equal((await context.ntReportSubmitFailure('hero', error)).internal, 'unconfirmed');
+    assert.equal(calls, 0);
+  });
+}
 
 if (variant !== 'standalone') {
   test('never automatically retries a different endpoint or origin', async () => {

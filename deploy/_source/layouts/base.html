@@ -1648,6 +1648,7 @@
     };
     window.ntShowFailureBanner = function(container, error) {
       if (!container) return;
+      var english = document.documentElement.lang === 'en';
       var old = container.querySelector('[data-nt-submit-error]');
       if (old) old.remove();
       // Preserve all fields and files so a deliberate retry keeps the same request ID.
@@ -1658,6 +1659,11 @@
       banner.className = 'text-center py-6 px-4';
       banner.style.cssText = 'margin-top:16px;border:1px solid #fecaca;border-radius:16px;background:#fff7f7;color:#171717;';
       banner.innerHTML = '<h3 class="text-xl font-semibold tracking-tight mb-2">Übermittlung nicht bestätigt</h3><p class="text-sm mb-3">Wir konnten den Eingang Ihrer Anfrage nicht bestätigen. Ihre Eingaben bleiben erhalten. Sie können erneut senden oder uns direkt kontaktieren.</p><p data-nt-report-status class="text-sm mb-4">Die automatische Fehlermeldung wird übermittelt.</p><div class="flex flex-col items-center gap-3"><a href="tel:+4921154257240" class="inline-flex items-center gap-2 px-5 py-3 bg-accent text-white rounded-full font-semibold text-[14px]">+49 211 54257240</a><a href="mailto:support@neontrip.de" class="text-[13px] font-semibold underline">support@neontrip.de</a></div>';
+      if (english) {
+        banner.querySelector('h3').textContent = 'Submission not confirmed';
+        banner.querySelector('p').textContent = 'We could not confirm receipt of your enquiry. Your entries have been kept. You can try again or contact us directly.';
+        banner.querySelector('[data-nt-report-status]').textContent = 'Sending the automatic error report.';
+      }
       container.appendChild(banner);
       banner.focus();
       banner.scrollIntoView({ block: 'nearest', behavior: 'auto' });
@@ -1665,8 +1671,8 @@
       Promise.resolve(error && error.notificationPromise).then(function(result) {
         if (!banner.isConnected) return;
         status.textContent = result && result.internal === 'provider_accepted'
-          ? 'Die Fehlermeldung wurde an unser Team übermittelt.'
-          : 'Auch die automatische Fehlermeldung konnte nicht bestätigt werden. Bitte kontaktieren Sie uns direkt.';
+          ? (english ? 'The error report was sent to our team.' : 'Die Fehlermeldung wurde an unser Team übermittelt.')
+          : (english ? 'We could not confirm the automatic error report either. Please contact us directly.' : 'Auch die automatische Fehlermeldung konnte nicht bestätigt werden. Bitte kontaktieren Sie uns direkt.');
       });
     };
     window.ntShowContactRecoveryBanner = function(container) {
@@ -1909,7 +1915,8 @@
     };
 
     window.ntRequireContactFields = function(form) {
-      var fields = [['name', 'Bitte geben Sie Ihren Namen an.'], ['email', 'Bitte geben Sie Ihre geschäftliche E-Mail-Adresse an.'], ['telefon', 'Bitte geben Sie Ihre Telefonnummer für Rückfragen an.']];
+      var english = document.documentElement.lang === 'en';
+      var fields = [['name', english ? 'Please enter your name.' : 'Bitte geben Sie Ihren Namen an.'], ['email', english ? 'Please enter your business email address.' : 'Bitte geben Sie Ihre geschäftliche E-Mail-Adresse an.'], ['telefon', english ? 'Please enter your phone number.' : 'Bitte geben Sie Ihre Telefonnummer für Rückfragen an.']];
       var firstInvalid = null;
       fields.forEach(function(entry) {
         var field = form.querySelector('[name="' + entry[0] + '"]');
@@ -1930,7 +1937,7 @@
         error.id = errorId;
         error.setAttribute('role', 'alert');
         error.style.cssText = 'font-size:13px;line-height:1.4;color:#a21c48;margin:6px 0 0;text-shadow:none';
-        error.textContent = missing ? entry[1] : (entry[0] === 'email' ? 'Bitte prüfen Sie Ihre geschäftliche E-Mail-Adresse.' : entry[1]);
+        error.textContent = missing ? entry[1] : (entry[0] === 'email' ? (english ? 'Please check your business email address.' : 'Bitte prüfen Sie Ihre geschäftliche E-Mail-Adresse.') : entry[1]);
         field.insertAdjacentElement('afterend', error);
         field.setAttribute('aria-invalid', 'true');
         field.setAttribute('aria-describedby', ((field.getAttribute('aria-describedby') || '') + ' ' + errorId).trim());

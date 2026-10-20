@@ -10,13 +10,16 @@ const minify = vm.runInNewContext('(' + build.slice(build.indexOf('function mini
 const start = 'window.ntReportSubmitFailure =';
 const end = "const form = document.getElementById('multi-step-form');";
 const helper = minify('<script>' + source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start))) + '</script>').slice(8, -9);
-for (const slug of ['index', 'logo', 'neon-schilder', 'leuchtbuchstaben', 'firmenlogo-beleuchtet', 'firmenschilder', 'leuchtreklame', 'neon-schild-personalisieren']) {
+const supported = ['index', 'logo', 'neon-schilder', 'leuchtbuchstaben', 'firmenlogo-beleuchtet', 'firmenschilder', 'leuchtreklame', 'neon-schild-personalisieren', 'messe-event', 'leuchtkaesten', 'en'];
+const selected = process.argv.slice(2);
+if (selected.some(slug => !supported.includes(slug))) throw new Error('Unsupported landing page');
+for (const slug of selected.length ? selected : supported) {
   const file = path.join(root, 'deploy', slug === 'index' ? 'index.html' : path.join(slug, 'index.html'));
   let html = fs.readFileSync(file, 'utf8');
   const from = html.indexOf(start), to = html.indexOf(end, from);
   if (from < 0 || to < from) throw new Error('Missing helper boundary: ' + slug);
-  // This older route has not opted into CRO events; keep its existing measurement scope.
-  const pageHelper = slug === 'neon-schild-personalisieren'
+  // Preserve each page's existing measurement scope when refreshing submit handling.
+  const pageHelper = !html.slice(from, to).includes('window.ntCro')
     ? helper.replace(/try \{ window\.ntCro\?\.(?:startForm\(form\)|lead\(form, result\)|error\('form', err, submitId\)); \} catch\(e\) \{\}/g, '')
     : helper;
   html = html.slice(0, from) + pageHelper + html.slice(to);
@@ -35,6 +38,7 @@ for (const slug of ['index', 'logo', 'neon-schilder', 'leuchtbuchstaben', 'firme
     ["var nameVal = (form.querySelector(", "var btn = form.querySelector('button[type=\"submit\"]');", 'form'],
     ["const nameVal = (heroFormD.querySelector(", "const submitBtn = heroFormD.querySelector('button[type=\"submit\"]');", 'heroFormD'],
   ]) {
+    if (formName === 'heroFormD' && !html.includes('id="hero-form-desktop"')) continue;
     const from = html.indexOf(begin);
     if (from < 0) {
       if (!html.includes('if (!window.ntRequireContactFields(' + formName + ')) return;')) throw new Error('Missing validation: ' + slug);
@@ -44,7 +48,6 @@ for (const slug of ['index', 'logo', 'neon-schilder', 'leuchtbuchstaben', 'firme
     if (to < from || to - from > 1000) throw new Error('Unexpected validation boundary: ' + slug);
     html = html.slice(0, from) + 'if (!window.ntRequireContactFields(' + formName + ')) return;' + html.slice(to);
   }
-  html = html.replaceAll('Jetzt online', 'Persönliche Beratung');
   fs.writeFileSync(file, html);
   console.log('Updated submit path: ' + slug);
 }
