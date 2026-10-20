@@ -71,6 +71,8 @@ import {
   type DunningCaseSort,
 } from "@/lib/ops/dunning-sort";
 
+import { dunningPauseUntil, courtPreparationBlockers } from "@/lib/ops/dunning-operator-actions";
+
 type Filters = {
   query: string;
   status: DunningStatusFilter;
@@ -492,6 +494,24 @@ function FilterPanel({
           Shopify-Ausnahmetags bleiben als Klärfälle sichtbar.
         </span>
       </div>
+      <div className="border-t border-[#e6e0d8] px-4 py-3 sm:max-w-xs">
+          <SelectField
+            label="Bestelljahr"
+            value={filters.orderYear}
+            onChange={(value) =>
+              update("orderYear", value as DunningOrderYearFilter)
+            }
+          >
+            <option value="all">Alle Jahre</option>
+            {Array.from({ length: new Date().getFullYear() - 2021 + 1 }, (_, index) => 2021 + index).map(
+              (year) => (
+                <option key={year} value={String(year)}>
+                  {year}
+                </option>
+              ),
+            )}
+          </SelectField>
+      </div>
       <details className="border-t border-[#e6e0d8]">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-stone-700 marker:content-none">
           <Filter className="h-4 w-4" />
@@ -565,22 +585,7 @@ function FilterPanel({
             <option value="2">Älter als 2 Monate</option>
             <option value="3">Älter als 3 Monate</option>
           </SelectField>
-          <SelectField
-            label="Bestelljahr"
-            value={filters.orderYear}
-            onChange={(value) =>
-              update("orderYear", value as DunningOrderYearFilter)
-            }
-          >
-            <option value="all">Alle Jahre</option>
-            {Array.from({ length: 11 }, (_, index) => 2024 + index).map(
-              (year) => (
-                <option key={year} value={String(year)}>
-                  {year}
-                </option>
-              ),
-            )}
-          </SelectField>
+
           <SelectField
             label="Versandnachweis"
             value={filters.delivery}
@@ -703,16 +708,50 @@ function ShipmentSummary({ entry }: { entry: DunningCaseSummary }) {
   );
 }
 
+function PhoneCopy({ phone }: { phone: string | null }) {
+  const [feedback, setFeedback] = useState("");
+  if (!phone) return <span>Keine Telefonnummer</span>;
+  return <span className="inline-flex flex-wrap items-center gap-1">
+    <button type="button" title="Telefonnummer kopieren" aria-label={`Telefonnummer ${phone} kopieren`}
+      className="inline-flex items-center gap-1 rounded text-left underline decoration-dotted underline-offset-4 hover:text-stone-950 focus-visible:outline"
+      onClick={async () => {
+        try { await navigator.clipboard.writeText(phone); setFeedback("Kopiert"); }
+        catch { setFeedback("Kopieren nicht möglich – Nummer bitte markieren"); }
+      }}><Phone className="h-3.5 w-3.5" />{phone}</button>
+    <span role="status" className="text-xs">{feedback}</span>
+  </span>;
+}
+
+function QuickPauses({ entry, busy, onPause }: {
+  entry: DunningCaseSummary; busy: boolean; onPause: (entry: DunningCaseSummary, weeks: 1 | 2) => void;
+}) {
+  const disabled = busy || entry.paused || entry.stopTag || entry.paymentException || entry.amountCents <= 0 || entry.state === "closed";
+  return <div className="mt-2 flex flex-wrap gap-1">
+    {([1, 2] as const).map(weeks => <button key={weeks} type="button" disabled={disabled}
+      title={entry.paused || entry.stopTag ? "Bestehende Sperre bleibt erhalten" : `Mahnprozess für ${weeks} Woche${weeks === 1 ? "" : "n"} pausieren`}
+      onClick={() => onPause(entry, weeks)}
+      className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-950 disabled:opacity-40">
+      +{weeks} {weeks === 1 ? "Woche" : "Wochen"}
+    </button>)}
+  </div>;
+}
+
 function CaseTable({
   cases,
   onOpen,
   onInsolvencyOpen,
   loadingKey,
+  actionBusy,
+  onQuickPause,
+  onOpenCourt,
 }: {
   cases: DunningCaseSummary[];
+  onOpenCourt: (entry: DunningCaseSummary) => void;
   onOpen: (entry: DunningCaseSummary) => void;
   onInsolvencyOpen: (entry: DunningCaseSummary) => void;
   loadingKey: string | null;
+  actionBusy: boolean;
+  onQuickPause: (entry: DunningCaseSummary, weeks: 1 | 2) => void;
 }) {
   return (
     <section className="overflow-hidden rounded-[22px] border border-[#ded8d0] bg-white shadow-[0_16px_44px_rgba(20,16,12,0.05)]">
@@ -727,6 +766,7 @@ function CaseTable({
               <th className="px-4 py-3">Mahnstufe</th>
               <th className="px-4 py-3">Nächste Aktion</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Telefonkontakt</th>
               <th className="px-4 py-3 text-right">Aktion</th>
             </tr>
           </thead>
@@ -765,8 +805,7 @@ function CaseTable({
                     {entry.email || "Keine E-Mail"}
                   </p>
                   <p className="mt-1 flex items-center gap-1 truncate text-xs text-stone-500">
-                    <Phone className="h-3 w-3 shrink-0" />
-                    {entry.phone || "Keine Telefonnummer"}
+                    <PhoneCopy phone={entry.phone} />
                   </p>
                 </td>
                 <td className="px-4 py-4">
@@ -831,6 +870,10 @@ function CaseTable({
                     </p>
                   ) : null}
                 </td>
+                <td className="px-4 py-4 text-xs">
+                  {entry.phoneCalls?.[0] ? <><p className="font-semibold">Angerufen {dateLabel(entry.phoneCalls[0].at, true)}</p><p>{entry.phoneCalls[0].note}</p></> : "Noch kein Anruf erfasst"}
+                  <button type="button" className="mt-2 block underline" onClick={() => onOpen(entry)}>Anruf erfassen</button>
+                </td>
                 <td className="px-4 py-4 text-right">
                   <button
                     onClick={() => onOpen(entry)}
@@ -846,6 +889,8 @@ function CaseTable({
                           : "Details"}
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
+                  <QuickPauses entry={entry} busy={actionBusy} onPause={onQuickPause} />
+                  <button type="button" onClick={() => onOpenCourt(entry)} disabled={actionBusy} className="mt-2 rounded-lg border border-yellow-400 bg-yellow-50 px-2 py-1.5 text-xs font-semibold disabled:opacity-40">Gelber Brief</button>
                 </td>
               </tr>
             ))}
@@ -870,7 +915,7 @@ function CaseTable({
                   {entry.email || "Keine E-Mail"}
                 </p>
                 <p className="mt-1 text-xs text-stone-500">
-                  {entry.phone || "Keine Telefonnummer"}
+                  <PhoneCopy phone={entry.phone} />
                 </p>
               </div>
               <div className="grid justify-items-end gap-2">
@@ -939,6 +984,9 @@ function CaseTable({
               Fall öffnen
               <ChevronRight className="h-4 w-4" />
             </button>
+            <QuickPauses entry={entry} busy={actionBusy} onPause={onQuickPause} />
+            <p className="mt-2 text-xs">{entry.phoneCalls?.[0] ? `Angerufen ${dateLabel(entry.phoneCalls[0].at, true)}: ${entry.phoneCalls[0].note}` : "Noch kein Anruf erfasst"}</p>
+            <button type="button" onClick={() => onOpenCourt(entry)} disabled={actionBusy} className="mt-2 rounded-lg border border-yellow-400 bg-yellow-50 px-3 py-2 text-sm font-semibold">Gelber Brief</button>
           </article>
         ))}
       </div>
@@ -1498,10 +1546,14 @@ function DetailDrawer({
   onCourtProfileOpen,
   onCourtPreview,
   onCourtPrepare,
+  onCourtInsolvency,
+  onRecordCall,
+  courtOpen,
   onInsolvencyOpen,
   onPauseOpen,
   onPauseCancel,
   onPauseSubmit,
+  onQuickPause,
   setConfirmation,
   setCourtConfirmation,
   setNote,
@@ -1530,10 +1582,14 @@ function DetailDrawer({
   onCourtProfileOpen: () => void;
   onCourtPreview: () => void;
   onCourtPrepare: () => void;
+  onCourtInsolvency: () => void;
+  onRecordCall: (note: string, id: string) => Promise<boolean>;
+  courtOpen: boolean;
   onInsolvencyOpen: (entry: DunningCaseSummary) => void;
   onPauseOpen: (action: "pause" | "resume") => void;
   onPauseCancel: () => void;
   onPauseSubmit: () => void;
+  onQuickPause: (entry: DunningCaseSummary, weeks: 1 | 2) => void;
   setConfirmation: (value: string) => void;
   setCourtConfirmation: (value: string) => void;
   setNote: (value: string) => void;
@@ -1545,6 +1601,12 @@ function DetailDrawer({
   setPauseUntil: (value: string) => void;
 }) {
   const entry = detail.case;
+  const [courtChecksConfirmed, setCourtChecksConfirmed] = useState(false);
+  const [callNote, setCallNote] = useState("");
+  const [callId, setCallId] = useState(() => crypto.randomUUID());
+  useEffect(() => { setCallNote(""); setCallId(crypto.randomUUID()); }, [entry.key]);
+  useEffect(() => { if (courtOpen) document.getElementById("court-preparation")?.scrollIntoView({ block: "start" }); }, [courtOpen, entry.key]);
+  useEffect(() => setCourtChecksConfirmed(false), [entry.key, courtPreview?.snapshotHash]);
   return (
     <div
       className="fixed inset-0 z-50 flex justify-end bg-stone-950/40 backdrop-blur-sm"
@@ -1635,7 +1697,7 @@ function DetailDrawer({
                 {entry.email || "Keine E-Mail"}
               </p>
               <p className="mt-1 text-sm text-stone-600">
-                {entry.phone || "Keine Telefonnummer"}
+                <PhoneCopy phone={entry.phone} />
               </p>
             </div>
             <div>
@@ -1658,6 +1720,17 @@ function DetailDrawer({
                 Letzter Kontakt {dateLabel(entry.lastContactAt, true)}
               </p>
             </div>
+          </section>
+          <section className="rounded-[22px] border border-stone-200 bg-white p-5">
+            <h3 className="font-semibold">Telefonkontakt</h3>
+            {entry.phoneCalls?.[0] ? <p className="mt-2 text-sm">Zuletzt angerufen {dateLabel(entry.phoneCalls[0].at, true)} · {entry.phoneCalls[0].actor}: {entry.phoneCalls[0].note}</p> : null}
+            <label className="mt-3 grid gap-1 text-sm">Gesprächsnotiz
+              <textarea maxLength={500} value={callNote} onChange={event => setCallNote(event.target.value)} className="rounded-xl border border-stone-300 p-3" placeholder="Ergebnis des Anrufs" />
+            </label>
+            <button type="button" disabled={actionBusy || callNote.trim().length < 3}
+              onClick={async () => { if (await onRecordCall(callNote, callId)) { setCallNote(""); setCallId(crypto.randomUUID()); } }}
+              className="mt-2 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold disabled:opacity-40">Angerufen speichern</button>
+            <p className="mt-2 text-xs text-stone-500">Der Eintrag dokumentiert den Anruf. Eine Pause setzt du mit +1 Woche oder +2 Wochen.</p>
           </section>
           <section className={`rounded-[22px] border p-5 ${entry.paused ? "border-amber-300 bg-amber-50" : "border-stone-200 bg-white"}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1695,6 +1768,8 @@ function DetailDrawer({
                 </button>
               ) : null}
             </div>
+            <QuickPauses entry={entry} busy={actionBusy} onPause={onQuickPause} />
+            <p className="mt-2 text-xs text-stone-500">Nach Ablauf prüft die Automatik Zahlung und Sperren erneut und führt berechtigte Fälle weiter.</p>
             {entry.paused ? (
               <dl className="mt-4 grid gap-3 rounded-xl border border-amber-200 bg-white/70 p-4 text-sm sm:grid-cols-2">
                 <div>
@@ -1982,8 +2057,9 @@ function DetailDrawer({
               </div>
             </section>
           ) : null}
-          {entry.courtReview ? (
-            <section className="rounded-[22px] border border-violet-200 bg-white p-5">
+          <details id="court-preparation" open={courtOpen || undefined} className="rounded-[22px] border border-violet-200 bg-white p-5">
+            <summary className="cursor-pointer font-semibold text-violet-950">Gelber Brief – gerichtlichen Mahnantrag vorbereiten</summary>
+            <section className="mt-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
@@ -2002,13 +2078,21 @@ function DetailDrawer({
                 {!entry.courtEvent ? (
                   <button
                     onClick={onCourtProfileOpen}
-                    disabled={actionBusy}
+                    disabled={actionBusy || courtPreparationBlockers(entry).length > 0}
                     className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-900 disabled:opacity-50"
                   >
                     Gerichtsdaten prüfen
                   </button>
                 ) : null}
               </div>
+              <p className="mt-3 text-sm text-stone-600">Auch vor Stufe 6 möglich. Zuerst offene Forderung, Zahlungsfrist, Anschrift, Kundenverlauf und Insolvenz prüfen. Bestehende Sperren bleiben wirksam.</p>
+              {courtPreparationBlockers(entry).length > 0 ? <ul className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
+                {courtPreparationBlockers(entry).map(reason => <li key={reason}>{reason}</li>)}
+              </ul> : null}
+              <button type="button" onClick={onCourtInsolvency}
+                disabled={actionBusy || courtPreparationBlockers(entry).length > 0}
+                className="mt-3 rounded-xl border border-violet-300 px-3 py-2 text-sm font-semibold disabled:opacity-40">Insolvenz aktuell prüfen</button>
+              {entry.insolvencyCheck ? <p className="mt-2 text-sm">{entry.insolvencyCheck.resultLabel} · {dateLabel(entry.insolvencyCheck.checkedAt, true)}</p> : null}
               {detail.courtProfile ? (
                 <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
                   <p className="font-semibold">
@@ -2106,6 +2190,9 @@ function DetailDrawer({
                   )}
                   {courtPreview.allowed ? (
                     <div className="grid gap-3">
+                      <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={courtChecksConfirmed} onChange={event => setCourtChecksConfirmed(event.target.checked)} />
+                        Ich habe Forderung, Zahlung, Frist, Schuldneranschrift, Kundenverlauf und Insolvenzprüfung geprüft und möchte den Antrag zur Unterschrift erstellen lassen.
+                      </label>
                       <label className="grid gap-1.5 text-sm font-semibold text-stone-700">
                         Zur Bestätigung exakt eingeben
                         <code className="w-fit rounded-lg bg-stone-950 px-2 py-1 text-xs text-white">
@@ -2123,6 +2210,7 @@ function DetailDrawer({
                       <button
                         onClick={onCourtPrepare}
                         disabled={
+                          !courtChecksConfirmed ||
                           actionBusy ||
                           courtConfirmation !== courtPreview.confirmationPhrase
                         }
@@ -2143,7 +2231,7 @@ function DetailDrawer({
                 </div>
               ) : null}
             </section>
-          ) : null}
+          </details>
           <section className="rounded-[22px] border border-stone-200 bg-white p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -2426,6 +2514,7 @@ export function DunningOpsClient({
   const [confirmation, setConfirmation] = useState("");
   const [courtConfirmation, setCourtConfirmation] = useState("");
   const [note, setNote] = useState("");
+  const [courtOpen, setCourtOpen] = useState(false);
   const [pauseAction, setPauseAction] = useState<"pause" | "resume" | null>(null);
   const [pauseReason, setPauseReason] = useState("");
   const [pauseMode, setPauseMode] = useState<"manual" | "until_date">("until_date");
@@ -2620,13 +2709,14 @@ export function DunningOpsClient({
     setPauseUntil("");
   }
 
-  async function submitPauseAction() {
-    if (!selected || !pauseAction) return;
-    const selectedCase = selected.case;
-    const reason = pauseReason.trim();
+  async function submitPauseAction(weeks?: 1 | 2, entry?: DunningCaseSummary) {
+    const action = weeks ? "pause" : pauseAction;
+    const selectedCase = entry || selected?.case;
+    if (!selectedCase || !action || actionBusy) return;
+    const reason = weeks ? `Manuell um ${weeks} Woche${weeks === 1 ? "" : "n"} verschoben` : pauseReason.trim();
     if (reason.length < 3) return;
-    let pauseUntilIso: string | null = null;
-    if (pauseAction === "pause" && pauseMode === "until_date") {
+    let pauseUntilIso: string | null = weeks ? dunningPauseUntil(weeks) : null;
+    if (!weeks && action === "pause" && pauseMode === "until_date") {
       const timestamp = Date.parse(pauseUntil);
       if (!Number.isFinite(timestamp) || timestamp <= Date.now()) {
         setActionError("Die Wiedervorlage muss in der Zukunft liegen.");
@@ -2644,12 +2734,12 @@ export function DunningOpsClient({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: pauseAction === "pause" ? "pause_dunning" : "resume_dunning",
+            action: action === "pause" ? "pause_dunning" : "resume_dunning",
             reason,
-            pauseMode: pauseAction === "pause" ? pauseMode : undefined,
-            pauseUntil: pauseAction === "pause" ? pauseUntilIso : undefined,
+            pauseMode: action === "pause" ? (weeks ? "until_date" : pauseMode) : undefined,
+            pauseUntil: action === "pause" ? pauseUntilIso : undefined,
             expectedPauseSnapshotHash: selectedCase.pauseSnapshotHash,
-            idempotencyKey: `ops-dunning-pause:${selectedCase.orderNumber.slice(1)}:${pauseAction}:${crypto.randomUUID()}`,
+            idempotencyKey: `ops-dunning-pause:${selectedCase.orderNumber.slice(1)}:${action}:${crypto.randomUUID()}`,
           }),
         },
       );
@@ -2668,7 +2758,7 @@ export function DunningOpsClient({
       setPauseUntil("");
       await Promise.all([loadDashboard(), openCase(selectedCase)]);
       setNotice(
-        pauseAction === "pause"
+        action === "pause"
           ? "Der Mahnprozess ist pausiert. Für diesen Fall wird keine automatische Kundenmail versendet."
           : "Der Mahnprozess ist wieder freigegeben. Vor einem späteren Versand prüft der Workflow Zahlung, Restbetrag, Antworten und Sperren erneut.",
       );
@@ -2714,6 +2804,41 @@ export function DunningOpsClient({
     } finally {
       setActionBusy(false);
     }
+  }
+
+  async function recordCall(note: string, id: string): Promise<boolean> {
+    if (!selected || actionBusy) return false;
+    const entry = selected.case;
+    setActionBusy(true); setActionError(null); setNotice(null);
+    try {
+      const response = await fetch(`/api/ops/dunning/${encodeURIComponent(entry.key)}/actions`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "record_phone_call", note, idempotencyKey: id }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Anruf konnte nicht gespeichert werden");
+      await Promise.all([loadDashboard(), openCase(entry)]); setNotice("Anruf mit Datum und Bearbeiter gespeichert."); return true;
+    } catch (error) { setActionError(error instanceof Error ? error.message : "Speichern fehlgeschlagen"); return false; }
+    finally { setActionBusy(false); }
+  }
+
+  async function checkCourtInsolvency() {
+    if (!selected || actionBusy) return;
+    const entry = selected.case;
+    setActionBusy(true); setActionError(null); setNotice(null); setCourtPreview(null);
+    try {
+      const response = await fetch(`/api/ops/dunning/${encodeURIComponent(entry.key)}/actions`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "check_court_insolvency" }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.blockers?.join(" · ") || payload.error || "Insolvenzprüfung fehlgeschlagen");
+      await Promise.all([loadDashboard(), openCase(entry)]);
+      setNotice(payload.result.action === "skipped"
+        ? "Kein neuer Prüflauf gestartet. Bitte den vorhandenen Prüfstatus und die verbleibenden Blockaden in der Fallakte beachten."
+        : payload.result.resultCode === "technical_error"
+          ? "Insolvenzprüfung technisch fehlgeschlagen. Antrag bleibt gesperrt; bitte später erneut prüfen."
+          : "Prüflauf abgeschlossen. Das Ergebnis und verbleibende Blockaden stehen in der Fallakte.");
+    } catch (error) { setActionError(error instanceof Error ? error.message : "Insolvenzprüfung fehlgeschlagen"); }
+    finally { setActionBusy(false); }
   }
 
   async function prepareCourtApplication() {
@@ -2888,8 +3013,11 @@ export function DunningOpsClient({
               total={dashboard.cases.length}
             />
             <CaseTable
+              actionBusy={actionBusy}
+              onQuickPause={(entry, weeks) => void submitPauseAction(weeks, entry)}
               cases={visibleCases}
-              onOpen={(entry) => void openCase(entry)}
+              onOpen={(entry) => { setCourtOpen(false); void openCase(entry); }}
+              onOpenCourt={(entry) => { setCourtOpen(true); void openCase(entry); }}
               onInsolvencyOpen={setInsolvencyCase}
               loadingKey={detailLoadingKey}
             />
@@ -2933,6 +3061,7 @@ export function DunningOpsClient({
             onPauseOpen={openPauseAction}
             onPauseCancel={cancelPauseAction}
             onPauseSubmit={() => void submitPauseAction()}
+            onQuickPause={(entry, weeks) => void submitPauseAction(weeks, entry)}
             pauseReason={pauseReason}
             pauseMode={pauseMode}
             pauseUntil={pauseUntil}
@@ -2942,6 +3071,9 @@ export function DunningOpsClient({
             onCourtProfileOpen={() => setCourtProfileOpen(true)}
             onCourtPreview={() => void previewCourtApplication()}
             onCourtPrepare={() => void prepareCourtApplication()}
+            onCourtInsolvency={() => void checkCourtInsolvency()}
+            onRecordCall={recordCall}
+            courtOpen={courtOpen}
             setConfirmation={setConfirmation}
             setCourtConfirmation={setCourtConfirmation}
             setNote={setNote}

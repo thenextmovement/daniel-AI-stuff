@@ -6,6 +6,9 @@ import type {
 export type DunningOrderAgeFilter = "all" | "1" | "2" | "3";
 export type DunningOrderYearFilter =
   | "all"
+  | "2021"
+  | "2022"
+  | "2023"
   | "2024"
   | "2025"
   | "2026"

@@ -1,0 +1,249 @@
+{
+  "id": "HzMgctp78bcMq44A",
+  "expectedVersionId": "81336db3-d7a4-40f5-a9e5-373839bbab59",
+  "operations": [
+    {
+      "type": "addNode",
+      "node": {
+        "id": "ops-find-expired-pauses",
+        "name": "Find All Due Managed Pauses",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1300,
+          260
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "const paginatedResponse = (name) => {\n  const pageSize = 1000;\n  const pageItems = $(name).all().map((item) => item.json || {});\n  const rows = [];\n  let complete = pageItems.length > 0 && pageItems.length <= 500;\n  let total = null;\n  for (let index = 0; index < pageItems.length; index += 1) {\n    const envelope = pageItems[index] || {};\n    const body = envelope.body;\n    const status = Number(envelope.statusCode || 0);\n    const headers = envelope.headers || {};\n    const range = String(headers['content-range'] || headers['Content-Range'] || '');\n    if (status < 200 || status >= 300 || !Array.isArray(body)) { complete = false; continue; }\n    if (range === '*/0') {\n      if (index !== 0 || pageItems.length !== 1 || body.length !== 0 || (total !== null && total !== 0)) complete = false;\n      total = 0;\n      continue;\n    }\n    const rangeParts = range.split('/');\n    const bounds = rangeParts.length === 2 ? rangeParts[0].split('-') : [];\n    const numericRange = bounds.length === 2 && /^\\d+$/.test(bounds[0]) && /^\\d+$/.test(bounds[1]) && /^\\d+$/.test(rangeParts[1]);\n    if (!numericRange) { complete = false; rows.push(...body); continue; }\n    const start = Number(bounds[0]);\n    const end = Number(bounds[1]);\n    const pageTotal = Number(rangeParts[1]);\n    if (![start, end, pageTotal].every(Number.isSafeInteger) || start !== index * pageSize || body.length < 1 || body.length > pageSize || end !== start + body.length - 1 || pageTotal < body.length) complete = false;\n    if (total == null) total = pageTotal; else if (total !== pageTotal) complete = false;\n    if (end + 1 < pageTotal && body.length !== pageSize) complete = false;\n    if (end + 1 >= pageTotal && index !== pageItems.length - 1) complete = false;\n    rows.push(...body);\n  }\n  const expectedPages = total === 0 ? 1 : (Number.isSafeInteger(total) && total > 0 ? Math.ceil(total / pageSize) : null);\n  if (total == null || total !== rows.length || expectedPages == null || pageItems.length !== expectedPages) complete = false;\n  return { pages: pageItems, rows, complete, total };\n};\n\nconst snapshot = paginatedResponse('Read All Manual Dunning Holds');\nif (!snapshot.complete) throw new Error('DUNNING_PAUSE_SNAPSHOT_INCOMPLETE');\nconst seen = new Set(), due = [], now = $now.toMillis();\nfor (const row of snapshot.rows) {\n const order = String(row.shopify_order_number || '');\n if (seen.has(order)) throw new Error('DUNNING_PAUSE_DUPLICATE_ORDER');\n seen.add(order);\n if (row.paused !== true || row.pause_mode !== 'until_date') continue;\n const until = Date.parse(row.pause_until || '');\n if (!Number.isFinite(until) || until > now) continue;\n if (!/^#NEONT[0-9]{1,12}$/.test(order) || String(row.pause_reason || '').trim().length < 3\n  || String(row.paused_by || '').trim().length < 3\n  || !Number.isSafeInteger(Number(row.pause_version)) || Number(row.pause_version) < 1\n  || !Number.isFinite(Date.parse(row.updated_at || ''))\n  || !Number.isInteger(Number(row.mahnstufe)) || Number(row.mahnstufe) < 0 || Number(row.mahnstufe) > 7)\n   throw new Error('DUNNING_PAUSE_INVALID_MANAGED_STATE');\n // Only expire the timed hold. Payment, stop-tag and reply gates still apply downstream.\n due.push({json:{...row,resume_due:true}});\n}\nreturn due.length ? due : [{json:{resume_due:false}}];"
+        }
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "ops-route-expired-pauses",
+        "name": "Route Due Managed Pauses",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          1480,
+          260
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "version": 2,
+              "caseSensitive": true,
+              "typeValidation": "strict",
+              "leftValue": ""
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "t271-managed-pause-due-condition",
+                "leftValue": "={{ $json.resume_due === true }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ]
+          },
+          "options": {}
+        }
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "ops-expire-managed-pauses-rpc",
+        "name": "Expire All Due Managed Pauses",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.3,
+        "position": [
+          1660,
+          60
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/apply_dunning_pause_action",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=representation"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ p_shopify_order_number: $json.shopify_order_number, p_action: 'auto_resume', p_actor: 'TICKET-271 n8n sender', p_reason: 'Automatische Wiedervorlage erreicht', p_pause_mode: null, p_pause_until: null, p_expected_pause_version: Number($json.pause_version), p_expected_updated_at: $json.updated_at, p_shopify_order_id: null, p_current_stage: Number($json.mahnstufe), p_last_sent_at: $json.last_sent_at || null, p_idempotency_key: 'n8n-dunning-resume:' + String($json.shopify_order_number).replace(/^#/, '') + ':v' + String($json.pause_version) + ':auto' }) }}",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json",
+                "fullResponse": true
+              }
+            },
+            "timeout": 30000
+          }
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "ops-verify-expired-pauses",
+        "name": "Verify Managed Pause Expiry",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1880,
+          60
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "const results = $input.all();\nif (!results.length) throw new Error('DUNNING_PAUSE_RESUME_UNCONFIRMED');\nfor (const item of results) {\n const response = item.json || {};\n const row = Array.isArray(response.body) && response.body.length === 1 ? response.body[0] : null;\n if (!(Number(response.statusCode) >= 200 && Number(response.statusCode) < 300)\n  || !row || !row.event_id || row.result_paused !== false\n  || !Number.isSafeInteger(Number(row.result_pause_version)))\n   throw new Error('DUNNING_PAUSE_RESUME_UNCONFIRMED');\n}\nreturn [{json:{resumed:results.length}}];"
+        }
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "ops-reload-managed-pauses",
+        "name": "Reload Holds After Expiry",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.3,
+        "position": [
+          2100,
+          60
+        ],
+        "parameters": {
+          "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/dunning_status?select=shopify_order_number,mahnstufe,last_sent_at,paused,note,updated_at,pause_mode,pause_until,pause_reason,paused_at,paused_by,pause_version&order=shopify_order_number.asc&limit=1000&offset=0",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Accept",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "count=exact"
+              }
+            ]
+          },
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "json",
+                "fullResponse": true
+              }
+            },
+            "pagination": {
+              "pagination": {
+                "paginationMode": "updateAParameterInEachRequest",
+                "parameters": {
+                  "parameters": [
+                    {
+                      "type": "qs",
+                      "name": "offset",
+                      "value": "={{ $pageCount * 1000 }}"
+                    }
+                  ]
+                },
+                "paginationCompleteWhen": "other",
+                "completeExpression": "={{ (() => { const range = String($response.headers['content-range'] || $response.headers['Content-Range'] || ''); const totalPart = range.includes('/') ? range.split('/').pop() : ''; const total = /^\\d+$/.test(totalPart) ? Number(totalPart) : null; return total !== null && (($pageCount + 1) * 1000 >= total); })() }}",
+                "limitPagesFetched": true,
+                "maxRequests": 500,
+                "requestInterval": 100
+              }
+            },
+            "timeout": 30000
+          }
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000,
+        "onError": "continueRegularOutput",
+        "executeOnce": true
+      }
+    },
+    {
+      "type": "removeConnection",
+      "source": "Read All Manual Dunning Holds",
+      "target": "Read Active Legacy Enrollments"
+    },
+    {
+      "type": "addConnection",
+      "source": "Read All Manual Dunning Holds",
+      "target": "Find All Due Managed Pauses"
+    },
+    {
+      "type": "addConnection",
+      "source": "Find All Due Managed Pauses",
+      "target": "Route Due Managed Pauses"
+    },
+    {
+      "type": "addConnection",
+      "source": "Route Due Managed Pauses",
+      "target": "Expire All Due Managed Pauses",
+      "branch": "true"
+    },
+    {
+      "type": "addConnection",
+      "source": "Route Due Managed Pauses",
+      "target": "Read Active Legacy Enrollments",
+      "branch": "false"
+    },
+    {
+      "type": "addConnection",
+      "source": "Expire All Due Managed Pauses",
+      "target": "Verify Managed Pause Expiry"
+    },
+    {
+      "type": "addConnection",
+      "source": "Verify Managed Pause Expiry",
+      "target": "Reload Holds After Expiry"
+    },
+    {
+      "type": "addConnection",
+      "source": "Reload Holds After Expiry",
+      "target": "Read Active Legacy Enrollments"
+    },
+    {
+      "type": "updateNode",
+      "nodeName": "Select Earliest Due Future Stage",
+      "updates": {
+        "parameters.jsCode": "const response = (name) => { const envelope = $(name).first().json || {}; const body = envelope.body; const status = Number(envelope.statusCode || 0); const headers = envelope.headers || {}; const range = String(headers['content-range'] || headers['Content-Range'] || ''); const totalPart = range.includes('/') ? range.split('/').pop() : ''; const total = /^\\d+$/.test(totalPart) ? Number(totalPart) : null; const complete = status >= 200 && status < 300 && Array.isArray(body) && total !== null && total <= body.length && body.length < 1000; return { envelope, rows: Array.isArray(body) ? body : [], complete, status, total }; };\nconst paginatedResponse = (name) => {\n  const pageSize = 1000;\n  const pageItems = $(name).all().map((item) => item.json || {});\n  const rows = [];\n  let complete = pageItems.length > 0 && pageItems.length <= 500;\n  let total = null;\n  for (let index = 0; index < pageItems.length; index += 1) {\n    const envelope = pageItems[index] || {};\n    const body = envelope.body;\n    const status = Number(envelope.statusCode || 0);\n    const headers = envelope.headers || {};\n    const range = String(headers['content-range'] || headers['Content-Range'] || '');\n    if (status < 200 || status >= 300 || !Array.isArray(body)) { complete = false; continue; }\n    if (range === '*/0') {\n      if (index !== 0 || pageItems.length !== 1 || body.length !== 0 || (total !== null && total !== 0)) complete = false;\n      total = 0;\n      continue;\n    }\n    const rangeParts = range.split('/');\n    const bounds = rangeParts.length === 2 ? rangeParts[0].split('-') : [];\n    const numericRange = bounds.length === 2 && /^\\d+$/.test(bounds[0]) && /^\\d+$/.test(bounds[1]) && /^\\d+$/.test(rangeParts[1]);\n    if (!numericRange) { complete = false; rows.push(...body); continue; }\n    const start = Number(bounds[0]);\n    const end = Number(bounds[1]);\n    const pageTotal = Number(rangeParts[1]);\n    if (![start, end, pageTotal].every(Number.isSafeInteger) || start !== index * pageSize || body.length < 1 || body.length > pageSize || end !== start + body.length - 1 || pageTotal < body.length) complete = false;\n    if (total == null) total = pageTotal; else if (total !== pageTotal) complete = false;\n    if (end + 1 < pageTotal && body.length !== pageSize) complete = false;\n    if (end + 1 >= pageTotal && index !== pageItems.length - 1) complete = false;\n    rows.push(...body);\n  }\n  const expectedPages = total === 0 ? 1 : (Number.isSafeInteger(total) && total > 0 ? Math.ceil(total / pageSize) : null);\n  if (total == null || total !== rows.length || expectedPages == null || pageItems.length !== expectedPages) complete = false;\n  return { pages: pageItems, rows, complete, total };\n};\nif (true !== true) return [];\nconst locksResponse = paginatedResponse('Read Existing One-Shot Ledger'); const auditResponse = paginatedResponse('Read Sender Evidence Audits'); const messageResponse = paginatedResponse('Read Sender Evidence Messages'); const holdsResponse = paginatedResponse($('Reload Holds After Expiry').isExecuted ? 'Reload Holds After Expiry' : 'Read All Manual Dunning Holds'); const enrollmentResponse = paginatedResponse('Read Active Legacy Enrollments'); const intakeEnvelope = $('Read Latest Live Complete Intake').first().json || {}; const intakeRows = Array.isArray(intakeEnvelope.body) ? intakeEnvelope.body : []; const intake = intakeRows[0] || null; const metadata = intake?.metadata || {}; const cutover = DateTime.fromISO('2026-08-05T17:30:00+02:00', { setZone: true }).toUTC(); const observed = DateTime.fromISO(String(metadata.observed_at || ''), { setZone: true }).toUTC(); const freshUntil = DateTime.fromISO(String(metadata.fresh_until || ''), { setZone: true }).toUTC(); const nowUtc = $now.toUTC();\nconst latestRunId = String(metadata.run_id || ''); const duplicateRows = latestRunId ? intakeRows.filter((row) => String(row?.metadata?.run_id || '') === latestRunId) : []; const snapshotFingerprint = (row) => JSON.stringify({ workflow_name: row?.workflow_name, action: row?.action, status: row?.status, error_message: row?.error_message ?? null, metadata: row?.metadata }); const duplicateConsistent = duplicateRows.length > 0 && duplicateRows.every((row) => snapshotFingerprint(row) === snapshotFingerprint(intake)); const sourceCountersValid = Number.isSafeInteger(metadata.sources?.shopify?.row_count) && Number.isSafeInteger(metadata.sources?.easybill?.row_count) && Number.isSafeInteger(metadata.union?.key_count) && Array.isArray(metadata.union?.rows) && metadata.union.key_count === metadata.union.rows.length && Array.isArray(metadata.candidates) && metadata.union?.candidate_count === metadata.candidates.length;\nconst candidateKeys = Array.isArray(metadata.candidates) ? metadata.candidates.map((row) => String(row?.candidate_key || '')) : []; const candidatesValid = candidateKeys.length === new Set(candidateKeys).size && candidateKeys.every(Boolean) && metadata.schema === 't099.intake.snapshot.v2' && (metadata.candidates || []).every((row) => row.preliminary_only === true && DateTime.fromISO(String(row.shopify_order_created_at || ''), { setZone: true }).toUTC().isValid && DateTime.fromISO(String(row.shopify_order_updated_at || ''), { setZone: true }).toUTC().isValid && DateTime.fromISO(String(row.easybill_document_created_at || ''), { setZone: true }).toUTC().isValid && DateTime.fromISO(String(row.shopify_order_created_at || ''), { setZone: true }).toUTC() >= cutover && DateTime.fromISO(String(row.easybill_document_created_at || ''), { setZone: true }).toUTC() >= cutover && Number.isSafeInteger(Number(row.invoice_amount_cents)) && Number(row.invoice_amount_cents) > 0 && Number.isSafeInteger(Number(row.payment_received_cents)) && Number(row.payment_received_cents) >= 0 && Number.isSafeInteger(Number(row.easybill_paid_cents)) && Number(row.easybill_paid_cents) === Number(row.payment_received_cents) && Number.isSafeInteger(Number(row.amount_due_cents)) && Number(row.amount_due_cents) > 0 && Number(row.payment_received_cents) + Number(row.amount_due_cents) === Number(row.invoice_amount_cents) && ['initial','partial_payment'].includes(String(row.cycle_kind || '')) && String(row.cycle_id || '').length > 0);\nconst senderLockKeys = locksResponse.rows.map((row) => String(row.request_id || '')); const senderLocksScoped = senderLockKeys.every((key) => key.startsWith('e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:')) && new Set(senderLockKeys).size === senderLockKeys.length; const allowedSenderAuditActions = new Set(['customer_send_blocked_preclaim','customer_stage_sent_verified','customer_reply_decision']); const senderAuditIds = auditResponse.rows.map((row) => String(row.id || '')); const senderAuditsScoped = senderAuditIds.every(Boolean) && new Set(senderAuditIds).size === senderAuditIds.length && auditResponse.rows.every((row) => row.workflow_name === 'TICKET-099 Existing Ledger Sender' && allowedSenderAuditActions.has(String(row.action || '')) && String(row.metadata?.lock_key || '').startsWith('e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:') && DateTime.fromISO(String(row.created_at || ''), { setZone: true }).toUTC().isValid && DateTime.fromISO(String(row.created_at || ''), { setZone: true }).toUTC() >= cutover && (row.action !== 'customer_reply_decision' || (row.status === 'success' && row.metadata?.schema === 't268.reply-decision.v1' && ['continue_dunning','stop_dunning','uncertain'].includes(String(row.metadata?.decision || '')) && typeof row.metadata?.reply_message_id === 'string' && row.metadata.reply_message_id.length > 0 && DateTime.fromISO(String(row.metadata?.reply_received_at || ''), { setZone: true }).toUTC().isValid && Number.isSafeInteger(Number(row.metadata?.payment_received_cents)) && Number(row.metadata?.payment_received_cents) >= 0 && Number.isSafeInteger(Number(row.metadata?.amount_due_cents)) && Number(row.metadata?.amount_due_cents) > 0)));\nconst holdOrders = new Map(); let holdsUnique = true; for (const row of holdsResponse.rows) { const key = String(row.shopify_order_number || '').normalize('NFKC').trim().toUpperCase(); if (!key) { holdsUnique = false; continue; } if (holdOrders.has(key)) holdsUnique = false; holdOrders.set(key, row); }\nconst senderMessageIds = messageResponse.rows.map((row) => String(row.message_id || '')); const senderMessagesScoped = senderMessageIds.every(Boolean) && new Set(senderMessageIds).size === senderMessageIds.length && messageResponse.rows.every((row) => row.direction === 'outbound' && row.source === 'outlook' && DateTime.fromISO(String(row.sent_at || ''), { setZone: true }).toUTC().isValid && DateTime.fromISO(String(row.sent_at || ''), { setZone: true }).toUTC() >= cutover);\nconst enrollmentIds = enrollmentResponse.rows.map((row) => String(row.id || ''));\nconst normalCandidateKeys = new Set(candidateKeys);\nlet enrollmentsValid = enrollmentIds.every(Boolean) && new Set(enrollmentIds).size === enrollmentIds.length;\nconst enrolledCandidates = [];\nfor (const enrollment of enrollmentResponse.rows) {\n  const m = enrollment?.metadata || {};\n  const row = m.candidate_snapshot || {};\n  const orderId = String(row.shopify_order_id || '').replace(/^gid:\\/\\/shopify\\/Order\\//, '');\n  const orderName = String(row.shopify_order_name || '').normalize('NFKC').trim().toUpperCase();\n  const invoiceNumber = String(row.easybill_invoice_number || '').normalize('NFKC').trim().toUpperCase();\n  const normalizedOrderNumber = orderName.replace(/^#?NEONT/, '');\n  const normalizedInvoiceNumber = invoiceNumber.replace(/^#?NEONT/, '');\n  const candidateKey = String(row.candidate_key || '');\n  const orderCreated = DateTime.fromISO(String(row.shopify_order_created_at || ''), { setZone: true }).toUTC();\n  const invoiceCreated = DateTime.fromISO(String(row.easybill_document_created_at || ''), { setZone: true }).toUTC();\n  const email = String(row.shopify_email_hint || '').trim().toLowerCase();\n  const valid = enrollment.workflow_name === 'TICKET-248 Legacy Enrollment' &&\n    enrollment.action === 'legacy_candidate_enrolled' &&\n    enrollment.status === 'success' &&\n    enrollment.error_message == null &&\n    m.schema === 't099.legacy.enrollment.v1' &&\n    m.approved_ticket === 'TICKET-248' &&\n    m.approved_by === 'Rahim' &&\n    m.authorization_scope === 'single_case_after_verified_s1' &&\n    row.preliminary_only === true &&\n    row.intake_evidence?.source === 'manual_legacy_enrollment_v1' &&\n    row.intake_evidence?.approved_ticket === 'TICKET-248' &&\n    row.intake_evidence?.approved_by === 'Rahim' &&\n    /^\\d+$/.test(orderId) &&\n    orderName === '#NEONT' + normalizedOrderNumber &&\n    invoiceNumber === '#NEONT' + normalizedInvoiceNumber &&\n    normalizedOrderNumber === normalizedInvoiceNumber &&\n    String(row.easybill_document_id || '').length > 0 &&\n    String(row.easybill_customer_id || '').length > 0 &&\n    candidateKey.length > 0 &&\n    !normalCandidateKeys.has(candidateKey) &&\n    orderCreated.isValid &&\n    invoiceCreated.isValid &&\n    /^\\d{4}-\\d{2}-\\d{2}$/.test(String(row.easybill_due_date || '')) &&\n    /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) &&\n    Number.isSafeInteger(Number(row.amount_due_cents)) &&\n    Number(row.amount_due_cents) > 0 &&\n    /^[A-Z]{3}$/.test(String(row.currency || '').toUpperCase());\n  if (!valid) { enrollmentsValid = false; continue; }\n  normalCandidateKeys.add(candidateKey);\n  enrolledCandidates.push({\n    ...row,\n    shopify_order_id: orderId,\n    shopify_order_gid: String(row.shopify_order_gid || 'gid://shopify/Order/' + orderId),\n    shopify_order_name: orderName,\n    easybill_invoice_number: invoiceNumber,\n    shopify_email_hint: email,\n    currency: String(row.currency || '').toUpperCase(),\n    intake_evidence: {\n      source: 'manual_legacy_enrollment_v1',\n      enrollment_audit_id: String(enrollment.id),\n      approved_ticket: 'TICKET-248',\n      approved_by: 'Rahim',\n      candidate_key: candidateKey,\n      observed_at: String(enrollment.created_at || '')\n    }\n  });\n}\n\nconst historicalEnvelope = $('Read Latest Historical Control').first().json || {};\nconst historicalAudit = Array.isArray(historicalEnvelope.body) ? historicalEnvelope.body[0] : null;\nconst historical = historicalAudit?.metadata?.continuation;\nconst historicalRows = historical?.candidates || [];\nconst historicalObserved = DateTime.fromISO(String(historical?.observed_at || ''), { setZone: true }).toUTC();\nconst historicalUntil = DateTime.fromISO(String(historical?.fresh_until || ''), { setZone: true }).toUTC();\nif (Number(historicalEnvelope.statusCode) !== 200 || historicalAudit?.status !== 'success' || historicalAudit?.action !== 'daily_35_day_dunning_audit' || historical?.schema !== 'dunning.historical.snapshot.v1' || !historicalObserved.isValid || !historicalUntil.isValid || historicalObserved > nowUtc || historicalUntil.toMillis() - historicalObserved.toMillis() !== 26 * 3600000 || nowUtc > historicalUntil || !Array.isArray(historicalRows)) throw new Error('HISTORICAL_CONTINUATION_SOURCE_STALE_OR_INCOMPLETE');\nconst historicalOrderIds = new Set();\nfor (const row of historicalRows) {\n  const c = row.continuation || {}, a = c.anchor;\n  const valid = row.preliminary_only === true && row.intake_evidence?.source === 'historical_control_v1' && c.schema === 'dunning.historical.candidate.v1' &&\n    /^\\d+$/.test(row.shopify_order_id || '') && /^#NEONT\\d+$/.test(row.shopify_order_name || '') &&\n    !historicalOrderIds.has(row.shopify_order_id) && c.cycle_prefix === 'e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:' + row.shopify_order_id + ':C-' + c.cycle_id &&\n    /^[A-Za-z0-9-]+$/.test(c.cycle_id || '') && ['current_6','legacy_4'].includes(c.stage_model) && ['INVOICE','PROFORMA_INVOICE'].includes(c.document_type) &&\n    row.easybill_document_type === c.document_type && Number.isSafeInteger(row.amount_due_cents) && row.amount_due_cents > 0 &&\n    Number.isSafeInteger(row.payment_received_cents) && row.payment_received_cents >= 0 && row.easybill_paid_cents === row.payment_received_cents &&\n    row.amount_due_cents + row.payment_received_cents === row.invoice_amount_cents &&\n    c.observed_at === historical.observed_at &&\n    (!a || (Number.isInteger(a.stage) && a.stage >= 1 && a.stage < (c.stage_model === 'legacy_4' ? 4 : 6) && a.message_id && a.internet_message_id && a.conversation_id && DateTime.fromISO(a.sent_at, {setZone:true}).isValid && ['reviewed_reminder','outlook_legacy'].includes(a.evidence)));\n  if (!valid) throw new Error('HISTORICAL_CONTINUATION_CANDIDATE_INVALID');\n  historicalOrderIds.add(row.shopify_order_id);\n}\n// A historical held snapshot must not prevent the live managed-pause resume path.\n// Only the expired, versioned date pause is reconsidered; all other exclusions stay.\nconst managedPauseDue = row => {\n  const until = DateTime.fromISO(String(row?.pause_until || ''), {setZone:true}).toUTC();\n  const updated = DateTime.fromISO(String(row?.updated_at || ''), {setZone:true}).toUTC();\n  return row?.paused === true && row.pause_mode === 'until_date' &&\n    typeof row.pause_reason === 'string' && row.pause_reason.trim().length >= 3 &&\n    typeof row.paused_by === 'string' && row.paused_by.trim().length >= 3 &&\n    Number.isSafeInteger(Number(row.pause_version)) && Number(row.pause_version) > 0 &&\n    until.isValid && until <= nowUtc && updated.isValid;\n};\n// Retain proof of the exact timed hold expired in this run, even if the daily audit still says held.\nconst resumedManagedOrders = new Set();\nif ($('Reload Holds After Expiry').isExecuted) {\n  for (const item of $('Find All Due Managed Pauses').all()) {\n    const before = item.json;\n    const after = holdOrders.get(String(before.shopify_order_number || '').normalize('NFKC').trim().toUpperCase());\n    if (before.resume_due === true && managedPauseDue(before) && after?.paused === false\n        && Number(after.pause_version) === Number(before.pause_version) + 1)\n      resumedManagedOrders.add(String(before.shopify_order_number).normalize('NFKC').trim().toUpperCase());\n  }\n}\nconst historicalProtected = new Set((historical?.excluded || []).filter(row =>\n  row.reason !== 'REGULAR_INTAKE' &&\n  !(row.reason === 'held' && (managedPauseDue(holdOrders.get(String(row.order).normalize('NFKC').trim().toUpperCase())) || resumedManagedOrders.has(String(row.order).normalize('NFKC').trim().toUpperCase())))\n).map(row => row.order));\nconst allCandidateRows = [...(metadata.candidates || []), ...enrolledCandidates].filter(row => !historicalOrderIds.has(String(row.shopify_order_id)) && !historicalProtected.has(String(row.shopify_order_name))).concat(historicalRows);\n\nif (Number(intakeEnvelope.statusCode || 0) < 200 || Number(intakeEnvelope.statusCode || 0) >= 300 || !intake || !duplicateConsistent || intake.workflow_name !== 'TICKET-099 Existing Ledger Intake' || intake.action !== 'future_candidate_snapshot' || intake.status !== 'success' || metadata.schema !== 't099.intake.snapshot.v2' || metadata.source_complete !== true || metadata.sources?.shopify?.complete !== true || metadata.sources?.easybill?.complete !== true || metadata.candidates_truncated !== false || !observed.isValid || !freshUntil.isValid || freshUntil.toMillis() - observed.toMillis() !== 90 * 60 * 1000 || nowUtc > freshUntil || !DateTime.fromISO(String(metadata.cutover_at || ''), { setZone: true }).toUTC().equals(cutover) || !sourceCountersValid || !candidatesValid || !locksResponse.complete || !senderLocksScoped || !auditResponse.complete || !senderAuditsScoped || !messageResponse.complete || !senderMessagesScoped || !holdsResponse.complete || !holdsUnique || !enrollmentResponse.complete || !enrollmentsValid) return [];\nconst t268Cutover = DateTime.fromISO('2026-09-09T11:01:25Z', { setZone: true }).toUTC();\nconst permanentReasons = new Set(['EXISTING_COMPANY_DOMAIN_PRIOR_PAID','SHOPIFY_CANCELLED','SHOPIFY_REFUND_OR_VOID_PRESENT','SHOPIFY_CHARGEBACK_OR_DISPUTE_PRESENT','EASYBILL_STORNO','EASYBILL_STORNO_RELATED','EASYBILL_FULL_CREDIT','EASYBILL_PARTIAL_CREDIT_REVIEW','EASYBILL_REPLACEMENT_INVOICE','CUSTOMER_EMAIL_INVALID','CUSTOMER_REPLIED_TO_PAYMENT_REMINDER','CUSTOMER_REPLY_BEFORE_T268_CUTOVER','T268_PARTIAL_BEFORE_CUTOVER']);\nconst permanentBlockedKeys = new Set();\nconst recentTechnicalBlockedKeys = new Set();\nfor (const audit of auditResponse.rows) {\n  if (audit.action !== 'customer_send_blocked_preclaim') continue;\n  const key = String(audit.metadata?.lock_key || '');\n  const reasons = Array.isArray(audit.metadata?.reasons) ? audit.metadata.reasons.map(String) : [];\n  if (!key) continue;\n  const unavailableShopifyOrder = reasons.includes('SHOPIFY_LIVE_GATE_INCOMPLETE') && !String(audit.metadata?.live_evidence?.shopify_order_id || '').trim();\n  const permanentEvidenceReasons = unavailableShopifyOrder ? reasons.filter((reason) => !['SHOPIFY_REFUND_OR_VOID_PRESENT','CUSTOMER_EMAIL_INVALID'].includes(reason)) : reasons;\n  if (permanentEvidenceReasons.some((reason) => permanentReasons.has(reason))) permanentBlockedKeys.add(key);\n  else {\n    const created = DateTime.fromISO(String(audit.created_at || ''), { setZone: true });\n    if (created.isValid && created >= nowUtc.minus({ hours: 2 })) recentTechnicalBlockedKeys.add(key);\n  }\n}\nconst sentAudits = new Map(); for (const audit of auditResponse.rows) if (audit.action === 'customer_stage_sent_verified' && audit.status === 'sent' && audit.metadata?.lock_key) sentAudits.set(String(audit.metadata.lock_key), audit); const sentMessagesById = new Map(messageResponse.rows.map((message) => [String(message.message_id || ''), message])); const lockByKey = new Map(locksResponse.rows.map((row) => [String(row.request_id), row])); const verified = (row, key, stageNumber) => { const audit = sentAudits.get(key); const message = sentMessagesById.get(String(row?.message_id || '')); const sentAt = DateTime.fromISO(String(row?.lease_until || ''), { setZone: true }); const to = Array.isArray(message?.to_emails) ? message.to_emails.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean) : []; return Boolean(row && row.status === 'draft_created' && row.message_id && sentAt.isValid && audit && message && message.direction === 'outbound' && message.source === 'outlook' && String(message.message_id || '') === String(row.message_id) && String(message.internet_message_id || '') === String(row.internet_message_id || '') && String(message.conversation_id || '') === String(row.conversation_id || '') && String(audit.metadata?.provider_message_id || '') === String(row.message_id) && String(audit.metadata?.provider_internet_message_id || '') === String(row.internet_message_id || '') && String(audit.metadata?.provider_conversation_id || '') === String(row.conversation_id || '') && String(audit.metadata?.evidence_schema || '') === 't099.sender.evidence.v1' && String(audit.metadata?.ticket || '') === '099' && Number(audit.metadata?.stage) === stageNumber && DateTime.fromISO(String(message.sent_at || ''), { setZone: true }).toMillis() === sentAt.toMillis() && DateTime.fromISO(String(audit.metadata?.sent_at || ''), { setZone: true }).toMillis() === sentAt.toMillis() && to.length === 1 && to[0] === String(audit.metadata?.recipient || audit.metadata?.live_evidence?.customer_email || '').trim().toLowerCase() && (message.cc_emails == null || message.cc_emails.length === 0) && (message.bcc_emails == null || message.bcc_emails.length === 0) && audit.metadata?.attachment_verified === true && (stageNumber >= 4 ? Boolean(audit.metadata?.pdf_sha256 && Number(audit.metadata?.pdf_bytes) >= 1000 && audit.metadata?.attachment_id && audit.metadata?.attachment_content_sha256 === audit.metadata?.pdf_sha256) : ((audit.metadata?.pdf_sha256 == null && audit.metadata?.pdf_bytes == null) || Boolean(audit.metadata?.pdf_sha256 && Number(audit.metadata?.pdf_bytes) >= 1000 && audit.metadata?.attachment_id && audit.metadata?.attachment_content_sha256 === audit.metadata?.pdf_sha256)))); }; const publicDomains = new Set([\"gmail.com\",\"googlemail.com\",\"outlook.com\",\"outlook.de\",\"hotmail.com\",\"hotmail.de\",\"live.com\",\"live.de\",\"yahoo.com\",\"yahoo.de\",\"gmx.de\",\"gmx.net\",\"web.de\",\"icloud.com\",\"me.com\",\"mac.com\",\"t-online.de\",\"proton.me\",\"protonmail.com\",\"aol.com\",\"mail.com\",\"freenet.de\"]); const now = $now.setZone('Europe/Berlin');\nconst addBusinessDays = (value, days) => { let out = value; if (!out?.isValid || !Number.isInteger(days) || days < 0) return out; let remaining = days; while (remaining > 0) { out = out.plus({ days: 1 }); if (out.weekday <= 5) remaining -= 1; } return out; };\nconst nextBusinessDayOrSame = (value) => { let out = value; if (!out?.isValid) return out; while (out.weekday > 5) out = out.plus({ days: 1 }); return out; };\n// Explicit Umdasch payment terms: 3% Skonto within 30 days; no payment reminder during the first 45 calendar days.\nconst isUmdaschCustomer = (emails = [], companies = [], customerIds = []) => {\n  const knownCustomerIds = new Set(['2669065012', '2669064937']);\n  if (customerIds.some((value) => knownCustomerIds.has(String(value || '').trim()))) return true;\n  const emailMatch = emails.some((value) => {\n    const email = String(value || '').normalize('NFKC').trim().toLowerCase();\n    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return false;\n    const domain = email.split('@').pop().replace(/\\.$/, '');\n    return domain === 'umdasch.com' || domain.endsWith('.umdasch.com');\n  });\n  return emailMatch || companies.some((value) => /\\bumdasch\\b/.test(String(value || '').normalize('NFKC').toLowerCase().replace(/[^\\p{L}\\p{N}]+/gu, ' ').trim()));\n};\nconst baseLockPrefix = 'e936881a-fe32-4d94-aa1d-eaffcf4a75be:T099:PAYMENT_COLLECTION:';\nconst fnv = (value) => {\n  let hash = 2166136261;\n  const text = String(value || '');\n  for (let index = 0; index < text.length; index += 1) {\n    hash ^= text.charCodeAt(index);\n    hash = Math.imul(hash, 16777619);\n  }\n  return ('00000000' + (hash >>> 0).toString(16)).slice(-8);\n};\nconst replyDecisionsByOrder = new Map();\nfor (const audit of auditResponse.rows) {\n  if (audit.action !== 'customer_reply_decision' || audit.status !== 'success' || audit.metadata?.schema !== 't268.reply-decision.v1') continue;\n  const orderId = String(audit.metadata?.shopify_order_id || '');\n  if (!orderId) continue;\n  if (!replyDecisionsByOrder.has(orderId)) replyDecisionsByOrder.set(orderId, []);\n  replyDecisionsByOrder.get(orderId).push(audit);\n}\nfor (const rows of replyDecisionsByOrder.values()) rows.sort((a, b) => Date.parse(String(a.created_at || '')) - Date.parse(String(b.created_at || '')) || Number(a.id) - Number(b.id));\nconst candidates = [];\nif (now.weekday > 5) return [];\nfor (const row of allCandidateRows) {\n  const continuation = row.continuation || null;\n  const anchor = continuation?.anchor || null;\n  const endpoint = continuation?.stage_model === 'legacy_4' ? 4 : 6;\n  const umdaschCustomer = isUmdaschCustomer([row.shopify_email_hint], [row.shopify_company_hint, row.easybill_company_hint], [row.easybill_customer_id]);\n  const orderNameKey = String(row.shopify_order_name || '').normalize('NFKC').trim().toUpperCase();\n  const holdRow = holdOrders.get(orderNameKey) || null;\n  const managedPauseUntil = DateTime.fromISO(String(holdRow?.pause_until || ''), { setZone: true }).toUTC();\n  const managedPauseUpdatedAt = DateTime.fromISO(String(holdRow?.updated_at || ''), { setZone: true }).toUTC();\n  const managedPauseVersion = Number(holdRow?.pause_version);\n  const dueManagedPause = Boolean(\n    holdRow?.paused === true &&\n    holdRow?.pause_mode === 'until_date' &&\n    typeof holdRow?.pause_reason === 'string' &&\n    holdRow.pause_reason.trim().length >= 3 &&\n    typeof holdRow?.paused_by === 'string' &&\n    holdRow.paused_by.trim().length >= 3 &&\n    Number.isSafeInteger(managedPauseVersion) &&\n    managedPauseVersion > 0 &&\n    managedPauseUntil.isValid &&\n    managedPauseUntil <= nowUtc &&\n    managedPauseUpdatedAt.isValid\n  );\n  if (holdRow?.paused === true && !dueManagedPause) continue;\n  const orderCreated = DateTime.fromISO(String(row.shopify_order_created_at || ''), { setZone: true }).setZone('Europe/Berlin');\n  let invoiceCreated = DateTime.fromISO(String(row.easybill_document_created_at || ''), { setZone: true }).setZone('Europe/Berlin');\n  if (!invoiceCreated.isValid && continuation) invoiceCreated = DateTime.fromFormat(String(row.easybill_document_created_at || ''), 'yyyy-MM-dd HH:mm:ss', { zone: 'Europe/Berlin' });\n  const invoiceDue = DateTime.fromISO(String(row.easybill_due_date || ''), { zone: 'Europe/Berlin' }).startOf('day').plus({ days: 1 }).set({ hour: 9, minute: 0, second: 0, millisecond: 0 });\n  if (!orderCreated.isValid || !invoiceCreated.isValid) continue;\n  const umdaschReminderEarliest = nextBusinessDayOrSame(invoiceCreated.plus({ days: 45 }).startOf('day').set({ hour: 9, minute: 0, second: 0, millisecond: 0 }));\n  if (umdaschCustomer && (!umdaschReminderEarliest.isValid || now < umdaschReminderEarliest)) continue;\n  const firstEligibleBase = orderCreated > invoiceCreated ? orderCreated : invoiceCreated;\n  const legacyId = String(row.shopify_order_id || '').replace(/^gid:\\/\\/shopify\\/Order\\//, '');\n  const paidCents = Number.isSafeInteger(Number(row.payment_received_cents)) ? Number(row.payment_received_cents) : 0;\n  const dueCents = Number(row.amount_due_cents);\n  let cycleKind = String(row.cycle_kind || 'initial') === 'partial_payment' ? 'partial_payment' : 'initial';\n  let cycleId = cycleKind === 'partial_payment' ? 'P' + paidCents + '-R' + dueCents : 'INITIAL';\n  let cycleBaseline = cycleKind === 'partial_payment'\n    ? DateTime.fromISO(String(row.shopify_order_updated_at || ''), { setZone: true }).setZone('Europe/Berlin')\n    : firstEligibleBase;\n  let cycleTriggerReplyId = null;\n  let cycleDecisionAuditId = null;\n  const balanceDecisions = (replyDecisionsByOrder.get(legacyId) || []).filter((audit) => Number(audit.metadata?.payment_received_cents) === paidCents && Number(audit.metadata?.amount_due_cents) === dueCents);\n  const latestDecision = balanceDecisions.length ? balanceDecisions.at(-1) : null;\n  if (latestDecision) {\n    const decision = String(latestDecision.metadata?.decision || '');\n    const decisionCreated = DateTime.fromISO(String(latestDecision.created_at || ''), { setZone: true }).toUTC();\n    const holdUpdated = DateTime.fromISO(String(holdRow?.updated_at || ''), { setZone: true }).toUTC();\n    const manuallyContinued = ['stop_dunning','uncertain'].includes(decision) && holdRow?.paused === false && decisionCreated.isValid && holdUpdated.isValid && holdUpdated > decisionCreated;\n    if (decision === 'continue_dunning' || manuallyContinued) {\n      const documentResolved = !manuallyContinued && latestDecision.metadata.reason_codes?.includes('document_request_fulfilled') && latestDecision.metadata.invoice_delivery?.sent_at;\n      const baselineValue = manuallyContinued ? holdRow.updated_at : documentResolved ? latestDecision.metadata.invoice_delivery.sent_at : latestDecision.metadata.reply_received_at;\n      const baseline = DateTime.fromISO(String(baselineValue || ''), { setZone: true }).setZone('Europe/Berlin');\n      if (!baseline.isValid || baseline.toUTC() < t268Cutover) continue;\n      if (!documentResolved) cycleKind = 'reply_restart';\n      cycleTriggerReplyId = String(latestDecision.metadata.reply_message_id || '');\n      if (!documentResolved) cycleId = 'R' + fnv(cycleTriggerReplyId);\n      cycleBaseline = documentResolved && firstEligibleBase > baseline ? firstEligibleBase : baseline;\n      cycleDecisionAuditId = String(latestDecision.id || '');\n    } else if (['stop_dunning','uncertain'].includes(decision)) {\n      continue;\n    }\n  }\n  if (continuation) { cycleId = continuation.cycle_id; cycleKind = 'historical_continuation'; if (!latestDecision) cycleBaseline = firstEligibleBase; }\n  if (!cycleBaseline?.isValid) continue;\n  const cyclePrefix = continuation ? continuation.cycle_prefix : cycleKind === 'initial' ? baseLockPrefix + legacyId : baseLockPrefix + legacyId + ':C-' + cycleId;\n  const keyFor = (stage) => cyclePrefix + ':S' + stage;\n  const anchorLock = anchor ? { message_id: anchor.message_id, internet_message_id: anchor.internet_message_id, conversation_id: anchor.conversation_id, lease_until: anchor.sent_at } : null;\n  const priorLock = number => number === anchor?.stage ? anchorLock : lockByKey.get(keyFor(number));\n  const priorVerified = number => number === anchor?.stage ? true : verified(priorLock(number), keyFor(number), number);\n  // Do not restart an earlier stage or overlook an unknown delivery in any cycle.\n  if (continuation && locksResponse.rows.some(lock => String(lock.request_id).startsWith(baseLockPrefix + legacyId + ':') && lock.request_id !== anchor?.lock_key && !verified(lock, lock.request_id, Number(String(lock.request_id).match(/:S(\\d)$/)?.[1])))) continue;\n  if (continuation && Number(holdRow?.mahnstufe || 0) >= endpoint && !anchor) continue;\n  let stage = null;\n  let scheduledAt = null;\n  for (let number = (anchor?.stage || 0) + 1; number <= endpoint; number += 1) {\n    const currentKey = keyFor(number);\n    const current = lockByKey.get(currentKey);\n    if (current) {\n      if (verified(current, currentKey, number)) continue;\n      break;\n    }\n    if (number > 1 && !priorVerified(number - 1)) break;\n    const previous = number > 1 ? priorLock(number - 1) : null;\n    if (number === 1) scheduledAt = cycleKind === 'partial_payment' ? addBusinessDays(firstEligibleBase, 3) : addBusinessDays(cycleBaseline, 3);\n    else {\n      const previousSent = DateTime.fromISO(String(previous?.lease_until || ''), { setZone: true }).setZone('Europe/Berlin');\n      if (!previousSent.isValid) break;\n      if (number === 2 || number === 3) scheduledAt = addBusinessDays(previousSent, 4);\n      else if (number === 4) {\n        scheduledAt = nextBusinessDayOrSame(orderCreated.plus({ days: 14 }));\n        const relativeDue = nextBusinessDayOrSame(previousSent.plus({ days: 7 }));\n        if (scheduledAt < relativeDue) scheduledAt = relativeDue;\n        if (!invoiceDue.isValid) break;\n        const businessInvoiceDue = nextBusinessDayOrSame(invoiceDue);\n        if (scheduledAt < businessInvoiceDue) scheduledAt = businessInvoiceDue;\n      } else scheduledAt = nextBusinessDayOrSame(previousSent.plus({ days: 7 }));\n    }\n    if (continuation && cycleDecisionAuditId) {\n      const replyEarliest = addBusinessDays(cycleBaseline, 3);\n      if (!scheduledAt || scheduledAt < replyEarliest) scheduledAt = replyEarliest;\n    }\n    if (!scheduledAt?.isValid) break;\n    if (now >= scheduledAt) stage = number;\n    break;\n  }\n  if (!stage || permanentBlockedKeys.has(keyFor(stage)) || recentTechnicalBlockedKeys.has(keyFor(stage))) continue;\n  const snapshotEmail = String(row.shopify_email_hint || '').trim().toLowerCase();\n  const historyEmail = row.billing_recipient_source === 'easybill_customer_snapshot' ? String(row.original_shopify_email || '').trim().toLowerCase() : snapshotEmail;\n  const snapshotDomain = historyEmail.includes('@') ? historyEmail.split('@').pop().replace(/\\.$/, '') : '';\n  const domainHistory = stage >= 3 && Boolean(String(row.shopify_company_hint || '').trim() || String(row.easybill_company_hint || '').trim()) && Boolean(snapshotDomain) && !publicDomains.has(snapshotDomain);\n  const replyThreads = [];\n  for (let previousStage = anchor?.stage || 1; previousStage < stage; previousStage += 1) {\n    const previousKey = keyFor(previousStage);\n    const previousLock = priorLock(previousStage);\n    replyThreads.push({ stage: previousStage, lock_key: previousKey, message_id: String(previousLock?.message_id || ''), internet_message_id: String(previousLock?.internet_message_id || ''), conversation_id: String(previousLock?.conversation_id || ''), sent_at: previousLock?.lease_until || null });\n  }\n  candidates.push({\n    stage,\n    continuation,\n    stage_model: continuation?.stage_model || 'current_6',\n    easybill_document_type: row.easybill_document_type || 'INVOICE',\n    cycle_kind: cycleKind,\n    cycle_id: cycleId,\n    cycle_source_kind: String(row.cycle_kind || 'initial'),\n    cycle_baseline_at: cycleBaseline.toUTC().toISO(),\n    cycle_trigger_reply_id: cycleTriggerReplyId,\n    cycle_decision_audit_id: cycleDecisionAuditId,\n    pause_resume_required: dueManagedPause,\n    pause_resume_expected_version: dueManagedPause ? managedPauseVersion : null,\n    pause_resume_expected_updated_at: dueManagedPause ? String(holdRow.updated_at) : null,\n    pause_resume_until: dueManagedPause ? managedPauseUntil.toISO() : null,\n    reply_threads: replyThreads,\n    scheduled_at: scheduledAt.toUTC().toISO(),\n    previous_stage_sent_at: stage > 1 ? priorLock(stage - 1)?.lease_until || null : null,\n    lock_key: keyFor(stage),\n    shopify_order_id: legacyId,\n    shopify_order_gid: String(row.shopify_order_gid || 'gid://shopify/Order/' + legacyId),\n    shopify_order_name: String(row.shopify_order_name || ''),\n    shopify_order_created_at: row.shopify_order_created_at,\n    shopify_order_updated_at: row.shopify_order_updated_at || null,\n    mirror_email: snapshotEmail,\n    original_shopify_email: row.original_shopify_email || null,\n    billing_recipient_source: row.billing_recipient_source || null,\n    intake_company: String(row.shopify_company_hint || '').trim() || null,\n    intake_easybill_company: String(row.easybill_company_hint || '').trim() || null,\n    company_history_query_mode: domainHistory ? 'domain' : 'exact_email',\n    company_history_query_value: domainHistory ? snapshotDomain : historyEmail,\n    easybill_document_id: String(row.easybill_document_id),\n    easybill_invoice_number: String(row.easybill_invoice_number || ''),\n    easybill_customer_id: String(row.easybill_customer_id || ''),\n    easybill_due_date: String(row.easybill_due_date || ''),\n    easybill_due_basis: row.easybill_due_basis || 'document_due_date',\n    invoice_amount_cents: Number.isSafeInteger(Number(row.invoice_amount_cents)) ? Number(row.invoice_amount_cents) : Number(row.amount_due_cents),\n    payment_received_cents: paidCents,\n    easybill_paid_cents: Number.isSafeInteger(Number(row.easybill_paid_cents)) ? Number(row.easybill_paid_cents) : 0,\n    amount_due_cents: dueCents,\n    currency: String(row.currency || '').toUpperCase(),\n    intake_evidence: ['manual_legacy_enrollment_v1','historical_control_v1'].includes(row.intake_evidence?.source)\n      ? { ...row.intake_evidence }\n      : { audit_id: intake.id, run_id: metadata.run_id, observed_at: metadata.observed_at, candidate_key: row.candidate_key }\n  });\n}\ncandidates.sort((a, b) => String(a.scheduled_at).localeCompare(String(b.scheduled_at)) || a.stage - b.stage || a.shopify_order_id.localeCompare(b.shopify_order_id));\nreturn candidates.length ? [{ json: candidates[0] }] : [];"
+      }
+    }
+  ]
+}

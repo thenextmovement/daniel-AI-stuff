@@ -265,6 +265,7 @@ export type DunningCaseSummary = {
   email: string | null;
   phone: string | null;
   hasPhone: boolean;
+  phoneCalls?: Array<{ id: string; at: string; actor: string; note: string }>;
   amountCents: number;
   orderTotalCents: number;
   currency: string;
@@ -1629,12 +1630,12 @@ function inFilter(values: string[]) {
   return `in.(${values.join(",")})`;
 }
 
-export async function loadCompleteMirror<T>(path: string, key: string, select: string) {
+export async function loadCompleteMirror<T>(path: string, key: string, select: string, query: Record<string, string> = {}) {
   const rows: T[] = [];
   let cursor: string | null = null;
   while (true) {
     const page: T[] = await supabaseRequest<T[]>(path, undefined, {
-      select, order: key + ".asc", limit:1000, ...(cursor ? {[key]:"gt." + cursor} : {}),
+      ...query, select, order: key + ".asc", limit:1000, ...(cursor ? {[key]:"gt." + cursor} : {}),
     });
     if (!Array.isArray(page)) throw new Error("OPS-Spiegel unvollständig: ungültige Antwort.");
     for (const row of page) {
@@ -2144,6 +2145,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     insolvencyChecks,
     courtEvents,
     historicalAudits,
+    phoneCallAudits,
   ] = await Promise.all([
     supabaseRequest<DunningStatusRow[]>("dunning_status", undefined, {
       select:
@@ -2196,6 +2198,7 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
       select:"id,action,status,metadata,created_at",
       action:"eq.daily_35_day_dunning_audit", order:"created_at.desc", limit:1,
     }),
+    loadCompleteMirror<WorkflowAuditRow>("workflow_audit_log", "id", "id,metadata,created_at", { action: "eq.ops_dunning_phone_call" }),
   ]);
 
   const latestAudit = latestIntakeAudits[0] || null;
@@ -2326,6 +2329,10 @@ export async function listDunningDashboard(): Promise<DunningDashboard> {
     bankPayments: bankPaymentRefresh.payments,
     reviewedPayments,
   });
+  for (const entry of cases) entry.phoneCalls = phoneCallAudits
+    .filter(row => row.metadata?.order_number === entry.orderNumber)
+    .map(row => ({ id: row.id, at: row.created_at, actor: cleanText(row.metadata?.actor, 200) || "Unbekannt", note: cleanText(row.metadata?.note, 500) || "" }))
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const openCases = cases.filter((entry) => !entry.paymentException);
   return {
     generatedAt: new Date().toISOString(),
@@ -2564,6 +2571,10 @@ export async function getDunningCaseDetail(
   ]);
 
   const timeline = timelineFromCase(summary);
+  for (const call of summary.phoneCalls || []) timeline.push({
+    id: "phone-call:" + call.id, occurredAt: call.at, kind: "status", title: "Angerufen",
+    detail: `${call.note} · Durch ${call.actor}`, source: "OPS", direction: "internal", stage: null, status: "recorded",
+  });
   for (const row of logs)
     timeline.push({
       id: `legacy-log:${row.id}`,
@@ -2792,4 +2803,14 @@ export async function requestDunningStageSend(input: {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function recordDunningPhoneCall(input: { id: string; orderNumber: string; actor: string; note: string }) {
+  if (!/^[a-f0-9-]{36}$/i.test(input.id) || !normalizeDunningOrderNumber(input.orderNumber) || !input.actor || input.note.trim().length < 3 || input.note.length > 500)
+    throw new Error("DUNNING_CALL_INVALID");
+  await supabaseRequest("workflow_audit_log", {
+    method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+    body: JSON.stringify({ id: input.id, workflow_name: "OPS Mahnwesen", action: "ops_dunning_phone_call", status: "success",
+      metadata: { order_number: input.orderNumber, actor: input.actor, note: input.note.trim() } }),
+  }, { on_conflict: "id" });
 }

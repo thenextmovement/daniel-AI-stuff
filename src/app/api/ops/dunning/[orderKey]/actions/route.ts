@@ -1,16 +1,21 @@
+import { courtPreparationBlockers } from "@/lib/ops/dunning-operator-actions";
+import { scanDunningInsolvencyCandidate } from "@/lib/ops/dunning-insolvency";
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured, resolveOpsRequestActor } from "@/lib/ops/auth";
-import { createDunningActionPreview, getDunningCaseDetail, normalizeDunningOrderNumber, requestDunningStageSend } from "@/lib/ops/dunning";
+import { recordDunningPhoneCall, createDunningActionPreview, getDunningCaseDetail, normalizeDunningOrderNumber, requestDunningStageSend } from "@/lib/ops/dunning";
 import { applyDunningPauseAction, type DunningPauseMode } from "@/lib/ops/dunning-pause";
 import {
   createDunningCourtApplicationPreview,
   prepareDunningCourtApplication,
+  sendDunningOperatorAlert,
 } from "@/lib/ops/dunning-court-application";
 
 export const dynamic = "force-dynamic";
 
 type ActionBody = {
   action:
+    | "record_phone_call"
+    | "check_court_insolvency"
     | "preview_next_stage"
     | "send_next_stage"
     | "preview_court_application"
@@ -42,6 +47,8 @@ function parseBody(value: unknown): ActionBody | null {
   if (Object.keys(input).some((key) => !allowedKeys.has(key))) return null;
   const action = input.action;
   if (
+    action !== "record_phone_call" &&
+    action !== "check_court_insolvency" &&
     action !== "preview_next_stage" &&
     action !== "send_next_stage" &&
     action !== "preview_court_application" &&
@@ -89,6 +96,32 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const detail = await getDunningCaseDetail(orderKey);
     if (!detail) return NextResponse.json({ ok: false, error: "dunning_case_not_found" }, { status: 404 });
+    if (body.action === "record_phone_call") {
+      const actor = await resolveOpsRequestActor(host, request.headers);
+      if (!actor) return NextResponse.json({ ok: false, error: "personal_login_required" }, { status: 403 });
+      if (!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(body.idempotencyKey || "") || (body.note || "").trim().length < 3)
+        return NextResponse.json({ ok: false, error: "invalid_call_note" }, { status: 422 });
+      await recordDunningPhoneCall({ id: body.idempotencyKey!, orderNumber: detail.case.orderNumber, actor, note: body.note! });
+      return NextResponse.json({ ok: true });
+    }
+    if (body.action === "check_court_insolvency") {
+      const actor = await resolveOpsRequestActor(host, request.headers);
+      if (!actor) return NextResponse.json({ ok: false, error: "personal_login_required" }, { status: 403 });
+      const blockers = courtPreparationBlockers(detail.case);
+      if (blockers.length) return NextResponse.json({ ok: false, error: "DUNNING_COURT_BLOCKED", blockers }, { status: 409 });
+      // Stable daily key prevents repeated clicks from duplicating the official lookup.
+      const result = await scanDunningInsolvencyCandidate({
+        orderNumber: detail.case.orderNumber,
+        legalReviewDueAt: new Date().toISOString().slice(0, 10) + "T00:00:00.000Z",
+        identity: detail.case.insolvencyIdentity,
+      }).catch(async (error: unknown) => {
+        await sendDunningOperatorAlert(detail.case.orderNumber);
+        throw error;
+      });
+      if (result.action !== "skipped" && result.resultCode !== "no_public_notice_found")
+        await sendDunningOperatorAlert(detail.case.orderNumber);
+      return NextResponse.json({ ok: true, result });
+    }
     if (body.action === "pause_dunning" || body.action === "resume_dunning") {
       const actor = await resolveOpsRequestActor(host, request.headers);
       if (!actor)
