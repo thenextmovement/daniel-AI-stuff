@@ -1,4 +1,4 @@
-import {DEFAULT,LABELS,COLORS,ACRYLICS,FINISHES,activeFinish,finishDescription,normalize,validate,description} from './model.js';
+import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,normalize,validate,description} from './model.js';
 import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
@@ -23,6 +23,8 @@ function sync(){
  $('#acrylic-color').value=state.acrylic;$('#acrylic-value').textContent=state.acrylic.toUpperCase();$('#acrylic-name').textContent=ACRYLICS.find(c=>c[0]===state.acrylic)?.[1]||'Eigene Farbe';
  $('#body-color').value=state.body;$('#body-value').textContent=state.body.toUpperCase();$('#paint-settings').hidden=activeFinish(state)!=='painted-steel';
  const front=state.lighting==='front';$('#acrylic-settings').hidden=!front;$('#halo-settings').hidden=front;$('#surface-title').textContent=front?'Edelstahlkorpus & Rückseite':'Metallfront & Korpus';
+ $('#classic-look-note').textContent=front?'Weiße Acrylfront · Edelstahl gebürstet':'Gold gebürstet · warmweißes Licht';
+ $('#reset-look').disabled=front?state.frontFinish===DEFAULT.frontFinish&&state.acrylic===DEFAULT.acrylic:state.backFinish===DEFAULT.backFinish&&state.color===DEFAULT.color;
  $('#material-note').textContent=finishDescription(state)+'. '+(front?'Korpus und Rückseite aus Edelstahl.':'Hinten weißes, opales Acryl in Buchstabenform.');$('#construction-note').textContent=front?'Farbiges Acryl vorne · Edelstahlkorpus und Rückseite · LEDs innen.':'Edelstahl vorne · weißes Acryl hinten · Licht zur Wand.';$('#caption-material').textContent=FINISHES[activeFinish(state)].label;
  syncRail();$('#plate-settings').hidden=state.mount!=='plate';$('#light').setAttribute('aria-pressed',String(state.lightOn));$('#light').textContent=state.lightOn?'Licht an':'Licht aus';$('#night').setAttribute('aria-pressed',String(state.night));$('#night').textContent=state.night?'Tagansicht':'Nachtansicht';document.body.classList.toggle('night-mode',state.night);
  $('#caption-light').textContent=LABELS.lighting[state.lighting];$('#caption-mount').textContent=LABELS.mount[state.mount];$('#caption-depth').textContent=state.depth+' cm Tiefe';
@@ -56,8 +58,16 @@ for(const [target,key,choices] of [['#light-colors','color',COLORS],['#acrylic-c
 for(const [id,finish] of Object.entries(FINISHES)){
  const b=document.createElement('button');b.type='button';b.dataset.finish=id;const sample=document.createElement('span');sample.className='finish-sample '+id;sample.setAttribute('aria-hidden','true');const name=document.createElement('strong');name.textContent=finish.label;b.append(sample,name);b.addEventListener('click',()=>change(state.lighting==='front'?'frontFinish':'backFinish',id));$('#finish-options').append(b);
 }
+for(const [id,font] of Object.entries(FONTS)){
+ const button=document.createElement('button');button.type='button';button.dataset.font=id;button.setAttribute('aria-label',font.label+' · '+font.style);
+ const sample=document.createElement('img');sample.src='./fonts/'+id+'.svg';sample.alt='';sample.width=74;sample.height=30;
+ const name=document.createElement('span');name.textContent=font.label;const detail=document.createElement('small');detail.textContent=font.style;
+ button.append(sample,name,detail);$('#font-options').append(button);
+}
 for(const button of all('[data-rail-finish]'))button.addEventListener('click',()=>change('railCustomColor',button.dataset.railFinish==='custom'));
 for(const [id,key] of [['acrylic-color','acrylic'],['body-color','body'],['rail-color','railColor']])$('#'+id).addEventListener('input',event=>change(key,event.target.value));
+$('#reset-look').addEventListener('click',()=>{state=classicLook(state);sync();schedule();});
+$('#reset-acrylic').addEventListener('click',()=>change('acrylic',DEFAULT.acrylic));
 for(const key of ['font','lighting','mount','wall','depth'])for(const button of all(`[data-${key}]`))button.addEventListener('click',()=>change(key,key==='depth'?Number(button.dataset[key]):button.dataset[key]));
 for(const [id,key] of [['sign-text','text'],['width','width'],['width-range','width'],['spacing','spacing'],['plate-color','plate']])$('#'+id).addEventListener('input',event=>{
  const value=['width','spacing'].includes(key)?Number(event.target.value):event.target.value;state[key]=value;
@@ -80,7 +90,7 @@ function renderCart(){
  if(!cart.length){const p=document.createElement('p');p.className='status-note';p.textContent='Dein Warenkorb ist noch leer. Gestalte zuerst deinen Schriftzug.';host.append(p);return;}
  for(const item of cart){
   const row=document.createElement('article');row.className='cart-row';const info=document.createElement('div'),title=document.createElement('h3');title.textContent=item.design.text;info.append(title);
-  for(const value of [`${LABELS.lighting[item.design.lighting]} · ${LABELS.mount[item.design.mount]}`,`${item.design.width} cm breit · ${item.design.depth} cm tief`,finishDescription(item.design),item.design.lighting==='front'?`Acrylfront: ${item.design.acrylic.toUpperCase()}`:`Halo: ${COLORS.find(c=>c[0]===item.design.color)?.[1]}`]){const p=document.createElement('p');p.textContent=value;info.append(p);}
+  for(const value of [`${LABELS.lighting[item.design.lighting]} · ${LABELS.mount[item.design.mount]}`,`${item.design.width} cm breit · ${item.design.depth} cm tief`,`Schrift: ${LABELS.font[item.design.font]}`,finishDescription(item.design),item.design.lighting==='front'?`Acrylfront: ${item.design.acrylic.toUpperCase()}`:`Halo: ${COLORS.find(c=>c[0]===item.design.color)?.[1]}`]){const p=document.createElement('p');p.textContent=value;info.append(p);}
   if(item.design.mount==='rail'){const rail=document.createElement('p');rail.textContent=item.design.railCustomColor?'Schiene in Wunschfarbe '+item.design.railColor.toUpperCase():'Schiene: Standardausführung';info.append(rail);}
   const surcharge=document.createElement('p');surcharge.className='rail-item-estimate';surcharge.textContent=railPriceNote(item.design,item.quantity);if(surcharge.textContent)info.append(surcharge);
   const actions=document.createElement('div');actions.className='cart-actions';

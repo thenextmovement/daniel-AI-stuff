@@ -1,0 +1,60 @@
+{
+  "upstream": "https://github.com/google/fonts",
+  "commit": "47d54ca1ebb14fd864695f1d39dc734f39017c33",
+  "fonts": [
+    {
+      "id": "montserrat",
+      "family": "Montserrat",
+      "originalFamily": "Montserrat",
+      "weight": 600,
+      "sourceSHA256": "0f7b311b2f3279e4eef9b2f968bcdbab6e28f4daeb1f049f4f278a902bcd82f7",
+      "license": "montserrat-OFL.txt",
+      "glyphCount": 774
+    },
+    {
+      "id": "bebasneue",
+      "family": "Bebas Neue",
+      "originalFamily": "Bebas Neue",
+      "weight": 400,
+      "sourceSHA256": "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73",
+      "license": "bebasneue-OFL.txt",
+      "glyphCount": 375
+    },
+    {
+      "id": "oswald",
+      "family": "Oswald",
+      "originalFamily": "Oswald",
+      "weight": 600,
+      "sourceSHA256": "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817",
+      "license": "oswald-OFL.txt",
+      "glyphCount": 531
+    },
+    {
+      "id": "poppins",
+      "family": "Poppins",
+      "originalFamily": "Poppins",
+      "weight": 600,
+      "sourceSHA256": "d3bf1bdaf0550e83da9ac0b1d1d9fe6db086835a83aa28578e609a394b9a0286",
+      "license": "poppins-OFL.txt",
+      "glyphCount": 338
+    },
+    {
+      "id": "serif-soft",
+      "family": "NT Serif Soft",
+      "originalFamily": "Lora",
+      "weight": 600,
+      "sourceSHA256": "822a6621ccbe8d97d20ac88c1c41f5615c9c2c202eaa75f272cd452aac6475a7",
+      "license": "serif-soft-OFL.txt",
+      "glyphCount": 464
+    },
+    {
+      "id": "cormorantgaramond",
+      "family": "Cormorant Garamond",
+      "originalFamily": "Cormorant Garamond",
+      "weight": 600,
+      "sourceSHA256": "b20b7d9626dd956b2c5e558692ad328b1f19e3275e2782db4fa07670d83f35e0",
+      "license": "cormorantgaramond-OFL.txt",
+      "glyphCount": 584
+    }
+  ]
+}

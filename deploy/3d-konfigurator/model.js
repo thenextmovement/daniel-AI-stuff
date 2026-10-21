@@ -1,5 +1,16 @@
 export const DEFAULT = Object.freeze({version:2,text:'ATLAS',font:'modern',lighting:'back',mount:'individual',width:120,depth:5,color:'#fff1d6',acrylic:'#ffffff',backFinish:'brushed-gold',frontFinish:'brushed-steel',body:'#252525',plate:'#d8d0c4',railCustomColor:false,railColor:'#252525',wall:'warm',lightOn:true,night:false,spacing:5});
-export const LABELS={font:{modern:'Modern',classic:'Klassisch',elegant:'Elegant'},lighting:{front:'Frontbeleuchtet',back:'Rückbeleuchtet'},mount:{individual:'Einzelbuchstaben',rail:'Auf Schiene',plate:'Auf Platte'},wall:{warm:'Putz',concrete:'Beton',dark:'Anthrazit'}};
+export const FONTS={
+ modern:{label:'Modern',style:'Klar & kräftig'},
+ montserrat:{label:'Montserrat',style:'Markant & vielseitig'},
+ poppins:{label:'Poppins',style:'Rund & geometrisch'},
+ oswald:{label:'Oswald',style:'Schmal & kraftvoll'},
+ bebasneue:{label:'Bebas Neue',style:'Prägnante Großbuchstaben'},
+ classic:{label:'Klassisch',style:'Zeitlose Serifen'},
+ 'serif-soft':{label:'Serif Soft',style:'Weiche Serifen'},
+ cormorantgaramond:{label:'Cormorant Garamond',style:'Fein & elegant'},
+ elegant:{label:'Elegant',style:'Klassischer Charakter'}
+};
+export const LABELS={font:Object.fromEntries(Object.entries(FONTS).map(([id,font])=>[id,font.label])),lighting:{front:'Frontbeleuchtet',back:'Rückbeleuchtet'},mount:{individual:'Einzelbuchstaben',rail:'Auf Schiene',plate:'Auf Platte'},wall:{warm:'Putz',concrete:'Beton',dark:'Anthrazit'}};
 export const COLORS=[['#fff1d6','Warmweiß'],['#f5f7ff','Weiß'],['#f5c35b','Goldgelb'],['#fc6fa8','Rosa'],['#80baff','Blau'],['#8bdfb1','Grün']];
 export const ACRYLICS=[['#ffffff','Weiß'],['#e62d38','Rot'],['#ff8b24','Orange'],['#ee67af','Rosa'],['#2474e5','Blau'],['#26a86b','Grün']];
 export const FINISHES={
@@ -11,6 +22,9 @@ export const FINISHES={
 export function activeFinish(s){return s.lighting==='front'?s.frontFinish:s.backFinish;}
 export function finishDescription(s){const id=activeFinish(s);return FINISHES[id].description+(id==='painted-steel'?` (${s.body.toUpperCase()})`:'');}
 export function lightColor(s){return s.lighting==='front'?s.acrylic:s.color;}
+export function classicLook(s){
+ return {...s,...(s.lighting==='front'?{frontFinish:DEFAULT.frontFinish,acrylic:DEFAULT.acrylic}:{backFinish:DEFAULT.backFinish,color:DEFAULT.color})};
+}
 export function materialSpec(s){
  const f=FINISHES[activeFinish(s)],shell={color:f.color||s.body,metalness:f.metalness,roughness:f.roughness,brushed:f.brushed};
  return {shell,rear:s.lighting==='back'?{color:'#ffffff',metalness:0,roughness:.4,brushed:false,emissive:s.lightOn?s.color:'#000000',emissiveIntensity:s.night?1.6:.75}:{...shell},face:s.lighting==='front'?{color:s.acrylic,metalness:0,roughness:.27,brushed:false,emissive:s.lightOn?s.acrylic:'#000000',emissiveIntensity:s.night?.8:.45}:{...shell,emissive:'#000000',emissiveIntensity:0}};

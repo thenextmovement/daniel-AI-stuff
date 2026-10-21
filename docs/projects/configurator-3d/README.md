@@ -11,7 +11,7 @@ notwendige Kalkulation wird vom Auftraggeber geliefert und liegt noch nicht vor.
 Der Auftraggeber hat am 21.10.2026 ausdrücklich Platzhalter bis dahin gewählt:
 „kommt später nimm platzhalter“. Die Anzeige lautet „— €“ / „Preis folgt“.
 
-Umgesetzt: Text (auch einzelne Buchstaben, bis zwei Zeilen), drei Schriftstile,
+Umgesetzt: Text (auch einzelne Buchstaben, bis zwei Zeilen), neun Schriftstile,
 Lichtfarbe, Edelstahloberflächen, freie Acryl-/Lack-/Schienen-/Plattenfarben, Wunschbreite, proportionale Höhe, Wunschtiefe,
 Buchstabenabstand, echte WebGL-Geometrie mit Tiefe und Schatten, Konturlicht,
 Tag/Nacht, drei Wandfarben, Perspektiven und manuelle Drehung/Zoom, PNG-Export,
@@ -93,7 +93,7 @@ konkrete Freigabe, Abgleich mit aktuellem Main und `codex-predeploy ops` sowie
     node --check deploy/3d-konfigurator/app.js
     node --check deploy/3d-konfigurator/renderer.js
 
-12 Tests: gespeicherte Daten/Optionen und Migration, ungültige Eingaben, echte
+14 Tests: gespeicherte Daten/Optionen und Migration, ungültige Eingaben, echte
 Schriftkonturen inklusive Innenräumen, Abstände/Proportionen, gesperrter Kauf,
 Materialtrennung, Acrylrückseite, unabhängige Oberflächen sowie der vorläufige
 Farbaufpreis der Schiene mit Länge, Menge und Ausschluss anderer Montagearten.
@@ -163,3 +163,54 @@ Gold als neuer Standard, verspiegeltes Metall, weiße Acrylrückseite mit/ohne
 Licht, freie Acrylfarbe `#D74275`, Schiene `#23594E`, 132/264-Euro-Farbaufpreis,
 Warenkorb und Neuladen. 320×740, 390×844 und 1440×1000 geprüft, kein horizontaler
 Überlauf, keine erfassten Konsolenfehler. Testeintrag wieder entfernt.
+
+
+## Vorschaukorrekturen und Schriften vom 21.10.2026
+
+- Glatte Acrylfront: Die Kamera passt ihre Nah-/Fernbegrenzung an die Entfernung
+  an. Der bisher feste Nahwert von 0,1 cm verursachte bei großen Schildern
+  Tiefenkonflikte zwischen Front und Lichtschein. Beide behalten ihre räumliche
+  Position; Material und Schatten werden nicht zur Kaschierung abgeschaltet.
+- „Zurück zu Weiß“ setzt nur die Acrylfront zurück. „Look zurücksetzen“ stellt
+  für Frontlicht Weiß/Naturedelstahl, für Rücklicht Gold/Warmweiß her. Text,
+  Schrift, Maße, Montage, Schienenfarbe und die andere Lichtvariante bleiben
+  erhalten. Bedienung ist bei 320 px Breite erreichbar.
+- Schiene: separat hinter den Buchstaben, in deren unterem Bereich. Illustrative
+  Abstandshalter verbinden ihre Vorderseite mit der Buchstabenrückseite.
+  Kontaktpunkte kommen aus massiven Konturbereichen, nicht aus Innenräumen.
+  Die offene Sicht durch Buchstaben-Zwischenräume bleibt geometrisch korrekt.
+  Die Ausführung und Schichtmaße sind weiterhin eine Gestaltungsvorschau.
+- Sechs zusätzliche Schriften: Montserrat, Poppins, Oswald, Bebas Neue,
+  Cormorant Garamond sowie Serif Soft (Outline-Ableitung von Lora mit eigenem
+  Familiennamen). Die bisherigen Modern/Klassisch/Elegant bleiben für bestehende
+  Entwürfe erhalten. Jede Auswahlkarte zeigt die tatsächlich verwendeten
+  Konturen. Alle sechs neuen Schriften enthalten deutsche Umlaute und ß.
+- Die alte Helvetiker-„Modern“-Datei hat weiterhin ihren ursprünglichen
+  Zeichenvorrat ohne deutsche Umlaute. Nicht unterstützte Zeichen werden wie
+  bisher explizit gemeldet; es gibt keinen stillen Austausch der Schrift.
+- Schriftwahl bleibt beim Neuladen und beim Warenkorb-Bearbeiten erhalten;
+  die Zusammenfassung und Warenkorbzeile nennen die gewählte Schrift.
+
+Font-Quellen sind auf den Google-Fonts-Commit in `fonts/sources.json` festgelegt.
+OFL-Texte/Copyright bleiben in separaten Dateien und den Outline-Metadaten.
+`fonts/FONTLOG.txt` dokumentiert Konvertierung und Umbenennung. Die einmalige
+Konvertierung läuft mit `tools/configurator-3d/build-fonts.py` und den Versionen
+in `requirements.txt`, anschließend `node tools/configurator-3d/build-font-previews.mjs`.
+Die Website lädt nur lokale JSON-/SVG-Dateien, keine Font-API. Das Entfernen
+überlappender Konturen ist nötig: Variable Fonts speichern etwa A-Querbalken
+teilweise separat; erst ihre Vereinigung erhält korrekte Innenräume und Zargen.
+
+Prüfung: 14 bestandene Tests einschließlich tatsächlicher Font-Triangulation,
+Umlauten der neuen Schriften, Innenräumen sowie Raycasting: 9 Schriften ×
+3 Breiten (30/120/400 cm) × 2 Lichtarten × 2 Tiefen. An jedem geprüften
+Montagepunkt verdeckt die massive Front die Schiene. Browserprüfung aller
+9 Schriften, 400-cm-Frontlicht bei Tag/Nacht und schräger Sicht, 30-cm-Format,
+Rücksetzungen, gespeicherte Montserrat-Auswahl mit „MÜNCHEN“ und lokalem
+Warenkorb-Bearbeiten. Testposition wieder entfernt. Keine echte Bestellung.
+
+Die zusätzlich angesprochenen Acryl-Tischgeräte unter localhost:18773 werden
+in einem separaten lokalen Artefakt bearbeitet. In diesem Chat wurden die dort
+bereits aktualisierten Dateien nur gelesen und die Vorschau geprüft: Logo-Rand
+blendet aus, weißer Sockel sichtbar, USB/Batterie-Text nennt beide Betriebsarten,
+4 Stück wählen die 3–4er-Staffel mit 316 Euro. Diese Dateien sind kein Bestandteil
+des 3D-Releases und wurden hier nicht überschrieben.

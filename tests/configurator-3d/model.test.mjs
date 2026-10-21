@@ -1,11 +1,42 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {DEFAULT,FINISHES,activeFinish,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
+import {DEFAULT,FONTS,FINISHES,activeFinish,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
-import {layoutLetters,letterGeometries} from '../../deploy/3d-konfigurator/renderer.js';
+import {layoutLetters,letterGeometries,mountingLayout,railAttachment} from '../../deploy/3d-konfigurator/renderer.js';
+import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3} from '../../deploy/3d-konfigurator/vendor/three.js';
 import {FontLoader} from '../../deploy/3d-konfigurator/vendor/FontLoader.js';
 const font=new FontLoader().parse(JSON.parse(await readFile(new URL('../../deploy/3d-konfigurator/fonts/modern.json',import.meta.url),'utf8')));
+const fonts=Object.fromEntries(await Promise.all(Object.keys(FONTS).map(async id=>[id,new FontLoader().parse(JSON.parse(await readFile(new URL(`../../deploy/3d-konfigurator/fonts/${id}.json`,import.meta.url),'utf8')))])));
+test('Font outlines preserve counters and saved choices; all six new fonts include German lettering',()=>{
+ for(const [id,font] of Object.entries(fonts)){
+  const layout=layoutLetters(font,id==='modern'?'ATLAS & 123':'ÄÖÜ äöü ß & 123',5);
+  assert.ok(Number.isFinite(layout.width)&&layout.width>0,id);assert.ok(layout.height>0,id);
+  assert.ok(layoutLetters(font,'ADO',5).shapes.filter(item=>item.shape.holes.length).length>=3,id);
+  assert.equal(normalize({...DEFAULT,font:id}).font,id);
+  for(const item of layout.shapes){const parts=letterGeometries(item.shape,120/layout.width,DEFAULT);for(const geometry of Object.values(parts)){geometry.computeBoundingBox();assert.ok(Number.isFinite(geometry.boundingBox.max.x),id);geometry.dispose();}}
+ }
+});
+test('The rail stays behind each letter, with attachment points on solid material rather than counters',()=>{
+ const material=new MeshBasicMaterial();
+ for(const font of Object.values(fonts))for(const width of [30,120,400])for(const lighting of ['front','back'])for(const depth of [3,8]){
+  const state={...DEFAULT,text:'PRADA',width,depth,lighting,mount:'rail'},layout=layoutLetters(font,state.text,5),scale=width/layout.width;
+  const mounting=mountingLayout(state,layout.height*scale),support=mounting.rail;
+  assert.ok(mounting.letterRear>support.front);
+  const rail=new Mesh(new BoxGeometry(width,support.height,support.depth),material);rail.position.set(0,support.y,support.z);rail.updateMatrixWorld();
+  for(const item of layout.shapes){
+   const point=railAttachment(item,scale,support.y);assert.ok(point?.width>0);
+   const parts=letterGeometries(item.shape,scale,state);
+   parts.front.translate(item.x*scale,item.y*scale,mounting.letterRear);
+   const face=new Mesh(parts.front,material);face.updateMatrixWorld();
+   const hits=new Raycaster(new Vector3(point.x,support.y,100),new Vector3(0,0,-1)).intersectObjects([rail,face]);
+   assert.equal(hits[0]?.object,face,'A solid letter face must hide its rail from the front');
+   for(const geometry of Object.values(parts))geometry?.dispose();
+  }
+  rail.geometry.dispose();
+ }
+ material.dispose();
+});
 test('Stored drafts cannot enable unsupported options or inject executable markup',()=>{
  const s=normalize({version:99,text:'<script>Hallo</script>',font:'../../../secret',mount:'other',width:Infinity,depth:-5,color:'url(javascript:alert(1))',night:'true'});
  assert.equal(s.version,2);assert.equal(s.font,'modern');assert.equal(s.mount,'individual');assert.equal(s.width,120);assert.equal(s.depth,3);assert.equal(s.color,DEFAULT.color);assert.equal(s.night,false);assert.equal(s.text.includes('<'),false);

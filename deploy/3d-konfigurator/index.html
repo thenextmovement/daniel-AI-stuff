@@ -5,7 +5,7 @@
 <title>3D-Leuchtbuchstaben selbst gestalten | NEONTRIP</title>
 <meta name="description" content="Gestalte 3D-Leuchtbuchstaben mit Front- oder Rückbeleuchtung. Vergleiche Einzelbuchstaben, Schiene und Platte in einer interaktiven Vorschau.">
 <link rel="canonical" href="https://anfrage.neontrip.de/3d-konfigurator/">
-<link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="style.css?v=2">
+<link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="style.css?v=4">
 <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/inter-latin.woff2" crossorigin>
 
 </head>
@@ -33,21 +33,20 @@
 <fieldset><legend>Beleuchtung</legend><div class="light-options"><button data-lighting="front" aria-pressed="false"><span class="sample front-sample">A</span><strong>Frontbeleuchtet</strong><small>Farbiges Acryl leuchtet nach vorne.</small></button><button data-lighting="back" aria-pressed="true"><span class="sample back-sample">A</span><strong>Rückbeleuchtet</strong><small>Edelstahl vorne, Licht zur Wand.</small></button></div></fieldset>
 <p id="construction-note" class="construction-note">Edelstahl vorne · weißes Acryl hinten · Licht zur Wand.</p>
 <label class="field-label" for="sign-text">Dein Text <span id="char-count">5 / 60</span></label><textarea id="sign-text" rows="2" maxlength="60" spellcheck="false" placeholder="Deine Marke">ATLAS</textarea><p class="field-hint">Dein Name, deine Marke oder ein einzelner Buchstabe.</p>
-<fieldset><legend>Schriftstil</legend><div class="font-options"><button data-font="modern" aria-pressed="true"><b>Aa</b><span>Modern</span></button><button data-font="classic" aria-pressed="false"><b class="serif">Aa</b><span>Klassisch</span></button><button data-font="elegant" aria-pressed="false"><b class="elegant">Aa</b><span>Elegant</span></button></div></fieldset>
+<fieldset><legend>Schriftstil <span>9 Schriften</span></legend><div class="font-options" id="font-options"></div><p class="field-hint">Von kräftig bis elegant. Sieh dir jede Schrift direkt an deinem Text an.</p></fieldset>
 
 </section>
 <section class="panel" id="panel-1" hidden aria-labelledby="build-title"><div class="panel-heading"><p class="eyebrow">02 / MATERIAL</p><h2 id="build-title">Deine Oberfläche. Dein Stil.</h2></div>
 <fieldset><legend id="surface-title">Material &amp; Oberfläche</legend><div class="finish-options" id="finish-options"></div><p class="field-hint" id="material-note">Front und Korpus aus Edelstahl. Die LEDs leuchten nach hinten.</p></fieldset>
 <div id="paint-settings" hidden><label class="field-label" for="body-color">Lackfarbe</label><div class="color-input"><input type="color" id="body-color" value="#252525"><output id="body-value" for="body-color">#252525</output></div></div>
 <fieldset id="halo-settings"><legend>Lichtfarbe hinten <span id="color-name">Warmweiß</span></legend><div id="light-colors" class="swatches"></div></fieldset>
-<fieldset id="acrylic-settings" hidden><legend>Acrylfarbe vorne <span id="acrylic-name">Weiß</span></legend><div id="acrylic-colors" class="swatches"></div><label class="custom-color" for="acrylic-color"><input type="color" id="acrylic-color" value="#ffffff"><span>Eigene Farbe wählen <output id="acrylic-value" for="acrylic-color">#FFFFFF</output></span></label><p class="field-hint">Farbiges Acryl vorne, LEDs innen. Die Vorschau zeigt die gewünschte Lichtwirkung.</p></fieldset>
-
-
+<fieldset id="acrylic-settings" hidden><legend>Acrylfarbe vorne <span id="acrylic-name">Weiß</span></legend><div id="acrylic-colors" class="swatches"></div><label class="custom-color" for="acrylic-color"><input type="color" id="acrylic-color" value="#ffffff"><span>Eigene Farbe wählen <output id="acrylic-value" for="acrylic-color">#FFFFFF</output></span></label><button type="button" class="reset-color" id="reset-acrylic">↺ Zurück zu Weiß</button><p class="field-hint">Farbiges Acryl vorne, LEDs innen. Die Vorschau zeigt die gewünschte Lichtwirkung.</p></fieldset>
+<div class="classic-look"><div><strong>Klassischer Look</strong><span id="classic-look-note">Gold gebürstet · warmweißes Licht</span></div><button type="button" id="reset-look">↺ Look zurücksetzen</button></div>
 </section>
 <section class="panel" id="panel-2" hidden aria-labelledby="size-title"><div class="panel-heading"><p class="eyebrow">03 / AUFBAU</p><h2 id="size-title">Größe &amp; Montage.</h2></div>
 <fieldset><legend>Montage</legend><div class="mount-options">
 <button data-mount="individual" aria-pressed="true"><span class="mount-icon individual-icon">Aa</span><span><strong>Einzelbuchstaben</strong><small>Jeder Buchstabe direkt an der Wand.</small></span><i></i></button>
-<button data-mount="rail" aria-pressed="false"><span class="mount-icon rail-icon">Aa</span><span><strong>Auf Schiene</strong><small>Gemeinsam auf einer Montageschiene.</small></span><i></i></button>
+<button data-mount="rail" aria-pressed="false"><span class="mount-icon rail-icon">Aa</span><span><strong>Auf Schiene</strong><small>Mit Abstandshaltern vor der Schiene.</small></span><i></i></button>
 <button data-mount="plate" aria-pressed="false"><span class="mount-icon plate-icon">Aa</span><span><strong>Auf Platte</strong><small>Ein zusammenhängendes Wandschild.</small></span><i></i></button></div></fieldset>
 <div id="rail-settings" hidden><fieldset><legend>Ausführung der Schiene</legend><div class="rail-finish-options"><button data-rail-finish="standard" aria-pressed="true">Standardausführung<small>Ohne Farbaufpreis</small></button><button data-rail-finish="custom" aria-pressed="false">Wunschfarbe<small>+ ca. 110 € / m</small></button></div></fieldset><div id="rail-color-settings" hidden><label class="field-label" for="rail-color">Farbe der Schiene</label><div class="color-input"><input type="color" id="rail-color" value="#252525"><output id="rail-color-value" for="rail-color">#252525</output></div><p class="field-hint" id="rail-color-price"></p><p class="field-hint">Vorläufiger Farbaufpreis. Der Preis der Schiene und des Schilds kommt hinzu.</p></div></div>
 <div id="plate-settings" hidden><label class="field-label" for="plate-color">Plattenfarbe</label><div class="color-input"><input type="color" id="plate-color" value="#d8d0c4"><span>Wähle die Farbe deiner Trägerplatte.</span></div></div>
@@ -68,5 +67,5 @@
 <dialog id="review" aria-labelledby="review-title"><button class="close" data-close aria-label="Schließen">×</button><p class="eyebrow">DEIN 3D-SCHRIFTZUG</p><h2 id="review-title">So wird deine Marke sichtbar.</h2><img id="review-preview" class="dialog-preview" alt="Dein konfigurierter 3D-Schriftzug"><pre id="review-summary"></pre><div class="notice">Preis folgt. Du kannst deinen Entwurf bereits im Warenkorb speichern. Der Kauf wird verfügbar, sobald die Preisberechnung freigeschaltet ist.</div><div class="review-actions"><button class="secondary" data-close>Weiter gestalten</button><button class="primary" id="add-cart">In den Warenkorb <span>→</span></button></div></dialog>
 <dialog id="cart" aria-labelledby="cart-title"><button class="close" data-close aria-label="Schließen">×</button><p class="eyebrow">DEINE ENTWÜRFE</p><h2 id="cart-title">Deine 3D-Schilder.</h2><div id="cart-items"></div><div class="cart-summary"><span>Gesamtpreis · Preis folgt</span><strong aria-label="Gesamtpreis folgt">— €</strong></div><p class="notice">Preis folgt. Die Preisberechnung für 3D-Schilder ist noch nicht freigeschaltet. Deine Entwürfe bleiben auf diesem Gerät gespeichert. Es wurde keine Bestellung aufgegeben.</p><button class="primary" id="checkout" disabled>Zur Kasse <span>→</span></button><p class="status-note" id="cart-status" role="status"></p><button class="secondary" id="new-design">Weiteren Schriftzug gestalten</button><button class="text-button" data-close>Zurück zum Entwurf</button></dialog>
 <noscript><p class="noscript">Bitte aktiviere JavaScript für die 3D-Vorschau. Alternativ erreichst du uns unter <a href="tel:+4921154257240">0211 54257240</a>.</p></noscript>
-<script type="module" src="app.js?v=2"></script>
+<script type="module" src="app.js?v=4"></script>
 </body></html>

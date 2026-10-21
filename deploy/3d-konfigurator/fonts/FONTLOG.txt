@@ -1,0 +1,20 @@
+NEONTRIP 3D configurator — local font outlines
+21 October 2026
+
+Six additional families come from https://github.com/google/fonts at commit
+47d54ca1ebb14fd864695f1d39dc734f39017c33. Original TTF SHA-256 values, family
+names, weights and accompanying SIL Open Font Licenses are in sources.json.
+The copyright and complete original license are also embedded in each JSON.
+
+Montserrat, Poppins, Oswald and Cormorant Garamond: SemiBold 600.
+Bebas Neue: Regular 400. NT Serif Soft: SemiBold 600, derived from Lora;
+renamed because the original declares a Reserved Font Name.
+
+Conversion: instantiate the chosen weight; union overlapping glyph strokes;
+normalize contour direction for Three.js; retain Latin/extended Latin,
+punctuation and selected symbols; uniformly normalize the cap height to
+1000 units. No browser font service is used. This is an outline-only subset,
+not a replacement for the original full OpenType font with its shaping tables.
+SVG selection previews are generated from the same outlines as the 3D text.
+
+The three pre-existing example fonts retain the license in LICENSE.txt.

@@ -49,6 +49,27 @@ export function letterGeometries(shape,scale,s){
  if(rear)rear.scale(scale,scale,scale);
  return {shell,front,rear};
 }
+export function mountingLayout(s,height){
+ // All z values are measured from the wall towards the viewer.
+ const rail={depth:4,z:3,y:-height*.28,height:Math.min(8,height*.22)};
+ rail.front=rail.z+rail.depth/2;
+ const letterRear=s.mount==='rail'?rail.front+5:s.mount==='plate'?4:3;
+ return {letterRear,rail};
+}
+export function railAttachment(item,scale,y){
+ // Find a solid section of the actual contour, excluding holes such as A / D / R.
+ const intersections=[];
+ for(const contour of [item.shape,...item.shape.holes]){
+  const points=contour.getPoints(10);
+  for(let i=0,j=points.length-1;i<points.length;j=i++){
+   const a=points[j],b=points[i],ay=(a.y+item.y)*scale,by=(b.y+item.y)*scale;
+   if((ay>y)!==(by>y))intersections.push((a.x+(b.x-a.x)*(y-ay)/(by-ay)+item.x)*scale);
+  }
+ }
+ intersections.sort((a,b)=>a-b);let widest=null;
+ for(let i=0;i+1<intersections.length;i+=2){const start=intersections[i],end=intersections[i+1];if(!widest||end-start>widest.width)widest={x:(start+end)/2,width:end-start};}
+ return widest;
+}
 function dispose(group){group.traverse(obj=>{obj.geometry?.dispose();for(const mat of Array.isArray(obj.material)?obj.material:obj.material?[obj.material]:[]){mat.map?.dispose();mat.dispose();}});group.clear();}
 function wallTexture(){
  const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const ctx=canvas.getContext('2d');
@@ -114,6 +135,9 @@ export class SignRenderer{
  positionCamera(){
   const halfFov=THREE.MathUtils.degToRad(this.camera.fov/2),fitW=(this.width+30)/(2*Math.tan(halfFov)*this.camera.aspect),fitH=(this.height+35)/(2*Math.tan(halfFov));
   const d=Math.max(fitW,fitH)*1.22/this.zoom;const target=new THREE.Vector3(0,0,3);
+  // Match depth precision to the framed sign. A fixed 0.1 cm near plane made
+  // the acrylic face and its glow fight for the same depth at 400 cm width.
+  this.camera.near=Math.max(1,d*.05);this.camera.far=Math.max(3000,d*3);this.camera.updateProjectionMatrix();
   this.camera.position.set(Math.sin(this.angle)*d,Math.sin(this.elevation)*d,Math.cos(this.angle)*d+3);this.camera.lookAt(target);this.render();
  }
  view(mode){this.zoom=mode==='side'?1.12:1;this.angle=mode==='front'?0:mode==='side'?.57:.15;this.elevation=mode==='front'?0:mode==='side'?.18:.09;this.positionCamera();}
@@ -124,7 +148,7 @@ export class SignRenderer{
   const layout=layoutLetters(font,s.text,s.spacing),scale=s.width/layout.width,width=s.width,height=layout.height*scale;
   const group=new THREE.Group(),spec=materialSpec(s);
   const bodyMaterial=materialFromSpec(spec.shell,this.brush,s.night),faceMaterial=materialFromSpec(spec.face,this.brush,s.night),rearMaterial=s.lighting==='back'?materialFromSpec(spec.rear,this.brush,s.night):null;
-  const backOffset=s.mount==='rail'?8:s.mount==='plate'?4:3;
+  const mounting=mountingLayout(s,height),backOffset=mounting.letterRear;
   for(const item of layout.shapes){
    const parts=letterGeometries(item.shape,scale,s);
    for(const geometry of Object.values(parts))if(geometry)geometry.translate(item.x*scale,item.y*scale,backOffset);
@@ -135,7 +159,14 @@ export class SignRenderer{
   }
   const supportMaterial=new THREE.MeshStandardMaterial({color:s.mount==='plate'?s.plate:s.railCustomColor?s.railColor:'#a8adb1',roughness:.5,metalness:.15});
   if(s.mount==='rail'){
-   const rail=new THREE.Mesh(new THREE.BoxGeometry(width,Math.min(8,height*.27),5),supportMaterial);rail.position.set(0,-height*.12,3);rail.castShadow=true;rail.receiveShadow=true;group.add(rail);
+   const support=mounting.rail;
+   const rail=new THREE.Mesh(new THREE.BoxGeometry(width,support.height,support.depth),supportMaterial);rail.position.set(0,support.y,support.z);rail.castShadow=true;rail.receiveShadow=true;group.add(rail);
+   const postMaterial=new THREE.MeshStandardMaterial({color:'#94999c',roughness:.42,metalness:.65});
+   for(const item of layout.shapes){
+    const point=railAttachment(item,scale,support.y);if(!point||point.width<.15)continue;
+    const radius=Math.min(1.1,point.width*.3,height*.025),length=backOffset-support.front;
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,length,12),postMaterial);post.rotation.x=Math.PI/2;post.position.set(point.x,support.y,support.front+length/2);post.castShadow=true;post.receiveShadow=true;group.add(post);
+   }
   }
   if(s.mount==='plate'){
    const plate=new THREE.Mesh(new THREE.BoxGeometry(width+16,height+16,1.2),supportMaterial);plate.position.z=1;plate.castShadow=true;plate.receiveShadow=true;group.add(plate);
