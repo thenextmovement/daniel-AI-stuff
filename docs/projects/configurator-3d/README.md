@@ -284,3 +284,18 @@ Geprüft: unveränderte Konturen und Produktdaten sowie alle bisherigen
 Schienen-Raycasts zusätzlich mit der dargestellten Schichtdicke. Browser:
 400 cm / 8 cm, schwarzer Edelstahl und grünes Rücklicht, normale Perspektive,
 Frontal, Tag/Nacht, Licht aus, Desktop 1440×1150 und Mobil 320×740 ohne Überlauf.
+
+## Farbtreue der Frontbeleuchtung
+
+Die eingeschaltete Acrylfront verwendet eine gleichmäßig leuchtende Fläche
+mit der gewählten Farbe, ohne zusätzliche Aufhellung durch das Szenen-Tonemapping
+oder weiße Studioreflexionen. Der weiche Frontschein spart die massive
+Buchstabenfläche aus und leuchtet um die Außenkontur und in die Innenräume.
+Damit überstrahlen Material und Lichtschein die Front nicht mehr doppelt.
+Ausgeschaltetes Acryl reflektiert nur die Umgebung und bleibt sichtbar dunkler.
+Edelstahl, Rückbeleuchtung und die hervorgehobene rückseitige Acrylschicht
+verwenden weiterhin ihre vorhandenen Materialien und Geometrien.
+
+Browserprüfung: Blau und Rot bei Nacht, Pink und Grün bei Tag, sowie Ein-/Aus-
+Vergleich von Grün. Die eingeschaltete Fläche bleibt farblich zur Auswahl passend;
+der Lichtschein bleibt sichtbar. Die 17 Modell-/Geometrieprüfungen bestehen.

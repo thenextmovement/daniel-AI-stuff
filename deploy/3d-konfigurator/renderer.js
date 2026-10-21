@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,lightColor} from './model.js?v=10';
+import {materialSpec,lightColor} from './model.js?v=12';
 const fontCache=new Map();
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
 async function loadFont(id){
@@ -138,6 +138,9 @@ function glowTexture(layout,scale,width,height,front,night){
  for(const [radius,alpha] of [[spread,.85],[spread*.4,.75],[Math.min(2,spread*.12),.7]]){
   ctx.globalAlpha=alpha;ctx.filter=`blur(${radius*mask.px}px)`;ctx.drawImage(mask.canvas,0,0);
  }
+ // Front glow surrounds the acrylic rather than adding a second exposure
+ // over its face. The letter counters still receive the soft light spill.
+ if(front){ctx.globalAlpha=1;ctx.filter='none';ctx.globalCompositeOperation='destination-out';ctx.drawImage(mask.canvas,0,0);}
  return {texture:canvasTexture(canvas),width:mask.width,height:mask.height};
 }
 export class SignRenderer{
@@ -178,7 +181,13 @@ export class SignRenderer{
   const rev=++this.revision;const font=await loadFont(s.font);if(rev!==this.revision)return null;
   const layout=layoutLetters(font,s.text,s.spacing),scale=s.width/layout.width,width=s.width,height=layout.height*scale;
   const group=new THREE.Group(),spec=materialSpec(s);
-  const bodyMaterial=materialFromSpec(spec.shell,this.brush,s.night),faceMaterial=materialFromSpec(spec.face,this.brush,s.night),rearMaterial=s.lighting==='back'?materialFromSpec(spec.rear,this.brush,s.night):null;
+  const bodyMaterial=materialFromSpec(spec.shell,this.brush,s.night),rearMaterial=s.lighting==='back'?materialFromSpec(spec.rear,this.brush,s.night):null;
+  // An illuminated opal face is an even light source. Preserve the selected
+  // colour instead of bleaching it through scene exposure and white reflections.
+  const faceMaterial=s.lighting==='front'&&s.lightOn?new THREE.MeshBasicMaterial({color:s.acrylic,toneMapped:false}):materialFromSpec(spec.face,this.brush,s.night);
+  // With the LEDs off, the acrylic only reflects the scene light. Its diffuse
+  // surface must stay dimmer than the illuminated colour instead of turning pastel.
+  if(s.lighting==='front'&&!s.lightOn){faceMaterial.color.multiplyScalar(.25);faceMaterial.roughness=.6;faceMaterial.envMapIntensity=s.night?.04:.15;faceMaterial.toneMapped=false;}
   // Keep the solid opal edge readable separately from the bright rear face
   // and the halo on the wall; all three are physically separate surfaces.
   const rearEdgeMaterial=s.lighting==='back'?materialFromSpec({...spec.rear,emissive:s.lightOn?'#f3f6ff':'#000000',emissiveIntensity:s.night?2:.8},this.brush,s.night):null;
