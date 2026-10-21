@@ -475,3 +475,12 @@ Reflexionen mit dem Blickwinkel wechseln. Bürsttexturen, Rauheit, Metallanteil,
 Normalenstärke und gespeicherter Farbton sind unverändert. Geprüft: normale
 Goldperspektive, Detail, Nacht und Silber; keine erfassten Browserfehler, beide
 betroffenen Material-/UV-Tests und Syntaxprüfung bestanden. Nur lokale Vorschau.
+
+Für sichtbarere Glanzwechsel beim Drehen ist die Metallrauheit etwas reduziert
+und die Lackreflexion schärfer abgestimmt. Schmale, weich auslaufende Lichtflächen
+in der Reflexionsumgebung ergänzen die gleichmäßige Grundbeleuchtung. Deren
+Helligkeitsniveau und die feine Bürststruktur bleiben erhalten. Geprüft: normale
+Goldperspektive und Nachtansicht sowie seitliche Blickwinkel bei −60°, −30°,
+30° und 60° mit dem realen Renderer in einer lokalen Prüfansicht. Keine erfassten
+Browserfehler; beide betroffenen Material-/UV-Tests und Syntaxprüfung bestanden.
+Nur lokale Vorschau.

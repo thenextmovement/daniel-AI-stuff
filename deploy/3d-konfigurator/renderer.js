@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=23';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=24';
 const fontCache=new Map();
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
 async function loadFont(id){
@@ -124,6 +124,11 @@ function studioEnvironment(renderer,brushed=false){
   for(const [x,width] of [[140,170],[540,170],[730,150],[920,100]]){
    const card=ctx.createLinearGradient(x,0,x+width,0);card.addColorStop(0,'#8b8e92');card.addColorStop(.18,'#bec1c5');card.addColorStop(.42,'#d5d4d0');card.addColorStop(.7,'#cecdc7');card.addColorStop(1,'#8b8e92');ctx.fillStyle=card;ctx.fillRect(x,65,width,365);
   }
+  // Slim softboxes add moving highlights without reintroducing dark areas
+  // in the studio fill. Their limited width keeps the gold base readable.
+  for(const x of [180,425,650,860]){
+   const glint=ctx.createLinearGradient(x-22,0,x+22,0);glint.addColorStop(0,'rgba(255,255,255,0)');glint.addColorStop(.4,'rgba(255,255,255,.3)');glint.addColorStop(.5,'rgba(255,255,255,.9)');glint.addColorStop(.6,'rgba(255,255,255,.3)');glint.addColorStop(1,'rgba(255,255,255,0)');ctx.fillStyle=glint;ctx.fillRect(x-22,65,44,365);
+  }
  }
  const texture=new THREE.CanvasTexture(canvas);texture.mapping=THREE.EquirectangularReflectionMapping;texture.colorSpace=THREE.SRGBColorSpace;
  const pmrem=new THREE.PMREMGenerator(renderer),target=pmrem.fromEquirectangular(texture);texture.dispose();pmrem.dispose();return target;
@@ -131,7 +136,9 @@ function studioEnvironment(renderer,brushed=false){
 export function materialFromSpec(spec,brush,night,environment=null){
  const {brushed,...properties}=spec;
  if(!brushed)return new THREE.MeshStandardMaterial({...properties,envMapIntensity:night?.24:1});
- return new THREE.MeshPhysicalMaterial({...properties,map:brush.color,roughnessMap:brush.roughness,bumpMap:brush.roughness,bumpScale:.012,anisotropy:.65,anisotropyRotation:0,clearcoat:.08,clearcoatRoughness:.32,envMap:environment,envMapIntensity:night?.55:1.2});
+ // Sharper directional metal reflections and a restrained lacquer highlight
+ // sit over the same evenly lit gold base. Keep the filled studio and grain.
+ return new THREE.MeshPhysicalMaterial({...properties,roughness:properties.roughness*.8,map:brush.color,roughnessMap:brush.roughness,bumpMap:brush.roughness,bumpScale:.012,anisotropy:.65,anisotropyRotation:0,clearcoat:.38,clearcoatRoughness:.14,envMap:environment,envMapIntensity:night?.55:1.2});
 }
 export function brushedUVs(geometry,tileSize){
  // Align the grain across separate letters and supports, including side
