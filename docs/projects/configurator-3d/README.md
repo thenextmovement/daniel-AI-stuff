@@ -93,7 +93,7 @@ konkrete Freigabe, Abgleich mit aktuellem Main und `codex-predeploy ops` sowie
     node --check deploy/3d-konfigurator/app.js
     node --check deploy/3d-konfigurator/renderer.js
 
-18 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, farberhaltende Frontaufhellung, ungültige Eingaben, echte
+20 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, farberhaltende Frontaufhellung, ungültige Eingaben, echte
 Schriftkonturen inklusive Innenräumen, Abstände/Proportionen, gesperrter Kauf,
 Materialtrennung, Acrylrückseite, unabhängige Oberflächen sowie der vorläufige
 Farbaufpreis der Schiene mit Länge, Menge und Ausschluss anderer Montagearten.
@@ -122,10 +122,11 @@ Vorgaben des Auftraggebers:
 - Vorne Metall, hinten eine eigene weiße, opale Acrylschicht in exakt derselben
   Buchstabenform mit denselben Innenräumen. Die Acrylschicht wird von innen
   beleuchtet; der Lichtaustritt zeigt zur Wand. Metallflächen emittieren nicht.
-- Frontbeleuchtung: freie Farbe der Acrylfront, Edelstahlkorpus und Edelstahl-
-  Rückseite. Die Acrylfarbe ist unabhängig von der LED-Farbe des Rückleuchters.
-- Separate gespeicherte Oberflächen für Front-/Rückbeleuchtung; Entwurfsvertrag
-  Version 2 migriert Version 1 und erhält Text, Lichtart und bisherige Farben.
+- Frontbeleuchtung: Leuchtfarbe der Acrylfront und separate Lackfarbe der
+  Edelstahlseiten. Die Metalloberflächen-Auswahl erscheint nur bei Rücklicht.
+- Entwurfsvertrag Version 3 migriert Version 1 und 2. Frühere Frontoberflächen
+  werden als Seitenfarbton übernommen; Rücklicht-Material und -Lackfarbe bleiben
+  unabhängig. Text, Lichtart und bisherige Leuchtfarben bleiben erhalten.
 - Drei Schritte: Look (Beleuchtung zuerst, Text, Schrift), Material (abhängige
   Oberflächen und Farben), Aufbau (Montage, Schienen-/Plattenfarbe, Maße).
 
@@ -172,7 +173,7 @@ Warenkorb und Neuladen. 320×740, 390×844 und 1440×1000 geprüft, kein horizon
   Tiefenkonflikte zwischen Front und Lichtschein. Beide behalten ihre räumliche
   Position; Material und Schatten werden nicht zur Kaschierung abgeschaltet.
 - „Zurück zu Weiß“ setzt nur die Acrylfront zurück. „Look zurücksetzen“ stellt
-  für Frontlicht Weiß/Naturedelstahl, für Rücklicht Gold/Warmweiß her. Text,
+  für Frontlicht Weiß/Schwarz, für Rücklicht Gold/Warmweiß her. Text,
   Schrift, Maße, Montage, Schienenfarbe und die andere Lichtvariante bleiben
   erhalten. Bedienung ist bei 320 px Breite erreichbar.
 - Schiene: nach abschließender Klarstellung mittig hinter dem Schriftzug an
@@ -311,3 +312,25 @@ künstlich zu einer weißen Lichtquelle.
 Zusätzlich geprüft: Blau/Rot bei Nacht, Grün bei Tag und mobile Darstellung bei
 320×740. Test 18 prüft Farbton, Sättigung und RGB-Grenzen für alle Acrylvorgaben
 und mehrere freie Farben. Keine erfassten Browserfehler. Rücklicht unverändert.
+
+
+## Leuchtfarbe und Seitenlackierung bei Frontlicht
+
+Der Materialschritt zeigt bei Frontbeleuchtung ausschließlich „Leuchtfarbe vorne“
+(17 Vorgaben und eigene Farbe) und „Lackfarbe der Seiten“ (freie Farbe). Der
+Edelstahlkorpus erhält die gewählte Lackfarbe; Gold-, Natur- und Spiegeloberflächen
+werden nur für Rückbeleuchtung angeboten. Die flache, gleichmäßig leuchtende
+Acrylfront und ihr farbiger Lichtschein bleiben unverändert.
+
+`sideColor` ist im Entwurfsvertrag v3 von `body` (Rücklicht-Lackfarbe) getrennt.
+Alte v1-/v2-Entwürfe und Warenkörbe werden beim Laden migriert, wobei die bisherige
+Frontoberfläche ihren Farbton als Seitenlackierung behält. „Zurück zu Weiß“ und
+„Zurück zu Schwarz“ setzen jeweils nur eine Farbe zurück; „Look zurücksetzen“
+stellt weißes Licht mit schwarzen Seiten her. Die Rücklicht-Auswahl bleibt erhalten.
+Zusammenfassung und Warenkorb führen beide Farben getrennt auf.
+
+Geprüft: 20 Modell-/Geometrietests inklusive Migration aller v2-Frontoberflächen
+und unabhängiger Rücksetzungen. Im Browser: Variantenwechsel, beide Einzelresets,
+Neuladen, Warenkorb speichern/erneut laden/bearbeiten sowie Desktop 1440×1150 und
+Mobil 320×740. Kein horizontaler Überlauf und keine erfassten Konsolenfehler.
+Testeintrag entfernt. Weiterhin nur lokale Vorschau, Preisplatzhalter und kein Kauf.

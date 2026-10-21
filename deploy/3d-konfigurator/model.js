@@ -1,4 +1,4 @@
-export const DEFAULT = Object.freeze({version:2,text:'ATLAS',font:'modern',lighting:'back',mount:'individual',width:120,depth:5,color:'#fff1d6',acrylic:'#ffffff',backFinish:'brushed-gold',frontFinish:'brushed-steel',body:'#252525',plate:'#d8d0c4',railCustomColor:false,railColor:'#252525',wall:'warm',lightOn:true,night:false,spacing:5});
+export const DEFAULT = Object.freeze({version:3,text:'ATLAS',font:'modern',lighting:'back',mount:'individual',width:120,depth:5,color:'#fff1d6',acrylic:'#ffffff',backFinish:'brushed-gold',sideColor:'#252525',body:'#252525',plate:'#d8d0c4',railCustomColor:false,railColor:'#252525',wall:'warm',lightOn:true,night:false,spacing:5});
 export const FONTS={
  modern:{label:'Modern',style:'Klar & kräftig'},
  montserrat:{label:'Montserrat',style:'Markant & vielseitig'},
@@ -20,14 +20,14 @@ export const FINISHES={
  'mirror-steel':{label:'Edelstahl verspiegelt',description:'Edelstahl, poliert und verspiegelt',color:'#f0f2f4',metalness:1,roughness:.045,brushed:false},
  'painted-steel':{label:'Edelstahl lackiert',description:'Edelstahl, farbig lackiert',color:null,metalness:.15,roughness:.36,brushed:false}
 };
-export function activeFinish(s){return s.lighting==='front'?s.frontFinish:s.backFinish;}
-export function finishDescription(s){const id=activeFinish(s);return FINISHES[id].description+(id==='painted-steel'?` (${s.body.toUpperCase()})`:'');}
+export function activeFinish(s){return s.lighting==='front'?'painted-steel':s.backFinish;}
+export function finishDescription(s){if(s.lighting==='front')return `Seiten lackiert (${s.sideColor.toUpperCase()})`;const id=activeFinish(s);return FINISHES[id].description+(id==='painted-steel'?` (${s.body.toUpperCase()})`:'');}
 export function lightColor(s){return s.lighting==='front'?s.acrylic:s.color;}
 export function classicLook(s){
- return {...s,...(s.lighting==='front'?{frontFinish:DEFAULT.frontFinish,acrylic:DEFAULT.acrylic}:{backFinish:DEFAULT.backFinish,color:DEFAULT.color})};
+ return {...s,...(s.lighting==='front'?{sideColor:DEFAULT.sideColor,acrylic:DEFAULT.acrylic}:{backFinish:DEFAULT.backFinish,color:DEFAULT.color})};
 }
 export function materialSpec(s){
- const f=FINISHES[activeFinish(s)],shell={color:f.color||s.body,metalness:f.metalness,roughness:f.roughness,brushed:f.brushed};
+ const f=FINISHES[activeFinish(s)],shell={color:s.lighting==='front'?s.sideColor:f.color||s.body,metalness:f.metalness,roughness:f.roughness,brushed:f.brushed};
  return {shell,rear:s.lighting==='back'?{color:'#ffffff',metalness:0,roughness:.4,brushed:false,emissive:s.lightOn?s.color:'#000000',emissiveIntensity:s.night?3:1.3}:{...shell},face:s.lighting==='front'?{color:s.acrylic,metalness:0,roughness:.27,brushed:false,emissive:s.lightOn?s.acrylic:'#000000',emissiveIntensity:s.night?2:1}:{...shell,emissive:'#000000',emissiveIntensity:0}};
 }
 export function normalize(raw={}){
@@ -39,12 +39,16 @@ export function normalize(raw={}){
  for(const key of ['lightOn','night','railCustomColor'])if(typeof raw[key]==='boolean')s[key]=raw[key];
  if(COLORS.some(([value])=>value===raw.color))s.color=raw.color;
  for(const key of ['body','acrylic','plate','railColor'])if(/^#[\da-f]{6}$/i.test(raw[key]||''))s[key]=raw[key].toLowerCase();
- // Existing v1 drafts keep their visible choices; only new designs use the gold halo default.
+ // Old front finishes become side paint colours; keep rear finishes and paint
+ // independent. The former finish field is no longer part of the v3 contract.
+ let legacyFront='brushed-steel';
  if(raw.version===1){
-  const previous={'#a8adb1':'brushed-steel','#b8995b':'brushed-gold'}[raw.body]||'painted-steel';s.frontFinish=previous;s.backFinish=previous;
+  const previous={'#a8adb1':'brushed-steel','#b8995b':'brushed-gold'}[s.body]||'painted-steel';legacyFront=previous;s.backFinish=previous;
   if(s.lighting==='front'&&COLORS.some(([value])=>value===raw.color))s.acrylic=raw.color;
  }
- for(const key of ['backFinish','frontFinish'])if(Object.hasOwn(FINISHES,raw[key]))s[key]=raw[key];
+ if(Object.hasOwn(FINISHES,raw.backFinish))s.backFinish=raw.backFinish;
+ if([1,2].includes(raw.version)){if(Object.hasOwn(FINISHES,raw.frontFinish))legacyFront=raw.frontFinish;s.sideColor=FINISHES[legacyFront].color||s.body;}
+ if(/^#[\da-f]{6}$/i.test(raw.sideColor||''))s.sideColor=raw.sideColor.toLowerCase();
  return s;
 }
 export function validate(s){
@@ -57,8 +61,8 @@ export function validate(s){
 export function description(s,height){return [
  '3D-Leuchtbuchstaben – Konfiguration',`Text: ${s.text}`,`Schrift: ${LABELS.font[s.font]}`,`Lichtart: ${LABELS.lighting[s.lighting]}`,`Montage: ${LABELS.mount[s.mount]}`,
  `Schriftzug: ${s.width} cm breit${height?`, ca. ${height.toLocaleString('de-DE',{maximumFractionDigits:1})} cm hoch`:''}`,`Wunschtiefe: ${s.depth} cm`,
- s.lighting==='front'?`Front: farbiges Acryl (${s.acrylic.toUpperCase()})`:`Front und Korpus: ${finishDescription(s)}`,
- s.lighting==='front'?`Korpus und Rückseite: ${finishDescription(s)}`:`Lichtfarbe (Halo): ${COLORS.find(c=>c[0]===s.color)?.[1]}`,
+ s.lighting==='front'?`Leuchtfarbe vorne: ${ACRYLICS.find(c=>c[0]===s.acrylic)?.[1]||'Eigene Farbe'} (${s.acrylic.toUpperCase()}) · Acrylfront`:`Front und Korpus: ${finishDescription(s)}`,
+ s.lighting==='front'?`Korpus: Edelstahl · ${finishDescription(s)}`:`Lichtfarbe (Halo): ${COLORS.find(c=>c[0]===s.color)?.[1]}`,
  s.lighting==='front'?'LEDs innen, Lichtaustritt durch die Acrylfront.':'Rückseite: ca. 1 cm weißes, opales Acryl in Buchstabenform mit innenliegenden LEDs. Lichtaustritt nach hinten zur Wand.',s.mount==='plate'?`Plattenfarbe (Vorschau): ${s.plate}`:'',s.mount==='rail'?`Schiene: ${s.railCustomColor?'Wunschfarbe '+s.railColor.toUpperCase():'Standardausführung'} · ${(s.width/100).toLocaleString('de-DE')} m lang`:'',
  'Maße und Ausführung sind Entwurfswünsche und vor Fertigung zu prüfen.'
  ].filter(Boolean).join('\n');}

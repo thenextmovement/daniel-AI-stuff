@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
+import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
 import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor} from '../../deploy/3d-konfigurator/renderer.js';
 import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace} from '../../deploy/3d-konfigurator/vendor/three.js';
@@ -82,7 +82,7 @@ test('The rail is centred against the wall and separated from every letter by sp
 });
 test('Stored drafts cannot enable unsupported options or inject executable markup',()=>{
  const s=normalize({version:99,text:'<script>Hallo</script>',font:'../../../secret',mount:'other',width:Infinity,depth:-5,color:'url(javascript:alert(1))',night:'true'});
- assert.equal(s.version,2);assert.equal(s.font,'modern');assert.equal(s.mount,'individual');assert.equal(s.width,120);assert.equal(s.depth,3);assert.equal(s.color,DEFAULT.color);assert.equal(s.night,false);assert.equal(s.text.includes('<'),false);
+ assert.equal(s.version,3);assert.equal(s.font,'modern');assert.equal(s.mount,'individual');assert.equal(s.width,120);assert.equal(s.depth,3);assert.equal(s.color,DEFAULT.color);assert.equal(s.night,false);assert.equal(s.text.includes('<'),false);
 });
 test('Empty, multiline and impossible dimensions never pass the review gate',()=>{
  for(const patch of [{text:'   '},{text:'A\nB\nC'},{width:0},{width:401},{width:NaN}])assert.notEqual(validate({...DEFAULT,...patch}),'');
@@ -112,27 +112,48 @@ test('New designs start with gold brushed stainless steel and halo lighting',()=
  const spec=materialSpec(DEFAULT);assert.equal(spec.face.emissive,'#000000');assert.equal(spec.shell.brushed,true);
 });
 test('Front lighting uses independently colored acrylic with a stainless shell and rear',()=>{
- const state=normalize({...DEFAULT,lighting:'front',acrylic:'#134da8',color:'#fc6fa8',frontFinish:'mirror-steel'});
+ const state=normalize({...DEFAULT,lighting:'front',acrylic:'#134da8',color:'#fc6fa8',sideColor:'#d34275',backFinish:'mirror-steel'});
  const lit=materialSpec(state),off=materialSpec({...state,lightOn:false});
- assert.equal(lit.face.color,'#134da8');assert.equal(lit.face.metalness,0);assert.equal(lit.face.emissive,'#134da8');assert.equal(lit.shell.metalness,1);assert.equal(lit.shell.color,FINISHES['mirror-steel'].color);
+ assert.equal(lit.face.color,'#134da8');assert.equal(lit.face.metalness,0);assert.equal(lit.face.emissive,'#134da8');assert.equal(lit.shell.metalness,FINISHES['painted-steel'].metalness);assert.equal(lit.shell.color,'#d34275');assert.equal(lit.rear.color,'#d34275');
  assert.equal(off.face.color,lit.face.color);assert.equal(off.face.emissive,'#000000');assert.equal(lightColor(state),'#134da8');
- assert.match(description(state,20),/Front: farbiges Acryl \(#134DA8\)/);assert.match(description(state,20),/Korpus und Rückseite: Edelstahl, poliert und verspiegelt/);
+ assert.match(description(state,20),/Leuchtfarbe vorne: Eigene Farbe \(#134DA8\)/);assert.match(description(state,20),/Korpus: Edelstahl · Seiten lackiert \(#D34275\)/);
 });
 test('Polished and brushed finishes retain distinct surface properties and independent lighting',()=>{
  for(const id of Object.keys(FINISHES)){
-  const state=normalize({...DEFAULT,backFinish:id,frontFinish:'brushed-steel',color:'#80baff'}),spec=materialSpec(state);
-  assert.equal(spec.face.emissive,'#000000');assert.equal(lightColor(state),'#80baff');assert.equal(activeFinish({...state,lighting:'front'}),'brushed-steel');assert.equal(activeFinish(state),id);
+  const state=normalize({...DEFAULT,backFinish:id,sideColor:'#123456',color:'#80baff'}),spec=materialSpec(state);
+  assert.equal(spec.face.emissive,'#000000');assert.equal(lightColor(state),'#80baff');assert.equal(activeFinish({...state,lighting:'front'}),'painted-steel');assert.equal(activeFinish(state),id);
  }
  const mirror=materialSpec({...DEFAULT,backFinish:'mirror-steel'}),brushed=materialSpec(DEFAULT);
  assert.ok(mirror.face.roughness<brushed.face.roughness);assert.equal(mirror.face.brushed,false);assert.equal(brushed.face.brushed,true);
 });
 test('Existing drafts migrate without losing color, lighting, text or cart-edit material choices',()=>{
  const old=normalize({version:1,text:'MEIN LOGO',lighting:'front',body:'#252525',color:'#fc6fa8'});
- assert.equal(old.version,2);assert.equal(old.text,'MEIN LOGO');assert.equal(old.lighting,'front');assert.equal(old.acrylic,'#fc6fa8');assert.equal(old.frontFinish,'painted-steel');assert.equal(old.body,'#252525');
+ assert.equal(old.version,3);assert.equal(old.text,'MEIN LOGO');assert.equal(old.lighting,'front');assert.equal(old.acrylic,'#fc6fa8');assert.equal(old.sideColor,'#252525');assert.equal(old.body,'#252525');
  assert.equal(normalize({version:1,lighting:'back',body:'#b8995b'}).backFinish,'brushed-gold');
- const design=normalize({...DEFAULT,backFinish:'mirror-steel',frontFinish:'painted-steel',body:'#124578',acrylic:'#AABBCC'});
+ const design=normalize({...DEFAULT,backFinish:'mirror-steel',sideColor:'#D34275',body:'#124578',acrylic:'#AABBCC'});
  assert.deepEqual(normalize(JSON.parse(JSON.stringify(design))),design);
- const unsafe=normalize({...design,backFinish:'__proto__',acrylic:'url(secret)',body:'red'});assert.equal(unsafe.backFinish,DEFAULT.backFinish);assert.equal(unsafe.acrylic,DEFAULT.acrylic);assert.equal(unsafe.body,DEFAULT.body);
+ const unsafe=normalize({...design,backFinish:'__proto__',acrylic:'url(secret)',sideColor:'url(secret)',body:'red'});assert.equal(unsafe.backFinish,DEFAULT.backFinish);assert.equal(unsafe.acrylic,DEFAULT.acrylic);assert.equal(unsafe.body,DEFAULT.body);assert.equal(unsafe.sideColor,DEFAULT.sideColor);
+});
+
+
+test('Version 2 front finishes migrate to side paint without changing rear choices',()=>{
+ for(const [id,finish] of Object.entries(FINISHES)){
+  const old={version:2,lighting:'front',text:'PRADA',acrylic:'#2474e5',frontFinish:id,backFinish:'mirror-steel',body:'#123456'};
+  const migrated=normalize(old);
+  assert.equal(migrated.version,3);assert.equal(migrated.sideColor,finish.color||old.body);
+  assert.equal(migrated.backFinish,old.backFinish);assert.equal(migrated.body,old.body);assert.equal(migrated.acrylic,old.acrylic);
+  assert.equal(Object.hasOwn(migrated,'frontFinish'),false);assert.deepEqual(normalize(JSON.parse(JSON.stringify(migrated))),migrated);
+ }
+});
+test('Front light and side paint stay independent through save, variant switches and classic reset',()=>{
+ const design=normalize({...DEFAULT,lighting:'front',sideColor:'#e46723',acrylic:'#2474e5',backFinish:'painted-steel',body:'#123456',color:'#fc6fa8'});
+ const restored=normalize(JSON.parse(JSON.stringify(design)));
+ assert.equal(materialSpec(restored).face.color,'#2474e5');assert.equal(materialSpec(restored).shell.color,'#e46723');
+ const back={...restored,lighting:'back'};assert.equal(materialSpec(back).shell.color,'#123456');assert.equal(lightColor(back),'#fc6fa8');
+ const frontReset=classicLook(restored);assert.equal(frontReset.acrylic,DEFAULT.acrylic);assert.equal(frontReset.sideColor,DEFAULT.sideColor);
+ for(const key of ['backFinish','body','color','text','width','mount'])assert.equal(frontReset[key],design[key]);
+ const backReset=classicLook(back);for(const key of ['acrylic','sideColor'])assert.equal(backReset[key],design[key]);
+ assert.equal(backReset.backFinish,DEFAULT.backFinish);assert.equal(backReset.color,DEFAULT.color);
 });
 
 test('Backlit letters have a separate matching white acrylic rear layer, including letter holes',()=>{
