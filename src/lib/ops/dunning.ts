@@ -2901,6 +2901,11 @@ export async function recordDunningPhoneCall(input: { id: string; orderNumber: s
     body: JSON.stringify({ id: input.id, workflow_name: "OPS Mahnwesen", action: "ops_dunning_phone_call", status: "success",
       metadata: { order_number: input.orderNumber, actor: input.actor, note: input.note.trim() } }),
   }, { on_conflict: "id" });
+  const rows = await supabaseRequest<Array<{ id: string; created_at: string; metadata: Record<string, unknown> }>>("workflow_audit_log", { method: "GET" }, { select: "id,created_at,metadata", id: `eq.${input.id}`, action: "eq.ops_dunning_phone_call", limit: "1" });
+  const row = rows[0];
+  if (!row || row.metadata?.order_number !== input.orderNumber || row.metadata?.actor !== input.actor) throw new Error("DUNNING_SAVE_UNCONFIRMED");
+  return { id: row.id, at: row.created_at, actor: String(row.metadata.actor), note: String(row.metadata?.note || "") };
+
 }
 
 export async function recordDunningCourtNomination(input: { id: string; orderNumber: string; actor: string }) {
@@ -2910,4 +2915,9 @@ export async function recordDunningCourtNomination(input: { id: string; orderNum
     body: JSON.stringify({ id: input.id, workflow_name: "OPS Mahnwesen", action: "ops_dunning_court_nomination", status: "success",
       metadata: { order_number: input.orderNumber, actor: input.actor, note: "Vorgemerkt – noch nicht erstellt/versandt" } }),
   }, { on_conflict: "id" });
+  const rows = await supabaseRequest<Array<{ id: string; created_at: string; metadata: Record<string, unknown> }>>("workflow_audit_log", { method: "GET" }, { select: "id,created_at,metadata", id: `eq.${input.id}`, action: "eq.ops_dunning_court_nomination", limit: "1" });
+  const row = rows[0];
+  if (!row || row.metadata?.order_number !== input.orderNumber || row.metadata?.actor !== input.actor) throw new Error("DUNNING_SAVE_UNCONFIRMED");
+  return { id: row.id, at: row.created_at, actor: String(row.metadata.actor) };
+
 }

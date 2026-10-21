@@ -106,19 +106,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         return NextResponse.json({ ok: false, error: "confirmation_mismatch" }, { status: 422 });
       const blockers = nominationBlockers(detail.case);
       if (blockers.length) return NextResponse.json({ ok: false, error: "DUNNING_COURT_BLOCKED", blockers }, { status: 409 });
-      if (!detail.case.courtNomination) await recordDunningCourtNomination({ id: body.idempotencyKey!, orderNumber: detail.case.orderNumber, actor }).catch(async (error: unknown) => {
+      const nomination = detail.case.courtNomination || await recordDunningCourtNomination({ id: body.idempotencyKey!, orderNumber: detail.case.orderNumber, actor }).catch(async (error: unknown) => {
         await sendDunningOperatorAlert(detail.case.orderNumber, "nomination");
         throw error;
       });
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, nomination });
     }
     if (body.action === "record_phone_call") {
       const actor = await resolveOpsRequestActor(host, request.headers);
       if (!actor) return NextResponse.json({ ok: false, error: "personal_login_required" }, { status: 403 });
       if (!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(body.idempotencyKey || "") || (body.note || "").trim().length < 3)
         return NextResponse.json({ ok: false, error: "invalid_call_note" }, { status: 422 });
-      await recordDunningPhoneCall({ id: body.idempotencyKey!, orderNumber: detail.case.orderNumber, actor, note: body.note! });
-      return NextResponse.json({ ok: true });
+      const call = await recordDunningPhoneCall({ id: body.idempotencyKey!, orderNumber: detail.case.orderNumber, actor, note: body.note! });
+      return NextResponse.json({ ok: true, call });
     }
     if (body.action === "check_court_insolvency") {
       const actor = await resolveOpsRequestActor(host, request.headers);
