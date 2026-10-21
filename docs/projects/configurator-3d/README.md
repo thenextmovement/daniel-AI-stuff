@@ -499,3 +499,14 @@ Geprüft: alle 29 Modell-/Geometrietests, einschließlich Silber-/Goldprofilen
 Acryl; Syntax- und Diffprüfung. Im Browser normale Perspektive, Frontalansicht,
 Nacht sowie −60°, 30° und 60° in der lokalen Winkelprüfung. Keine erfassten
 Browserfehler oder Warnungen. Nur lokale Vorschau.
+
+Die Silberreflexe sind stärker auf den Blickwinkel abgestimmt: geringere
+Reflexionsunschärfe, breitere, in der Spitze begrenzte Lichtflächen und eine
+fein strukturierte Lackreflexion. Die stärkere Reflexionsintensität wird für
+die Grundbeleuchtung ausgeglichen, um den bisherigen silbrigen Grundton zu
+bewahren. Farb-, Rauheits- und Normalentextur bleiben erhalten; dieselbe feine
+Rauheitsstruktur wirkt zusätzlich auf die Lackreflexion.
+Geprüft im direkten Vergleich zum vorherigen Renderer bei gedrehten Ansichten,
+zuletzt bei −30° und 60°, sowie normale Perspektive und Nacht im Konfigurator.
+Dort keine erfassten Browserfehler oder Warnungen. Beide betroffenen Material-/
+UV-Tests, Syntax- und Diffprüfung bestehen. Nur lokale Vorschau.

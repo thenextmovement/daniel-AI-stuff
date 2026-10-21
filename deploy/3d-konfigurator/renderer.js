@@ -1,7 +1,8 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=25';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=26';
 const fontCache=new Map();
+const SILVER_REFLECTION_FILL=.8;
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
 async function loadFont(id){
  if(!fontCache.has(id))fontCache.set(id,fetch(new URL(`./fonts/${id}.json`,import.meta.url)).then(r=>{if(!r.ok)throw new Error('Die Schrift konnte nicht geladen werden.');return r.json();}).then(data=>new FontLoader().parse(data)).catch(e=>{fontCache.delete(id);throw e;}));
@@ -125,16 +126,22 @@ function studioEnvironment(renderer,brushed=false){
    const card=ctx.createLinearGradient(x,0,x+width,0);card.addColorStop(0,'#8b8e92');card.addColorStop(.18,'#bec1c5');card.addColorStop(.42,'#d5d4d0');card.addColorStop(.7,'#cecdc7');card.addColorStop(1,'#8b8e92');ctx.fillStyle=card;ctx.fillRect(x,65,width,365);
   }
   if(brushed==='silver'){
-   // Stainless steel needs a neutral mid-grey reflection floor and bounded
-   // light cards: silver stays readable between glints instead of white/black.
-   const steel=ctx.createLinearGradient(0,0,0,512);steel.addColorStop(0,'#a2a5a8');steel.addColorStop(.48,'#91969a');steel.addColorStop(1,'#9a9ea2');ctx.fillStyle=steel;ctx.fillRect(0,0,1024,512);
+   // Scale the room fill down to balance the stronger reflection intensity.
+   // The base stays mid-grey while only the softboxes produce brighter glints.
+   const fill=hex=>new THREE.Color(hex).multiplyScalar(SILVER_REFLECTION_FILL).getStyle();
+   const steel=ctx.createLinearGradient(0,0,0,512);steel.addColorStop(0,fill('#a2a5a8'));steel.addColorStop(.48,fill('#91969a'));steel.addColorStop(1,fill('#9a9ea2'));ctx.fillStyle=steel;ctx.fillRect(0,0,1024,512);
    for(const [x,width] of [[140,170],[540,170],[730,150],[920,100]]){
-    const card=ctx.createLinearGradient(x,0,x+width,0);card.addColorStop(0,'rgba(192,196,199,0)');card.addColorStop(.4,'#bec2c5');card.addColorStop(.7,'#b6bbc0');card.addColorStop(1,'rgba(192,196,199,0)');ctx.fillStyle=card;ctx.fillRect(x,65,width,365);
+    const card=ctx.createLinearGradient(x,0,x+width,0);card.addColorStop(0,'rgba(192,196,199,0)');card.addColorStop(.4,fill('#bec2c5'));card.addColorStop(.7,fill('#b6bbc0'));card.addColorStop(1,'rgba(192,196,199,0)');ctx.fillStyle=card;ctx.fillRect(x,65,width,365);
    }
   }
   // Slim softboxes add moving highlights without reintroducing dark areas
   // in the studio fill. Their limited width keeps the gold base readable.
   for(const x of [180,425,650,860]){
+   if(brushed==='silver'){
+    // Wider, capped softbox reflections survive the directional filtering.
+    // Their moving highlight stays silver; the mid-grey room remains filled.
+    const glint=ctx.createLinearGradient(x-44,0,x+44,0);glint.addColorStop(0,'rgba(173,181,190,0)');glint.addColorStop(.24,'rgba(173,181,190,.5)');glint.addColorStop(.35,'#e4e9ee');glint.addColorStop(.65,'#e4e9ee');glint.addColorStop(.76,'rgba(173,181,190,.5)');glint.addColorStop(1,'rgba(173,181,190,0)');ctx.fillStyle=glint;ctx.fillRect(x-44,65,88,365);continue;
+   }
    const glint=ctx.createLinearGradient(x-22,0,x+22,0);glint.addColorStop(0,'rgba(255,255,255,0)');glint.addColorStop(.4,'rgba(255,255,255,.3)');glint.addColorStop(.5,'rgba(255,255,255,.9)');glint.addColorStop(.6,'rgba(255,255,255,.3)');glint.addColorStop(1,'rgba(255,255,255,0)');ctx.fillStyle=glint;ctx.fillRect(x-22,65,44,365);
   }
  }
@@ -144,7 +151,7 @@ function studioEnvironment(renderer,brushed=false){
 export function materialFromSpec(spec,brush,night,environment=null){
  const {brushed,metalTone,...properties}=spec;
  if(!brushed)return new THREE.MeshStandardMaterial({...properties,envMapIntensity:night?.24:1});
- if(metalTone==='silver')return new THREE.MeshPhysicalMaterial({...properties,roughness:properties.roughness*.7,map:brush.color,roughnessMap:brush.roughness,bumpMap:brush.roughness,bumpScale:.012,anisotropy:.72,anisotropyRotation:0,clearcoat:.16,clearcoatRoughness:.2,envMap:environment,envMapIntensity:night?.75:.95});
+ if(metalTone==='silver')return new THREE.MeshPhysicalMaterial({...properties,roughness:properties.roughness*.55,map:brush.color,roughnessMap:brush.roughness,bumpMap:brush.roughness,bumpScale:.012,anisotropy:.5,anisotropyRotation:0,clearcoat:.24,clearcoatRoughness:.14,clearcoatRoughnessMap:brush.roughness,envMap:environment,envMapIntensity:(night?.75:.95)/SILVER_REFLECTION_FILL});
  // Sharper directional metal reflections and a restrained lacquer highlight
  // sit over the same evenly lit gold base. Keep the filled studio and grain.
  return new THREE.MeshPhysicalMaterial({...properties,roughness:properties.roughness*.8,map:brush.color,roughnessMap:brush.roughness,bumpMap:brush.roughness,bumpScale:.012,anisotropy:.65,anisotropyRotation:0,clearcoat:.38,clearcoatRoughness:.14,envMap:environment,envMapIntensity:night?.55:1.2});
