@@ -141,6 +141,8 @@ function replaceVariables(html, config) {
     '{{META_DESCRIPTION}}': config.meta_description,
     '{{CANONICAL}}': config.canonical,
     '{{OG_TITLE}}': config.og_title,
+    '{{SHARE_IMAGE}}': config.share_image || (config.lang === 'en' ? 'https://anfrage.neontrip.de/assets/share/20261021/neon-empfang-text-en-logo.jpg' : 'https://anfrage.neontrip.de/assets/share/20261021/neon-empfang-text-de-logo.jpg'),
+    '{{SHARE_IMAGE_ALT}}': config.share_image_alt || (config.lang === 'en' ? 'Your logo. Your lettering. As an illuminated sign. Visualization of a pink LED neon logo in a reception area.' : 'Dein Logo. Dein Schriftzug. Als Leuchtschild. Visualisierung eines pinken LED-Neonlogos im Empfangsbereich.'),
     '{{OG_DESCRIPTION}}': config.og_description,
     '{{HREFLANG_TAGS}}': config.hreflang_tags || '',
     '{{DKI_SCRIPT}}': generateDkiScript(config),
