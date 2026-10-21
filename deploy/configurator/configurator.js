@@ -54,6 +54,7 @@ const scenarioSelect=$('#studio-scenario');
 const textLayout=$('.text-layout-options');
 const studioFooter=$('.studio-preview-footer');
 const studioDesignTools=$('.design-tools');
+const designEmailEntry=$('[data-design-email]');
 const studioFonts=$('.studio-fonts');
 const studioColors=$('.studio-colors');
 const inlineRgbNote=$('#studio-rgb-note');
@@ -2332,6 +2333,7 @@ function syncMobileStudio(){
     mobileEditTools.append($('#usage-options'));$('#panel-0').prepend(mobileEditTools,$('#usage-note'));
     for(const button of historyControls.querySelectorAll('[data-history]'))button.setAttribute('aria-label',button.dataset.history==='undo'?'Rückgängig':'Wiederholen');
     $('#saved-current-actions').append(studioDesignTools);
+    studioDesignTools.append(designEmailEntry);
     $('.header-design-actions').prepend($('#save-design'),$('#save-design-status'));
     $('#save-design span').textContent='Speichern';
     $('#share-design span').textContent='Aktuellen Entwurf teilen';
@@ -2343,6 +2345,7 @@ function syncMobileStudio(){
     textTools.prepend($('.alignment'));
     textLayout.querySelector('summary').setAttribute('aria-label','Zeilenabstand einstellen');
     studioVariantTools.append(studioDesignTools);
+    $('#cart-add-status').before(designEmailEntry);
     $('#compare-designs').before($('#save-design'));$('#share-design').after($('#save-design-status'));
     $('#save-design span').textContent='Speichern';$('#share-design span').textContent='Teilen';
     studioVariantTools.before(studioToolbar);$('#preview-stage').prepend($('#stage-ar'));
