@@ -287,7 +287,7 @@ Frontal, Tag/Nacht, Licht aus, Desktop 1440×1150 und Mobil 320×740 ohne Überl
 
 ## Farbtreue der Frontbeleuchtung
 
-Die eingeschaltete Acrylfront verwendet einen weich verlaufenden farbigen Lichtkern
+Die eingeschaltete Acrylfront verwendet eine glatte, überall gleich helle Leuchtfläche
 mit dem gewählten Farbton, ohne zusätzliche Aufhellung durch das Szenen-Tonemapping
 oder weiße Studioreflexionen. Der weiche Frontschein spart die massive
 Buchstabenfläche aus und leuchtet um die Außenkontur und in die Innenräume.
@@ -298,15 +298,15 @@ verwenden weiterhin ihre vorhandenen Materialien und Geometrien.
 
 Browserprüfung: Blau und Rot bei Nacht, Pink und Grün bei Tag, sowie Ein-/Aus-
 Vergleich von Grün. Die eingeschaltete Fläche bleibt farblich zur Auswahl passend;
-der Lichtschein bleibt sichtbar. Die 17 Modell-/Geometrieprüfungen bestehen.
+der Lichtschein bleibt sichtbar. Die 18 Modell-/Geometrieprüfungen bestehen.
 
-Der Lichtkern folgt der tatsächlichen Buchstabenkontur, einschließlich Innenräumen,
-und wird durch eine geglättete Konturmaske erzeugt. Eine begrenzte HSV-Aufhellung
-erhält den Farbton und mindestens 76 % der ursprünglichen HSV-Sättigung. Rand und
-Kern bleiben innerhalb des darstellbaren RGB-Bereichs. Der äußere Frontschein ist
-breiter und stärker; die Buchstabenfläche bleibt davon ausgespart. So bekommt die
-Front sichtbare Leuchtkraft ohne flächiges weißes Überstrahlen. Weiß bleibt neutral;
-nahezu schwarzes Acryl wird nicht künstlich zu einer weißen Lichtquelle.
+Eine begrenzte HSV-Aufhellung erhält den Farbton und mindestens 76 % der
+ursprünglichen HSV-Sättigung. Die gesamte Front erhält dieselbe Leuchtfarbe,
+innerhalb des darstellbaren RGB-Bereichs. Es gibt keinen Helligkeitsverlauf zur
+Kontur und keine Fronttextur, die eine gewölbte Oberfläche vortäuschen könnte.
+Der äußere Frontschein bleibt breit und kräftig; die Buchstabenfläche bleibt
+davon ausgespart. Weiß bleibt neutral; nahezu schwarzes Acryl wird nicht
+künstlich zu einer weißen Lichtquelle.
 
 Zusätzlich geprüft: Blau/Rot bei Nacht, Grün bei Tag und mobile Darstellung bei
 320×740. Test 18 prüft Farbton, Sättigung und RGB-Grenzen für alle Acrylvorgaben

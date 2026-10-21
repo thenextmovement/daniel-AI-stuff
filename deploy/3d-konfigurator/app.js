@@ -1,4 +1,4 @@
-import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,normalize,validate,description} from './model.js?v=14';
+import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,normalize,validate,description} from './model.js?v=15';
 import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
@@ -109,4 +109,4 @@ $('#add-cart').addEventListener('click',()=>{
 });
 $('#new-design').addEventListener('click',()=>{editingId=null;state={...DEFAULT};$('#cart').close();sync();step(0);schedule();});
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=14');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=15');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
