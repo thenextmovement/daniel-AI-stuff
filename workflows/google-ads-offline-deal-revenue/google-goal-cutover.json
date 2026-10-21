@@ -1,0 +1,297 @@
+{
+  "business": "NEONTRIP",
+  "customerId": "4396424947",
+  "observedAt": "2026-10-20T18:05:00.598Z",
+  "status": "prepared-not-applied",
+  "customGoal": {
+    "resourceName": "customers/4396424947/customConversionGoals/6459376937",
+    "name": "NT · Konfigurator · Online-Kauf",
+    "status": "ENABLED",
+    "beforeConversionActions": [
+      "customers/4396424947/conversionActions/761935343"
+    ],
+    "afterConversionActions": [
+      "customers/4396424947/conversionActions/7533078197"
+    ]
+  },
+  "campaigns": [
+    "24337811446",
+    "24339083713"
+  ],
+  "conditions": [
+    "Exact release scope and clean commit approval",
+    "Refresh the entire goal and campaign readback; stop on drift",
+    "Revoke-only Shopify pixel verified in runtime",
+    "Canonical paid order, consent, unique business/ledger key and provider job receipt confirmed",
+    "Standard campaign goals remain non-biddable",
+    "No budgets, bids, other campaign goals or native diagnostic actions changed"
+  ],
+  "readback": [
+    {
+      "name": "goal",
+      "rows": [
+        {
+          "custom_conversion_goal.id": 6459376937,
+          "custom_conversion_goal.name": "NT · Konfigurator · Online-Kauf",
+          "custom_conversion_goal.status": "ENABLED",
+          "custom_conversion_goal.conversion_actions": [
+            "customers/4396424947/conversionActions/761935343"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "campaigns",
+      "rows": [
+        {
+          "conversion_goal_campaign_config.campaign": "customers/4396424947/campaigns/24337811446",
+          "conversion_goal_campaign_config.goal_config_level": "CAMPAIGN",
+          "conversion_goal_campaign_config.custom_conversion_goal": "customers/4396424947/customConversionGoals/6459376937"
+        },
+        {
+          "conversion_goal_campaign_config.campaign": "customers/4396424947/campaigns/24339083713",
+          "conversion_goal_campaign_config.goal_config_level": "CAMPAIGN",
+          "conversion_goal_campaign_config.custom_conversion_goal": "customers/4396424947/customConversionGoals/6459376937"
+        }
+      ]
+    },
+    {
+      "name": "native",
+      "rows": [
+        {
+          "conversion_action.resource_name": "customers/4396424947/conversionActions/761935343",
+          "conversion_action.name": "Google Shopping App Purchase",
+          "conversion_action.primary_for_goal": false,
+          "conversion_action.type": "WEBPAGE",
+          "conversion_action.status": "ENABLED"
+        }
+      ]
+    }
+  ],
+  "standardCampaignGoals": [
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~DEFAULT~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "DEFAULT",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~PURCHASE~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "PURCHASE",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~PAGE_VIEW~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "PAGE_VIEW",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~PAGE_VIEW~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "PAGE_VIEW",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~DOWNLOAD~APP",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "DOWNLOAD",
+      "campaign_conversion_goal.origin": "APP",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~ADD_TO_CART~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "ADD_TO_CART",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~BEGIN_CHECKOUT~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "BEGIN_CHECKOUT",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~PHONE_CALL_LEAD~CALL_FROM_ADS",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "PHONE_CALL_LEAD",
+      "campaign_conversion_goal.origin": "CALL_FROM_ADS",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~SUBMIT_LEAD_FORM~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "SUBMIT_LEAD_FORM",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~SUBMIT_LEAD_FORM~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "SUBMIT_LEAD_FORM",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~GET_DIRECTIONS~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "GET_DIRECTIONS",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~CONTACT~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "CONTACT",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~CONTACT~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "CONTACT",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~ENGAGEMENT~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "ENGAGEMENT",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~QUALIFIED_LEAD~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "QUALIFIED_LEAD",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24337811446~UNKNOWN~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24337811446",
+      "campaign_conversion_goal.category": "UNKNOWN",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~DEFAULT~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "DEFAULT",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~PURCHASE~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "PURCHASE",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~PAGE_VIEW~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "PAGE_VIEW",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~PAGE_VIEW~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "PAGE_VIEW",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~DOWNLOAD~APP",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "DOWNLOAD",
+      "campaign_conversion_goal.origin": "APP",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~ADD_TO_CART~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "ADD_TO_CART",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~BEGIN_CHECKOUT~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "BEGIN_CHECKOUT",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~PHONE_CALL_LEAD~CALL_FROM_ADS",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "PHONE_CALL_LEAD",
+      "campaign_conversion_goal.origin": "CALL_FROM_ADS",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~SUBMIT_LEAD_FORM~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "SUBMIT_LEAD_FORM",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~SUBMIT_LEAD_FORM~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "SUBMIT_LEAD_FORM",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~GET_DIRECTIONS~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "GET_DIRECTIONS",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~CONTACT~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "CONTACT",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~CONTACT~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "CONTACT",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~ENGAGEMENT~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "ENGAGEMENT",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~QUALIFIED_LEAD~WEBSITE",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "QUALIFIED_LEAD",
+      "campaign_conversion_goal.origin": "WEBSITE",
+      "campaign_conversion_goal.biddable": false
+    },
+    {
+      "campaign_conversion_goal.resource_name": "customers/4396424947/campaignConversionGoals/24339083713~UNKNOWN~GOOGLE_HOSTED",
+      "campaign_conversion_goal.campaign": "customers/4396424947/campaigns/24339083713",
+      "campaign_conversion_goal.category": "UNKNOWN",
+      "campaign_conversion_goal.origin": "GOOGLE_HOSTED",
+      "campaign_conversion_goal.biddable": false
+    }
+  ]
+}

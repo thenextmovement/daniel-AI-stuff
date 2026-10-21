@@ -196,6 +196,35 @@ function attributedCheckoutUrl(value,attribution){
   return url.href;
 }
 
+// Persist only the actual consented Google identities; never parse private
+// cookie formats, manufacture a client ID, or derive one from contact data.
+export async function readCheckoutMeasurement(browser,attribution={}){
+  if(browser?.location?.hostname!=='anfrage.neontrip.de')return undefined;
+  const consent=cookiebotVisitorConsent(browser.Cookiebot);
+  const result={version:1};
+  if(consent?.marketing===true){
+    for(const key of GOOGLE_CLICK_KEYS){
+      const value=attributionValue(key,attribution[key]);
+      if(value&&value.length>=25&&!/^(test|diagnostic-|codex_)/i.test(value)){result[key]=value;break;}
+    }
+  }
+  if(consent?.analytics===true&&typeof browser.gtag==='function'){
+    const get=field=>new Promise(resolve=>{
+      let settled=false;
+      const finish=value=>{if(settled)return;settled=true;clearTimeout(timer);resolve(value);};
+      const timer=setTimeout(()=>finish(undefined),250);
+      try{browser.gtag('get','G-NEEVFC08VX',field,finish);}catch{finish(undefined);}
+    });
+    const [client,session]=await Promise.all([get('client_id'),get('session_id')]);
+    if(typeof client==='string'&&/^[0-9]{1,20}\.[0-9]{1,20}$/.test(client))result.client_id=client;
+    if(/^[1-9][0-9]{0,19}$/.test(String(session||'')))result.session_id=String(session);
+  }
+  const current=cookiebotVisitorConsent(browser.Cookiebot);
+  if(current?.analytics!==true){delete result.client_id;delete result.session_id;}
+  if(current?.marketing!==true)for(const key of GOOGLE_CLICK_KEYS)delete result[key];
+  return result;
+}
+
 // Copy only the existing backend contract. Room photos, camera state, SVG
 // previews, inactive uploads and browser price/approval claims never leave here.
 export function designPayloadItems(cartItems){
@@ -239,7 +268,16 @@ export function requiredCheckoutAssets(payload){
   return [...refs].map(([id,kind])=>({id,kind}));
 }
 
-export function createCheckoutClient({readSession,saveSession,readFile,readVisitorConsent=()=>undefined,readAttribution=()=>({}),fetcher=(...args)=>fetch(...args),cryptoApi=globalThis.crypto,timeoutMs=60_000,apiBaseUrl=''}){
+export function createCheckoutClient({readSession,saveSession,readFile,readVisitorConsent=()=>undefined,readAttribution=()=>({}),readMeasurement=()=>undefined,fetcher=(...args)=>fetch(...args),cryptoApi=globalThis.crypto,timeoutMs=60_000,apiBaseUrl=''}){
+  let measurementCheckoutId=null;
+  async function revokeMeasurement(){
+    if(!measurementCheckoutId)return;
+    try{
+      const token=await session();
+      await request('/api/public/configurator/checkout',JSON.stringify({action:'revoke_measurement',checkoutId:measurementCheckoutId}),
+        {'Content-Type':'application/json','X-Neontrip-Cart-Token':token});
+    }catch{/* No cart retry or purchase side effect on privacy delivery failure. */}
+  }
   if(apiBaseUrl!==''&&apiBaseUrl!=='https://angebote.neontrip.de')throw new CheckoutClientError('ORIGIN_NOT_ALLOWED');
   let sessionPromise=null,pending=null;
   const uploads=new Map();
@@ -303,6 +341,7 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
       // stop the handoff, so Shopify never receives a stale privacy choice.
       let attribution={};
       if(visitorConsent?.marketing===true){try{attribution=await readAttribution();}catch{}}
+      try{const measurement=await readMeasurement(attribution);if(measurement?.version===1)payload.measurement=measurement;}catch{}
       if(consentKey(readVisitorConsent())!==sentConsentKey)throw new CheckoutClientError('CONSENT_CHANGED');
       if(visitorConsent!==undefined)payload.visitorConsent={...visitorConsent};
       const body=JSON.stringify(payload);
@@ -315,6 +354,11 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
         if(consentKey(readVisitorConsent())!==sentConsentKey)throw new CheckoutClientError('CONSENT_CHANGED');
         response=await request('/api/public/configurator/checkout',body,headers);
         const {status,result}=response;
+        if(payload.measurement&&HEX64.test(result?.id))measurementCheckoutId=result.id;
+        if(consentKey(readVisitorConsent())!==sentConsentKey){
+          await revokeMeasurement();
+          throw new CheckoutClientError('CONSENT_CHANGED');
+        }
         if(preparingId&&result?.id!==preparingId)throw new CheckoutClientError('INVALID_RESPONSE');
         if(status!==202||result?.status!=='READY')break;
         // READY confirms that no cartCreate was sent. Never repeat UNKNOWN,
@@ -355,5 +399,5 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
     for(const ref of refs)payload.assetRefs.push(await upload(ref,token));
     return {payload,token};
   }
-  return {prepare,prepareDesignAssets};
+  return {prepare,prepareDesignAssets,revokeMeasurement};
 }

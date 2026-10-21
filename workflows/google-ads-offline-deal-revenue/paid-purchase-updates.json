@@ -1,0 +1,145 @@
+{
+  "business": "NEONTRIP",
+  "status": "local_candidate_not_applied",
+  "expected": [
+    {
+      "id": "vCDQuqaWOALmMd56",
+      "activeVersionId": "0247c805-de82-4d16-b4e2-68ec8018992d"
+    },
+    {
+      "id": "1EjFCTTp84otDKgG",
+      "activeVersionId": "6fd2e79e-cef0-4e2b-a875-70fbc0f551dc"
+    }
+  ],
+  "updates": [
+    {
+      "id": "vCDQuqaWOALmMd56",
+      "operations": [
+        {
+          "type": "updateNode",
+          "nodeName": "SB: Paid Deal Candidates",
+          "updates": {
+            "parameters.url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/gads_paid_deal_export_candidates_v3"
+          }
+        },
+        {
+          "type": "updateNode",
+          "nodeName": "Filter & Prepare Rows",
+          "updates": {
+            "parameters.jsCode": "const inputItems = $input.all();\nconst candidates = Array.isArray(inputItems[0]?.json)\n  ? inputItems[0].json\n  : inputItems.map((item) => item.json);\nconst checkedAt = new Date().toISOString();\n\nreturn candidates.map((row) => {\n  const orderNumber = String(row.shopify_order_number || '').trim();\n  const email = String(row.email || '').toLowerCase().trim();\n  const requestId = String(row.request_id || '').trim();\n  const conversionValue = Number(row.conversion_value);\n  const conversionTime = new Date(row.conversion_time);\n\n  const configurator = row.request_resolution_source === 'configurator_checkout';\n  const businessKey = String(row.paid_business_key || '');\n  if (!/^(?:shopify:[0-9]+|acceptance:[A-Za-z0-9_-]+)$/.test(businessKey)) throw new Error('Paid business identity missing');\n  if (!orderNumber || (!configurator && (!email || !requestId))) {\n    throw new Error('Paid Deal candidate is missing its order, email, or resolved request contract');\n  }\n  if (!Number.isFinite(conversionValue) || conversionValue <= 0) {\n    throw new Error('Paid Deal candidate has no positive canonical net value');\n  }\n  if (Number.isNaN(conversionTime.getTime())) {\n    throw new Error('Paid Deal candidate has no valid canonical conversion time');\n  }\n\n  return {\n    json: {\n      shopify_order_number: orderNumber,\n      email: configurator ? null : email,\n      paid_business_key: businessKey,\n      gclid: row.gclid || null,\n      conversion_name: 'Offline: Deal gewonnen',\n      conversion_value: Math.round((conversionValue + Number.EPSILON) * 100) / 100,\n      conversion_time: conversionTime.toISOString(),\n      request_id: configurator ? null : requestId,\n      uploaded_to_gads: false,\n      deal_value_source: row.value_source,\n      deal_time_source: row.time_source,\n      deal_request_resolution_source: row.request_resolution_source,\n      deal_financial_checked_at: checkedAt\n    }\n  };\n});"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1EjFCTTp84otDKgG",
+      "operations": [
+        {
+          "type": "updateNode",
+          "nodeName": "SB: Pending Conversions",
+          "updates": {
+            "parameters.url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_pending_gads_conversions_v3"
+          }
+        },
+        {
+          "type": "updateNode",
+          "nodeName": "Build Upload Payload",
+          "updates": {
+            "parameters.jsCode": "const config = $('Config').first().json;\nconst inputItems = $input.all();\nconst conversions = Array.isArray(inputItems[0]?.json)\n  ? inputItems[0].json\n  : inputItems.map((item) => item.json);\n\nif (!Array.isArray(conversions) || conversions.length === 0) {\n  return [{ json: { skip: true, reason: 'No conversions', attempts: [], localAttempts: [], localOnly: false } }];\n}\n\nconst invalidClickIds = new Set(['', 'test', 'undefined', 'null']);\nconst invalidPrefixes = ['test', 'diagnostic-', 'codex_'];\nconst validClickId = (value) => {\n  const text = String(value || '').trim();\n  const normalized = text.toLowerCase();\n  return text.length >= 25 && !invalidClickIds.has(normalized) && !invalidPrefixes.some((prefix) => normalized.startsWith(prefix));\n};\nconst attemptedAt = new Date().toISOString();\nconst rows = [];\nconst localAttempts = [];\nconst clickConversions = [];\n\nfor (let candidateIndex = 0; candidateIndex < conversions.length; candidateIndex += 1) {\n  const conversion = conversions[candidateIndex];\n  const sourceId = String(conversion.conversion_id || '').trim();\n  const claimToken = String(conversion.claim_token || '').trim();\n  const conversionTimeRaw = String(conversion.conversion_time || '').trim();\n  const conversionTime = new Date(conversionTimeRaw);\n  const actionName = conversion.conversion_name === 'Offline: Angebot versendet'\n    ? 'Angebot versendet'\n    : conversion.conversion_name === 'Offline: Deal gewonnen'\n      ? 'Deal gewonnen'\n      : null;\n  const conversionAction = actionName ? config.conversionActions[actionName] : null;\n\n  if (!sourceId || !claimToken || !conversionAction || Number.isNaN(conversionTime.getTime())) {\n    throw new Error('Claimed conversion violates the upload contract; no provider call was made');\n  }\n\n  const conversionTimeIso = conversionTime.toISOString();\n  const orderId = sourceId;\n  const gclid = validClickId(conversion.gclid) ? String(conversion.gclid).trim() : null;\n  const gbraid = validClickId(conversion.gbraid) ? String(conversion.gbraid).trim() : null;\n  const wbraid = validClickId(conversion.wbraid) ? String(conversion.wbraid).trim() : null;\n  const hashedEmail = /^[a-f0-9]{64}$/.test(String(conversion.hashed_email || ''))\n    && conversion.consent_ad_user_data === 'granted'\n    ? String(conversion.hashed_email)\n    : null;\n  const rawValue = Number(conversion.conversion_value ?? 0);\n  const conversionValue = Number.isFinite(rawValue) ? rawValue : 0;\n\n  if (!gclid && !gbraid && !wbraid && !hashedEmail) {\n    localAttempts.push({\n      attemptKey: [$workflow.id, $execution.id, 'conversion', sourceId, 'LOCAL_NO_CLICK_ID'].join(':'),\n      sourceType: 'conversion',\n      sourceId,\n      claimToken,\n      conversionAction,\n      conversionName: conversion.conversion_name,\n      conversionValue,\n      conversionTime: conversionTimeRaw,\n      orderId,\n      payloadIndex: candidateIndex,\n      jobId: null,\n      attemptedAt,\n      status: 'permanent_failure',\n      errorCode: 'LOCAL_NO_CLICK_ID',\n      errorMessage: 'No valid GCLID, GBRAID, WBRAID, or consented hashed email was available; Google Ads was not called.',\n      retryAfter: null\n    });\n    continue;\n  }\n\n  const payloadIndex = clickConversions.length;\n  const clickConversion = {\n    conversionAction,\n    conversionDateTime: conversionTimeIso.replace('T', ' ').replace('Z', '+00:00'),\n    conversionValue,\n    currencyCode: 'EUR',\n    orderId\n  };\n  if (gclid) clickConversion.gclid = gclid;\n  if (gbraid) clickConversion.gbraid = gbraid;\n  if (wbraid) clickConversion.wbraid = wbraid;\n  if (hashedEmail) {\n    clickConversion.userIdentifiers = [{\n      hashedEmail,\n      userIdentifierSource: 'FIRST_PARTY'\n    }];\n    clickConversion.consent = { adUserData: 'GRANTED' };\n    if (conversion.consent_ad_personalization === 'granted') {\n      clickConversion.consent.adPersonalization = 'GRANTED';\n    } else if (conversion.consent_ad_personalization === 'denied') {\n      clickConversion.consent.adPersonalization = 'DENIED';\n    }\n  }\n  // Carry stored consent for click-only purchases as well as enhanced matching.\n  if (['granted', 'denied'].includes(conversion.consent_ad_user_data)) {\n    clickConversion.consent = { ...(clickConversion.consent || {}), adUserData: conversion.consent_ad_user_data.toUpperCase() };\n    if (['granted', 'denied'].includes(conversion.consent_ad_personalization)) {\n      clickConversion.consent.adPersonalization = conversion.consent_ad_personalization.toUpperCase();\n    }\n  }\n  clickConversions.push(clickConversion);\n\n  rows.push({\n    attemptKey: [$workflow.id, $execution.id, 'conversion', sourceId].join(':'),\n    sourceType: 'conversion',\n    sourceId,\n    claimToken,\n    conversionAction,\n    conversionName: conversion.conversion_name,\n    conversionValue,\n    conversionTime: conversionTimeRaw,\n    orderId,\n    payloadIndex,\n    attemptedAt\n  });\n}\n\nif (clickConversions.length === 0) {\n  return [{\n    json: {\n      skip: true,\n      reason: localAttempts.length > 0 ? 'No provider-uploadable conversions; local terminal receipts only' : 'No valid conversions',\n      attempts: localAttempts,\n      localAttempts,\n      localOnly: localAttempts.length > 0\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    skip: false,\n    conversionCount: clickConversions.length,\n    withGclid: clickConversions.filter((row) => Boolean(row.gclid)).length,\n    withBraid: clickConversions.filter((row) => Boolean(row.gbraid || row.wbraid)).length,\n    withEmail: clickConversions.filter((row) => Array.isArray(row.userIdentifiers)).length,\n    conversionIds: rows.map((row) => row.sourceId),\n    rows,\n    attempts: localAttempts,\n    localAttempts,\n    localOnly: false,\n    payload: { conversions: clickConversions, partialFailure: true }\n  }\n}];"
+          }
+        }
+      ]
+    }
+  ],
+  "rollback": [
+    {
+      "id": "vCDQuqaWOALmMd56",
+      "operations": [
+        {
+          "type": "updateNode",
+          "nodeName": "SB: Paid Deal Candidates",
+          "updates": {
+            "parameters": {
+              "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/gads_paid_deal_export_candidates_v2",
+              "authentication": "predefinedCredentialType",
+              "nodeCredentialType": "supabaseApi",
+              "options": {
+                "timeout": 30000
+              },
+              "method": "POST",
+              "sendHeaders": true,
+              "headerParameters": {
+                "parameters": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "sendBody": true,
+              "specifyBody": "json",
+              "jsonBody": "={\"p_lookback_days\":90,\"p_limit\":100}"
+            }
+          }
+        },
+        {
+          "type": "updateNode",
+          "nodeName": "Filter & Prepare Rows",
+          "updates": {
+            "parameters": {
+              "jsCode": "const inputItems = $input.all();\nconst candidates = Array.isArray(inputItems[0]?.json)\n  ? inputItems[0].json\n  : inputItems.map((item) => item.json);\nconst checkedAt = new Date().toISOString();\n\nreturn candidates.map((row) => {\n  const orderNumber = String(row.shopify_order_number || '').trim();\n  const email = String(row.email || '').toLowerCase().trim();\n  const requestId = String(row.request_id || '').trim();\n  const conversionValue = Number(row.conversion_value);\n  const conversionTime = new Date(row.conversion_time);\n\n  if (!orderNumber || !email || !requestId) {\n    throw new Error('Paid Deal candidate is missing its order, email, or resolved request contract');\n  }\n  if (!Number.isFinite(conversionValue) || conversionValue <= 0) {\n    throw new Error('Paid Deal candidate has no positive canonical net value');\n  }\n  if (Number.isNaN(conversionTime.getTime())) {\n    throw new Error('Paid Deal candidate has no valid canonical conversion time');\n  }\n\n  return {\n    json: {\n      shopify_order_number: orderNumber,\n      email,\n      gclid: row.gclid || null,\n      conversion_name: 'Offline: Deal gewonnen',\n      conversion_value: Math.round((conversionValue + Number.EPSILON) * 100) / 100,\n      conversion_time: conversionTime.toISOString(),\n      request_id: requestId,\n      uploaded_to_gads: false,\n      deal_value_source: row.value_source,\n      deal_time_source: row.time_source,\n      deal_request_resolution_source: row.request_resolution_source,\n      deal_financial_checked_at: checkedAt\n    }\n  };\n});"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "1EjFCTTp84otDKgG",
+      "operations": [
+        {
+          "type": "updateNode",
+          "nodeName": "Build Upload Payload",
+          "updates": {
+            "parameters": {
+              "jsCode": "const config = $('Config').first().json;\nconst inputItems = $input.all();\nconst conversions = Array.isArray(inputItems[0]?.json)\n  ? inputItems[0].json\n  : inputItems.map((item) => item.json);\n\nif (!Array.isArray(conversions) || conversions.length === 0) {\n  return [{ json: { skip: true, reason: 'No conversions', attempts: [], localAttempts: [], localOnly: false } }];\n}\n\nconst invalidClickIds = new Set(['', 'test', 'undefined', 'null']);\nconst invalidPrefixes = ['test', 'diagnostic-', 'codex_'];\nconst validClickId = (value) => {\n  const text = String(value || '').trim();\n  const normalized = text.toLowerCase();\n  return text.length >= 25 && !invalidClickIds.has(normalized) && !invalidPrefixes.some((prefix) => normalized.startsWith(prefix));\n};\nconst attemptedAt = new Date().toISOString();\nconst rows = [];\nconst localAttempts = [];\nconst clickConversions = [];\n\nfor (let candidateIndex = 0; candidateIndex < conversions.length; candidateIndex += 1) {\n  const conversion = conversions[candidateIndex];\n  const sourceId = String(conversion.conversion_id || '').trim();\n  const claimToken = String(conversion.claim_token || '').trim();\n  const conversionTimeRaw = String(conversion.conversion_time || '').trim();\n  const conversionTime = new Date(conversionTimeRaw);\n  const actionName = conversion.conversion_name === 'Offline: Angebot versendet'\n    ? 'Angebot versendet'\n    : conversion.conversion_name === 'Offline: Deal gewonnen'\n      ? 'Deal gewonnen'\n      : null;\n  const conversionAction = actionName ? config.conversionActions[actionName] : null;\n\n  if (!sourceId || !claimToken || !conversionAction || Number.isNaN(conversionTime.getTime())) {\n    throw new Error('Claimed conversion violates the upload contract; no provider call was made');\n  }\n\n  const conversionTimeIso = conversionTime.toISOString();\n  const orderId = sourceId;\n  const gclid = validClickId(conversion.gclid) ? String(conversion.gclid).trim() : null;\n  const gbraid = validClickId(conversion.gbraid) ? String(conversion.gbraid).trim() : null;\n  const wbraid = validClickId(conversion.wbraid) ? String(conversion.wbraid).trim() : null;\n  const hashedEmail = /^[a-f0-9]{64}$/.test(String(conversion.hashed_email || ''))\n    && conversion.consent_ad_user_data === 'granted'\n    ? String(conversion.hashed_email)\n    : null;\n  const rawValue = Number(conversion.conversion_value ?? 0);\n  const conversionValue = Number.isFinite(rawValue) ? rawValue : 0;\n\n  if (!gclid && !gbraid && !wbraid && !hashedEmail) {\n    localAttempts.push({\n      attemptKey: [$workflow.id, $execution.id, 'conversion', sourceId, 'LOCAL_NO_CLICK_ID'].join(':'),\n      sourceType: 'conversion',\n      sourceId,\n      claimToken,\n      conversionAction,\n      conversionName: conversion.conversion_name,\n      conversionValue,\n      conversionTime: conversionTimeRaw,\n      orderId,\n      payloadIndex: candidateIndex,\n      jobId: null,\n      attemptedAt,\n      status: 'permanent_failure',\n      errorCode: 'LOCAL_NO_CLICK_ID',\n      errorMessage: 'No valid GCLID, GBRAID, WBRAID, or consented hashed email was available; Google Ads was not called.',\n      retryAfter: null\n    });\n    continue;\n  }\n\n  const payloadIndex = clickConversions.length;\n  const clickConversion = {\n    conversionAction,\n    conversionDateTime: conversionTimeIso.replace('T', ' ').replace('Z', '+00:00'),\n    conversionValue,\n    currencyCode: 'EUR',\n    orderId\n  };\n  if (gclid) clickConversion.gclid = gclid;\n  if (gbraid) clickConversion.gbraid = gbraid;\n  if (wbraid) clickConversion.wbraid = wbraid;\n  if (hashedEmail) {\n    clickConversion.userIdentifiers = [{\n      hashedEmail,\n      userIdentifierSource: 'FIRST_PARTY'\n    }];\n    clickConversion.consent = { adUserData: 'GRANTED' };\n    if (conversion.consent_ad_personalization === 'granted') {\n      clickConversion.consent.adPersonalization = 'GRANTED';\n    } else if (conversion.consent_ad_personalization === 'denied') {\n      clickConversion.consent.adPersonalization = 'DENIED';\n    }\n  }\n  clickConversions.push(clickConversion);\n\n  rows.push({\n    attemptKey: [$workflow.id, $execution.id, 'conversion', sourceId].join(':'),\n    sourceType: 'conversion',\n    sourceId,\n    claimToken,\n    conversionAction,\n    conversionName: conversion.conversion_name,\n    conversionValue,\n    conversionTime: conversionTimeRaw,\n    orderId,\n    payloadIndex,\n    attemptedAt\n  });\n}\n\nif (clickConversions.length === 0) {\n  return [{\n    json: {\n      skip: true,\n      reason: localAttempts.length > 0 ? 'No provider-uploadable conversions; local terminal receipts only' : 'No valid conversions',\n      attempts: localAttempts,\n      localAttempts,\n      localOnly: localAttempts.length > 0\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    skip: false,\n    conversionCount: clickConversions.length,\n    withGclid: clickConversions.filter((row) => Boolean(row.gclid)).length,\n    withBraid: clickConversions.filter((row) => Boolean(row.gbraid || row.wbraid)).length,\n    withEmail: clickConversions.filter((row) => Array.isArray(row.userIdentifiers)).length,\n    conversionIds: rows.map((row) => row.sourceId),\n    rows,\n    attempts: localAttempts,\n    localAttempts,\n    localOnly: false,\n    payload: { conversions: clickConversions, partialFailure: true }\n  }\n}];"
+            }
+          }
+        },
+        {
+          "type": "updateNode",
+          "nodeName": "SB: Pending Conversions",
+          "updates": {
+            "parameters": {
+              "method": "POST",
+              "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_pending_gads_conversions_v2",
+              "authentication": "genericCredentialType",
+              "genericAuthType": "httpHeaderAuth",
+              "sendHeaders": true,
+              "headerParameters": {
+                "parameters": [
+                  {
+                    "name": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "sendBody": true,
+              "specifyBody": "json",
+              "jsonBody": "={\"p_limit\":200,\"p_lease_seconds\":900}",
+              "options": {}
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "rollbackConstraints": {
+    "automaticRollbackAllowed": false,
+    "requirements": [
+      "Do not restore claim v2 after configurator ledger rows exist: it cannot enforce their checkout consent.",
+      "Keep v3 guards or explicitly review and hold affected pending rows before any rollback.",
+      "Preserve compatible Offers cart reader and revoke-only endpoint.",
+      "See PAID-MEASUREMENT.md for staged release and recovery."
+    ]
+  }
+}
