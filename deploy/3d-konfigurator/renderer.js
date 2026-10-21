@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=26';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=27';
 const fontCache=new Map();
 const SILVER_REFLECTION_FILL=.8;
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
@@ -144,6 +144,11 @@ function studioEnvironment(renderer,brushed=false){
    }
    const glint=ctx.createLinearGradient(x-22,0,x+22,0);glint.addColorStop(0,'rgba(255,255,255,0)');glint.addColorStop(.4,'rgba(255,255,255,.3)');glint.addColorStop(.5,'rgba(255,255,255,.9)');glint.addColorStop(.6,'rgba(255,255,255,.3)');glint.addColorStop(1,'rgba(255,255,255,0)');ctx.fillStyle=glint;ctx.fillRect(x-22,65,44,365);
   }
+ }
+ if(brushed==='silver'){
+  // Compress only the studio's brightness range, without blurring its
+  // softboxes. Moving glints keep their shape and the surface grain is untouched.
+  ctx.fillStyle='rgba(173,178,184,.38)';ctx.fillRect(0,0,1024,512);
  }
  const texture=new THREE.CanvasTexture(canvas);texture.mapping=THREE.EquirectangularReflectionMapping;texture.colorSpace=THREE.SRGBColorSpace;
  const pmrem=new THREE.PMREMGenerator(renderer),target=pmrem.fromEquirectangular(texture);texture.dispose();pmrem.dispose();return target;

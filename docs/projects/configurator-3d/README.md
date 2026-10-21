@@ -510,3 +510,12 @@ Geprüft im direkten Vergleich zum vorherigen Renderer bei gedrehten Ansichten,
 zuletzt bei −30° und 60°, sowie normale Perspektive und Nacht im Konfigurator.
 Dort keine erfassten Browserfehler oder Warnungen. Beide betroffenen Material-/
 UV-Tests, Syntax- und Diffprüfung bestehen. Nur lokale Vorschau.
+
+Die Silber-Reflexionsumgebung gleicht helle und dunkle Bereiche nun mit einer
+neutralen Füllung an. Das reduziert den Helligkeitsunterschied zwischen den
+Enden des Schriftzugs, ohne die Lichtflächen weichzuzeichnen. Materialrauheit,
+Glanzschicht, Bürsttexturen und deren Maßstab bleiben unverändert. Geprüft im
+direkten Vorher-/Nachher-Vergleich in normaler Perspektive, bei −30° und 60°
+sowie in der Nachtansicht. Keine erfassten Browserfehler oder Warnungen im
+Konfigurator. Beide betroffenen Material-/UV-Tests, Syntax- und Diffprüfung
+bestehen. Nur lokale Vorschau.
