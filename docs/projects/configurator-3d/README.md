@@ -16,7 +16,9 @@ Lichtfarbe, Edelstahloberflächen, freie Acryl-/Lack-/Schienen-/Plattenfarben, W
 Buchstabenabstand, echte WebGL-Geometrie mit Tiefe und Schatten, Konturlicht,
 Tag/Nacht, drei Wandfarben, Perspektiven und manuelle Drehung/Zoom, PNG-Export,
 Entwurfswiederherstellung sowie separater lokaler 3D-Warenkorb mit Bearbeiten,
-Mengen, Entfernen und weiteren Entwürfen. Kein Logo-Upload in diesem Umfang.
+Mengen, Entfernen und weiteren Entwürfen. Vier Schritte: Look, Farben, Größe und
+Prüfen. Die Zusammenfassung erlaubt direkte Rücksprünge zum jeweiligen Bereich.
+Kein Logo-Upload in diesem Umfang.
 
 ## Ablage und lokale Vorschau
 
@@ -549,3 +551,44 @@ Vorher-/Nachher-Vergleich bei −30° und 60°: feine Bürstung, Goldton und bew
 Metallreflexe bleiben erkennbar. Keine erfassten Browserfehler oder Warnungen
 im Konfigurator. Beide betroffenen Material-/UV-Tests, Syntax- und Diffprüfung
 bestehen. Nur lokale Vorschau.
+
+
+## Kundenführung und responsive Bedienung
+
+Der Ablauf umfasst vier sichtbare Schritte: Look (Lichtart, Text, Schrift),
+Farben (abhängig von Front-/Rücklicht), Größe (Maße vor Montage) und Prüfen.
+Der bisherige Prüf-Dialog ist durch eine strukturierte Zusammenfassung im
+Editor ersetzt. Jeder Bereich hat einen direkten „Ändern“-Einstieg und führt
+mit „Änderungen prüfen“ zurück. Buchstabenabstand steht unter Feinabstimmung.
+Ungültige Maße, fehlender Text und offene relevante RAL-Eingaben sperren die
+Prüfung. Eine Suche in einer ausgeblendeten Lackauswahl blockiert andere
+Licht-/Montagevarianten nicht mehr.
+
+Unter 980 px bleiben eine kompakte, einklappbare 3D-Vorschau, die Schrittnavigation
+und die untere Aktionsleiste erreichbar. Tatsächliche Elementhöhen bestimmen
+die Abstände; Safe-Area-Padding und größere Touch-Flächen sind berücksichtigt.
+Auf Desktop und iPad quer stehen Vorschau und Formular nebeneinander. RAL-Gruppen
+lassen sich auf schmalen Geräten horizontal durchsehen. Die Kamera berücksichtigt
+alle Ecken des gedrehten Schilds und freie Flächen für die Vorschau-Schalter,
+statt breite, flache Vorschauen an den Rändern abzuschneiden.
+
+Trust-Icons benennen belegbare Eigenschaften: individuelle Gestaltung nach Maß,
+Live-Vorschau, Prüfung der eigenen Auswahl und persönliche telefonische Beratung.
+Es wurden keine Zahlungsarten, Zertifikate, Bewertungen oder Lieferzusagen erfunden.
+Preisplatzhalter und deaktivierter Checkout bleiben erhalten. Einstieg, Aktionsleiste,
+Zusammenfassung und Warenkorb unterscheiden Entwurfsspeicherung und Bestellung.
+
+Der Warenkorb bietet beschriftete Minus-/Plus-/Zahleneingaben für 1–99 Stück,
+zeigt den vorläufigen Schienen-Farbaufpreis passend zur Menge und behält Mengen
+beim Neuladen und Bearbeiten. Ein bearbeiteter Entwurf wird ersetzt, nicht dupliziert.
+Der leere Warenkorb zeigt keine scheinbaren Bestellsummen. Der Schließen-Button
+bleibt beim Scrollen im Warenkorb erreichbar.
+
+Verifikation: 30 Modell-/Geometrie-/Framingtests bestanden; Syntax- und Diffprüfung.
+Browser-Viewports 320×740, 390×844, 768×1024, 1024×768, 1440×1000 und 1920×1080:
+kein horizontaler Überlauf in den geprüften Ansichten. Geprüft wurden Navigation,
+direktes Ändern und Zurückkehren, Größenvalidierung (20 cm gesperrt, 120 cm gültig),
+Front/Rück, Schiene/Platte mit passenden Angaben, ausgeblendete RAL-Suche,
+Preview-Einklappen, Warenkorb-Speicherung, Menge 2 nach Reload, Bearbeitung ohne
+Duplikat und Entfernen des Testentwurfs. Kein erfasster Browserfehler oder Warnung.
+Kein physischer iPad-/Safari-Test und kein echter Kauf; nur lokale Vorschau.

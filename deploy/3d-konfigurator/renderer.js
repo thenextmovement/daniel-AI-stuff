@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=30';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=32';
 const fontCache=new Map();
 const SILVER_REFLECTION_FILL=.8;
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
@@ -236,6 +236,18 @@ function glowTexture(layout,scale,width,height,front,night){
  if(front){ctx.globalAlpha=1;ctx.filter='none';ctx.globalCompositeOperation='destination-out';ctx.drawImage(mask.canvas,0,0);}
  return {texture:canvasTexture(canvas),width:mask.width,height:mask.height};
 }
+export function framingDistance(bounds,target,direction,aspect,fov){
+ // Fit every corner in camera space, including the near side of a rotated
+ // sign. Reserve room for the preview controls in wide, short viewports.
+ const right=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),direction).normalize();
+ const up=new THREE.Vector3().crossVectors(direction,right).normalize(),tan=Math.tan(THREE.MathUtils.degToRad(fov/2));
+ let distance=1;
+ for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
+  const point=new THREE.Vector3(x,y,z).sub(target),near=point.dot(direction);
+  distance=Math.max(distance,near+Math.abs(point.dot(right))/(tan*aspect*.88),near+Math.abs(point.dot(up))/(tan*.66));
+ }
+ return distance;
+}
 export class SignRenderer{
  constructor(host){
   this.host=host;this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#b9ab97');
@@ -258,14 +270,18 @@ export class SignRenderer{
  }
  resize(){const {width,height}=this.host.getBoundingClientRect();if(!width||!height)return;this.renderer.setSize(width,height,false);this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.positionCamera();}
  positionCamera(){
-  const detail=this.closeup&&this.detail,halfFov=THREE.MathUtils.degToRad(this.camera.fov/2);
+  const detail=this.closeup&&this.detail;
   const padding=detail?Math.max(8,detail.height*.18):35;
-  const fitW=((detail?detail.width+this.depth*2:this.width)+padding)/(2*Math.tan(halfFov)*this.camera.aspect),fitH=((detail?detail.height:this.height)+padding)/(2*Math.tan(halfFov));
-  const d=Math.max(fitW,fitH)*1.22/this.zoom;const target=detail?new THREE.Vector3(detail.x,detail.y,this.letterRear+this.depth/2):new THREE.Vector3(0,0,3);
+  const target=detail?new THREE.Vector3(detail.x,detail.y,this.letterRear+this.depth/2):new THREE.Vector3(0,0,3);
+  const direction=new THREE.Vector3(Math.sin(this.angle),Math.sin(this.elevation),Math.cos(this.angle)).normalize();
+  const width=(detail?detail.width+this.depth*2:this.width)+padding,height=(detail?detail.height:this.height)+padding;
+  const center=detail?new THREE.Vector2(detail.x,detail.y):new THREE.Vector2();
+  const bounds=new THREE.Box3(new THREE.Vector3(center.x-width/2,center.y-height/2,0),new THREE.Vector3(center.x+width/2,center.y+height/2,(this.letterRear||3)+(this.depth||5)));
+  const d=framingDistance(bounds,target,direction,this.camera.aspect,this.camera.fov)*1.2/this.zoom;
   // Match depth precision to the framed sign. A fixed 0.1 cm near plane made
   // the acrylic face and its glow fight for the same depth at 400 cm width.
   this.camera.near=Math.max(1,d*.05);this.camera.far=Math.max(3000,d*3);this.camera.updateProjectionMatrix();
-  this.camera.position.set(Math.sin(this.angle)*d,Math.sin(this.elevation)*d,Math.cos(this.angle)*d).add(target);this.camera.lookAt(target);this.render();
+  this.camera.position.copy(direction).multiplyScalar(d).add(target);this.camera.lookAt(target);this.render();
  }
  view(mode){this.closeup=mode==='side'||mode==='mounting';this.zoom=mode==='perspective'?1.2:1;this.angle=mode==='mounting'?1.05:mode==='front'?0:mode==='side'?.7:.68;this.elevation=mode==='mounting'?.08:mode==='front'?0:.18;this.positionCamera();}
  changeZoom(delta){this.zoom=Math.max(.65,Math.min(1.5,this.zoom+delta));this.positionCamera();}

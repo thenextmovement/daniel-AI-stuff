@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,PAINT_PRESETS,PAINT_FIELDS,RAL_COLORS,ralCode,choosePaint,paintDescription,finishDescription,lightColor,materialSpec,paintMaterialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
-import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor,materialFromSpec,brushedUVs} from '../../deploy/3d-konfigurator/renderer.js';
-import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace,Texture} from '../../deploy/3d-konfigurator/vendor/three.js';
+import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor,materialFromSpec,brushedUVs,framingDistance} from '../../deploy/3d-konfigurator/renderer.js';
+import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace,Texture,Box3,PerspectiveCamera} from '../../deploy/3d-konfigurator/vendor/three.js';
 import {searchRal,RAL_GROUPS,ralGroup} from '../../deploy/3d-konfigurator/ral.js';
 import {FontLoader} from '../../deploy/3d-konfigurator/vendor/FontLoader.js';
 const font=new FontLoader().parse(JSON.parse(await readFile(new URL('../../deploy/3d-konfigurator/fonts/modern.json',import.meta.url),'utf8')));
@@ -328,4 +328,15 @@ test('Brushed surfaces use directional physical reflections; UV changes preserve
   geometry.dispose();
  }
  brush.color.dispose();brush.roughness.dispose();environment.dispose();
+});
+
+
+test('Responsive framing contains rotated signs and tall letters clear of preview controls',()=>{
+ for(const aspect of [1,1.65,2.5,3.5])for(const angle of [-1.05,0,.68,1.05])for(const elevation of [-.25,.18,.45])for(const [width,height] of [[400,81],[40,120],[180,95]]){
+  const bounds=new Box3(new Vector3(-width/2,-height/2,0),new Vector3(width/2,height/2,18)),target=new Vector3(0,0,3),direction=new Vector3(Math.sin(angle),Math.sin(elevation),Math.cos(angle)).normalize();
+  const d=framingDistance(bounds,target,direction,aspect,35),camera=new PerspectiveCamera(35,aspect,1,3000);camera.position.copy(direction).multiplyScalar(d).add(target);camera.lookAt(target);camera.updateMatrixWorld();
+  for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
+   const projected=new Vector3(x,y,z).project(camera);assert.ok(Math.abs(projected.x)<=.880001,'Letter remains inside horizontal margin');assert.ok(Math.abs(projected.y)<=.660001,'Letter stays clear of top/bottom controls');assert.ok(projected.z>-1&&projected.z<1);
+  }
+ }
 });
