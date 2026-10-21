@@ -1,4 +1,4 @@
-import {RAL_COLORS,ralCode} from './ral.js?v=27';
+import {RAL_COLORS,ralCode} from './ral.js?v=28';
 export {RAL_COLORS,ralCode};
 export const DEFAULT = Object.freeze({version:3,text:'ATLAS',font:'modern',lighting:'back',mount:'individual',width:120,depth:5,color:'#fff1d6',acrylic:'#ffffff',backFinish:'brushed-gold',sideColor:'#252525',sideRal:'',bodyRal:'',railRal:'',plateRal:'',body:'#252525',plate:'#d8d0c4',railCustomColor:false,railColor:'#252525',wall:'warm',lightOn:true,night:false,spacing:5});
 export const FONTS={

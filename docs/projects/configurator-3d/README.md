@@ -519,3 +519,13 @@ direkten Vorher-/Nachher-Vergleich in normaler Perspektive, bei −30° und 60°
 sowie in der Nachtansicht. Keine erfassten Browserfehler oder Warnungen im
 Konfigurator. Beide betroffenen Material-/UV-Tests, Syntax- und Diffprüfung
 bestehen. Nur lokale Vorschau.
+
+Für Silber ist die feine Bürstung in normaler Perspektive deutlicher: eine
+separate Farbtextur erhöht den Kontrast der vorhandenen Schliffspuren um ihren
+bisherigen Mittelwert. Linienbreite, Verlauf, Texturmaßstab, Rauheitsmuster und
+Normalenwirkung bleiben gleich; die abgestimmte Reflexionsumgebung und der
+Metallglanz werden nicht verändert. Gold verwendet weiterhin die bisherige
+Textur. Geprüft in normaler Ansicht, Detail und Nacht sowie im direkten Vergleich
+bei −30° und 60°. Keine erfassten Browserfehler oder Warnungen im Konfigurator.
+Beide betroffenen Material-/UV-Tests, Syntax- und Diffprüfung bestehen.
+Nur lokale Vorschau.

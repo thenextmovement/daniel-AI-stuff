@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=27';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=28';
 const fontCache=new Map();
 const SILVER_REFLECTION_FILL=.8;
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
@@ -93,7 +93,7 @@ function wallTexture(){
  for(let i=0;i<image.data.length;i+=4){seed=(1664525*seed+1013904223)>>>0;const n=220+(seed%25);image.data.set([n,n,n,255],i);}ctx.putImageData(image,0,0);
  const tex=new THREE.CanvasTexture(canvas);tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(30,30);tex.colorSpace=THREE.SRGBColorSpace;return tex;
 }
-function brushedTexture(){
+function brushedTexture(silver=false){
  const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const ctx=canvas.getContext('2d'),image=ctx.createImageData(512,512),roughness=ctx.createImageData(512,512);let seed=73;
  const random=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
  // Fine, broken horizontal strokes with enough contrast to survive the
@@ -102,7 +102,9 @@ function brushedTexture(){
  const rows=Array.from({length:512},()=>({base:random(),strokes:Array.from({length:17},()=>random())}));
  for(let y=0;y<512;y++)for(let x=0;x<512;x++){
   const cell=x/32,row=rows[y],grain=row.base*.3+(row.strokes[Math.floor(cell)]*(1-cell%1)+row.strokes[Math.floor(cell)+1]*(cell%1))*.7;
-  const shade=Math.round(222+grain*33);
+  // More contrast around the same average for silver, at the same one-texel
+  // stroke width. Roughness and microrelief stay identical to preserve glints.
+  const shade=Math.round(silver?238.5+(grain-.5)*56:222+grain*33);
   image.data.set([shade,shade,shade,255],(y*512+x)*4);
   const rough=Math.round(188+grain*67);roughness.data.set([rough,rough,rough,255],(y*512+x)*4);
  }
@@ -223,7 +225,7 @@ export class SignRenderer{
   this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true,powerPreference:'low-power'});
   this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.35;
   host.append(this.renderer.domElement);
-  this.brush=brushedTexture();for(const texture of Object.values(this.brush))texture.anisotropy=Math.min(8,this.renderer.capabilities.getMaxAnisotropy());this.environment=studioEnvironment(this.renderer);this.brushedEnvironment=studioEnvironment(this.renderer,true);this.silverEnvironment=studioEnvironment(this.renderer,'silver');this.scene.environment=this.environment.texture;
+  this.brush=brushedTexture();this.silverBrush=brushedTexture(true);for(const texture of [...Object.values(this.brush),...Object.values(this.silverBrush)])texture.anisotropy=Math.min(8,this.renderer.capabilities.getMaxAnisotropy());this.environment=studioEnvironment(this.renderer);this.brushedEnvironment=studioEnvironment(this.renderer,true);this.silverEnvironment=studioEnvironment(this.renderer,'silver');this.scene.environment=this.environment.texture;
   this.ambient=new THREE.HemisphereLight('#fff4e2','#54505a',2);this.scene.add(this.ambient);
   this.sun=new THREE.DirectionalLight('#fff3dc',3.2);this.sun.position.set(-100,190,200);this.sun.castShadow=true;this.sun.shadow.mapSize.set(2048,2048);this.sun.shadow.camera.left=-300;this.sun.shadow.camera.right=300;this.sun.shadow.camera.top=250;this.sun.shadow.camera.bottom=-250;this.sun.shadow.camera.near=1;this.sun.shadow.camera.far=900;this.sun.shadow.normalBias=.3;this.sun.shadow.bias=-.0003;this.scene.add(this.sun);
   this.fill=new THREE.DirectionalLight('#c4d6ff',1.2);this.fill.position.set(150,10,80);this.scene.add(this.fill);
@@ -253,7 +255,7 @@ export class SignRenderer{
  async update(s){
   const rev=++this.revision;const font=await loadFont(s.font);if(rev!==this.revision)return null;
   const layout=layoutLetters(font,s.text,s.spacing),scale=s.width/layout.width,width=s.width,height=layout.height*scale;
-  const group=new THREE.Group(),spec=materialSpec(s),brushTile=Math.max(20,s.width*.4),makeMaterial=spec=>materialFromSpec(spec,this.brush,s.night,(spec.metalTone==='silver'?this.silverEnvironment:this.brushedEnvironment).texture);
+  const group=new THREE.Group(),spec=materialSpec(s),brushTile=Math.max(20,s.width*.4),makeMaterial=spec=>materialFromSpec(spec,spec.metalTone==='silver'?this.silverBrush:this.brush,s.night,(spec.metalTone==='silver'?this.silverEnvironment:this.brushedEnvironment).texture);
   const bodyMaterial=makeMaterial(spec.shell),rearMaterial=s.lighting==='back'?makeMaterial(spec.rear):null;
   // Colour-bounded illumination remains independent of scene exposure.
   const faceMaterial=s.lighting==='front'&&s.lightOn?new THREE.MeshBasicMaterial({color:frontLightColor(s.acrylic),toneMapped:false}):makeMaterial(spec.face);
