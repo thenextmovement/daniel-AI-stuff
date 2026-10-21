@@ -12,7 +12,7 @@ Der Auftraggeber hat am 21.10.2026 ausdrücklich Platzhalter bis dahin gewählt:
 „kommt später nimm platzhalter“. Die Anzeige lautet „— €“ / „Preis folgt“.
 
 Umgesetzt: Text (auch einzelne Buchstaben, bis zwei Zeilen), drei Schriftstile,
-Licht-/Korpusfarbe, Plattenfarbe, Wunschbreite, proportionale Höhe, Wunschtiefe,
+Lichtfarbe, Edelstahloberflächen, freie Acryl-/Lack-/Schienen-/Plattenfarben, Wunschbreite, proportionale Höhe, Wunschtiefe,
 Buchstabenabstand, echte WebGL-Geometrie mit Tiefe und Schatten, Konturlicht,
 Tag/Nacht, drei Wandfarben, Perspektiven und manuelle Drehung/Zoom, PNG-Export,
 Entwurfswiederherstellung sowie separater lokaler 3D-Warenkorb mit Bearbeiten,
@@ -93,9 +93,10 @@ konkrete Freigabe, Abgleich mit aktuellem Main und `codex-predeploy ops` sowie
     node --check deploy/3d-konfigurator/app.js
     node --check deploy/3d-konfigurator/renderer.js
 
-6 Tests: gespeicherte Daten/Optionen, ungültige Eingaben, echte Schriftkonturen
-inklusive Innenräumen und fehlender Glyphen, Abstände/Proportionen, gesperrte
-Preis- und Kaufberechnung für alle sechs Kombinationen, vollständige Übersicht.
+12 Tests: gespeicherte Daten/Optionen und Migration, ungültige Eingaben, echte
+Schriftkonturen inklusive Innenräumen, Abstände/Proportionen, gesperrter Kauf,
+Materialtrennung, Acrylrückseite, unabhängige Oberflächen sowie der vorläufige
+Farbaufpreis der Schiene mit Länge, Menge und Ausschluss anderer Montagearten.
 
 Browser: Desktop 1440×1000 sowie Mobil 390×844 und 320×740. Front/Rück, Tag/Nacht,
 Schiene/Platte, Einzelbuchstabe, Schriftwechsel, 180-cm-Maß und 8-cm-Tiefe,
@@ -109,3 +110,56 @@ Zusatzprüfung des Veröffentlichungskandidaten: Das bisherige mobile Menü
 hat keinen sichtbaren Auslöser. Der neue Einstieg steht deshalb direkt im Hero
 und ist ohne Menüöffnung erreichbar. Preisplatzhalter und gesperrte Kasse
 wurden im Browser bestätigt.
+
+## Material- und Aufbaukorrekturen vom 21.10.2026
+
+Vorgaben des Auftraggebers:
+
+- Rückbeleuchtung startet bei neuen Entwürfen mit gebürstetem, gold lackiertem
+  Edelstahl. Weitere Oberflächen: Edelstahl gebürstet in Natur, poliert/
+  verspiegelt oder farbig lackiert. Alte Entwürfe werden nicht still auf Gold
+  geändert.
+- Vorne Metall, hinten eine eigene weiße, opale Acrylschicht in exakt derselben
+  Buchstabenform mit denselben Innenräumen. Die Acrylschicht wird von innen
+  beleuchtet; der Lichtaustritt zeigt zur Wand. Metallflächen emittieren nicht.
+- Frontbeleuchtung: freie Farbe der Acrylfront, Edelstahlkorpus und Edelstahl-
+  Rückseite. Die Acrylfarbe ist unabhängig von der LED-Farbe des Rückleuchters.
+- Separate gespeicherte Oberflächen für Front-/Rückbeleuchtung; Entwurfsvertrag
+  Version 2 migriert Version 1 und erhält Text, Lichtart und bisherige Farben.
+- Drei Schritte: Look (Beleuchtung zuerst, Text, Schrift), Material (abhängige
+  Oberflächen und Farben), Aufbau (Montage, Schienen-/Plattenfarbe, Maße).
+
+Die 3D-Darstellung verwendet separate Front-, Zargen- und Rückseitengeometrien.
+Beim Rückleuchter entfällt der verschlossene metallische Rückdeckel. Die
+Acrylschicht liegt innerhalb der gewählten Gesamttiefe, mit illustrativer
+Schichtdicke von bis zu 1 cm. Diese Visualisierung ersetzt keine freigegebene
+Fertigungskonstruktion. Ein lokal erzeugtes Studio-Umgebungslicht erzeugt
+blickwinkelabhängige Spiegelungen; die gebürsteten Oberflächen verwenden eine
+feine gerichtete Struktur. Es werden keine Kamera-/Umgebungsbilder aufgenommen.
+
+Abgeglichene Referenz für die opale Rückseite (keine Übernahme fremder Preise,
+Lieferzeiten oder Maße als verbindliche NEONTRIP-Produktdaten):
+https://www.buchstaben-jaeckel.de/profil-3-leuchtbuchstaben-199.html
+
+## Bestätigter vorläufiger Farbaufpreis der Schiene
+
+Der Auftraggeber nennt ca. 110 Euro pro laufendem Meter und bestätigt auf
+Rückfrage ausdrücklich: **nur Aufpreis für die Wunschfarbe**.
+
+- Standardausführung: kein Farbaufpreis; kein kostenloser Schienen-Grundpreis.
+- Wunschfarbe: freie Farbe, auch in der Vorschau, im Entwurf und Warenkorb.
+- Vorschau-Schienenlänge entspricht der gewählten Schriftzugbreite. Der
+  vorläufige Aufpreis ist `Breite in cm / 100 × 110 Euro × Menge`.
+- Beispiele: 120 cm → ca. 132 Euro; zwei Stück → ca. 264 Euro.
+- Keine Anwendung auf Platte oder Einzelbuchstaben. Kein Aufrunden auf volle
+  Meter. Eine abweichende spätere echte Schienenlänge muss aus der Fertigungs-
+  und Preislogik kommen.
+- `railColorEstimate` kennzeichnet den Wert als vorläufig und lässt die
+  Steuerbasis offen. Gesamtpreis und Shopify-Kasse bleiben gesperrt, bis
+  Grundkalkulation, Steuerbasis und verbindliche Backendberechnung vorliegen.
+
+Browsernachweis dieser Erweiterung: Front/Rück und unabhängige Oberflächen,
+Gold als neuer Standard, verspiegeltes Metall, weiße Acrylrückseite mit/ohne
+Licht, freie Acrylfarbe `#D74275`, Schiene `#23594E`, 132/264-Euro-Farbaufpreis,
+Warenkorb und Neuladen. 320×740, 390×844 und 1440×1000 geprüft, kein horizontaler
+Überlauf, keine erfassten Konsolenfehler. Testeintrag wieder entfernt.

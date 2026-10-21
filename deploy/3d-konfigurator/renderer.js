@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
+import {materialSpec,lightColor} from './model.js';
 const fontCache=new Map();
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
 async function loadFont(id){
@@ -31,12 +32,46 @@ export function layoutLetters(font,text,spacing){
  for(const item of shapes){item.x-=center.x;item.y-=center.y;}
  return {shapes,width:bounds.max.x-bounds.min.x,height:bounds.max.y-bounds.min.y};
 }
+// A separate rear acrylic layer uses the exact same contours and holes as the metal front.
+// Its shown thickness is illustrative; the complete design keeps the requested total depth.
+export function letterGeometries(shape,scale,s){
+ const backingDepth=s.lighting==='back'?Math.min(1,s.depth/3):0;
+ const shell=new THREE.ExtrudeGeometry(shape,{depth:(s.depth-backingDepth)/scale,bevelEnabled:true,bevelThickness:.04/scale,bevelSize:.04/scale,bevelSegments:1,curveSegments:10,steps:1});
+ shell.scale(scale,scale,scale);shell.translate(0,0,backingDepth);
+ const groups=shell.groups.slice();shell.clearGroups();
+ for(const g of groups){
+  // Drop the front cap (separate face), and drop the metal rear cap only for backlit construction.
+  if(g.materialIndex===1)shell.addGroup(g.start,g.count,0);
+  else if(s.lighting==='front')shell.addGroup(g.start,g.count/2,0);
+ }
+ const front=new THREE.ShapeGeometry(shape,10);front.scale(scale,scale,scale);front.translate(0,0,s.depth+.05);
+ const rear=s.lighting==='back'?new THREE.ExtrudeGeometry(shape,{depth:backingDepth/scale,bevelEnabled:false,curveSegments:10,steps:1}):null;
+ if(rear)rear.scale(scale,scale,scale);
+ return {shell,front,rear};
+}
 function dispose(group){group.traverse(obj=>{obj.geometry?.dispose();for(const mat of Array.isArray(obj.material)?obj.material:obj.material?[obj.material]:[]){mat.map?.dispose();mat.dispose();}});group.clear();}
 function wallTexture(){
  const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const ctx=canvas.getContext('2d');
  const image=ctx.createImageData(512,512);let seed=29;
  for(let i=0;i<image.data.length;i+=4){seed=(1664525*seed+1013904223)>>>0;const n=220+(seed%25);image.data.set([n,n,n,255],i);}ctx.putImageData(image,0,0);
  const tex=new THREE.CanvasTexture(canvas);tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(6,6);tex.colorSpace=THREE.SRGBColorSpace;return tex;
+}
+function brushedTexture(){
+ const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const ctx=canvas.getContext('2d');let seed=73;
+ for(let y=0;y<512;y++){seed=(1664525*seed+1013904223)>>>0;const shade=130+seed%65;ctx.fillStyle=`rgb(${shade},${shade},${shade})`;ctx.fillRect(0,y,512,1);}
+ const texture=new THREE.CanvasTexture(canvas);texture.wrapS=texture.wrapT=THREE.RepeatWrapping;return texture;
+}
+function studioEnvironment(renderer){
+ // A neutral, local studio environment gives polished metal view-dependent reflections.
+ // It is illustrative and never captures the customer's camera or surroundings.
+ const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=512;const ctx=canvas.getContext('2d');
+ const room=ctx.createLinearGradient(0,0,0,512);room.addColorStop(0,'#c6c9cc');room.addColorStop(.43,'#8a8f95');room.addColorStop(.52,'#41464b');room.addColorStop(.7,'#888079');room.addColorStop(1,'#b3a493');ctx.fillStyle=room;ctx.fillRect(0,0,1024,512);
+ for(const x of [0,128,256,384,512,640,768,896,1024]){const light=ctx.createLinearGradient(x-35,0,x+55,0);light.addColorStop(0,'#5c6269');light.addColorStop(.25,'#e5e8ea');light.addColorStop(.32,'#ffffff');light.addColorStop(.8,'#f8fafb');light.addColorStop(1,'#5c6269');ctx.fillStyle=light;ctx.fillRect(x-35,55,90,244);ctx.fillStyle='#373c42';ctx.fillRect(x+8,55,4,244);ctx.fillRect(x-35,190,90,4);}
+ const texture=new THREE.CanvasTexture(canvas);texture.mapping=THREE.EquirectangularReflectionMapping;texture.colorSpace=THREE.SRGBColorSpace;
+ const pmrem=new THREE.PMREMGenerator(renderer),target=pmrem.fromEquirectangular(texture);texture.dispose();pmrem.dispose();return target;
+}
+function materialFromSpec(spec,brush,night){
+ const {brushed,...properties}=spec;return new THREE.MeshStandardMaterial({...properties,envMapIntensity:night?.5:1,bumpMap:brushed?brush:null,bumpScale:brushed?.035:0});
 }
 function glowTexture(layout,scale,width,height,color,front){
  const pad=front?10:22,w=width+pad*2,h=height+pad*2;
@@ -62,6 +97,7 @@ export class SignRenderer{
   this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true,powerPreference:'low-power'});
   this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.35;
   host.append(this.renderer.domElement);
+  this.brush=brushedTexture();this.environment=studioEnvironment(this.renderer);this.scene.environment=this.environment.texture;
   this.ambient=new THREE.HemisphereLight('#fff4e2','#54505a',2);this.scene.add(this.ambient);
   this.sun=new THREE.DirectionalLight('#fff3dc',3.2);this.sun.position.set(-100,190,200);this.sun.castShadow=true;this.sun.shadow.mapSize.set(2048,2048);this.sun.shadow.camera.left=-300;this.sun.shadow.camera.right=300;this.sun.shadow.camera.top=250;this.sun.shadow.camera.bottom=-250;this.sun.shadow.camera.near=1;this.sun.shadow.camera.far=900;this.sun.shadow.normalBias=.3;this.sun.shadow.bias=-.0003;this.scene.add(this.sun);
   this.fill=new THREE.DirectionalLight('#c4d6ff',1.2);this.fill.position.set(150,10,80);this.scene.add(this.fill);
@@ -86,18 +122,20 @@ export class SignRenderer{
  async update(s){
   const rev=++this.revision;const font=await loadFont(s.font);if(rev!==this.revision)return null;
   const layout=layoutLetters(font,s.text,s.spacing),scale=s.width/layout.width,width=s.width,height=layout.height*scale;
-  const group=new THREE.Group(),metal=s.body==='#a8adb1'||s.body==='#b8995b';
-  const bodyMaterial=new THREE.MeshStandardMaterial({color:s.body,metalness:metal?.65:.15,roughness:metal?.34:.5});
-  const faceMaterial=new THREE.MeshStandardMaterial({color:s.lighting==='front'?s.color:s.body,emissive:s.lighting==='front'&&s.lightOn?s.color:'#000000',emissiveIntensity:s.night?1.5:.65,roughness:s.lighting==='front'?.34:.45,metalness:s.lighting==='front'?.05:metal?.65:.15});
+  const group=new THREE.Group(),spec=materialSpec(s);
+  const bodyMaterial=materialFromSpec(spec.shell,this.brush,s.night),faceMaterial=materialFromSpec(spec.face,this.brush,s.night),rearMaterial=s.lighting==='back'?materialFromSpec(spec.rear,this.brush,s.night):null;
   const backOffset=s.mount==='rail'?8:s.mount==='plate'?4:3;
   for(const item of layout.shapes){
-   const geometry=new THREE.ExtrudeGeometry(item.shape,{depth:s.depth/scale,bevelEnabled:true,bevelThickness:.09/scale,bevelSize:.1/scale,bevelSegments:1,curveSegments:10,steps:1});
-   geometry.scale(scale,scale,scale);geometry.translate(item.x*scale,item.y*scale,backOffset);
-   const mesh=new THREE.Mesh(geometry,[faceMaterial,bodyMaterial]);mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
+   const parts=letterGeometries(item.shape,scale,s);
+   for(const geometry of Object.values(parts))if(geometry)geometry.translate(item.x*scale,item.y*scale,backOffset);
+   const mesh=new THREE.Mesh(parts.shell,[bodyMaterial]);mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
+   const positions=parts.front.attributes.position,uv=parts.front.attributes.uv;for(let i=0;i<uv.count;i++)uv.setXY(i,positions.getX(i)/35,positions.getY(i)/35);
+   const face=new THREE.Mesh(parts.front,faceMaterial);face.castShadow=true;face.receiveShadow=true;group.add(face);
+   if(parts.rear){const rear=new THREE.Mesh(parts.rear,rearMaterial);rear.castShadow=true;group.add(rear);}
   }
-  const supportMaterial=new THREE.MeshStandardMaterial({color:s.mount==='plate'?s.plate:s.body,roughness:.5,metalness:.15});
+  const supportMaterial=new THREE.MeshStandardMaterial({color:s.mount==='plate'?s.plate:s.railCustomColor?s.railColor:'#a8adb1',roughness:.5,metalness:.15});
   if(s.mount==='rail'){
-   const rail=new THREE.Mesh(new THREE.BoxGeometry(width+8,Math.min(8,height*.27),5),supportMaterial);rail.position.set(0,-height*.12,3);rail.castShadow=true;rail.receiveShadow=true;group.add(rail);
+   const rail=new THREE.Mesh(new THREE.BoxGeometry(width,Math.min(8,height*.27),5),supportMaterial);rail.position.set(0,-height*.12,3);rail.castShadow=true;rail.receiveShadow=true;group.add(rail);
   }
   if(s.mount==='plate'){
    const plate=new THREE.Mesh(new THREE.BoxGeometry(width+16,height+16,1.2),supportMaterial);plate.position.z=1;plate.castShadow=true;plate.receiveShadow=true;group.add(plate);
@@ -106,7 +144,7 @@ export class SignRenderer{
   }
   // A silhouette texture behind the letters gives the halo its actual outline and holes.
   if(s.lightOn){
-   const front=s.lighting==='front',g=glowTexture(layout,scale,width,height,s.color,front);
+   const front=s.lighting==='front',g=glowTexture(layout,scale,width,height,lightColor(s),front);
    const halo=new THREE.Mesh(new THREE.PlaneGeometry(g.width,g.height),new THREE.MeshBasicMaterial({map:g.texture,transparent:true,opacity:front?.22:s.night?.95:.75,depthWrite:false,toneMapped:false,blending:THREE.AdditiveBlending}));
    halo.position.z=front?backOffset+s.depth+.13:s.mount==='plate'?1.65:.05;group.add(halo);
   }
