@@ -93,7 +93,7 @@ konkrete Freigabe, Abgleich mit aktuellem Main und `codex-predeploy ops` sowie
     node --check deploy/3d-konfigurator/app.js
     node --check deploy/3d-konfigurator/renderer.js
 
-24 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, farberhaltende Frontaufhellung, ungültige Eingaben, echte
+25 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, farberhaltende Frontaufhellung, ungültige Eingaben, echte
 Schriftkonturen inklusive Innenräumen, Abstände/Proportionen, gesperrter Kauf,
 Materialtrennung, Acrylrückseite, unabhängige Oberflächen sowie der vorläufige
 Farbaufpreis der Schiene mit Länge, Menge und Ausschluss anderer Montagearten.
@@ -369,3 +369,27 @@ freie Farbe und ungültige Nummer; RAL 3000 auf Rücklichtfront, RAL 7016 an der
 Schiene, RAL 6005 an der Platte; Neuladen, Warenkorb/Bearbeiten und Variantenwechsel.
 Mobile Prüfung bei 320×740 ohne horizontalen Überlauf, Desktop 1440×1150/1410,
 keine erfassten Browserfehler. Testeintrag entfernt. Nur lokale Vorschau.
+
+
+## Visuelle RAL-Auswahl
+
+Die native Vorschlagsliste ist durch einen gemeinsamen RAL-Picker für alle vier
+Lackbereiche ersetzt. Jeder Eintrag zeigt ein Farbfeld, den deutschen Farbnamen
+und die RAL-Nummer. Die gewählte Farbe bleibt als eigene Zeile mit Farbfeld und
+Name sichtbar. Die Liste ist scrollbar, zweispaltig auf Desktop und einspaltig
+auf schmalen Mobilgeräten.
+
+Die Suche filtert nach Nummer, Teilname oder Kombination, unabhängig von
+Groß-/Kleinschreibung; „weiss“ und „grun“ finden auch Namen mit ß bzw. Umlaut.
+Direkte gültige Nummern werden weiterhin übernommen. Suchbegriffe bleiben nur
+im Picker und werden nicht als Lack-Spezifikation gespeichert. Klick bzw.
+Pfeiltasten/Enter wählen einen realen Eintrag. Escape oder Verlassen des Pickers
+bricht eine offene Suche ab und stellt die vorherige Auswahl wieder her.
+Während einer offenen, noch nicht gewählten Suche ist die Übernahme deaktiviert.
+
+Geprüft: 25 Modell-/Geometrietests inklusive Suche nach jedem der 216 Namen und
+Nummern, Teilnamen, kombinierten Begriffen sowie leeren Treffern. Browser:
+Mausauswahl, Pfeiltasten/Enter, direkte Nummer, Escape, Neuladen und Farbfelder
+für Seiten, Rücklichtfront, Schiene und Platte. Desktop 1440×1150 und Mobil
+320×740 ohne Überlauf, keine erfassten Konsolenfehler. Preis-/Bestellvertrag
+und RAL-Speicherung unverändert. Nur lokale Vorschau.

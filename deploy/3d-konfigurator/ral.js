@@ -871,3 +871,9 @@ export function ralCode(value){
  const match=typeof value==='string'&&value.trim().match(/^(?:RAL\s*)?(\d{4})$/i);
  return match&&Object.hasOwn(RAL_COLORS,match[1])?match[1]:'';
 }
+
+const foldRal=value=>String(value).toLocaleLowerCase('de-DE').normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/ß/g,'ss');
+export function searchRal(query=''){
+ const words=foldRal(query).replace(/^ral\s*/,'').trim().split(/\s+/).filter(Boolean);
+ return Object.entries(RAL_COLORS).filter(([code,colour])=>words.every(word=>foldRal(code+' '+colour.name).includes(word)));
+}

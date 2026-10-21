@@ -5,6 +5,7 @@ import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,PAINT_PR
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
 import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor} from '../../deploy/3d-konfigurator/renderer.js';
 import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace} from '../../deploy/3d-konfigurator/vendor/three.js';
+import {searchRal} from '../../deploy/3d-konfigurator/ral.js';
 import {FontLoader} from '../../deploy/3d-konfigurator/vendor/FontLoader.js';
 const font=new FontLoader().parse(JSON.parse(await readFile(new URL('../../deploy/3d-konfigurator/fonts/modern.json',import.meta.url),'utf8')));
 const fonts=Object.fromEntries(await Promise.all(Object.keys(FONTS).map(async id=>[id,new FontLoader().parse(JSON.parse(await readFile(new URL(`../../deploy/3d-konfigurator/fonts/${id}.json`,import.meta.url),'utf8')))])));
@@ -241,4 +242,19 @@ test('Incomplete RAL entries block review only when the corresponding painted pa
  const unsafe=normalize({...DEFAULT,sideRal:'<script>',bodyRal:'RAL 9999',railRal:'url(secret)',plateRal:'__proto__'});
  for(const field of Object.values(PAINT_FIELDS))assert.equal(unsafe[field],'');
  const mismatched=normalize({...DEFAULT,sideRal:'RAL 9016',sideColor:'#ff0000'});assert.equal(mismatched.sideColor,RAL_COLORS['9016'].hex);
+});
+
+
+test('RAL swatch search finds names, numbers and combined queries without losing catalogue entries',()=>{
+ assert.equal(searchRal('').length,216);
+ for(const [code,{name}] of Object.entries(RAL_COLORS)){
+  assert.ok(searchRal(name).some(([found])=>found===code),name);
+  assert.deepEqual(searchRal('RAL '+code).map(([found])=>found),[code]);
+ }
+ assert.deepEqual(searchRal('  ANTHRAZIT ').map(([code])=>code),['7016']);
+ assert.deepEqual(searchRal('RAL 70 anthrazit').map(([code])=>code),['7016']);
+ assert.deepEqual(searchRal('gold').map(([code])=>code),['1004','1036']);
+ assert.ok(searchRal('weiss').some(([code])=>code==='9016'));
+ assert.ok(searchRal('grun').some(([code])=>code==='6005'));
+ assert.deepEqual(searchRal('9999'),[]);assert.deepEqual(searchRal('<script>'),[]);
 });

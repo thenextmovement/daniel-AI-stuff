@@ -1,4 +1,5 @@
-import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,RAL_COLORS,ralCode,normalize,validate,description} from './model.js?v=17';
+import {createRalPicker} from './ral-picker.js?v=18';
+import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate,description} from './model.js?v=18';
 import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
@@ -37,6 +38,7 @@ function setError(message){$('#editor-error').textContent=message;$('#loading').
 function schedule(){clearTimeout(debounce);++revision;result=null;$('#next').disabled=true;$('#download').disabled=true;debounce=setTimeout(update,100);}
 async function update(){
  const token=++revision;result=null;
+ const search=Object.values(ralPickers).find(picker=>picker.pending);if(search){$('#editor-error').textContent='';$('#next').disabled=true;$('#download').disabled=true;return;}
  const error=validate(state);if(error){setError(error);return;}
  if(!renderer)return;
  $('#next').disabled=true;$('#download').disabled=true;
@@ -57,37 +59,28 @@ function step(index,focus=true){
 const paintControls={
  sideColor:{id:'side',label:'Seiten'},body:{id:'body',label:'Front und Korpus'},railColor:{id:'rail',label:'Schiene'},plate:{id:'plate',label:'Trägerplatte'}
 };
-for(const [code,colour] of Object.entries(RAL_COLORS)){
- const option=document.createElement('option');option.value='RAL '+code;option.label=colour.name;$('#ral-colours').append(option);
-}
+const ralPickers={};
 function syncPaints(){
  for(const [key,{id}] of Object.entries(paintControls)){
-  const field=PAINT_FIELDS[key],gold=key==='body'&&state.backFinish==='brushed-gold',hex=gold?FINISHES['brushed-gold'].color:state[key],value=gold?'':state[field],code=ralCode(value);
+  const field=PAINT_FIELDS[key],gold=key==='body'&&state.backFinish==='brushed-gold',hex=gold?FINISHES['brushed-gold'].color:state[key],value=gold?'':state[field];
   $('#'+id+'-color').value=hex;$('#'+id+'-value').textContent=hex.toUpperCase();
-  const input=$('#'+id+'-ral');if(document.activeElement!==input)input.value=value;
-  const invalid=Boolean(value&&!code);input.setAttribute('aria-invalid',String(invalid));
-  $('#'+id+'-ral-note').textContent=invalid?'Bitte einen gültigen vierstelligen RAL-CLASSIC-Ton wählen, z. B. RAL 7016.':code?`RAL ${code} · ${RAL_COLORS[code].name} – für deine Lackierung vorgemerkt.`:'RAL-Nummer eingeben oder einen Vorschlag auswählen.';
-  $('#'+id+'-ral-note').classList.toggle('paint-error',invalid);$('#'+id+'-clear-ral').hidden=!value;
+  ralPickers[key].sync(value);
   for(const button of all(`[data-paint-preset="${key}"]`))button.setAttribute('aria-pressed',String(!value&&button.dataset.paintColor===hex));
  }
 }
 for(const [key,{id,label}] of Object.entries(paintControls)){
  const host=$(`[data-paint-key="${key}"]`);
- host.innerHTML=`<div class="swatches paint-swatches" aria-label="Standardfarben ${label}"></div><label class="custom-color" for="${id}-color"><input type="color" id="${id}-color" aria-label="Eigene Lackfarbe ${label}"><span>Eigene Farbe wählen <output id="${id}-value" for="${id}-color"></output></span></label><div class="ral-control"><label class="field-label" for="${id}-ral">RAL-Ton <span>optional</span></label><input id="${id}-ral" class="ral-input" type="text" list="ral-colours" placeholder="z. B. RAL 7016" maxlength="12" autocomplete="off" spellcheck="false" aria-label="RAL-Ton ${label}" aria-describedby="${id}-ral-note ${id}-ral-preview"><p id="${id}-ral-note" class="field-hint" role="status"></p><button type="button" class="reset-color" id="${id}-clear-ral" hidden>RAL-Auswahl entfernen</button><p id="${id}-ral-preview" class="field-hint ral-preview-note">RAL-Bildschirmfarben sind Näherungen. Für den Lack gilt der gewählte RAL-Ton.</p></div>`;
+ host.innerHTML=`<div class="swatches paint-swatches" aria-label="Standardfarben ${label}"></div><label class="custom-color" for="${id}-color"><input type="color" id="${id}-color" aria-label="Eigene Lackfarbe ${label}"><span>Eigene Farbe wählen <output id="${id}-value" for="${id}-color"></output></span></label><div class="ral-control" id="${id}-ral-picker"></div>`;
  for(const [color,name] of PAINT_PRESETS){
   const button=document.createElement('button');button.type='button';button.dataset.paintPreset=key;button.dataset.paintColor=color;button.setAttribute('aria-label',name);button.style.setProperty('--swatch',color);button.style.setProperty('--tick',name==='Schwarz'?'#fff':'#292524');
   const chip=document.createElement('span');chip.className='swatch-chip';chip.setAttribute('aria-hidden','true');const text=document.createElement('span');text.className='swatch-label';text.textContent=name;button.append(chip,text);
   button.addEventListener('click',()=>{state=choosePaint(state,key,{color});sync();schedule();});host.querySelector('.paint-swatches').append(button);
  }
  $('#'+id+'-color').addEventListener('input',event=>{state=choosePaint(state,key,{color:event.target.value});sync();schedule();});
- const input=$('#'+id+'-ral'),field=PAINT_FIELDS[key];
- input.addEventListener('input',()=>{
-  const value=input.value.trim(),code=ralCode(value);
-  if(code)state=choosePaint(state,key,{ral:value});else{state[field]=value;if(key==='body'&&value)state.backFinish='painted-steel';}
-  sync();schedule();
+ ralPickers[key]=createRalPicker({host:$('#'+id+'-ral-picker'),id,label,
+  onSelect:ral=>{state=choosePaint(state,key,{ral});sync();schedule();},
+  onClear:()=>{state[PAINT_FIELDS[key]]='';sync();schedule();},onPendingChange:schedule
  });
- input.addEventListener('blur',()=>{input.value=key==='body'&&state.backFinish==='brushed-gold'?'':state[field];});
- $('#'+id+'-clear-ral').addEventListener('click',()=>{state[field]='';sync();schedule();});
 }
 for(const [target,key,choices] of [['#light-colors','color',COLORS],['#acrylic-colors','acrylic',ACRYLICS]]){
  for(const [value,label] of choices){const button=document.createElement('button');button.type='button';button.dataset[key]=value;button.style.setProperty('--swatch',value);button.title=label;button.setAttribute('aria-label',label);const chip=document.createElement('span');chip.className='swatch-chip';chip.setAttribute('aria-hidden','true');const name=document.createElement('span');name.className='swatch-label';name.textContent=label;button.append(chip,name);const rgb=value.slice(1).match(/../g).map(x=>parseInt(x,16)/255);button.style.setProperty('--tick',rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722<.5?'#fff':'#292524');button.addEventListener('click',()=>change(key,value));$(target).append(button);}
@@ -147,4 +140,4 @@ $('#add-cart').addEventListener('click',()=>{
 });
 $('#new-design').addEventListener('click',()=>{editingId=null;state={...DEFAULT};$('#cart').close();sync();step(0);schedule();});
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=17');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=18');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
