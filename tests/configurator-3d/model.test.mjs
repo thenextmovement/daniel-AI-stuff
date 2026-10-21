@@ -297,21 +297,23 @@ test('Gold and silver paint use brushed metal on each painted part while acrylic
  for(const key of Object.keys(PAINT_FIELDS))for(const group of ['gold','silver'])for(const [code] of searchRal('',group)){
   const state=choosePaint({...DEFAULT,lighting:'front',acrylic:'#2474e5'},key,{ral:code});
   const before=JSON.stringify(state),paint=paintMaterialSpec(state,key),lit=materialSpec(state);
-  assert.equal(paint.color,RAL_COLORS[code].hex);assert.ok(paint.metalness>=.9);assert.equal(paint.brushed,true);
+  assert.equal(paint.color,RAL_COLORS[code].hex);assert.ok(paint.metalness>=.9);assert.equal(paint.brushed,true);assert.equal(paint.metalTone,group);
   assert.equal(lit.face.metalness,0);assert.equal(lit.face.brushed,false);assert.equal(lit.face.color,'#2474e5');
   assert.equal(JSON.stringify(state),before);
   assert.equal(quote3D([{design:state,quantity:1}]).purchaseEnabled,false);
  }
  for(const color of ['#c6a156','#c5c9cc','#a8adb1'])assert.equal(paintMaterialSpec({...DEFAULT,sideColor:color},'sideColor').brushed,true);
- for(const color of ['#ffffff','#252525','#ffdd00','#808080','#2474e5'])assert.equal(paintMaterialSpec({...DEFAULT,sideColor:color},'sideColor').brushed,false);
+ for(const color of ['#ffffff','#252525','#ffdd00','#808080','#2474e5']){const paint=paintMaterialSpec({...DEFAULT,sideColor:color},'sideColor');assert.equal(paint.brushed,false);assert.equal(paint.metalTone,undefined);}
  for(const ral of ['1003','7016','9016'])assert.equal(paintMaterialSpec(choosePaint(DEFAULT,'body',{ral}),'body').brushed,false);
  const gold=materialSpec(choosePaint(DEFAULT,'body',{color:'#c6a156'}));assert.equal(gold.face.brushed,true);assert.equal(gold.face.emissive,'#000000');
 });
 
 test('Brushed surfaces use directional physical reflections; UV changes preserve geometry and dimensions',()=>{
  const brush={color:new Texture(),roughness:new Texture()},environment=new Texture();
- for(const night of [false,true]){
-  const metal=materialFromSpec(materialSpec(DEFAULT).face,brush,night,environment);
+ for(const night of [false,true])for(const backFinish of ['brushed-gold','brushed-steel']){
+  const spec=materialSpec({...DEFAULT,backFinish}).face,metal=materialFromSpec(spec,brush,night,environment);
+  assert.equal(spec.metalTone,backFinish==='brushed-steel'?'silver':'gold');assert.equal('#'+metal.color.getHexString(),spec.color);
+  assert.equal(Object.hasOwn(metal,'metalTone'),false,'Preview metadata is not forwarded as a Three.js material parameter');
   assert.equal(metal.isMeshPhysicalMaterial,true);assert.ok(metal.anisotropy>0);assert.equal(metal.envMap,environment);
   assert.equal(metal.map,brush.color);assert.equal(metal.roughnessMap,brush.roughness);assert.equal(metal.emissiveIntensity,0);
   const acrylic=materialFromSpec(materialSpec({...DEFAULT,lighting:'front'}).face,brush,night,environment);

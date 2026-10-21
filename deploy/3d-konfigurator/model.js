@@ -1,4 +1,4 @@
-import {RAL_COLORS,ralCode} from './ral.js?v=24';
+import {RAL_COLORS,ralCode} from './ral.js?v=25';
 export {RAL_COLORS,ralCode};
 export const DEFAULT = Object.freeze({version:3,text:'ATLAS',font:'modern',lighting:'back',mount:'individual',width:120,depth:5,color:'#fff1d6',acrylic:'#ffffff',backFinish:'brushed-gold',sideColor:'#252525',sideRal:'',bodyRal:'',railRal:'',plateRal:'',body:'#252525',plate:'#d8d0c4',railCustomColor:false,railColor:'#252525',wall:'warm',lightOn:true,night:false,spacing:5});
 export const FONTS={
@@ -17,8 +17,8 @@ export const LABELS={font:Object.fromEntries(Object.entries(FONTS).map(([id,font
 export const COLORS=[['#fff1d6','Warmweiß'],['#f5f7ff','Weiß'],['#fff97c','Zitronengelb'],['#f5c35b','Goldgelb'],['#ff8d02','Orange'],['#ff7575','Hellrot'],['#ff2a4d','Rot'],['#ff90ff','Neon-Pink'],['#eaa4ff','Weiches Rosa'],['#fc6fa8','Rosa'],['#8c59ff','Lila'],['#0274fc','Dunkelblau'],['#80baff','Hellblau'],['#90dcff','Eisblau'],['#80ffd9','Mintgrün'],['#8bdfb1','Grün'],['#0bd748','Dunkelgrün']];
 export const ACRYLICS=COLORS.map(([color,name])=>[({'Weiß':'#ffffff','Rot':'#e62d38','Orange':'#ff8b24','Rosa':'#ee67af','Hellblau':'#2474e5','Grün':'#26a86b'})[name]||color,name==='Hellblau'?'Blau':name]);
 export const FINISHES={
- 'brushed-gold':{label:'Edelstahl gold lackiert',description:'Edelstahl, gebürstet und gold lackiert',color:'#c6a156',metalness:.95,roughness:.32,brushed:true},
- 'brushed-steel':{label:'Edelstahl gebürstet',description:'Edelstahl, gebürstet in Natur',color:'#c5c9cc',metalness:.96,roughness:.32,brushed:true},
+ 'brushed-gold':{label:'Edelstahl gold lackiert',description:'Edelstahl, gebürstet und gold lackiert',color:'#c6a156',metalness:.95,roughness:.32,brushed:true,metalTone:'gold'},
+ 'brushed-steel':{label:'Edelstahl gebürstet',description:'Edelstahl, gebürstet in Natur',color:'#c5c9cc',metalness:.96,roughness:.32,brushed:true,metalTone:'silver'},
  'mirror-steel':{label:'Edelstahl verspiegelt',description:'Edelstahl, poliert und verspiegelt',color:'#f0f2f4',metalness:1,roughness:.045,brushed:false},
  'painted-steel':{label:'Edelstahl lackiert',description:'Edelstahl, farbig lackiert',color:null,metalness:.15,roughness:.36,brushed:false}
 };
@@ -31,7 +31,7 @@ export function paintMaterialSpec(s,key){
  const gold=code?['1004','1036'].includes(code):color==='#c6a156';
  const silver=code?['7001','9006','9007','9022','9023'].includes(code):['#c5c9cc','#a8adb1'].includes(color);
  const finish=FINISHES[gold?'brushed-gold':silver?'brushed-steel':'painted-steel'];
- return {color,metalness:finish.metalness,roughness:finish.roughness,brushed:finish.brushed};
+ return {color,metalness:finish.metalness,roughness:finish.roughness,brushed:finish.brushed,metalTone:finish.metalTone};
 }
 export function paintDescription(s,key){
  const code=ralCode(s[PAINT_FIELDS[key]]);
@@ -51,7 +51,7 @@ export function classicLook(s){
  return {...s,...(s.lighting==='front'?{sideColor:DEFAULT.sideColor,sideRal:'',acrylic:DEFAULT.acrylic}:{backFinish:DEFAULT.backFinish,color:DEFAULT.color})};
 }
 export function materialSpec(s){
- const f=FINISHES[activeFinish(s)],shell=s.lighting==='front'?paintMaterialSpec(s,'sideColor'):activeFinish(s)==='painted-steel'?paintMaterialSpec(s,'body'):{color:f.color,metalness:f.metalness,roughness:f.roughness,brushed:f.brushed};
+ const f=FINISHES[activeFinish(s)],shell=s.lighting==='front'?paintMaterialSpec(s,'sideColor'):activeFinish(s)==='painted-steel'?paintMaterialSpec(s,'body'):{color:f.color,metalness:f.metalness,roughness:f.roughness,brushed:f.brushed,metalTone:f.metalTone};
  return {shell,rear:s.lighting==='back'?{color:'#ffffff',metalness:0,roughness:.4,brushed:false,emissive:s.lightOn?s.color:'#000000',emissiveIntensity:s.night?3:1.3}:{...shell},face:s.lighting==='front'?{color:s.acrylic,metalness:0,roughness:.27,brushed:false,emissive:s.lightOn?s.acrylic:'#000000',emissiveIntensity:s.night?2:1}:{...shell,emissive:'#000000',emissiveIntensity:0}};
 }
 export function normalize(raw={}){

@@ -484,3 +484,18 @@ Goldperspektive und Nachtansicht sowie seitliche Blickwinkel bei −60°, −30�
 30° und 60° mit dem realen Renderer in einer lokalen Prüfansicht. Keine erfassten
 Browserfehler; beide betroffenen Material-/UV-Tests und Syntaxprüfung bestanden.
 Nur lokale Vorschau.
+
+Silber hat eine eigene Edelstahl-Abstimmung: neutrale Reflexionsflächen über
+einem mittleren Grauton, eine etwas schärfere gerichtete Metallreflexion und
+eine zurückhaltendere Lackreflexion. Die Tagesintensität begrenzt weiße Flächen;
+in der Nacht bleibt genügend Reflexionslicht für lesbares gebürstetes Metall.
+Das Profil wird ausdrücklich für Natur-Edelstahl und die vorhandenen Silber-
+RAL-/Eigenfarbzuordnungen verwendet, einschließlich Seiten, Schiene und Platte.
+Gespeicherte Farbwerte und Gold-Abstimmung bleiben erhalten. Die feinen
+Bürsttexturen werden weiter gemeinsam genutzt.
+
+Geprüft: alle 29 Modell-/Geometrietests, einschließlich Silber-/Goldprofilen
+über alle Lackbereiche, unveränderten Materialfarbwerten und nichtmetallischem
+Acryl; Syntax- und Diffprüfung. Im Browser normale Perspektive, Frontalansicht,
+Nacht sowie −60°, 30° und 60° in der lokalen Winkelprüfung. Keine erfassten
+Browserfehler oder Warnungen. Nur lokale Vorschau.
