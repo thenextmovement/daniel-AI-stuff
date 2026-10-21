@@ -119,7 +119,7 @@
   <link rel="modulepreload" href="backing-contour.min.js?v=d7be54a18e91" fetchpriority="low">
   <link rel="modulepreload" href="color-examples.min.js?v=783571260571" fetchpriority="low">
   <link rel="modulepreload" href="content-experience.min.js?v=c2c1864aecd0" fetchpriority="low">
-<link rel="modulepreload" href="configurator.min.js?v=674cc45249d7" fetchpriority="low">
+<link rel="modulepreload" href="configurator.min.js?v=f18eaa431d7d" fetchpriority="low">
   <link rel="icon" href="../assets/favicon.svg">
   <!-- Discover the configurator module graph before parsing the long content below. -->
   <!-- Fetch existing startup dependencies alongside the entry module. -->
@@ -727,8 +727,8 @@
       <h3>Deine Übersicht</h3>
       <dl class="cart-amounts"><div><dt>Schilder &amp; Ausstattung</dt><dd id="cart-subtotal" data-clarity-unmask="true">Preis folgt</dd></div><div><dt>Lieferung</dt><dd id="cart-delivery-fee" data-clarity-unmask="true">Bitte Termin wählen</dd></div></dl><div class="cart-total"><span id="cart-total-label">Zwischensumme</span><strong id="cart-total-price" data-clarity-unmask="true" aria-live="polite">Preis folgt</strong><p>Inkl. 19 % MwSt. · Lieferung innerhalb Deutschlands.</p><dl id="cart-tax-breakdown" class="cart-tax-breakdown" hidden=""><div><dt>Nettosumme</dt><dd id="cart-net-total">—</dd></div><div><dt>Enthaltene MwSt. (19 %)</dt><dd id="cart-vat-total">—</dd></div></dl></div>
       <div class="checkout-preparation">
-        <button type="button" class="button button-dark" id="cart-delivery-open">Liefertermin wählen<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"></path></svg></button>
-        <p class="trust-shipping">Versandpartner: DPD</p><p id="cart-delivery-summary" role="status">Noch kein Liefertermin ausgewählt.</p>
+        <button type="button" class="button button-dark" id="cart-delivery-open" aria-describedby="cart-delivery-summary">Weiter zur Bestellung<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"></path></svg></button>
+        <p class="trust-shipping">Versandpartner: DPD</p><p id="cart-delivery-summary" role="status" style="display:block">Im nächsten Schritt wählst du Liefertermin und Versand.</p>
         <button type="button" class="button button-dark" id="prepare-checkout" hidden="">Entwürfe prüfen &amp; sichern</button>
 
         <p id="checkout-preparation-status" role="status" aria-live="polite"></p>
@@ -791,7 +791,7 @@
 <aside id="page-purchase" class="page-purchase" aria-label="Dein aktueller Entwurf" hidden=""><div class="page-purchase-copy"><strong>Dein Leuchtschild</strong><span id="page-purchase-design" data-clarity-mask="true"></span><a href="#main">Entwurf bearbeiten</a></div><div class="page-purchase-amount"><strong id="page-purchase-price" aria-live="polite">Wird berechnet …</strong><small>Inkl. 19 % MwSt.</small></div><div class="trust-purchase-action"><button type="button" id="page-add-to-cart" aria-haspopup="dialog" aria-controls="cart-dialog" disabled="">In den Warenkorb <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-6-6 6 6-6 6"></path></svg></button><div class="trust-payments" role="group" aria-label="Zahlungsarten je nach Land und Verfügbarkeit"><img class="trust-paypal" src="assets/trust/paypal.svg" width="76" height="18" alt="PayPal" decoding="async"><img class="trust-klarna" src="assets/trust/klarna.svg" width="48" height="30" alt="Klarna" decoding="async"></div></div></aside>
 <noscript><p class="no-script">Bitte aktiviere JavaScript, um deinen Schriftzug zu gestalten und die Maße zu berechnen.</p></noscript>
 <script src="trust-signals.js?v=20261013-proof1" defer></script>
-<script type="module" src="configurator.min.js?v=674cc45249d7"></script>
+<script type="module" src="configurator.min.js?v=f18eaa431d7d"></script>
 <script type="module" src="content-experience.min.js?v=c2c1864aecd0"></script>
 <script src="customer-brand-section.js?v=20261008-perf-content1" defer=""></script>
 

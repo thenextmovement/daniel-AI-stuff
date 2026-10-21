@@ -201,6 +201,9 @@ function replaceVariables(html, config) {
       '<option value="Unbeleuchtet">Unbeleuchtet</option>',
     ].join('\n                        '),
     '{{STICKY_PRODUKT}}': config.sticky_produkt || 'neonschild',
+    '{{HEADER_CTA_TEXT}}': config.header_cta_text || 'Jetzt 3D-Vorschau erhalten',
+    '{{HEADER_CTA_HREF}}': config.header_cta_href || (config.use_local_form_cta ? '#hero' : `/anfrage?produkt=${encodeURIComponent(config.sticky_produkt || 'neonschild')}`),
+    '{{MOBILE_HEADER_CTA_HREF}}': config.mobile_header_cta_href || config.header_cta_href || (config.use_local_form_cta ? '#hero' : `/anfrage?produkt=${encodeURIComponent(config.sticky_produkt || 'neonschild')}`),
     '{{PRIMARY_CTA_HREF}}': config.use_local_form_cta
       ? '#hero'
       : `/anfrage?produkt=${encodeURIComponent(config.sticky_produkt || 'neonschild')}`,

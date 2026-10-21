@@ -430,5 +430,8 @@
   "express_copy": "Machbarkeit und Liefertermin prüfen wir für Ihr Projekt.",
   "preview_headline": "Kostenlose 3D-Vorschau",
   "preview_copy": "Mit Ihrem persönlichen Angebot.",
-  "offer_badge": "Angebot in 24 Stunden"
+  "offer_badge": "Angebot in 24 Stunden",
+  "header_cta_text": "Logo-Angebot anfragen",
+  "header_cta_href": "#hero-form-desktop",
+  "mobile_header_cta_href": "#hero-form"
 }

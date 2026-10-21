@@ -1868,6 +1868,9 @@ $('#color-palette').addEventListener('keydown',event=>{
 $('#line-height').addEventListener('input',event=>{compactLineSpacing=false;state.lineHeight=Math.max(.8,Math.min(2,Number(event.target.value)||1.25));clearTimeout(timer);update();});
 $('#sign-text').addEventListener('input',()=>{
  const next=$('#sign-text').value,content=spacingContent(next);
+ // A changed text is a new design: calculate its visible price with the current
+ // renderer now. Merely restoring an old draft or cart keeps its original version.
+ if(next!==state.text)state.rasterVersion=3;
  if(next!==state.text&&content===spacingContent(state.text)&&state.result&&!designRendering){spacingAnchor={content,fontId:state.fontId,lineHeight:state.lineHeight,unitsPerEm:state.result.layout.unitsPerEm};}
  else if(spacingAnchor?.content!==content)spacingAnchor=null;
  state.sizeValid=true;
@@ -2836,7 +2839,7 @@ function refreshCartButtons(){
   $('#add-to-cart').lastChild.textContent=editingCartId?'Änderungen übernehmen':'In den Warenkorb';
   $('#review-add-to-cart').disabled=!cartReady||!orderSnapshot?.mount.valid||orderSnapshot?.price.status!=='calculated';
   $('#cart-request-quote').disabled=!cartReady||!cartItems.length||!cartPricesValid||cartSyncing||cartEditing;
-  $('#cart-delivery-open').textContent=needsUpdate?'Entwurf aktualisieren':'Liefertermin wählen';
+  $('#cart-delivery-open').textContent=needsUpdate?'Entwurf aktualisieren':'Weiter zur Bestellung';
   $('#cart-delivery-open').disabled=!cartReady||!cartItems.length||(!needsUpdate&&!cartPricesValid)||cartSyncing||cartEditing;
   $('#prepare-checkout').disabled=!cartReady||!cartItems.length||needsUpdate||!cartPricesValid||cartSyncing||cartEditing||!selectedDelivery;
   $('#cart-pay').disabled=$('#prepare-checkout').disabled;
@@ -2977,7 +2980,7 @@ function refreshDeliverySummary(){
   const previousDate=selectedDelivery?.dateIso;
   if(selectedDelivery)selectedDelivery=rollingCheckoutDelivery(selectedDelivery,{signNet:cartTotals?.signNet,designs});
   if(previousDate&&previousDate!==selectedDelivery?.dateIso)persistCart();
-  const summary=selectedDelivery?`${new Intl.DateTimeFormat('de-DE',{dateStyle:'full',timeZone:'UTC'}).format(new Date(selectedDelivery.dateIso+'T12:00:00Z'))} · ${deliveryTierLabel(selectedDelivery.businessDays)} · für alle Schilder.`:previousDate?'Dein bisheriger Termin ist für diesen Warenkorb nicht mehr verfügbar. Bitte wähle erneut.':'Ein gemeinsamer Liefertermin für deinen Warenkorb.';
+  const summary=selectedDelivery?`${new Intl.DateTimeFormat('de-DE',{dateStyle:'full',timeZone:'UTC'}).format(new Date(selectedDelivery.dateIso+'T12:00:00Z'))} · ${deliveryTierLabel(selectedDelivery.businessDays)} · für alle Schilder.`:previousDate?'Dein bisheriger Termin ist für diesen Warenkorb nicht mehr verfügbar. Bitte wähle erneut.':cartItems.some(cartItemNeedsUpdate)?'Ein gemeinsamer Liefertermin für deinen Warenkorb.':'Im nächsten Schritt wählst du Liefertermin und Versand.';
   $('#cart-delivery-summary').textContent=summary+(restricted?' '+DELIVERY_RESTRICTION_NOTE:'');
   if(!cartPricesValid||!cartTotals){
     $('#cart-tax-breakdown').hidden=true;
@@ -2996,7 +2999,7 @@ function refreshDeliverySummary(){
   $('#cart-net-total').textContent=cartCurrency.format(netCents/100);
   $('#cart-vat-total').textContent=cartCurrency.format((grossCents-netCents)/100);
   $('#cart-tax-breakdown').hidden=false;
-  $('#cart-delivery-open').textContent='Liefertermin wählen';
+  $('#cart-delivery-open').textContent='Weiter zur Bestellung';
   refreshCartButtons();
 }
 const deliveryCalendar=initDeliveryCalendar($('#delivery-calendar-host'),{
