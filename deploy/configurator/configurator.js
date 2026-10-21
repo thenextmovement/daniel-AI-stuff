@@ -1868,6 +1868,9 @@ $('#color-palette').addEventListener('keydown',event=>{
 $('#line-height').addEventListener('input',event=>{compactLineSpacing=false;state.lineHeight=Math.max(.8,Math.min(2,Number(event.target.value)||1.25));clearTimeout(timer);update();});
 $('#sign-text').addEventListener('input',()=>{
  const next=$('#sign-text').value,content=spacingContent(next);
+ // A changed text is a new design: calculate its visible price with the current
+ // renderer now. Merely restoring an old draft or cart keeps its original version.
+ if(next!==state.text)state.rasterVersion=3;
  if(next!==state.text&&content===spacingContent(state.text)&&state.result&&!designRendering){spacingAnchor={content,fontId:state.fontId,lineHeight:state.lineHeight,unitsPerEm:state.result.layout.unitsPerEm};}
  else if(spacingAnchor?.content!==content)spacingAnchor=null;
  state.sizeValid=true;
