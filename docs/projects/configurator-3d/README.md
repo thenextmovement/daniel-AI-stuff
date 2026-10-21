@@ -460,3 +460,10 @@ UV-Anpassung ohne Geometrieänderung. Browser: Gold und Silber bei Tag, Gold bei
 Nacht, normale Perspektive/Frontal/Detail, RAL 1036 und 9006 sowie Goldseiten
 bei blauer Frontbeleuchtung. Desktop 1440×1150 und Mobil 390×844 ohne Überlauf
 oder erfasste Browserfehler. Nur lokale Vorschau.
+
+Die Bürststruktur wurde anschließend für die normale Perspektive deutlicher
+abgestimmt: höherer Kontrast in der Farb- und Rauheitstextur bei unverändert
+schmalen, in Längsrichtung wechselnden Schliffspuren. Texturmaßstab, Linienbreite,
+Normalenstärke und Licht bleiben gleich. Geprüft in normaler Perspektive,
+Detail und Nacht sowie mobil bei 390×844; keine erfassten Browserfehler.
+Die zwei betroffenen Material-/UV-Tests und Syntaxprüfung bestehen.

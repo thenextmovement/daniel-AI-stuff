@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=21';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=22';
 const fontCache=new Map();
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
 async function loadFont(id){
@@ -95,14 +95,15 @@ function wallTexture(){
 function brushedTexture(){
  const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const ctx=canvas.getContext('2d'),image=ctx.createImageData(512,512),roughness=ctx.createImageData(512,512);let seed=73;
  const random=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
- // Long, fine horizontal strokes: subtle colour and roughness variation, no
- // broad normal gradient that would make a flat metal face look inflated.
+ // Fine, broken horizontal strokes with enough contrast to survive the
+ // normal-view texture filtering. Keep each stroke one texel thin; no broad
+ // bands or normal gradient that would make the flat face look inflated.
  const rows=Array.from({length:512},()=>({base:random(),strokes:Array.from({length:17},()=>random())}));
  for(let y=0;y<512;y++)for(let x=0;x<512;x++){
   const cell=x/32,row=rows[y],grain=row.base*.3+(row.strokes[Math.floor(cell)]*(1-cell%1)+row.strokes[Math.floor(cell)+1]*(cell%1))*.7;
-  const shade=Math.round(248+grain*7);
+  const shade=Math.round(222+grain*33);
   image.data.set([shade,shade,shade,255],(y*512+x)*4);
-  const rough=Math.round(215+grain*32);roughness.data.set([rough,rough,rough,255],(y*512+x)*4);
+  const rough=Math.round(188+grain*67);roughness.data.set([rough,rough,rough,255],(y*512+x)*4);
  }
  ctx.putImageData(image,0,0);
  const roughCanvas=document.createElement('canvas');roughCanvas.width=roughCanvas.height=512;roughCanvas.getContext('2d').putImageData(roughness,0,0);
