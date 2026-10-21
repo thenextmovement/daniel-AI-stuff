@@ -467,3 +467,11 @@ schmalen, in Längsrichtung wechselnden Schliffspuren. Texturmaßstab, Linienbre
 Normalenstärke und Licht bleiben gleich. Geprüft in normaler Perspektive,
 Detail und Nacht sowie mobil bei 390×844; keine erfassten Browserfehler.
 Die zwei betroffenen Material-/UV-Tests und Syntaxprüfung bestehen.
+
+Die lokale Reflexionsumgebung für gebürstetes Metall ist nun weicher aufgehellt:
+Dunkle Zwischenräume sind angehoben und helle Reflexionsflächen gedämpft. Dadurch
+bleibt der Goldton über den Schriftzug gleichmäßiger, während die gerichteten
+Reflexionen mit dem Blickwinkel wechseln. Bürsttexturen, Rauheit, Metallanteil,
+Normalenstärke und gespeicherter Farbton sind unverändert. Geprüft: normale
+Goldperspektive, Detail, Nacht und Silber; keine erfassten Browserfehler, beide
+betroffenen Material-/UV-Tests und Syntaxprüfung bestanden. Nur lokale Vorschau.

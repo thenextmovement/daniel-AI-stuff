@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=22';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=23';
 const fontCache=new Map();
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
 async function loadFont(id){
@@ -118,11 +118,11 @@ function studioEnvironment(renderer,brushed=false){
  const room=ctx.createLinearGradient(0,0,0,512);room.addColorStop(0,'#c6c9cc');room.addColorStop(.43,'#8a8f95');room.addColorStop(.52,'#41464b');room.addColorStop(.7,'#888079');room.addColorStop(1,'#b3a493');ctx.fillStyle=room;ctx.fillRect(0,0,1024,512);
  for(const x of [0,128,256,384,512,640,768,896,1024]){const light=ctx.createLinearGradient(x-35,0,x+55,0);light.addColorStop(0,'#5c6269');light.addColorStop(.25,'#e5e8ea');light.addColorStop(.32,'#ffffff');light.addColorStop(.8,'#f8fafb');light.addColorStop(1,'#5c6269');ctx.fillStyle=light;ctx.fillRect(x-35,55,90,244);ctx.fillStyle='#373c42';ctx.fillRect(x+8,55,4,244);ctx.fillRect(x-35,190,90,4);}
  if(brushed){
-  // Broad studio cards with dark intervals produce satin-metal highlights
-  // that travel with the camera, instead of a fixed yellow colour gradient.
-  const base=ctx.createLinearGradient(0,0,0,512);base.addColorStop(0,'#b3b7bc');base.addColorStop(.48,'#262a30');base.addColorStop(1,'#626365');ctx.fillStyle=base;ctx.fillRect(0,0,1024,512);
+  // A softly filled studio keeps the metal hue consistent across the sign.
+  // Muted cards still move in reflection; the separate fine grain is unchanged.
+  const base=ctx.createLinearGradient(0,0,0,512);base.addColorStop(0,'#b3b6ba');base.addColorStop(.48,'#85898f');base.addColorStop(1,'#96989b');ctx.fillStyle=base;ctx.fillRect(0,0,1024,512);
   for(const [x,width] of [[140,170],[540,170],[730,150],[920,100]]){
-   const card=ctx.createLinearGradient(x,0,x+width,0);card.addColorStop(0,'#30343b');card.addColorStop(.18,'#c7cbd0');card.addColorStop(.42,'#ffffff');card.addColorStop(.7,'#f7f5ee');card.addColorStop(1,'#30343b');ctx.fillStyle=card;ctx.fillRect(x,65,width,365);
+   const card=ctx.createLinearGradient(x,0,x+width,0);card.addColorStop(0,'#8b8e92');card.addColorStop(.18,'#bec1c5');card.addColorStop(.42,'#d5d4d0');card.addColorStop(.7,'#cecdc7');card.addColorStop(1,'#8b8e92');ctx.fillStyle=card;ctx.fillRect(x,65,width,365);
   }
  }
  const texture=new THREE.CanvasTexture(canvas);texture.mapping=THREE.EquirectangularReflectionMapping;texture.colorSpace=THREE.SRGBColorSpace;
