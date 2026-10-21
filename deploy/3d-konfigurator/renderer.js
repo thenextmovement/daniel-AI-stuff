@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,lightColor} from './model.js?v=12';
+import {materialSpec,lightColor} from './model.js?v=14';
 const fontCache=new Map();
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
 async function loadFont(id){
@@ -129,8 +129,33 @@ export function glowColor(hex){
  }
  return color;
 }
+export function frontLightPalette(hex){
+ const base=new THREE.Color(hex),rgb=base.clone().convertLinearToSRGB();
+ const value=Math.max(rgb.r,rgb.g,rgb.b),min=Math.min(rgb.r,rgb.g,rgb.b);
+ if(value<.08)return {edge:base,core:base.clone()};
+ const hue=base.getHSL({},THREE.SRGBColorSpace).h,saturation=(value-min)/value;
+ // Raise the luminous core in HSV space while keeping its hue and at least
+ // 76% of the original saturation. No additive white can clip the whole face.
+ const light=(boost,chroma)=>{const v=value+(1-value)*boost,s=saturation*chroma,l=v*(1-s/2);return new THREE.Color().setHSL(hue,l===0||l===1?0:(v-l)/Math.min(l,1-l),l,THREE.SRGBColorSpace);};
+ return {edge:light(.35,.92),core:light(.9,.76)};
+}
+function frontLightTexture(layout,scale,width,height,hex){
+ const mask=silhouette(layout,scale,width,height,2),canvas=document.createElement('canvas');
+ canvas.width=mask.canvas.width;canvas.height=mask.canvas.height;
+ const ctx=canvas.getContext('2d'),radius=Math.min(height*.075,width*.012);
+ ctx.filter=`blur(${radius*mask.px}px)`;ctx.drawImage(mask.canvas,0,0);
+ const pixels=ctx.getImageData(0,0,canvas.width,canvas.height),palette=frontLightPalette(hex);
+ const edge=palette.edge.convertLinearToSRGB(),core=palette.core.convertLinearToSRGB();
+ // A smooth, contour-following light core reads as lit opal acrylic. The
+ // actual front geometry clips the texture, including every letter counter.
+ for(let i=0;i<pixels.data.length;i+=4){
+  let t=THREE.MathUtils.clamp((pixels.data[i+3]/255-.47)/.48,0,1);t=t*t*(3-2*t);
+  pixels.data[i]=255*(edge.r+(core.r-edge.r)*t);pixels.data[i+1]=255*(edge.g+(core.g-edge.g)*t);pixels.data[i+2]=255*(edge.b+(core.b-edge.b)*t);pixels.data[i+3]=255;
+ }
+ ctx.putImageData(pixels,0,0);return {texture:canvasTexture(canvas),width:mask.width,height:mask.height};
+}
 function glowTexture(layout,scale,width,height,front,night){
- const spread=Math.min(front?(night?10:6):(night?20:13),height*(front?.3:.6));
+ const spread=Math.min(front?(night?13:8):(night?20:13),height*(front?.36:.6));
  const mask=silhouette(layout,scale,width,height,Math.max(front?12:25,spread*4));
  const canvas=document.createElement('canvas');canvas.width=mask.canvas.width;canvas.height=mask.canvas.height;const ctx=canvas.getContext('2d');
  // A white light mask keeps saturated colours bright. Colour and radiance
@@ -182,9 +207,9 @@ export class SignRenderer{
   const layout=layoutLetters(font,s.text,s.spacing),scale=s.width/layout.width,width=s.width,height=layout.height*scale;
   const group=new THREE.Group(),spec=materialSpec(s);
   const bodyMaterial=materialFromSpec(spec.shell,this.brush,s.night),rearMaterial=s.lighting==='back'?materialFromSpec(spec.rear,this.brush,s.night):null;
-  // An illuminated opal face is an even light source. Preserve the selected
-  // colour instead of bleaching it through scene exposure and white reflections.
-  const faceMaterial=s.lighting==='front'&&s.lightOn?new THREE.MeshBasicMaterial({color:s.acrylic,toneMapped:false}):materialFromSpec(spec.face,this.brush,s.night);
+  // Colour-bounded illumination remains independent of scene exposure.
+  const frontLight=s.lighting==='front'&&s.lightOn?frontLightTexture(layout,scale,width,height,s.acrylic):null;
+  const faceMaterial=frontLight?new THREE.MeshBasicMaterial({map:frontLight.texture,toneMapped:false}):materialFromSpec(spec.face,this.brush,s.night);
   // With the LEDs off, the acrylic only reflects the scene light. Its diffuse
   // surface must stay dimmer than the illuminated colour instead of turning pastel.
   if(s.lighting==='front'&&!s.lightOn){faceMaterial.color.multiplyScalar(.25);faceMaterial.roughness=.6;faceMaterial.envMapIntensity=s.night?.04:.15;faceMaterial.toneMapped=false;}
@@ -196,7 +221,7 @@ export class SignRenderer{
    const parts=letterGeometries(item.shape,scale,s,true);
    for(const geometry of Object.values(parts))if(geometry)geometry.translate(item.x*scale,item.y*scale,backOffset);
    const mesh=new THREE.Mesh(parts.shell,[bodyMaterial]);mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
-   const positions=parts.front.attributes.position,uv=parts.front.attributes.uv;for(let i=0;i<uv.count;i++)uv.setXY(i,positions.getX(i)/35,positions.getY(i)/35);
+   const positions=parts.front.attributes.position,uv=parts.front.attributes.uv;for(let i=0;i<uv.count;i++)uv.setXY(i,frontLight?positions.getX(i)/frontLight.width+.5:positions.getX(i)/35,frontLight?positions.getY(i)/frontLight.height+.5:positions.getY(i)/35);
    const face=new THREE.Mesh(parts.front,faceMaterial);face.castShadow=true;face.receiveShadow=true;group.add(face);
    if(parts.rear){const rear=new THREE.Mesh(parts.rear,[rearMaterial,rearEdgeMaterial]);rear.castShadow=true;group.add(rear);}
   }
@@ -219,7 +244,7 @@ export class SignRenderer{
   // A silhouette texture behind the letters gives the halo its actual outline and holes.
   if(s.lightOn){
    const front=s.lighting==='front',g=glowTexture(layout,scale,width,height,front,s.night);
-   const radiance=glowColor(lightColor(s)).multiplyScalar(front?(s.night?1.15:.6):(s.night?3.2:1.55));
+   const radiance=glowColor(lightColor(s)).multiplyScalar(front?(s.night?1.8:.9):(s.night?3.2:1.55));
    const halo=new THREE.Mesh(new THREE.PlaneGeometry(g.width,g.height),new THREE.MeshBasicMaterial({map:g.texture,color:radiance,transparent:true,depthWrite:false,toneMapped:false,blending:THREE.AdditiveBlending}));
    halo.position.z=front?backOffset+s.depth+.13:s.mount==='plate'?1.65:.05;group.add(halo);
   }

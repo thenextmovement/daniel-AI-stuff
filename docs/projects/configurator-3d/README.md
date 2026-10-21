@@ -93,7 +93,7 @@ konkrete Freigabe, Abgleich mit aktuellem Main und `codex-predeploy ops` sowie
     node --check deploy/3d-konfigurator/app.js
     node --check deploy/3d-konfigurator/renderer.js
 
-17 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, ungültige Eingaben, echte
+18 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, farberhaltende Frontaufhellung, ungültige Eingaben, echte
 Schriftkonturen inklusive Innenräumen, Abstände/Proportionen, gesperrter Kauf,
 Materialtrennung, Acrylrückseite, unabhängige Oberflächen sowie der vorläufige
 Farbaufpreis der Schiene mit Länge, Menge und Ausschluss anderer Montagearten.
@@ -287,8 +287,8 @@ Frontal, Tag/Nacht, Licht aus, Desktop 1440×1150 und Mobil 320×740 ohne Überl
 
 ## Farbtreue der Frontbeleuchtung
 
-Die eingeschaltete Acrylfront verwendet eine gleichmäßig leuchtende Fläche
-mit der gewählten Farbe, ohne zusätzliche Aufhellung durch das Szenen-Tonemapping
+Die eingeschaltete Acrylfront verwendet einen weich verlaufenden farbigen Lichtkern
+mit dem gewählten Farbton, ohne zusätzliche Aufhellung durch das Szenen-Tonemapping
 oder weiße Studioreflexionen. Der weiche Frontschein spart die massive
 Buchstabenfläche aus und leuchtet um die Außenkontur und in die Innenräume.
 Damit überstrahlen Material und Lichtschein die Front nicht mehr doppelt.
@@ -299,3 +299,15 @@ verwenden weiterhin ihre vorhandenen Materialien und Geometrien.
 Browserprüfung: Blau und Rot bei Nacht, Pink und Grün bei Tag, sowie Ein-/Aus-
 Vergleich von Grün. Die eingeschaltete Fläche bleibt farblich zur Auswahl passend;
 der Lichtschein bleibt sichtbar. Die 17 Modell-/Geometrieprüfungen bestehen.
+
+Der Lichtkern folgt der tatsächlichen Buchstabenkontur, einschließlich Innenräumen,
+und wird durch eine geglättete Konturmaske erzeugt. Eine begrenzte HSV-Aufhellung
+erhält den Farbton und mindestens 76 % der ursprünglichen HSV-Sättigung. Rand und
+Kern bleiben innerhalb des darstellbaren RGB-Bereichs. Der äußere Frontschein ist
+breiter und stärker; die Buchstabenfläche bleibt davon ausgespart. So bekommt die
+Front sichtbare Leuchtkraft ohne flächiges weißes Überstrahlen. Weiß bleibt neutral;
+nahezu schwarzes Acryl wird nicht künstlich zu einer weißen Lichtquelle.
+
+Zusätzlich geprüft: Blau/Rot bei Nacht, Grün bei Tag und mobile Darstellung bei
+320×740. Test 18 prüft Farbton, Sättigung und RGB-Grenzen für alle Acrylvorgaben
+und mehrere freie Farben. Keine erfassten Browserfehler. Rücklicht unverändert.

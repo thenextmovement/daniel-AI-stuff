@@ -3,11 +3,23 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
-import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds} from '../../deploy/3d-konfigurator/renderer.js';
-import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3} from '../../deploy/3d-konfigurator/vendor/three.js';
+import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightPalette} from '../../deploy/3d-konfigurator/renderer.js';
+import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace} from '../../deploy/3d-konfigurator/vendor/three.js';
 import {FontLoader} from '../../deploy/3d-konfigurator/vendor/FontLoader.js';
 const font=new FontLoader().parse(JSON.parse(await readFile(new URL('../../deploy/3d-konfigurator/fonts/modern.json',import.meta.url),'utf8')));
 const fonts=Object.fromEntries(await Promise.all(Object.keys(FONTS).map(async id=>[id,new FontLoader().parse(JSON.parse(await readFile(new URL(`../../deploy/3d-konfigurator/fonts/${id}.json`,import.meta.url),'utf8')))])));
+test('The luminous front core preserves hue and saturation without clipping colours to white',()=>{
+ const hsv=color=>{const c=color.clone().convertLinearToSRGB(),v=Math.max(c.r,c.g,c.b),min=Math.min(c.r,c.g,c.b);return {v,s:v?(v-min)/v:0,h:color.getHSL({},SRGBColorSpace).h};};
+ for(const hex of [...ACRYLICS.map(([value])=>value),'#0044ff','#af004b','#000000','#777777']){
+  const selected=hsv(new Color(hex)),palette=frontLightPalette(hex),edge=hsv(palette.edge),core=hsv(palette.core);
+  assert.ok(core.v>=edge.v-1e-6&&edge.v>=selected.v-1e-6,'The core is brighter than its edge');
+  for(const c of Object.values(palette))for(const channel of [c.r,c.g,c.b])assert.ok(channel>=-1e-6&&channel<=1+1e-6,'No over-range channel clipping');
+  if(selected.s>.01){
+   for(const colour of [edge,core]){const delta=Math.abs(selected.h-colour.h);assert.ok(Math.min(delta,1-delta)<1e-6,'Hue must not shift');assert.ok(colour.s>=selected.s*.75,'Coloured acrylic must not turn white');}
+  }else{assert.ok(core.s<1e-6,'Neutral colours remain neutral');}
+ }
+ assert.equal(frontLightPalette('#ffffff').core.getHexString(),'ffffff');assert.equal(frontLightPalette('#000000').core.getHexString(),'000000');
+});
 test('All 17 light colours survive a saved draft; original colour values stay supported',()=>{
  assert.equal(COLORS.length,17);assert.equal(ACRYLICS.length,17);
  for(const palette of [COLORS,ACRYLICS])assert.equal(new Set(palette.map(([value])=>value)).size,17);
