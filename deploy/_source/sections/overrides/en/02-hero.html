@@ -8,15 +8,14 @@
       #hero .reveal.inline-flex.text-\[10px\] { font-size: 13px !important; }
     }
   </style>
-  <section id="hero" class="relative md:min-h-[100dvh] md:flex md:items-center bg-dark overflow-hidden grain">
-    <!-- Video Background — Desktop: video, Mobile: poster -->
-    <div class="absolute inset-0 z-0">
-      <video preload="none" id="hero-video" src="{{HERO_VIDEO_DESKTOP}}" loop muted playsinline poster="../assets/images/hero-poster.webp" class="w-full h-full object-cover opacity-50 hidden md:block" style="background:#0A0A0A;"></video>
-      <div class="md:hidden absolute inset-0 bg-cover bg-center opacity-50" style="background-image:url('../assets/images/hero-poster.webp');background-color:#0A0A0A;"></div>
-      <div class="absolute inset-0 bg-gradient-to-b from-dark/30 via-transparent to-dark/60"></div>
+  <section id="hero" data-hero-route="{{SLUG}}" data-hero-photo="{{HERO_PHOTO}}" class="relative md:min-h-[100dvh] md:flex md:items-center bg-dark overflow-hidden grain">
+    <div class="absolute inset-0 z-0" data-hero-media>
+    <img class="nt-hero-photo nt-hero-photo-off" src="/assets/images/hero-photos/{{HERO_PHOTO}}-off.webp" alt="{{HERO_PHOTO_ALT}}" fetchpriority="high" width="1672" height="941">
+    <img class="nt-hero-photo nt-hero-photo-on" src="/assets/images/hero-photos/{{HERO_PHOTO}}-on.webp" alt="" aria-hidden="true" fetchpriority="high" width="1672" height="941">
+    <div class="nt-hero-shade">
     </div>
-
-    <div class="relative z-10 w-full max-w-[1400px] mx-auto px-5 md:px-8 pb-20 md:pb-28" style="padding-top:clamp(70px, 10vw, 160px);">
+    </div>
+    <div id="hero-content" class="relative z-10 w-full max-w-[1400px] mx-auto px-5 md:px-8 pb-20 md:pb-28" style="padding-top:clamp(70px, 10vw, 160px);">
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-16 items-start">
 
         <!-- Left: Headline block -->

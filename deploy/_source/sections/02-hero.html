@@ -70,18 +70,13 @@
   #hero-form .nt-submit-reassurance a { display: inline-flex; align-items: center; min-height: 44px; }
 }
 </style>
-<section id="hero" class="relative md:min-h-[100dvh] flex items-center bg-dark overflow-hidden grain">
-    <!-- Video Background — Desktop -->
+<section id="hero" data-hero-route="{{SLUG}}" data-hero-photo="{{HERO_PHOTO}}" class="relative md:min-h-[100dvh] flex items-center bg-dark overflow-hidden grain">
     <div class="absolute inset-0 z-0" data-hero-media>
-      <picture><source media="(min-width: 768px)" srcset="{{HERO_POSTER_DESKTOP}}"><img src="{{HERO_POSTER_MOBILE}}" fetchpriority="high" decoding="sync" alt="{{HERO_POSTER_ALT_MOBILE}}" class="absolute inset-0 w-full h-full object-cover" width="375" height="667"></picture>
-      <div class="absolute inset-0 hidden md:block">
-        <video id="hero-video-desktop" loop muted playsinline preload="none" class="absolute inset-0 z-[1] w-full h-full object-cover" style="background:#0a0a0a;opacity:0" width="1920" height="1080"><source data-src="{{HERO_VIDEO_DESKTOP}}" type="video/mp4"></video>
-        <div class="absolute inset-0" style="background:rgba(10,10,10,.35)"></div>
-        <div class="absolute inset-0" style="background:linear-gradient(to bottom,rgba(10,10,10,.2) 0,transparent 50%,rgba(10,10,10,.3) 100%)"></div>
-      </div>
-      <div class="absolute inset-0 md:hidden" style="background:linear-gradient(to bottom,rgba(10,10,10,.05) 0,rgba(10,10,10,.55) 60%)"></div>
+    <img class="nt-hero-photo nt-hero-photo-off" src="/assets/images/hero-photos/{{HERO_PHOTO}}-off.webp" alt="{{HERO_PHOTO_ALT}}" fetchpriority="high" width="1672" height="941">
+    <img class="nt-hero-photo nt-hero-photo-on" src="/assets/images/hero-photos/{{HERO_PHOTO}}-on.webp" alt="" aria-hidden="true" fetchpriority="high" width="1672" height="941">
+    <div class="nt-hero-shade">
     </div>
-
+    </div>
     <div id="hero-content" class="relative z-10 w-full max-w-[1400px] mx-auto px-5 md:px-8 pt-16 md:pt-32 pb-6 md:pb-24" style="text-shadow:0 2px 20px rgba(0,0,0,.5)">
       <div class="relative grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-16 items-start">
 

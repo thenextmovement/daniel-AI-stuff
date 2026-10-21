@@ -157,6 +157,8 @@ function replaceVariables(html, config) {
     '{{OFFER_BADGE}}': config.offer_badge || '3D-Vorschau in 24h',
     '{{FORM_INTRO_SUBLINE}}': config.form_intro_subline || 'Kostenlose 3D-Vorschau & Festpreisangebot',
     '{{HERO_SUBLINE}}': config.hero_subline || '',
+    '{{HERO_PHOTO}}': ({'leuchtbuchstaben':'front','firmenlogo-beleuchtet':'halo','firmenschilder':'halo','leuchtreklame':'box','leuchtkaesten':'box','messe-event':'expo'})[config.slug] || 'neon',
+    '{{HERO_PHOTO_ALT}}': config.lang === 'en' ? 'Illuminated signage in a business setting' : 'Leuchtreklame im Einsatz',
     '{{HERO_POSTER_DESKTOP}}': config.hero_poster_desktop || '../assets/images/hero-poster-desktop-neon.webp',
     '{{HERO_POSTER_MOBILE}}': config.hero_poster_mobile || '../assets/images/hero-poster-neon-mobile.webp',
     '{{HERO_POSTER_ALT_DESKTOP}}': config.hero_poster_alt_desktop || 'NEONTRIP LED Neonschild',
@@ -279,6 +281,8 @@ function buildLP(config) {
 
   // Replace all template variables
   html = replaceVariables(html, config);
+  // Preserve submitted product values while using the approved customer-facing name.
+  html = html.replaceAll('>LED Logo Wandschild<', '>Beleuchtetes Logo<');
 
   // Rewrite asset paths for root-level pages (e.g. ../assets/ → /assets/)
   if (config.asset_prefix) {
