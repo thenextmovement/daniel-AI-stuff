@@ -1016,7 +1016,7 @@ function CaseTable({
               onClick={() => onOpen(entry)}
               className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-950 px-4 py-2.5 text-sm font-semibold text-white"
             >
-              Fall öffnen
+              Details öffnen
               <ChevronRight className="h-4 w-4" />
             </button>
             <QuickPauses entry={entry} busy={actionBusy} onPause={onQuickPause} />
@@ -2858,7 +2858,7 @@ export function DunningOpsClient({
       if (!response.ok || !payload.ok) throw new Error(payload.blockers?.join(" ") || payload.error || "Vormerkung konnte nicht gespeichert werden.");
       setDashboard(current => current ? { ...current, cases: current.cases.map(item => item.key === entry.key ? { ...item, courtNomination: payload.nomination } : item) } : current);
       setSelected(current => current?.case.key === entry.key ? { ...current, case: { ...current.case, courtNomination: payload.nomination } } : current);
-      setNotice(`${entry.orderNumber}: Gelber Brief vorgemerkt – noch nicht erstellt oder versandt.`);
+      setNotice(`${entry.orderNumber}: Gelber Brief vorgemerkt am ${dateLabel(payload.nomination.at, true)} · ${payload.nomination.actor}. Noch nicht erstellt oder versandt.`);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Vormerkung konnte nicht bestätigt werden. Bitte neu laden.");
     } finally { mutationPending.current = false; setActionBusy(false); void loadDashboard(true); }
@@ -2910,7 +2910,7 @@ export function DunningOpsClient({
       const updateEntry = (item: DunningCaseSummary) => item.key === entry.key ? { ...item, phoneCalls: [payload.call, ...(item.phoneCalls || []).filter(call => call.id !== payload.call.id)] } : item;
       setDashboard(current => current ? { ...current, cases: current.cases.map(updateEntry) } : current);
       setSelected(current => current?.case.key === entry.key ? { ...current, case: updateEntry(current.case) } : current);
-      setNotice("Anruf mit Datum und Bearbeiter gespeichert."); return true;
+      setNotice(`${entry.orderNumber}: Anruf gespeichert am ${dateLabel(payload.call.at, true)} · ${payload.call.actor}.`); return true;
     } catch (error) { setActionError(error instanceof Error ? error.message : "Speichern fehlgeschlagen"); return false; }
     finally { mutationPending.current = false; setActionBusy(false); void loadDashboard(true); }
   }
@@ -3005,7 +3005,10 @@ export function DunningOpsClient({
       <div className={`mx-auto w-full max-w-[1920px] space-y-6`}>
         <div className={`${opsPageContainerClass} space-y-6`}>
         <OpsPageHeader active="dunning" label="Forderungsmanagement" />
-        {notice && !selected ? <p role="status" className="sticky top-2 z-20 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p> : null}
+        {notice ? <div className="fixed bottom-5 left-1/2 z-[80] flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-start gap-3 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-950 shadow-lg">
+          <p role="status" className="flex-1">{notice}</p>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Bestätigung schließen" className="shrink-0 rounded px-2 py-1 hover:bg-emerald-100">✕</button>
+        </div> : null}
         {actionBusy ? <p role="status" className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-xl bg-stone-900 px-4 py-3 text-sm text-white">Aktion wird geprüft und gespeichert …</p> : null}
         <OpsPageIntro
           eyebrow="Mahnwesen"
