@@ -8,7 +8,7 @@ Eigener Konfigurator im Stil des vorhandenen Neon-Editors. Zwei Lichtarten
 (Frontlicht / Rücklicht), drei Montagearten (einzeln / Schiene / Platte).
 Der Kunde soll später Direktpreise sehen und über Shopify kaufen. Die hierfür
 notwendige Kalkulation wird vom Auftraggeber geliefert und liegt noch nicht vor.
-Der Auftraggeber hat am 21.10.2026 ausdrücklich Platzhalter bis dahin gewählt: 
+Der Auftraggeber hat am 21.10.2026 ausdrücklich Platzhalter bis dahin gewählt:
 „kommt später nimm platzhalter“. Die Anzeige lautet „— €“ / „Preis folgt“.
 
 Umgesetzt: Text (auch einzelne Buchstaben, bis zwei Zeilen), drei Schriftstile,
@@ -64,7 +64,7 @@ keinen API-Aufruf, keine Bestellung und keine alternative Angebotsanfrage.
 
 Die neue Route ist für dieselbe anfrage.neontrip.de-Website vorbereitet.
 Die Leuchtbuchstaben-Seite erhält einen zusätzlichen Link im Produktmenü und
-im mobilen Menü. Die bisherigen Anfragebuttons bleiben erhalten. Im Builder
+einen direkt sichtbaren Einstieg unter dem Einleitungstext, auch mobil. Die bisherigen Anfragebuttons bleiben erhalten. Im Builder
 aktiviert nur diese Seitenkonfiguration `show_3d_configurator`.
 
 Die bestehende generierte Landingpage ist nicht bytegleich aus dem älteren
@@ -104,3 +104,8 @@ Eingabesperre bei drei Zeilen geprüft. Kein horizontaler Überlauf an den
 geprüften Breiten. Keine erfassten Browserfehler. Kein Realgeräte-/Safari- oder
 Kauftest. Der Browsertest fand eine bei Fokuswechsel nicht gespeicherte Menge;
 die Mengenänderung speichert nun direkt auf `input`, erneut mit Reload belegt.
+
+Zusatzprüfung des Veröffentlichungskandidaten: Das bisherige mobile Menü
+hat keinen sichtbaren Auslöser. Der neue Einstieg steht deshalb direkt im Hero
+und ist ohne Menüöffnung erreichbar. Preisplatzhalter und gesperrte Kasse
+wurden im Browser bestätigt.
