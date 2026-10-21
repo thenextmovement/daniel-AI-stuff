@@ -14,7 +14,7 @@ export const LABELS={font:Object.fromEntries(Object.entries(FONTS).map(([id,font
 export const COLORS=[['#fff1d6','Warmweiß'],['#f5f7ff','Weiß'],['#f5c35b','Goldgelb'],['#fc6fa8','Rosa'],['#80baff','Blau'],['#8bdfb1','Grün']];
 export const ACRYLICS=[['#ffffff','Weiß'],['#e62d38','Rot'],['#ff8b24','Orange'],['#ee67af','Rosa'],['#2474e5','Blau'],['#26a86b','Grün']];
 export const FINISHES={
- 'brushed-gold':{label:'Gold gebürstet',description:'Edelstahl, gebürstet und gold lackiert',color:'#c6a156',metalness:.8,roughness:.34,brushed:true},
+ 'brushed-gold':{label:'Edelstahl gold lackiert',description:'Edelstahl, gebürstet und gold lackiert',color:'#c6a156',metalness:.8,roughness:.34,brushed:true},
  'brushed-steel':{label:'Edelstahl gebürstet',description:'Edelstahl, gebürstet in Natur',color:'#c5c9cc',metalness:1,roughness:.31,brushed:true},
  'mirror-steel':{label:'Edelstahl verspiegelt',description:'Edelstahl, poliert und verspiegelt',color:'#f0f2f4',metalness:1,roughness:.045,brushed:false},
  'painted-steel':{label:'Edelstahl lackiert',description:'Edelstahl, farbig lackiert',color:null,metalness:.15,roughness:.36,brushed:false}
@@ -27,7 +27,7 @@ export function classicLook(s){
 }
 export function materialSpec(s){
  const f=FINISHES[activeFinish(s)],shell={color:f.color||s.body,metalness:f.metalness,roughness:f.roughness,brushed:f.brushed};
- return {shell,rear:s.lighting==='back'?{color:'#ffffff',metalness:0,roughness:.4,brushed:false,emissive:s.lightOn?s.color:'#000000',emissiveIntensity:s.night?1.6:.75}:{...shell},face:s.lighting==='front'?{color:s.acrylic,metalness:0,roughness:.27,brushed:false,emissive:s.lightOn?s.acrylic:'#000000',emissiveIntensity:s.night?.8:.45}:{...shell,emissive:'#000000',emissiveIntensity:0}};
+ return {shell,rear:s.lighting==='back'?{color:'#ffffff',metalness:0,roughness:.4,brushed:false,emissive:s.lightOn?s.color:'#000000',emissiveIntensity:s.night?3:1.3}:{...shell},face:s.lighting==='front'?{color:s.acrylic,metalness:0,roughness:.27,brushed:false,emissive:s.lightOn?s.acrylic:'#000000',emissiveIntensity:s.night?2:1}:{...shell,emissive:'#000000',emissiveIntensity:0}};
 }
 export function normalize(raw={}){
  if(!raw||typeof raw!=='object')raw={};
@@ -58,6 +58,6 @@ export function description(s,height){return [
  `Schriftzug: ${s.width} cm breit${height?`, ca. ${height.toLocaleString('de-DE',{maximumFractionDigits:1})} cm hoch`:''}`,`Wunschtiefe: ${s.depth} cm`,
  s.lighting==='front'?`Front: farbiges Acryl (${s.acrylic.toUpperCase()})`:`Front und Korpus: ${finishDescription(s)}`,
  s.lighting==='front'?`Korpus und Rückseite: ${finishDescription(s)}`:`Lichtfarbe (Halo): ${COLORS.find(c=>c[0]===s.color)?.[1]}`,
- s.lighting==='front'?'LEDs innen, Lichtaustritt durch die Acrylfront.':'Rückseite: weißes, opales Acryl in Buchstabenform, von innen beleuchtet. Lichtaustritt nach hinten zur Wand.',s.mount==='plate'?`Plattenfarbe (Vorschau): ${s.plate}`:'',s.mount==='rail'?`Schiene: ${s.railCustomColor?'Wunschfarbe '+s.railColor.toUpperCase():'Standardausführung'} · ${(s.width/100).toLocaleString('de-DE')} m lang`:'',
+ s.lighting==='front'?'LEDs innen, Lichtaustritt durch die Acrylfront.':'Rückseite: ca. 1 cm weißes, opales Acryl in Buchstabenform mit innenliegenden LEDs. Lichtaustritt nach hinten zur Wand.',s.mount==='plate'?`Plattenfarbe (Vorschau): ${s.plate}`:'',s.mount==='rail'?`Schiene: ${s.railCustomColor?'Wunschfarbe '+s.railColor.toUpperCase():'Standardausführung'} · ${(s.width/100).toLocaleString('de-DE')} m lang`:'',
  'Maße und Ausführung sind Entwurfswünsche und vor Fertigung zu prüfen.'
  ].filter(Boolean).join('\n');}

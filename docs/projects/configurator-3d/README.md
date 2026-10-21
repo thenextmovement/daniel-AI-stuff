@@ -35,7 +35,7 @@ Vorschau: http://127.0.0.1:18876/3d-konfigurator/
 - `renderer.js`: Schriftgeometrie und 3D-Darstellung.
 - `pricing.js`: gesperrte Preis-Schnittstelle ohne erfundene Regeln.
 - `vendor/`: Three.js 0.170.0 aus der vorhandenen neontrip-ar-Installation.
-- `fonts/`: drei mit Three.js gelieferte Schriften, Lizenzhinweise liegen bei.
+- `fonts/`: drei Three.js-Schriften sowie sechs zusätzliche lokale Outline-Schriften mit Lizenzhinweisen und SVG-Vorschauen.
 
 Previews sind keine Fertigungsfreigabe. Plattenrand 8 cm, Schienenposition,
 Distanz zur Wand, Tiefenauswahl und Breitenbereich sind vorläufige
@@ -93,7 +93,7 @@ konkrete Freigabe, Abgleich mit aktuellem Main und `codex-predeploy ops` sowie
     node --check deploy/3d-konfigurator/app.js
     node --check deploy/3d-konfigurator/renderer.js
 
-14 Tests: gespeicherte Daten/Optionen und Migration, ungültige Eingaben, echte
+15 Tests: gespeicherte Daten/Optionen und Migration, ungültige Eingaben, echte
 Schriftkonturen inklusive Innenräumen, Abstände/Proportionen, gesperrter Kauf,
 Materialtrennung, Acrylrückseite, unabhängige Oberflächen sowie der vorläufige
 Farbaufpreis der Schiene mit Länge, Menge und Ausschluss anderer Montagearten.
@@ -175,11 +175,13 @@ Warenkorb und Neuladen. 320×740, 390×844 und 1440×1000 geprüft, kein horizon
   für Frontlicht Weiß/Naturedelstahl, für Rücklicht Gold/Warmweiß her. Text,
   Schrift, Maße, Montage, Schienenfarbe und die andere Lichtvariante bleiben
   erhalten. Bedienung ist bei 320 px Breite erreichbar.
-- Schiene: separat hinter den Buchstaben, in deren unterem Bereich. Illustrative
-  Abstandshalter verbinden ihre Vorderseite mit der Buchstabenrückseite.
-  Kontaktpunkte kommen aus massiven Konturbereichen, nicht aus Innenräumen.
-  Die offene Sicht durch Buchstaben-Zwischenräume bleibt geometrisch korrekt.
-  Die Ausführung und Schichtmaße sind weiterhin eine Gestaltungsvorschau.
+- Schiene: nach abschließender Klarstellung mittig hinter dem Schriftzug an
+  der Wand. Ihre Vorderseite endet bei z=4 cm, die Rückseite des gesamten
+  Buchstabenbauteils beginnt bei z=9 cm. Nur Abstandshalter überbrücken diese
+  Lücke. Kontaktpunkte liegen in massiven Konturbereichen. Durch offene
+  Buchstaben-Zwischenräume und Innenräume bleibt die Schiene sichtbar.
+  Die zwischenzeitlich besprochene Montage unterhalb wurde ausdrücklich
+  verworfen und ist nicht umgesetzt. Maße der Halter bleiben illustrativ.
 - Sechs zusätzliche Schriften: Montserrat, Poppins, Oswald, Bebas Neue,
   Cormorant Garamond sowie Serif Soft (Outline-Ableitung von Lora mit eigenem
   Familiennamen). Die bisherigen Modern/Klassisch/Elegant bleiben für bestehende
@@ -200,10 +202,12 @@ Die Website lädt nur lokale JSON-/SVG-Dateien, keine Font-API. Das Entfernen
 überlappender Konturen ist nötig: Variable Fonts speichern etwa A-Querbalken
 teilweise separat; erst ihre Vereinigung erhält korrekte Innenräume und Zargen.
 
-Prüfung: 14 bestandene Tests einschließlich tatsächlicher Font-Triangulation,
+Prüfung: 15 bestandene Tests einschließlich tatsächlicher Font-Triangulation,
 Umlauten der neuen Schriften, Innenräumen sowie Raycasting: 9 Schriften ×
 3 Breiten (30/120/400 cm) × 2 Lichtarten × 2 Tiefen. An jedem geprüften
-Montagepunkt verdeckt die massive Front die Schiene. Browserprüfung aller
+Montagepunkt verdeckt die massive Front die Schiene frontal und schräg;
+alle Bauteile einschließlich Acryl liegen vollständig davor. Der Detailausschnitt
+behält mehrteilige Zeichen einschließlich Umlauten zusammen. Browserprüfung aller
 9 Schriften, 400-cm-Frontlicht bei Tag/Nacht und schräger Sicht, 30-cm-Format,
 Rücksetzungen, gespeicherte Montserrat-Auswahl mit „MÜNCHEN“ und lokalem
 Warenkorb-Bearbeiten. Testposition wieder entfernt. Keine echte Bestellung.
@@ -214,3 +218,29 @@ bereits aktualisierten Dateien nur gelesen und die Vorschau geprüft: Logo-Rand
 blendet aus, weißer Sockel sichtbar, USB/Batterie-Text nennt beide Betriebsarten,
 4 Stück wählen die 3–4er-Staffel mit 316 Euro. Diese Dateien sind kein Bestandteil
 des 3D-Releases und wurden hier nicht überschrieben.
+
+
+## Sichtbarer Schichtaufbau und Nachtansicht
+
+- Rücklicht bleibt ein echtes Bauteil aus Edelstahlkörper und 1 cm weißem,
+  opalem Acryl direkt an dessen Rückseite. Die gewählte Gesamttiefe enthält
+  diese Schicht. Innenliegende LEDs beleuchten das Acryl und strahlen zur Wand.
+  Die Acrylseiten verwenden eine eigene Materialintensität, damit ihre Kante
+  neben dem hellen Lichtschein auf der Wand erkennbar bleibt. Der Lichtschein
+  ist eine getrennte Fläche an der Wand und ersetzt keine Acrylgeometrie.
+- Detail und „Montage von der Seite ansehen“ rahmen den letzten Buchstaben
+  vergrößert ein. Letzteres zeigt die Befestigung auf der Schiene. Perspektive,
+  Frontal und Ansicht zurücksetzen zeigen wieder den gesamten Schriftzug.
+- Nacht reduziert auch die Umgebungsreflexionen der Wand und Halter sowie die
+  direkte Beleuchtung. Nur den Hintergrund zu verdunkeln hatte zuvor die
+  tatsächlich sichtbare Wand zu hell gelassen. Der mehrstufige Halo läuft
+  weicher aus; seine Intensität bleibt unter der leuchtenden Acrylkante.
+  Frontlicht hat eine stärkere Emission und Lichtstreuung. Licht aus entfernt
+  Emission und Halo, lässt die weiße Acrylschicht aber bestehen.
+- Rücklicht-Karte, aktuelle Materialbeschreibung und Bildunterschrift nennen
+  Edelstahl bzw. beim Gold-Look ausdrücklich „Edelstahl gold lackiert“.
+  Naturstahl und verspiegelt werden weiterhin nicht als lackiert bezeichnet.
+- Browserprüfung: rotes Rücklicht mit sichtbarer Acrylkante, Gold/Rücklicht,
+  Frontlicht bei Tag/Nacht, Licht aus, 30/120/400 cm, Detail/Montage und mobile
+  Bedienung bei 320 px ohne horizontalen Überlauf. Preisaufschlag weiterhin
+  33/132/440 EUR für 30/120/400 cm Wunschfarbe; Kauf bleibt gesperrt.

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {DEFAULT,FONTS,FINISHES,activeFinish,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
-import {layoutLetters,letterGeometries,mountingLayout,railAttachment} from '../../deploy/3d-konfigurator/renderer.js';
+import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds} from '../../deploy/3d-konfigurator/renderer.js';
 import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3} from '../../deploy/3d-konfigurator/vendor/three.js';
 import {FontLoader} from '../../deploy/3d-konfigurator/vendor/FontLoader.js';
 const font=new FontLoader().parse(JSON.parse(await readFile(new URL('../../deploy/3d-konfigurator/fonts/modern.json',import.meta.url),'utf8')));
@@ -17,20 +17,39 @@ test('Font outlines preserve counters and saved choices; all six new fonts inclu
   for(const item of layout.shapes){const parts=letterGeometries(item.shape,120/layout.width,DEFAULT);for(const geometry of Object.values(parts)){geometry.computeBoundingBox();assert.ok(Number.isFinite(geometry.boundingBox.max.x),id);geometry.dispose();}}
  }
 });
-test('The rail stays behind each letter, with attachment points on solid material rather than counters',()=>{
+test('The detail camera keeps an entire letter, including umlaut dots, in its frame',()=>{
+ for(const [id,font] of Object.entries(fonts)){
+  const text=id==='modern'?'PRADA':'MÜ',layout=layoutLetters(font,text,5),scale=400/layout.width;
+  const detail=detailBounds(layout,scale);
+  assert.ok(Number.isFinite(detail.x)&&Number.isFinite(detail.y));
+  assert.ok(detail.width>0&&detail.height>0&&detail.width<=400);
+  assert.ok(detail.x>0,'The close-up selects the last letter');
+  if(id!=='modern')assert.ok(Math.abs(detail.height-layout.height*scale)<.001,'The umlaut dots stay in frame');
+ }
+});
+test('The rail is centred against the wall and separated from every letter by spacers',()=>{
  const material=new MeshBasicMaterial();
  for(const font of Object.values(fonts))for(const width of [30,120,400])for(const lighting of ['front','back'])for(const depth of [3,8]){
   const state={...DEFAULT,text:'PRADA',width,depth,lighting,mount:'rail'},layout=layoutLetters(font,state.text,5),scale=width/layout.width;
   const mounting=mountingLayout(state,layout.height*scale),support=mounting.rail;
-  assert.ok(mounting.letterRear>support.front);
+  assert.equal(support.y,0,'The rail must be halfway up the lettering');
+  assert.equal(support.z-support.depth/2,0,'The rail sits against the wall');
+  assert.equal(mounting.letterRear-support.front,5,'Only a spacer bridges the gap to the letters');
   const rail=new Mesh(new BoxGeometry(width,support.height,support.depth),material);rail.position.set(0,support.y,support.z);rail.updateMatrixWorld();
   for(const item of layout.shapes){
    const point=railAttachment(item,scale,support.y);assert.ok(point?.width>0);
    const parts=letterGeometries(item.shape,scale,state);
-   parts.front.translate(item.x*scale,item.y*scale,mounting.letterRear);
+   for(const geometry of Object.values(parts))if(geometry){
+    geometry.translate(item.x*scale,item.y*scale,mounting.letterRear);geometry.computeBoundingBox();
+    assert.ok(geometry.boundingBox.min.z>support.front,'Neither the shell, face nor acrylic rear may intersect the rail');
+   }
    const face=new Mesh(parts.front,material);face.updateMatrixWorld();
-   const hits=new Raycaster(new Vector3(point.x,support.y,100),new Vector3(0,0,-1)).intersectObjects([rail,face]);
-   assert.equal(hits[0]?.object,face,'A solid letter face must hide its rail from the front');
+   const target=new Vector3(point.x,support.y,mounting.letterRear+depth+.05);
+   for(const angle of [-1.22,0,1.22]){
+    const origin=target.clone().add(new Vector3(Math.sin(angle)*100,0,Math.cos(angle)*100));
+    const hits=new Raycaster(origin,target.clone().sub(origin).normalize()).intersectObjects([rail,face]);
+    assert.equal(hits[0]?.object,face,'The solid face stays in front of the rail even in the mounting side view');
+   }
    for(const geometry of Object.values(parts))geometry?.dispose();
   }
   rail.geometry.dispose();
@@ -98,7 +117,7 @@ test('Backlit letters have a separate matching white acrylic rear layer, includi
   const state={...DEFAULT,depth,color:'#fc6fa8'},parts=letterGeometries(shape,1,state),materials=materialSpec(state);
   assert.ok(parts.rear);assert.ok(parts.rear.parameters.shapes.holes.length>0);
   for(const geometry of Object.values(parts))if(geometry)geometry.computeBoundingBox();
-  assert.equal(parts.rear.boundingBox.min.z,0);assert.ok(parts.rear.boundingBox.max.z>0);
+  assert.equal(parts.rear.boundingBox.min.z,0);assert.equal(parts.rear.boundingBox.max.z,1,'The rear acrylic is a full 1 cm volume');
   assert.ok(Math.abs(parts.shell.boundingBox.min.z-parts.rear.boundingBox.max.z)<.05);
   for(const axis of ['x','y'])assert.ok(Math.abs(parts.rear.boundingBox.max[axis]-parts.front.boundingBox.max[axis])<.001);
   assert.ok(parts.front.boundingBox.min.z>parts.rear.boundingBox.max.z);

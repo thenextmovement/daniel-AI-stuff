@@ -1,4 +1,4 @@
-import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,normalize,validate,description} from './model.js';
+import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,normalize,validate,description} from './model.js?v=7';
 import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
@@ -8,6 +8,7 @@ try{const saved=JSON.parse(localStorage.getItem(CART_KEY)||'[]');if(Array.isArra
 if(!cart.some(item=>item.id===editingId))editingId=null;
 function persistDraft(){try{localStorage.setItem(DRAFT_KEY,JSON.stringify({...state,cartItemId:editingId}));$('#saved-status').textContent='Dein Entwurf ist auf diesem Gerät gespeichert.';}catch{$('#saved-status').textContent='Speichern auf diesem Gerät nicht möglich. Nutze „Bild speichern“.';}}
 function persistCart(){localStorage.setItem(CART_KEY,JSON.stringify(cart));}
+function syncDetail(){const shown=Boolean(renderer?.closeup);$('#detail-note').hidden=!shown;$('#detail-note').textContent=state.lighting==='back'?'Detailansicht · Edelstahl vorne, ca. 1 cm leuchtendes Acryl direkt dahinter.':'Detailansicht · Leuchtende Acrylfront auf dem Edelstahlkorpus.';}
 function setPressed(selector,value,key){for(const el of all(selector))el.setAttribute('aria-pressed',String(el.dataset[key]===String(value)));}
 const euro=value=>(value/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
 function railPriceNote(design,quantity=1){const e=railColorEstimate(design,quantity);return e?`Farbaufpreis Schiene: ca. ${euro(e.totalCents)} (${e.metres.toLocaleString('de-DE')} m × ca. 110 €/m${quantity>1?' × '+quantity+' Stück':''}). Gesamtpreis folgt.`:'';}
@@ -23,14 +24,14 @@ function sync(){
  $('#acrylic-color').value=state.acrylic;$('#acrylic-value').textContent=state.acrylic.toUpperCase();$('#acrylic-name').textContent=ACRYLICS.find(c=>c[0]===state.acrylic)?.[1]||'Eigene Farbe';
  $('#body-color').value=state.body;$('#body-value').textContent=state.body.toUpperCase();$('#paint-settings').hidden=activeFinish(state)!=='painted-steel';
  const front=state.lighting==='front';$('#acrylic-settings').hidden=!front;$('#halo-settings').hidden=front;$('#surface-title').textContent=front?'Edelstahlkorpus & Rückseite':'Metallfront & Korpus';
- $('#classic-look-note').textContent=front?'Weiße Acrylfront · Edelstahl gebürstet':'Gold gebürstet · warmweißes Licht';
+ $('#classic-look-note').textContent=front?'Weiße Acrylfront · Edelstahl gebürstet':'Edelstahl, gold lackiert · warmweißes Licht';
  $('#reset-look').disabled=front?state.frontFinish===DEFAULT.frontFinish&&state.acrylic===DEFAULT.acrylic:state.backFinish===DEFAULT.backFinish&&state.color===DEFAULT.color;
- $('#material-note').textContent=finishDescription(state)+'. '+(front?'Korpus und Rückseite aus Edelstahl.':'Hinten weißes, opales Acryl in Buchstabenform.');$('#construction-note').textContent=front?'Farbiges Acryl vorne · Edelstahlkorpus und Rückseite · LEDs innen.':'Edelstahl vorne · weißes Acryl hinten · Licht zur Wand.';$('#caption-material').textContent=FINISHES[activeFinish(state)].label;
- syncRail();$('#plate-settings').hidden=state.mount!=='plate';$('#light').setAttribute('aria-pressed',String(state.lightOn));$('#light').textContent=state.lightOn?'Licht an':'Licht aus';$('#night').setAttribute('aria-pressed',String(state.night));$('#night').textContent=state.night?'Tagansicht':'Nachtansicht';document.body.classList.toggle('night-mode',state.night);
+ $('#material-note').textContent=finishDescription(state)+'. '+(front?'Korpus und Rückseite aus Edelstahl.':'Hinten ca. 1 cm weißes, opales Acryl in Buchstabenform mit innenliegenden LEDs.');$('#construction-note').textContent=front?'Farbiges Acryl vorne · Edelstahlkorpus und Rückseite · LEDs innen.':finishDescription(state)+' · ca. 1 cm weißes Acryl hinten · Licht zur Wand.';$('#caption-material').textContent=FINISHES[activeFinish(state)].label;
+ syncDetail();syncRail();$('#plate-settings').hidden=state.mount!=='plate';$('#light').setAttribute('aria-pressed',String(state.lightOn));$('#light').textContent=state.lightOn?'Licht an':'Licht aus';$('#night').setAttribute('aria-pressed',String(state.night));$('#night').textContent=state.night?'Tagansicht':'Nachtansicht';document.body.classList.toggle('night-mode',state.night);
  $('#caption-light').textContent=LABELS.lighting[state.lighting];$('#caption-mount').textContent=LABELS.mount[state.mount];$('#caption-depth').textContent=state.depth+' cm Tiefe';
  $('#cart-count').textContent=cart.reduce((sum,item)=>sum+item.quantity,0);step(activeStep,false);
 }
-function change(key,value){state[key]=value;sync();schedule();}
+function change(key,value){state[key]=value;if(key==='mount'&&value!=='rail'&&$('[data-view=mounting]').getAttribute('aria-pressed')==='true'){renderer?.view('perspective');setPressed('[data-view]','perspective','view');}sync();schedule();}
 function setError(message){$('#editor-error').textContent=message;$('#loading').hidden=!message;if(message)$('#loading').textContent=message;$('#next').disabled=Boolean(message)||!result;$('#download').disabled=Boolean(message)||!result;}
 function schedule(){clearTimeout(debounce);++revision;result=null;$('#next').disabled=true;$('#download').disabled=true;debounce=setTimeout(update,100);}
 async function update(){
@@ -75,10 +76,10 @@ for(const [id,key] of [['sign-text','text'],['width','width'],['width-range','wi
  $('#char-count').textContent=`${state.text.length} / 60`;$('#spacing-label').textContent=state.spacing+' %';if(id==='width-range')$('#width').value=value;if(id==='width')$('#width-range').value=value;syncRail();schedule();
 });
 $('#light').addEventListener('click',()=>change('lightOn',!state.lightOn));$('#night').addEventListener('click',()=>change('night',!state.night));
-for(const button of all('[data-view]'))button.addEventListener('click',()=>{renderer?.view(button.dataset.view);setPressed('[data-view]',button.dataset.view,'view');});
+for(const button of all('[data-view]'))button.addEventListener('click',()=>{renderer?.view(button.dataset.view);setPressed('[data-view]',button.dataset.view,'view');syncDetail();});
 $('#canvas-host').addEventListener('viewchange',()=>setPressed('[data-view]','','view'));
 $('#canvas-host').addEventListener('rendererror',event=>{result=null;setError(event.detail);});
-$('#zoom-in').addEventListener('click',()=>renderer?.changeZoom(.12));$('#zoom-out').addEventListener('click',()=>renderer?.changeZoom(-.12));$('#reset-view').addEventListener('click',()=>{renderer?.view('perspective');setPressed('[data-view]','perspective','view');});
+$('#zoom-in').addEventListener('click',()=>renderer?.changeZoom(.12));$('#zoom-out').addEventListener('click',()=>renderer?.changeZoom(-.12));$('#reset-view').addEventListener('click',()=>{renderer?.view('perspective');setPressed('[data-view]','perspective','view');syncDetail();});
 for(const button of all('[data-step]'))button.addEventListener('click',()=>step(Number(button.dataset.step)));
 $('#previous').addEventListener('click',()=>step(activeStep-1));
 $('#next').addEventListener('click',()=>{if(!result||validate(state))return;if(activeStep<2){step(activeStep+1);return;}$('#review-summary').textContent=[description(state,result.height),railPriceNote(state)].filter(Boolean).join('\n');$('#review-preview').src=renderer.snapshot();$('#add-cart').firstChild.textContent=editingId?'Änderungen übernehmen ':'In den Warenkorb ';$('#review').showModal();});
@@ -108,4 +109,4 @@ $('#add-cart').addEventListener('click',()=>{
 });
 $('#new-design').addEventListener('click',()=>{editingId=null;state={...DEFAULT};$('#cart').close();sync();step(0);schedule();});
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=7');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
