@@ -1,4 +1,4 @@
-import {RAL_COLORS,RAL_GROUPS,ralCode,searchRal} from './ral.js?v=20';
+import {RAL_COLORS,RAL_GROUPS,ralCode,searchRal} from './ral.js?v=21';
 
 // One shared picker for every painted part. Search text stays local to the
 // picker; only a real catalogue selection becomes a saved paint specification.

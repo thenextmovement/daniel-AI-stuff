@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,lightColor} from './model.js?v=20';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=21';
 const fontCache=new Map();
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
 async function loadFont(id){
@@ -85,7 +85,7 @@ export function railAttachment(item,scale,y){
  for(let i=0;i+1<intersections.length;i+=2){const start=intersections[i],end=intersections[i+1];if(!widest||end-start>widest.width)widest={x:(start+end)/2,width:end-start};}
  return widest;
 }
-function dispose(group){group.traverse(obj=>{obj.geometry?.dispose();for(const mat of Array.isArray(obj.material)?obj.material:obj.material?[obj.material]:[]){mat.map?.dispose();mat.dispose();}});group.clear();}
+function dispose(group){group.traverse(obj=>{obj.geometry?.dispose();for(const mat of Array.isArray(obj.material)?obj.material:obj.material?[obj.material]:[]){if(mat.map&&!mat.map.userData.shared)mat.map.dispose();mat.dispose();}});group.clear();}
 function wallTexture(){
  const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const ctx=canvas.getContext('2d');
  const image=ctx.createImageData(512,512);let seed=29;
@@ -93,21 +93,55 @@ function wallTexture(){
  const tex=new THREE.CanvasTexture(canvas);tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(30,30);tex.colorSpace=THREE.SRGBColorSpace;return tex;
 }
 function brushedTexture(){
- const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const ctx=canvas.getContext('2d');let seed=73;
- for(let y=0;y<512;y++){seed=(1664525*seed+1013904223)>>>0;const shade=130+seed%65;ctx.fillStyle=`rgb(${shade},${shade},${shade})`;ctx.fillRect(0,y,512,1);}
- const texture=new THREE.CanvasTexture(canvas);texture.wrapS=texture.wrapT=THREE.RepeatWrapping;return texture;
+ const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const ctx=canvas.getContext('2d'),image=ctx.createImageData(512,512),roughness=ctx.createImageData(512,512);let seed=73;
+ const random=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
+ // Long, fine horizontal strokes: subtle colour and roughness variation, no
+ // broad normal gradient that would make a flat metal face look inflated.
+ const rows=Array.from({length:512},()=>({base:random(),strokes:Array.from({length:17},()=>random())}));
+ for(let y=0;y<512;y++)for(let x=0;x<512;x++){
+  const cell=x/32,row=rows[y],grain=row.base*.3+(row.strokes[Math.floor(cell)]*(1-cell%1)+row.strokes[Math.floor(cell)+1]*(cell%1))*.7;
+  const shade=Math.round(248+grain*7);
+  image.data.set([shade,shade,shade,255],(y*512+x)*4);
+  const rough=Math.round(215+grain*32);roughness.data.set([rough,rough,rough,255],(y*512+x)*4);
+ }
+ ctx.putImageData(image,0,0);
+ const roughCanvas=document.createElement('canvas');roughCanvas.width=roughCanvas.height=512;roughCanvas.getContext('2d').putImageData(roughness,0,0);
+ const textures={color:new THREE.CanvasTexture(canvas),roughness:new THREE.CanvasTexture(roughCanvas)};
+ for(const texture of Object.values(textures)){texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.userData.shared=true;}
+ return textures;
 }
-function studioEnvironment(renderer){
+function studioEnvironment(renderer,brushed=false){
  // A neutral, local studio environment gives polished metal view-dependent reflections.
  // It is illustrative and never captures the customer's camera or surroundings.
  const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=512;const ctx=canvas.getContext('2d');
  const room=ctx.createLinearGradient(0,0,0,512);room.addColorStop(0,'#c6c9cc');room.addColorStop(.43,'#8a8f95');room.addColorStop(.52,'#41464b');room.addColorStop(.7,'#888079');room.addColorStop(1,'#b3a493');ctx.fillStyle=room;ctx.fillRect(0,0,1024,512);
  for(const x of [0,128,256,384,512,640,768,896,1024]){const light=ctx.createLinearGradient(x-35,0,x+55,0);light.addColorStop(0,'#5c6269');light.addColorStop(.25,'#e5e8ea');light.addColorStop(.32,'#ffffff');light.addColorStop(.8,'#f8fafb');light.addColorStop(1,'#5c6269');ctx.fillStyle=light;ctx.fillRect(x-35,55,90,244);ctx.fillStyle='#373c42';ctx.fillRect(x+8,55,4,244);ctx.fillRect(x-35,190,90,4);}
+ if(brushed){
+  // Broad studio cards with dark intervals produce satin-metal highlights
+  // that travel with the camera, instead of a fixed yellow colour gradient.
+  const base=ctx.createLinearGradient(0,0,0,512);base.addColorStop(0,'#b3b7bc');base.addColorStop(.48,'#262a30');base.addColorStop(1,'#626365');ctx.fillStyle=base;ctx.fillRect(0,0,1024,512);
+  for(const [x,width] of [[140,170],[540,170],[730,150],[920,100]]){
+   const card=ctx.createLinearGradient(x,0,x+width,0);card.addColorStop(0,'#30343b');card.addColorStop(.18,'#c7cbd0');card.addColorStop(.42,'#ffffff');card.addColorStop(.7,'#f7f5ee');card.addColorStop(1,'#30343b');ctx.fillStyle=card;ctx.fillRect(x,65,width,365);
+  }
+ }
  const texture=new THREE.CanvasTexture(canvas);texture.mapping=THREE.EquirectangularReflectionMapping;texture.colorSpace=THREE.SRGBColorSpace;
  const pmrem=new THREE.PMREMGenerator(renderer),target=pmrem.fromEquirectangular(texture);texture.dispose();pmrem.dispose();return target;
 }
-function materialFromSpec(spec,brush,night){
- const {brushed,...properties}=spec;return new THREE.MeshStandardMaterial({...properties,envMapIntensity:night?.24:1,bumpMap:brushed?brush:null,bumpScale:brushed?.035:0});
+export function materialFromSpec(spec,brush,night,environment=null){
+ const {brushed,...properties}=spec;
+ if(!brushed)return new THREE.MeshStandardMaterial({...properties,envMapIntensity:night?.24:1});
+ return new THREE.MeshPhysicalMaterial({...properties,map:brush.color,roughnessMap:brush.roughness,bumpMap:brush.roughness,bumpScale:.012,anisotropy:.65,anisotropyRotation:0,clearcoat:.08,clearcoatRoughness:.32,envMap:environment,envMapIntensity:night?.55:1.2});
+}
+export function brushedUVs(geometry,tileSize){
+ // Align the grain across separate letters and supports, including side
+ // walls. A minimum screen-readable scale keeps it visible on large signs.
+ const positions=geometry.attributes.position,normals=geometry.attributes.normal,uv=geometry.attributes.uv;
+ for(let i=0;i<uv.count;i++){
+  const x=positions.getX(i),y=positions.getY(i),z=positions.getZ(i);
+  if(Math.abs(normals.getZ(i))>.5)uv.setXY(i,x/tileSize,y/tileSize);
+  else if(Math.abs(normals.getX(i))>.5)uv.setXY(i,z/tileSize,y/tileSize);
+  else uv.setXY(i,x/tileSize,z/tileSize);
+ }
 }
 function silhouette(layout,scale,width,height,pad){
  const w=width+pad*2,h=height+pad*2,canvas=document.createElement('canvas');
@@ -160,7 +194,7 @@ export class SignRenderer{
   this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true,powerPreference:'low-power'});
   this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.35;
   host.append(this.renderer.domElement);
-  this.brush=brushedTexture();this.environment=studioEnvironment(this.renderer);this.scene.environment=this.environment.texture;
+  this.brush=brushedTexture();for(const texture of Object.values(this.brush))texture.anisotropy=Math.min(8,this.renderer.capabilities.getMaxAnisotropy());this.environment=studioEnvironment(this.renderer);this.brushedEnvironment=studioEnvironment(this.renderer,true);this.scene.environment=this.environment.texture;
   this.ambient=new THREE.HemisphereLight('#fff4e2','#54505a',2);this.scene.add(this.ambient);
   this.sun=new THREE.DirectionalLight('#fff3dc',3.2);this.sun.position.set(-100,190,200);this.sun.castShadow=true;this.sun.shadow.mapSize.set(2048,2048);this.sun.shadow.camera.left=-300;this.sun.shadow.camera.right=300;this.sun.shadow.camera.top=250;this.sun.shadow.camera.bottom=-250;this.sun.shadow.camera.near=1;this.sun.shadow.camera.far=900;this.sun.shadow.normalBias=.3;this.sun.shadow.bias=-.0003;this.scene.add(this.sun);
   this.fill=new THREE.DirectionalLight('#c4d6ff',1.2);this.fill.position.set(150,10,80);this.scene.add(this.fill);
@@ -190,29 +224,29 @@ export class SignRenderer{
  async update(s){
   const rev=++this.revision;const font=await loadFont(s.font);if(rev!==this.revision)return null;
   const layout=layoutLetters(font,s.text,s.spacing),scale=s.width/layout.width,width=s.width,height=layout.height*scale;
-  const group=new THREE.Group(),spec=materialSpec(s);
-  const bodyMaterial=materialFromSpec(spec.shell,this.brush,s.night),rearMaterial=s.lighting==='back'?materialFromSpec(spec.rear,this.brush,s.night):null;
+  const group=new THREE.Group(),spec=materialSpec(s),brushTile=Math.max(20,s.width*.4),makeMaterial=spec=>materialFromSpec(spec,this.brush,s.night,this.brushedEnvironment.texture);
+  const bodyMaterial=makeMaterial(spec.shell),rearMaterial=s.lighting==='back'?makeMaterial(spec.rear):null;
   // Colour-bounded illumination remains independent of scene exposure.
-  const faceMaterial=s.lighting==='front'&&s.lightOn?new THREE.MeshBasicMaterial({color:frontLightColor(s.acrylic),toneMapped:false}):materialFromSpec(spec.face,this.brush,s.night);
+  const faceMaterial=s.lighting==='front'&&s.lightOn?new THREE.MeshBasicMaterial({color:frontLightColor(s.acrylic),toneMapped:false}):makeMaterial(spec.face);
   // With the LEDs off, the acrylic only reflects the scene light. Its diffuse
   // surface must stay dimmer than the illuminated colour instead of turning pastel.
   if(s.lighting==='front'&&!s.lightOn){faceMaterial.color.multiplyScalar(.25);faceMaterial.roughness=.6;faceMaterial.envMapIntensity=s.night?.04:.15;faceMaterial.toneMapped=false;}
   // Keep the solid opal edge readable separately from the bright rear face
   // and the halo on the wall; all three are physically separate surfaces.
-  const rearEdgeMaterial=s.lighting==='back'?materialFromSpec({...spec.rear,emissive:s.lightOn?'#f3f6ff':'#000000',emissiveIntensity:s.night?2:.8},this.brush,s.night):null;
+  const rearEdgeMaterial=s.lighting==='back'?makeMaterial({...spec.rear,emissive:s.lightOn?'#f3f6ff':'#000000',emissiveIntensity:s.night?2:.8}):null;
   const mounting=mountingLayout(s,height),backOffset=mounting.letterRear;
   for(const item of layout.shapes){
    const parts=letterGeometries(item.shape,scale,s,true);
-   for(const geometry of Object.values(parts))if(geometry)geometry.translate(item.x*scale,item.y*scale,backOffset);
+   for(const geometry of Object.values(parts))if(geometry){geometry.translate(item.x*scale,item.y*scale,backOffset);brushedUVs(geometry,brushTile);}
    const mesh=new THREE.Mesh(parts.shell,[bodyMaterial]);mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
-   const positions=parts.front.attributes.position,uv=parts.front.attributes.uv;for(let i=0;i<uv.count;i++)uv.setXY(i,positions.getX(i)/35,positions.getY(i)/35);
    const face=new THREE.Mesh(parts.front,faceMaterial);face.castShadow=true;face.receiveShadow=true;group.add(face);
    if(parts.rear){const rear=new THREE.Mesh(parts.rear,[rearMaterial,rearEdgeMaterial]);rear.castShadow=true;group.add(rear);}
   }
-  const supportMaterial=new THREE.MeshStandardMaterial({color:s.mount==='plate'?s.plate:s.railCustomColor?s.railColor:'#a8adb1',roughness:.5,metalness:.15,envMapIntensity:s.night?.08:1});
+  const supportSpec=s.mount==='plate'||s.railCustomColor?paintMaterialSpec(s,s.mount==='plate'?'plate':'railColor'):{color:'#a8adb1',brushed:false};
+  const supportMaterial=s.mount==='individual'?null:supportSpec.brushed?makeMaterial(supportSpec):new THREE.MeshStandardMaterial({color:supportSpec.color,roughness:.5,metalness:.15,envMapIntensity:s.night?.08:1});
   if(s.mount==='rail'){
    const support=mounting.rail;
-   const rail=new THREE.Mesh(new THREE.BoxGeometry(width,support.height,support.depth),supportMaterial);rail.position.set(0,support.y,support.z);rail.castShadow=true;rail.receiveShadow=true;group.add(rail);
+   const rail=new THREE.Mesh(new THREE.BoxGeometry(width,support.height,support.depth),supportMaterial);brushedUVs(rail.geometry,brushTile);rail.position.set(0,support.y,support.z);rail.castShadow=true;rail.receiveShadow=true;group.add(rail);
    const postMaterial=new THREE.MeshStandardMaterial({color:'#94999c',roughness:.42,metalness:.65,envMapIntensity:s.night?.15:1});
    for(const item of layout.shapes){
     const point=railAttachment(item,scale,support.y);if(!point||point.width<.15)continue;
@@ -221,7 +255,7 @@ export class SignRenderer{
    }
   }
   if(s.mount==='plate'){
-   const plate=new THREE.Mesh(new THREE.BoxGeometry(width+16,height+16,1.2),supportMaterial);plate.position.z=1;plate.castShadow=true;plate.receiveShadow=true;group.add(plate);
+   const plate=new THREE.Mesh(new THREE.BoxGeometry(width+16,height+16,1.2),supportMaterial);brushedUVs(plate.geometry,brushTile);plate.position.z=1;plate.castShadow=true;plate.receiveShadow=true;group.add(plate);
    const screwMat=new THREE.MeshStandardMaterial({color:'#9a9a96',metalness:.8,roughness:.35,envMapIntensity:s.night?.15:1});
    for(const x of [-1,1])for(const y of [-1,1]){const screw=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,.25,12),screwMat);screw.rotation.x=Math.PI/2;screw.position.set(x*(width/2+5.5),y*(height/2+5.5),1.75);group.add(screw);}
   }

@@ -433,3 +433,30 @@ Nummernsuche sowie unveränderte Katalogabdeckung. Browser: Gold/Silber,
 „aluminium“ innerhalb Silber, erhaltene Lackierung, Desktop 1440×1150 und
 Mobil 320×740 ohne horizontalen Überlauf. Keine erfassten Browserfehler.
 Nur lokale Vorschau.
+
+## Gebürstete Gold- und Silbervorschau
+
+Gold und Silber werden mit gerichteten Metallreflexionen, einer feinen
+horizontalen Bürststruktur und einer dezenten Lackreflexion dargestellt. Das
+gilt für die vorhandenen gebürsteten Edelstahloberflächen, den Standard-Goldton
+und die RAL-Töne der zusätzlichen Gold-/Silbergruppen. Die Zuordnung gilt für
+Rücklichtfront/Korpus, Frontlichtseiten, Schiene und Platte. Beliebige gelbe oder
+graue Eigenfarben erhalten keine automatische Metallzuordnung. Gespeicherte
+RAL-Codes, Vorschau-Grundfarben, Produktmaße und Preislogik bleiben erhalten.
+Die Oberflächenwirkung ist weiterhin eine illustrative Gestaltungsvorschau.
+
+Der Renderer verwendet dafür `MeshPhysicalMaterial` mit Anisotropie und eine
+separate lokale Studio-Umgebung mit breiten Reflexionsflächen. Deterministische
+Farb-/Rauheitstexturen bilden feine, längliche Schliffspuren; ihre geringe
+Normalenwirkung vermeidet grobe Streifen oder eine gewölbt wirkende Fläche.
+Die Texturkoordinaten sind über Buchstaben und Träger ausgerichtet. Gemeinsame
+Texturen bleiben beim Materialwechsel erhalten. Andere Lackfarben, die
+Spiegelfläche und die leuchtende, gleichmäßig flache Acrylfront behalten ihre
+bisherige Darstellung.
+
+Geprüft: 29 Modell-/Geometrietests, einschließlich Metallzuordnung aller sieben
+RAL-Töne in allen vier Lackbereichen, Erhalt der Acryl-/Lichtfarben und
+UV-Anpassung ohne Geometrieänderung. Browser: Gold und Silber bei Tag, Gold bei
+Nacht, normale Perspektive/Frontal/Detail, RAL 1036 und 9006 sowie Goldseiten
+bei blauer Frontbeleuchtung. Desktop 1440×1150 und Mobil 390×844 ohne Überlauf
+oder erfasste Browserfehler. Nur lokale Vorschau.

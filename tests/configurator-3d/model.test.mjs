@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,PAINT_PRESETS,PAINT_FIELDS,RAL_COLORS,ralCode,choosePaint,paintDescription,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
+import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,PAINT_PRESETS,PAINT_FIELDS,RAL_COLORS,ralCode,choosePaint,paintDescription,finishDescription,lightColor,materialSpec,paintMaterialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
-import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor} from '../../deploy/3d-konfigurator/renderer.js';
-import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace} from '../../deploy/3d-konfigurator/vendor/three.js';
+import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor,materialFromSpec,brushedUVs} from '../../deploy/3d-konfigurator/renderer.js';
+import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace,Texture} from '../../deploy/3d-konfigurator/vendor/three.js';
 import {searchRal,RAL_GROUPS,ralGroup} from '../../deploy/3d-konfigurator/ral.js';
 import {FontLoader} from '../../deploy/3d-konfigurator/vendor/FontLoader.js';
 const font=new FontLoader().parse(JSON.parse(await readFile(new URL('../../deploy/3d-konfigurator/fonts/modern.json',import.meta.url),'utf8')));
@@ -290,4 +290,40 @@ test('Gold and silver shortcuts preserve the original colour groups and combine 
   assert.ok(searchRal('',ralGroup(code)).some(([found])=>found===code));
  }
  assert.equal(searchRal('').length,216);
+});
+
+
+test('Gold and silver paint use brushed metal on each painted part while acrylic stays non-metallic',()=>{
+ for(const key of Object.keys(PAINT_FIELDS))for(const group of ['gold','silver'])for(const [code] of searchRal('',group)){
+  const state=choosePaint({...DEFAULT,lighting:'front',acrylic:'#2474e5'},key,{ral:code});
+  const before=JSON.stringify(state),paint=paintMaterialSpec(state,key),lit=materialSpec(state);
+  assert.equal(paint.color,RAL_COLORS[code].hex);assert.ok(paint.metalness>=.9);assert.equal(paint.brushed,true);
+  assert.equal(lit.face.metalness,0);assert.equal(lit.face.brushed,false);assert.equal(lit.face.color,'#2474e5');
+  assert.equal(JSON.stringify(state),before);
+  assert.equal(quote3D([{design:state,quantity:1}]).purchaseEnabled,false);
+ }
+ for(const color of ['#c6a156','#c5c9cc','#a8adb1'])assert.equal(paintMaterialSpec({...DEFAULT,sideColor:color},'sideColor').brushed,true);
+ for(const color of ['#ffffff','#252525','#ffdd00','#808080','#2474e5'])assert.equal(paintMaterialSpec({...DEFAULT,sideColor:color},'sideColor').brushed,false);
+ for(const ral of ['1003','7016','9016'])assert.equal(paintMaterialSpec(choosePaint(DEFAULT,'body',{ral}),'body').brushed,false);
+ const gold=materialSpec(choosePaint(DEFAULT,'body',{color:'#c6a156'}));assert.equal(gold.face.brushed,true);assert.equal(gold.face.emissive,'#000000');
+});
+
+test('Brushed surfaces use directional physical reflections; UV changes preserve geometry and dimensions',()=>{
+ const brush={color:new Texture(),roughness:new Texture()},environment=new Texture();
+ for(const night of [false,true]){
+  const metal=materialFromSpec(materialSpec(DEFAULT).face,brush,night,environment);
+  assert.equal(metal.isMeshPhysicalMaterial,true);assert.ok(metal.anisotropy>0);assert.equal(metal.envMap,environment);
+  assert.equal(metal.map,brush.color);assert.equal(metal.roughnessMap,brush.roughness);assert.equal(metal.emissiveIntensity,0);
+  const acrylic=materialFromSpec(materialSpec({...DEFAULT,lighting:'front'}).face,brush,night,environment);
+  assert.equal(acrylic.metalness,0);assert.equal(acrylic.map,null);assert.equal(acrylic.bumpMap,null);assert.equal(acrylic.envMap,null);
+  metal.dispose();acrylic.dispose();
+ }
+ const shape=font.generateShapes('A',100)[0],parts=letterGeometries(shape,1,{...DEFAULT},true);
+ for(const geometry of [...Object.values(parts),new BoxGeometry(120,8,4)]){
+  const positions=Array.from(geometry.attributes.position.array);brushedUVs(geometry,48);
+  assert.deepEqual(Array.from(geometry.attributes.position.array),positions);
+  assert.ok(Array.from(geometry.attributes.uv.array).every(Number.isFinite));
+  geometry.dispose();
+ }
+ brush.color.dispose();brush.roughness.dispose();environment.dispose();
 });
