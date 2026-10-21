@@ -3036,9 +3036,23 @@ function refreshDeliverySummary(){
   $('#cart-tax-breakdown').hidden=false;
   refreshCartButtons();
 }
+let earlyCheckoutTimer,earlyCheckoutStarted=false;
+function scheduleEarlyCheckout(){
+  clearTimeout(earlyCheckoutTimer);
+  if(earlyCheckoutStarted||cartSyncing||!$('#delivery-dialog').open)return;
+  earlyCheckoutTimer=setTimeout(()=>{
+    if(earlyCheckoutStarted||cartSyncing||cartEditing||!$('#delivery-dialog').open||!cartReady||!cartPricesValid||!cartTotals||!cartItems.length||cartItems.some(cartItemNeedsUpdate))return;
+    const delivery=deliveryCalendar.getSelection();if(!delivery)return;
+    earlyCheckoutStarted=true;
+    // One speculative attempt per visit. No redirect, purchase event or silent
+    // retry; errors are shown only when the customer explicitly continues.
+    void checkoutClient.prepareEarly(cartItems,delivery,Math.round((cartTotals.subtotalGross+delivery.feeGross)*100)).catch(()=>{});
+  },600);
+}
 const deliveryCalendar=initDeliveryCalendar($('#delivery-calendar-host'),{
   getContext:()=>({signNet:cartTotals?.signNet,subtotalGross:cartTotals?.subtotalGross,selectedDate:selectedDelivery?.dateIso,designs:cartItems.map(item=>item.design)}),
   checkoutMode:true,
+  onSelect:scheduleEarlyCheckout,
   onContinue:(selection,{changed=false}={})=>{
     if(changed){$('#delivery-checkout-status').textContent='Termin oder Preis wurde aktualisiert. Bitte prüfe die Auswahl und klicke erneut auf „Zur Kasse“.';return;}
     selectedDelivery=selection;persistCart();goToCheckout();
@@ -3049,14 +3063,15 @@ function openDeliverySelection(){
   const legacyItem=cartItems.find(cartItemNeedsUpdate);
   if(legacyItem){void editCartItem(legacyItem);return;}
   if(!cartPricesValid||!cartTotals)return;
-  refreshDeliverySummary();$('#cart-dialog').close();$('#delivery-checkout-status').textContent='';deliveryCalendar.refresh({resetSelection:true});$('#delivery-dialog').showModal();
+  earlyCheckoutStarted=false;
+  refreshDeliverySummary();$('#cart-dialog').close();$('#delivery-checkout-status').textContent='';deliveryCalendar.refresh({resetSelection:true});$('#delivery-dialog').showModal();scheduleEarlyCheckout();
   trackConfigurator('configurator_delivery_opened');
 }
 $('#cart-delivery-open').addEventListener('click',openDeliverySelection);
 $('#delivery-back').addEventListener('click',()=>{if(!cartSyncing)$('#delivery-dialog').close();});
 $('#delivery-dialog').addEventListener('cancel',event=>{if(cartSyncing)event.preventDefault();});
 // Escape, close icon and Back all return to the cart without committing a draft choice.
-$('#delivery-dialog').addEventListener('close',()=>{showCart();$('#cart-delivery-open').focus();});
+$('#delivery-dialog').addEventListener('close',()=>{clearTimeout(earlyCheckoutTimer);showCart();$('#cart-delivery-open').focus();});
 
 async function addCurrentDesign(){
  if(cartAdding||!cartReady||cartEditing||cartSyncing)return;
@@ -3198,6 +3213,7 @@ async function goToCheckout(){
  if(!$('#delivery-dialog').open||cartSyncing||cartEditing||!cartReady||!cartItems.length)return;
  if(cartItems.some(cartItemNeedsUpdate)){$('#delivery-dialog').close();showCart();return;}
  if(!cartPricesValid||!selectedDelivery)return;
+ clearTimeout(earlyCheckoutTimer);earlyCheckoutStarted=true;
  const status=$('#delivery-checkout-status');
  const reviewedDelivery={...selectedDelivery},reviewedTotal=Math.round((cartTotals.subtotalGross+selectedDelivery.feeGross)*100),reviewedItems=JSON.stringify(cartItems);
  let navigating=false,checkoutRequested=false;setCheckoutBusy(true);status.textContent='Deine sichere Kasse wird vorbereitet …';

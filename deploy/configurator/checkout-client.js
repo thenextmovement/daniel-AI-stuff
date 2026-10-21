@@ -325,7 +325,41 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
     })().catch(error=>{uploads.delete(cacheKey);throw error;}));
     return {localId:ref.id,id:await uploads.get(cacheKey)};
   }
+  // Background work is bound to the exact purchase data and privacy choice.
+  // It never navigates or retries an uncertain result on its own.
+  let earlyPreparation=null;
+  function preparationKey(cartItems,delivery,expectedTotalCents){
+    return JSON.stringify([checkoutPayload(cartItems,delivery),expectedTotalCents,consentKey(readVisitorConsent())]);
+  }
+  function prepareEarly(cartItems,delivery,expectedTotalCents){
+    if(pending)return pending;
+    let key;try{key=preparationKey(cartItems,delivery,expectedTotalCents);}catch(error){return Promise.reject(error);}
+    if(earlyPreparation?.key===key)return earlyPreparation.promise;
+    const entry={key,promise:prepareRequest(cartItems,delivery,expectedTotalCents),settled:false,error:null};
+    earlyPreparation=entry;
+    entry.promise.then(()=>{entry.settled=true;},error=>{entry.settled=true;entry.error=error;});
+    return entry.promise;
+  }
   function prepare(cartItems,delivery,expectedTotalCents,onPreparing=()=>{}){
+    const entry=earlyPreparation;
+    if(!entry)return prepareRequest(cartItems,delivery,expectedTotalCents,onPreparing);
+    let key;try{key=preparationKey(cartItems,delivery,expectedTotalCents);}catch(error){return Promise.reject(error);}
+    if(entry.key===key&&!entry.settled){
+      const consumed=()=>{if(earlyPreparation===entry)earlyPreparation=null;};
+      entry.promise.then(consumed,consumed);
+      return entry.promise;
+    }
+    return (async()=>{
+      // A different selection must never inherit another in-flight receipt.
+      if(!entry.settled)await entry.promise.catch(()=>{});
+      if(earlyPreparation===entry)earlyPreparation=null;
+      if(entry.key===key&&entry.error)throw entry.error;
+      // Refresh an already created cart through the existing owned endpoint.
+      // This rechecks price/consent and obtains a fresh Shopify checkout URL.
+      return prepareRequest(cartItems,delivery,expectedTotalCents,onPreparing);
+    })();
+  }
+  function prepareRequest(cartItems,delivery,expectedTotalCents,onPreparing=()=>{}){
     if(pending)return pending;
     let payload;try{payload=checkoutPayload(cartItems,delivery);}catch(error){return Promise.reject(error);}
     const attemptId=createFailureAttemptId(cryptoApi);
@@ -399,5 +433,5 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
     for(const ref of refs)payload.assetRefs.push(await upload(ref,token));
     return {payload,token};
   }
-  return {prepare,prepareDesignAssets,revokeMeasurement};
+  return {prepare,prepareEarly,prepareDesignAssets,revokeMeasurement};
 }
