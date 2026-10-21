@@ -873,7 +873,31 @@ export function ralCode(value){
 }
 
 const foldRal=value=>String(value).toLocaleLowerCase('de-DE').normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/ß/g,'ss');
-export function searchRal(query=''){
+export const RAL_GROUPS=[
+ {id:'all',name:'Alle',hex:null},
+ {id:'white',name:'Weiß',hex:'#eff0eb'},
+ {id:'black',name:'Schwarz',hex:'#262625'},
+ {id:'grey',name:'Grau',hex:'#858585'},
+ {id:'blue',name:'Blau',hex:'#2474a8'},
+ {id:'green',name:'Grün',hex:'#39835b'},
+ {id:'yellow',name:'Gelb / Beige',hex:'#e5ba52'},
+ {id:'orange',name:'Orange',hex:'#d97632'},
+ {id:'red',name:'Rot',hex:'#ad363a'},
+ {id:'violet',name:'Violett',hex:'#865b8e'},
+ {id:'brown',name:'Braun',hex:'#795747'}
+];
+// Browse by the CLASSIC number families; split the neutral 9xxx family so
+// white, black and grey/aluminium tones each have a useful, complete filter.
+export function ralGroup(value){
+ const code=ralCode(value);if(!code)return '';
+ if(code[0]==='9'){
+  if(['9004','9005','9011','9017'].includes(code))return 'black';
+  if(['9006','9007','9022','9023'].includes(code))return 'grey';
+  return 'white';
+ }
+ return {1:'yellow',2:'orange',3:'red',4:'violet',5:'blue',6:'green',7:'grey',8:'brown'}[code[0]];
+}
+export function searchRal(query='',group='all'){
  const words=foldRal(query).replace(/^ral\s*/,'').trim().split(/\s+/).filter(Boolean);
- return Object.entries(RAL_COLORS).filter(([code,colour])=>words.every(word=>foldRal(code+' '+colour.name).includes(word)));
+ return Object.entries(RAL_COLORS).filter(([code,colour])=>(group==='all'||ralGroup(code)===group)&&words.every(word=>foldRal(code+' '+colour.name).includes(word)));
 }

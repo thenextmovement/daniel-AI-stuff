@@ -5,7 +5,7 @@ import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,PAINT_PR
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
 import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor} from '../../deploy/3d-konfigurator/renderer.js';
 import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace} from '../../deploy/3d-konfigurator/vendor/three.js';
-import {searchRal} from '../../deploy/3d-konfigurator/ral.js';
+import {searchRal,RAL_GROUPS,ralGroup} from '../../deploy/3d-konfigurator/ral.js';
 import {FontLoader} from '../../deploy/3d-konfigurator/vendor/FontLoader.js';
 const font=new FontLoader().parse(JSON.parse(await readFile(new URL('../../deploy/3d-konfigurator/fonts/modern.json',import.meta.url),'utf8')));
 const fonts=Object.fromEntries(await Promise.all(Object.keys(FONTS).map(async id=>[id,new FontLoader().parse(JSON.parse(await readFile(new URL(`../../deploy/3d-konfigurator/fonts/${id}.json`,import.meta.url),'utf8')))])));
@@ -257,4 +257,23 @@ test('RAL swatch search finds names, numbers and combined queries without losing
  assert.ok(searchRal('weiss').some(([code])=>code==='9016'));
  assert.ok(searchRal('grun').some(([code])=>code==='6005'));
  assert.deepEqual(searchRal('9999'),[]);assert.deepEqual(searchRal('<script>'),[]);
+});
+
+
+test('RAL colour groups partition the full catalogue and combine with the name/number search',()=>{
+ const grouped=RAL_GROUPS.filter(({id})=>id!=='all').flatMap(({id})=>{
+  const matches=searchRal('',id);assert.ok(matches.length>0,id);
+  for(const [code] of matches)assert.equal(ralGroup(code),id);
+  return matches.map(([code])=>code);
+ });
+ assert.equal(grouped.length,216);assert.equal(new Set(grouped).size,216);
+ assert.deepEqual(grouped.sort(),Object.keys(RAL_COLORS).sort());
+ for(const [code,group] of [['9016','white'],['9012','white'],['9005','black'],['9017','black'],['7016','grey'],['9006','grey'],['9023','grey'],['5005','blue'],['6005','green'],['1036','yellow']]){
+  assert.equal(ralGroup('RAL '+code),group);assert.deepEqual(searchRal(code,group).map(([found])=>found),[code]);
+ }
+ assert.deepEqual(searchRal('signal','blue').map(([code])=>code),['5005']);
+ assert.deepEqual(searchRal('weiss','black'),[]);
+ assert.deepEqual(searchRal('grun','green').map(([code])=>code),searchRal('grun').filter(([code])=>code.startsWith('6')).map(([code])=>code));
+ assert.deepEqual(searchRal('signal','all'),searchRal('signal'));
+ assert.deepEqual(searchRal('','unknown'),[]);assert.equal(ralGroup('9999'),'');
 });

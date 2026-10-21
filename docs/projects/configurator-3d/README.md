@@ -393,3 +393,28 @@ Mausauswahl, Pfeiltasten/Enter, direkte Nummer, Escape, Neuladen und Farbfelder
 für Seiten, Rücklichtfront, Schiene und Platte. Desktop 1440×1150 und Mobil
 320×740 ohne Überlauf, keine erfassten Konsolenfehler. Preis-/Bestellvertrag
 und RAL-Speicherung unverändert. Nur lokale Vorschau.
+
+## RAL-Farbgruppen
+
+Alle vier RAL-Picker bieten „Alle“ sowie Weiß, Schwarz, Grau, Blau, Grün,
+Gelb / Beige, Orange, Rot, Violett und Braun als kombinierbare Suchfilter.
+Die Gruppen folgen den CLASSIC-Nummernfamilien; die neutralen 9xxx-Töne sind
+auf Weiß, Schwarz und Grau/Aluminium verteilt. Jeder der 216 Töne ist genau
+einer Gruppe zugeordnet. Farbpunkte und ein sichtbarer Auswahlrahmen ergänzen
+die Gruppennamen. Auf schmalen Geräten brechen die Gruppen in mehrere Zeilen um.
+
+Ein Gruppenwechsel erhält den Suchtext und verändert die gewählte Lackierung
+nicht. Auch das Leeren der Suche erhält die Lackierung; die separate ×-Schaltfläche
+entfernt die RAL-Zuordnung. Die gespeicherte Auswahl bleibt unter der Trefferliste sichtbar. Eine
+gültige direkt eingegebene RAL-Nummer hebt den Gruppenfilter auf, damit ihr
+Treffer sichtbar bleibt. Escape bzw. Verlassen des Pickers stellt das
+Auswahlfeld wieder her; beim erneuten Öffnen startet die Suche mit „Alle“.
+Ein erneuter Klick öffnet auch ein gerade per Escape geschlossenes Suchfeld.
+
+Geprüft: 26 Modell-/Geometrietests inklusive vollständiger Gruppenzuordnung,
+neutraler Sonderfälle und kombinierter Suche. Browser: Gruppenwechsel mit
+Suchtext, keine Treffer, „Alle“, Auswahl per Pfeiltasten/Enter, direkte Nummer
+aus anderer Gruppe, Escape/Wiederöffnen und alle vier Lackbereiche. Die
+bestehenden Lackierungen bleiben beim Filtern erhalten. Desktop 1440×1150 und
+Mobil 320×740 ohne horizontalen Überlauf, keine erfassten Browserfehler.
+Nur lokale Vorschau; Preis- und Bestelllogik unverändert.

@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,lightColor} from './model.js?v=18';
+import {materialSpec,lightColor} from './model.js?v=19';
 const fontCache=new Map();
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
 async function loadFont(id){
