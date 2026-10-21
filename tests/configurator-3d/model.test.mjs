@@ -25,7 +25,7 @@ test('More letter spacing changes proportions while width remains an explicit cu
 });
 test('3D products never fall through to neon pricing or purchase before approved rules exist',()=>{
  for(const lighting of ['front','back'])for(const mount of ['individual','rail','plate']){
-  const q=quote3D([{design:{...DEFAULT,lighting,mount},quantity:1}]);assert.equal(q.grossCents,null);assert.equal(q.purchaseEnabled,false);assert.equal(q.status,'unavailable');
+  const q=quote3D([{design:{...DEFAULT,lighting,mount},quantity:1}]);assert.equal(q.grossCents,null);assert.equal(q.purchaseEnabled,false);assert.equal(q.status,'placeholder');
  }
 });
 test('Review description retains light, support and physical size choices',()=>{

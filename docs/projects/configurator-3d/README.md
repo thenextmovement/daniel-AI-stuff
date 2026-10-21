@@ -1,6 +1,6 @@
 # NEONTRIP 3D-Schilder-Konfigurator
 
-Stand: 21.10.2026. Lokale Implementierung; keine Veröffentlichung.
+Stand: 21.10.2026. Implementierung und Veröffentlichungskandidat; noch nicht live.
 
 ## Auftrag und aktueller Umfang
 
@@ -8,6 +8,8 @@ Eigener Konfigurator im Stil des vorhandenen Neon-Editors. Zwei Lichtarten
 (Frontlicht / Rücklicht), drei Montagearten (einzeln / Schiene / Platte).
 Der Kunde soll später Direktpreise sehen und über Shopify kaufen. Die hierfür
 notwendige Kalkulation wird vom Auftraggeber geliefert und liegt noch nicht vor.
+Der Auftraggeber hat am 21.10.2026 ausdrücklich Platzhalter bis dahin gewählt: 
+„kommt später nimm platzhalter“. Die Anzeige lautet „— €“ / „Preis folgt“.
 
 Umgesetzt: Text (auch einzelne Buchstaben, bis zwei Zeilen), drei Schriftstile,
 Licht-/Korpusfarbe, Plattenfarbe, Wunschbreite, proportionale Höhe, Wunschtiefe,
@@ -54,17 +56,31 @@ Fertigung abzugleichen. Lichtwirkung ist visuell, keine photometrische Simulatio
 5. Passende bestehende Einwilligungs-/Messlogik, erfolgreiche Kaufmessung erst
    auf der bestätigten Bestellung. Die lokale Vorschau lädt keine Tracker.
 
-`quote3D` gibt bis dahin ausschließlich `grossCents:null` und
+`quote3D` gibt bis dahin `status:placeholder`, ausschließlich `grossCents:null` und
 `purchaseEnabled:false` zurück. Der Kassenbutton ist deaktiviert. Es gibt
 keinen API-Aufruf, keine Bestellung und keine alternative Angebotsanfrage.
 
 ## Veröffentlichung
 
-Die neue Route ist für dieselbe anfrage.neontrip.de-Website vorbereitet. Der
-bestehende Neon-Konfigurator und Landingpages sind unverändert. Nach der
-Kaufanbindung den Einstieg auf der Leuchtbuchstaben-Seite ergänzen und das
-vollständige aktuelle Pages-Release um die neue Route erweitern; origin/main
-enthält nicht alle bestehenden Konfigurator-Assets. Nie den unvollständigen
+Die neue Route ist für dieselbe anfrage.neontrip.de-Website vorbereitet.
+Die Leuchtbuchstaben-Seite erhält einen zusätzlichen Link im Produktmenü und
+im mobilen Menü. Die bisherigen Anfragebuttons bleiben erhalten. Im Builder
+aktiviert nur diese Seitenkonfiguration `show_3d_configurator`.
+
+Die bestehende generierte Landingpage ist nicht bytegleich aus dem älteren
+Builder reproduzierbar. Deshalb wurden nur beide Links gezielt eingefügt;
+Entfernen dieser Einfügungen ergibt exakt das bisherige HTML. Die Quellen
+sind ebenfalls aktualisiert. Kein umfassender Neuaufbau fremder Seiten.
+
+Produktionsbasis ist Pages-Deployment `5840b9ed-0f46-4313-b317-75264f5b0744`,
+Commit `273351ddabfb72958dedcc928f903c414f2477af`. Sein vollständiges Artefakt
+liegt unter `/Users/danielklesse/Documents/Codex/2026-10-20/https-clarity-microsoft-com-projects-view/work/step-latency/candidate`.
+Die daneben liegenden Functions werden unverändert übernommen.
+Das Veröffentlichungspaket dieses Chats liegt unter
+`/Users/danielklesse/Documents/Codex/2026-10-21/kan-2/work/3d-release/`.
+Es ergänzt ausschließlich die neue Route, die beiden Links und ihre Quellen.
+Das bestehende Neon-Bundle bleibt bytegleich zum veröffentlichten Stand.
+`origin/main` enthält nicht alle Konfigurator-Assets. Nie den unvollständigen
 `deploy/`-Ordner allein als kompletten Seitenersatz ausliefern.
 
 AGENTS.md verlangt vor Produktion den überprüften vollständigen Commit,

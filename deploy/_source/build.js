@@ -203,6 +203,8 @@ function replaceVariables(html, config) {
       '<option value="Unbeleuchtet">Unbeleuchtet</option>',
     ].join('\n                        '),
     '{{STICKY_PRODUKT}}': config.sticky_produkt || 'neonschild',
+    '{{CONFIGURATOR_3D_DESKTOP_LINK}}': config.show_3d_configurator ? '<a href="/3d-konfigurator/" class="block px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors">3D-Konfigurator</a>' : '',
+    '{{CONFIGURATOR_3D_MOBILE_LINK}}': config.show_3d_configurator ? '<a href="/3d-konfigurator/" class="mobile-nav-link text-[22px] font-semibold text-white" style="letter-spacing: -0.03em;">3D-Konfigurator</a>' : '',
     '{{HEADER_CTA_TEXT}}': config.header_cta_text || 'Jetzt 3D-Vorschau erhalten',
     '{{HEADER_CTA_HREF}}': config.header_cta_href || (config.use_local_form_cta ? '#hero' : `/anfrage?produkt=${encodeURIComponent(config.sticky_produkt || 'neonschild')}`),
     '{{MOBILE_HEADER_CTA_HREF}}': config.mobile_header_cta_href || config.header_cta_href || (config.use_local_form_cta ? '#hero' : `/anfrage?produkt=${encodeURIComponent(config.sticky_produkt || 'neonschild')}`),
