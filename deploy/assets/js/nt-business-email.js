@@ -36,7 +36,16 @@
     return false;
   }
 
-  function inspect(value) {
+  // Deliberately limited to common, non-delegated suffix typos (IANA, 2026-10-15).
+  // Valid endings such as .co, .com, .cm, .om, .cam and .dev are never guessed.
+  var suffixTypos = {
+    comn: 'com', comm: 'com', cmo: 'com', con: 'com', comnn: 'com',
+    ccom: 'com', cmom: 'com', coml: 'com', comk: 'com', ocm: 'com',
+    copm: 'com', cpm: 'com', vom: 'com', dee: 'de', dde: 'de',
+    deee: 'de', nte: 'net', nett: 'net', ogr: 'org'
+  };
+
+  function inspect(value, options) {
     var email = String(value || '').trim();
     if (!email || email.length > 254 || /\s/.test(email)) return { valid: false, reason: 'format' };
     if ((email.match(/@/g) || []).length !== 1) return { valid: false, reason: 'format' };
@@ -59,7 +68,12 @@
     if (!/^(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})$/.test(labels[labels.length - 1])) {
       return { valid: false, reason: 'format' };
     }
-    if (isBlockedDomain(domain)) return { valid: false, reason: 'personal_domain', domain: domain };
+    var correctedSuffix = suffixTypos[labels[labels.length - 1]];
+    if (typeof correctedSuffix === 'string') {
+      labels[labels.length - 1] = correctedSuffix;
+      return { valid: true, reason: 'domain_typo', email: local + '@' + domain, domain: domain, suggestion: local + '@' + labels.join('.') };
+    }
+    if (!(options && options.allowPersonal) && isBlockedDomain(domain)) return { valid: false, reason: 'personal_domain', domain: domain };
     return { valid: true, email: local + '@' + domain, domain: domain };
   }
 
@@ -68,11 +82,17 @@
     return english
       ? {
           error: 'Please use a business email address, e.g. name@company.com.',
+          format: 'Please enter a valid email address, e.g. name@company.com.',
+          typo: 'There may be a typo in the email ending.',
+          suggestion: 'Use ',
           fallbackPrefix: 'No business email?',
           fallbackLink: 'Send your request directly by email'
         }
       : {
           error: 'Bitte verwenden Sie Ihre geschäftliche E-Mail-Adresse, z. B. name@unternehmen.de.',
+          format: 'Bitte geben Sie eine gültige E-Mail-Adresse ein, z. B. name@unternehmen.de.',
+          typo: 'Die Endung Ihrer E-Mail-Adresse enthält vermutlich einen Tippfehler.',
+          suggestion: 'Übernehmen: ',
           fallbackPrefix: 'Keine Firmen-E-Mail?',
           fallbackLink: 'Anfrage direkt per E-Mail senden'
         };
@@ -83,7 +103,20 @@
     return input.id + '-business-error';
   }
 
-  function showError(input, focus) {
+  function describe(input, ids, remove) {
+    var values = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    values = values.filter(function (id) { return ids.indexOf(id) === -1; });
+    if (!remove) values = values.concat(ids);
+    if (values.length) input.setAttribute('aria-describedby', values.join(' '));
+    else input.removeAttribute('aria-describedby');
+  }
+
+  function inspectInput(input) {
+    return inspect(input.value, { allowPersonal: input.getAttribute('data-nt-email-personal') === 'allow' });
+  }
+
+  function showError(input, focus, result) {
+    var advisory = result.valid && result.reason === 'domain_typo';
     var id = errorId(input);
     var fallbackId = id + '-fallback';
     var message = document.getElementById(id);
@@ -92,33 +125,68 @@
     if (!message) {
       message = document.createElement('p');
       message.id = id;
-      message.setAttribute('data-nt-business-email-error', 'true');
-      message.setAttribute('role', 'alert');
       message.style.cssText = 'margin:6px 0 0;color:#dc2626;font-size:12px;line-height:1.35;font-weight:600';
       input.insertAdjacentElement('afterend', message);
     }
-    message.textContent = labels.error;
-    if (!fallback) {
-      fallback = document.createElement('p');
-      fallback.id = fallbackId;
-      fallback.setAttribute('data-nt-business-email-fallback', 'true');
-      fallback.style.cssText = 'margin:5px 0 0;color:rgba(10,10,10,.5);font-size:11px;line-height:1.4;font-weight:500';
-      message.insertAdjacentElement('afterend', fallback);
+    message.setAttribute('data-clarity-mask', 'true');
+    message.setAttribute('role', advisory ? 'status' : 'alert');
+    message.removeAttribute(advisory ? 'data-nt-business-email-error' : 'data-nt-business-email-hint');
+    message.setAttribute(advisory ? 'data-nt-business-email-hint' : 'data-nt-business-email-error', 'true');
+    message.style.color = advisory ? '#525252' : '#dc2626';
+    var error = result.reason === 'domain_typo' ? labels.typo : result.reason === 'format' ? labels.format : labels.error;
+    // Keep a rendered button stable when focusing it causes another blur check.
+    if (message._ntEmailValue !== input.value || message._ntEmailReason !== result.reason) {
+      message._ntEmailValue = input.value;
+      message._ntEmailReason = result.reason;
+      message.textContent = error;
+      if (result.suggestion) {
+        var originalValue = input.value;
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('data-nt-email-correction', 'true');
+        button.textContent = labels.suggestion + result.suggestion;
+        button.style.cssText = 'display:block;max-width:100%;margin-top:5px;padding:8px 0;min-height:44px;background:transparent;border:0;color:inherit;font:inherit;text-align:left;text-decoration:underline;overflow-wrap:anywhere;cursor:pointer';
+        button.addEventListener('click', function () {
+          // A previously rendered suggestion must never overwrite a newer edit.
+          if (input.value !== originalValue) return;
+          input.value = result.suggestion;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          validateInput(input, { focus: true });
+          input.focus();
+        });
+        message.appendChild(button);
+      }
     }
-    fallback.textContent = '';
-    var fallbackPrefix = document.createElement('span');
-    fallbackPrefix.textContent = labels.fallbackPrefix + ' ';
-    var fallbackLink = document.createElement('a');
-    fallbackLink.href = 'mailto:support@neontrip.de';
-    fallbackLink.textContent = labels.fallbackLink;
-    fallbackLink.style.cssText = 'color:#0A0A0A;font-weight:650;text-decoration:underline;text-decoration-color:rgba(10,10,10,.25);text-underline-offset:2px';
-    fallback.appendChild(fallbackPrefix);
-    fallback.appendChild(fallbackLink);
-    input.setAttribute('aria-invalid', 'true');
-    input.setAttribute('aria-describedby', id + ' ' + fallbackId);
-    input.setCustomValidity(labels.error);
-    input.style.borderColor = '#f87171';
-    if (focus) {
+    if (fallback && result.reason !== 'personal_domain') {
+      fallback.remove();
+      fallback = null;
+    }
+    if (result.reason === 'personal_domain') {
+      if (!fallback) {
+        fallback = document.createElement('p');
+        fallback.id = fallbackId;
+        fallback.setAttribute('data-nt-business-email-fallback', 'true');
+        fallback.style.cssText = 'margin:5px 0 0;color:rgba(10,10,10,.5);font-size:11px;line-height:1.4;font-weight:500';
+        message.insertAdjacentElement('afterend', fallback);
+      }
+      fallback.textContent = '';
+      var fallbackPrefix = document.createElement('span');
+      fallbackPrefix.textContent = labels.fallbackPrefix + ' ';
+      var fallbackLink = document.createElement('a');
+      fallbackLink.href = 'mailto:support@neontrip.de';
+      fallbackLink.textContent = labels.fallbackLink;
+      fallbackLink.style.cssText = 'color:#0A0A0A;font-weight:650;text-decoration:underline;text-decoration-color:rgba(10,10,10,.25);text-underline-offset:2px';
+      fallback.appendChild(fallbackPrefix);
+      fallback.appendChild(fallbackLink);
+    }
+    if (advisory) input.removeAttribute('aria-invalid');
+    else input.setAttribute('aria-invalid', 'true');
+    describe(input, [id, fallbackId], true);
+    describe(input, fallback ? [id, fallbackId] : [id]);
+    input.setCustomValidity(advisory ? '' : error);
+    input.style.borderColor = advisory ? '' : '#f87171';
+    if (focus && !advisory) {
       try { input.focus({ preventScroll: false }); } catch (_) { input.focus(); }
     }
   }
@@ -131,20 +199,20 @@
     if (message) message.remove();
     if (fallback) fallback.remove();
     input.removeAttribute('aria-invalid');
-    if (input.getAttribute('aria-describedby') === id + ' ' + fallbackId) input.removeAttribute('aria-describedby');
+    describe(input, [id, fallbackId], true);
     input.setCustomValidity('');
     input.style.borderColor = '';
   }
 
   function validateInput(input, options) {
     if (!input) return false;
-    var result = inspect(input.value);
-    if (result.valid) {
+    var result = inspectInput(input);
+    if (result.valid && !result.suggestion) {
       clearError(input);
       return true;
     }
-    showError(input, Boolean(options && options.focus));
-    return false;
+    showError(input, Boolean(options && options.focus), result);
+    return result.valid;
   }
 
   function decorateInput(input) {
@@ -152,17 +220,28 @@
     input.dataset.ntBusinessEmailReady = '1';
     input.setAttribute('autocomplete', 'email');
     input.setAttribute('inputmode', 'email');
+    input.setAttribute('autocapitalize', 'none');
+    input.setAttribute('spellcheck', 'false');
     if (!input.placeholder || /e-?mail/i.test(input.placeholder)) {
       input.placeholder = String(document.documentElement.lang || '').toLowerCase().indexOf('en') === 0
         ? 'name@company.com'
         : 'name@unternehmen.de';
     }
     input.addEventListener('input', function () {
-      if (!String(input.value || '').trim() || inspect(input.value).valid) clearError(input);
+      // Render optional hints while typing, so blur cannot move the submit button
+      // between pointer-down and pointer-up. Invalid formats still wait for blur.
+      var result = inspectInput(input);
+      if (result.valid && result.suggestion) showError(input, false, result);
+      else clearError(input);
     });
     input.addEventListener('blur', function () {
       if (String(input.value || '').trim()) validateInput(input);
     });
+    input.addEventListener('change', function () {
+      if (String(input.value || '').trim()) validateInput(input);
+      else clearError(input);
+    });
+    input.addEventListener('invalid', function () { validateInput(input); });
   }
 
   function decorateAll() {
@@ -176,6 +255,12 @@
     if (!input || validateInput(input, { focus: true })) return;
     event.preventDefault();
     event.stopImmediatePropagation();
+  }, true);
+
+  document.addEventListener('reset', function (event) {
+    if (event.target && event.target.tagName === 'FORM') {
+      event.target.querySelectorAll('input[type="email"], input[name="email"], input#email').forEach(clearError);
+    }
   }, true);
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', decorateAll);
