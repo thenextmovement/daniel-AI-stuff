@@ -1,6 +1,6 @@
 import {buildPreviewBackingContour} from './backing-contour.js?v=20261016-preview-worker1';
 import {createRasterMask,flattenSvgPath} from './deterministic-raster.js';
-import {evaluateTubeManufacturing} from './manufacturing-profile.js?v=20261005-spacing2';
+import {evaluateTubeManufacturing,minimumTextDesign,minimumTextGroupClearance} from './manufacturing-profile.js?v=20261005-spacing2';
 import { parseFont } from './vendor/fontkit.js';
 import { layoutText } from './geometry.js?v=20261005-spacing2';
 import { thinMask,traceMask,smoothRoute,physicalTubeLayout,inspectTubeLayout,boundaryDistances,collapseRasterJunctions,pruneRasterSpurs,smoothRasterRoutes,refineTubeRoutes } from './tube-geometry.js?v=20261014-font-replay3';
@@ -69,6 +69,11 @@ self.onmessage = async ({ data }) => {
         fonts.set(data.fontId, font);
       }
       self.postMessage({ requestId, ok: true });
+    } else if(data.type==='text-minimum'){
+      self.postMessage({requestId,ok:true,minimum:minimumTextDesign(data.result,data.text)});
+    } else if(data.type==='line-clearance'){
+      const layout={...data.layout,glyphs:data.layout.glyphs.map(g=>({...g,wordIndex:0}))};
+      self.postMessage({requestId,ok:true,clearance:minimumTextGroupClearance(layout)});
     } else if(data.type==='preview-contour'){
       self.postMessage({requestId,ok:true,path:buildPreviewBackingContour(data.result,data.marginMm)});
     } else if(data.type==='load-logo'){

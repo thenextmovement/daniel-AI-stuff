@@ -46,6 +46,9 @@ export function pricingPlateSize(size,design){
  return {...p,heightMm:p.heightMm+extra};
 }
 const minimumCache=new WeakMap();
+// Prime only from a completed local worker calculation. Keep this outside the
+// result/draft payload so saved geometry cannot supply its own pricing limits.
+export function cacheMinimumTextDesign(result,text,value){minimumCache.set(result,{text,value});}
 export function minimumSizeForResult(design,result){
  if(!result)return null;
  if(!minimumCache.has(result)||minimumCache.get(result).text!==design.text)minimumCache.set(result,{text:design.text,value:minimumTextDesign(result,design.text)});

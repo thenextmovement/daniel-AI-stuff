@@ -6,14 +6,14 @@ import {createQuoteClient} from './quote-client.js?v=20261006-quote1';
 import {initDeliveryCalendar,deliveryTierLabel,minimumDeliveryBusinessDays,DELIVERY_RESTRICTION_NOTE} from './delivery-calendar.js?v=20261009-purchase2';
 import {refreshWishDelivery} from './content-experience.js?v=20261012-deferred-media1';
 import {loadFontCatalog,searchFontCatalog,catalogFontAssetId,validateCatalogFont,FONT_CATALOG_CATEGORIES} from './font-catalog.js?v=20261006-filters1';
-import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufacturing,minimumTextGroupClearance} from './manufacturing-profile.js?v=20261006-stand1';
+import {MANUFACTURING_PROFILE,TABLE_STAND_HEIGHT_MESSAGE,evaluatePlateManufacturing} from './manufacturing-profile.js?v=20261006-stand1';
 import {decodeLogoFile} from './logo-import.js?v=20260929-upload2';
 import {setupPhotoCalibration} from './photo-calibration.js?v=20260928-touch1';
 import {DraftHistory,saveDraft,readDraft,saveAsset,readAsset,saveAssetIfMissing,saveNamedDesign,listNamedDesigns,readNamedDesign,removeNamedDesign} from './draft-store.js?v=20261008-shopping1';
 import {createCheckoutClient,CHECKOUT_SESSION_KEY,rollingCheckoutDelivery,cookiebotVisitorConsent,readCheckoutAttribution,readCheckoutMeasurement} from './checkout-client.js?v=20261016-x1';
 import { buildBackingContour, tabletopContour, buildFreestandingSupports, buildPreviewBackingContour, cachePreviewBackingContour } from './backing-contour.js?v=20261016-preview-worker1';
 import {createColorExample} from './color-examples.js?v=20261015-outline2';
-import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT} from './pricing.js?v=20261009-purchase2';
+import {PRICE_RULES,accessoryCounts,mountingNet,pricingPlateSize,priceForResult,priceLabel,priceOptions,minimumSizeForResult,sizeRangeForResult,layoutCorrectionStatus,priceAmounts,INCLUDED_DISCOUNT_PERCENT,cacheMinimumTextDesign} from './pricing.js?v=20261009-purchase2';
 import {createDesignLink,readDesignLink,isLocalShareUrl,emailShareUrl,shareMessage,createShareImage} from './design-share.js?v=20261014-font-replay3';
 import {createDesignEmailClient,loadSavedEmailDesign,savedDesignEmailId} from './design-email.js?v=20261014-image-mails';
 import {createFailureReporter,createFailureAttemptId} from './failure-reporting.js';
@@ -418,6 +418,12 @@ function callWorker(data,{activeRevision=null}={}) {
     pending.set(id,{resolve,reject,timeout}); worker.postMessage({...data,requestId:id});
   });
 }
+async function prepareTextMinimum(design,result,options){
+  // The exact segment-tree checks belong beside geometry in the existing worker,
+  // not in the UI continuations for every font comparison and size preset.
+  const {minimum}=await callWorker({type:'text-minimum',text:design.text,result:{layout:result.layout,size:result.size}},options);
+  cacheMinimumTextDesign(result,design.text,minimum);
+}
 function ensureFont(activeRevision) {
   const id = state.fontId;
   if (!loaded.has(id)) {
@@ -548,6 +554,7 @@ async function storedPrice(design){
         else throw new Error('Schrift fehlt.');
       }catch(error){if(['WORKER_TIMEOUT','WORKER_INTERRUPTED','FONT_ERROR'].includes(error.code))throw error;throw Object.assign(new Error('Bitte den gespeicherten Entwurf öffnen und seine Schrift erneut auswählen oder hochladen.'),{code:'MISSING_FONT'});}
       const result=await callWorker({type:'render',rasterVersion:design.rasterVersion,fontId:design.fontId,text:design.text,alignment:design.alignment,lineHeight:design.lineHeight,axis:design.axis,valueMm:design.valueMm});
+      await prepareTextMinimum(design,result);
       storedPriceFailureAttempts.delete(key);
       return priceForResult(design,result);
     })().catch(error=>{
@@ -690,10 +697,11 @@ async function update(sizeNotice='',recoveryAttempt=0) {
     }
     if(fitLines&&state.mode==='text'&&text.includes('\n')){
       // Keep whole words untouched; only compare the actual neon routes between lines.
-      const lineGap=()=>minimumTextGroupClearance({...result.layout,glyphs:result.layout.glyphs.map(g=>({...g,wordIndex:0}))}).distanceMm;
       const initialLineHeight=lineHeight;
-      while(lineGap()!==null&&lineGap()<MANUFACTURING_PROFILE.tubeMm&&lineHeight<2){
+      while(lineHeight<2){
+        const {clearance}=await callWorker({type:'line-clearance',layout:result.layout},{activeRevision:rev});
         if(rev!==revision)return;
+        if(clearance.distanceMm===null||clearance.distanceMm>=MANUFACTURING_PROFILE.tubeMm)break;
         lineHeight=Math.round((lineHeight+.05)*100)/100;
         result=await renderAt(state.valueMm);
       }
@@ -716,6 +724,7 @@ async function update(sizeNotice='',recoveryAttempt=0) {
     }
     if(rev!==revision)return;
     if(state.mode==='text'){
+      await prepareTextMinimum({text},result,{activeRevision:rev});if(rev!==revision)return;
       const range=sizeRangeForResult(state,result),outer=plateSize(result.size);
       if(range?.minimum.layoutConflict)throw Object.assign(new Error('Getrennte Wörter oder Zeilen überschneiden sich. Bitte mehr Leerzeichen oder einen größeren Zeilenabstand wählen.'),{priceStatus:'overlapping-text'});
       if(!range?.fits)throw Object.assign(new Error('Dieser Text passt mit seinen Details und Abständen nicht in 50–400 cm. Bitte Leerzeichen oder Leerzeilen reduzieren, den Text kürzen oder eine einfachere Schrift wählen.'),{priceStatus:layoutCorrectionStatus(state)});
@@ -725,6 +734,7 @@ async function update(sizeNotice='',recoveryAttempt=0) {
       if(tooSmall||tooLarge){
         state.axis='width';state.valueMm=tooSmall?range.minimum.designWidthMm:range.maximum.designWidthMm;
         result=await renderAt(state.valueMm);if(rev!==revision)return;
+        await prepareTextMinimum({text},result,{activeRevision:rev});if(rev!==revision)return;
         const adjusted=plateSize(result.size);
         $('#size-error').textContent=(tooSmall?'Die Buchstaben wären zu klein. Automatisch auf das Mindestmaß vergrößert: ':'Die längste Seite ist auf 400 cm begrenzt. Automatisch angepasst: ')+dimensions(adjusted)+'.';$('#size-error').hidden=false;
         $('#text-error').textContent=$('#size-error').textContent;$('#text-error').hidden=false;
@@ -1530,9 +1540,11 @@ async function calculateFontQuote(context,id,entry,key,isCurrent=()=>key===fontQ
   const render=()=>callWorker({type:'render',rasterVersion:design.rasterVersion,fontId:id,text:design.text,alignment:design.alignment,lineHeight:design.lineHeight,axis:design.axis,valueMm:design.valueMm});
   let result=await render();
   if(design.text.includes('\n')){
-    const lineGap=()=>minimumTextGroupClearance({...result.layout,glyphs:result.layout.glyphs.map(g=>({...g,wordIndex:0}))}).distanceMm;
-    while(lineGap()!==null&&lineGap()<MANUFACTURING_PROFILE.tubeMm&&design.lineHeight<2){
+    while(design.lineHeight<2){
       if(!isCurrent())return null;
+      const {clearance}=await callWorker({type:'line-clearance',layout:result.layout});
+      if(!isCurrent())return null;
+      if(clearance.distanceMm===null||clearance.distanceMm>=MANUFACTURING_PROFILE.tubeMm)break;
       design.lineHeight=Math.round((design.lineHeight+.05)*100)/100;result=await render();
     }
   }
@@ -1546,6 +1558,8 @@ async function calculateFontQuote(context,id,entry,key,isCurrent=()=>key===fontQ
       if(Math.abs(measured-design.outerMm)<Math.abs(actual-design.outerMm)){result=candidate;actual=measured;}else design.valueMm=previous;
     }
   }
+  if(!isCurrent())return null;
+  await prepareTextMinimum(design,result);if(!isCurrent())return null;
   return {price:priceForResult(design,result),size:pricingPlateSize(result.size,design),axis:design.axis,valueMm:design.valueMm,lineHeight:design.lineHeight,...(includeGeometry?{result,design}: {})};
 }
 // Quote the same freestanding geometry before selection; never display an old fee.
@@ -2385,6 +2399,9 @@ function loadBackingPreviews(){
   for(const image of document.querySelectorAll('#panel-4 img[data-src]')){image.src=image.dataset.src;delete image.dataset.src;}
 }
 function setStep(index,focus=false,{scroll=true}={}){
+  // Reset before changing panels; afterwards this write forces the new layout
+  // synchronously inside the click handler, before the browser can paint it.
+  $('.editor-panels').scrollTop=0;
   if(index!==5&&standHeightAttempted){standHeightAttempted=false;paintMount();}
   if(index===1){if(mobileChoiceMedia.matches)selectMobileLook('font',false);else openFontOverview();index=0;}
   if(index===2){if(mobileChoiceMedia.matches)selectMobileLook('color',false);else openColorGallery();index=0;}
@@ -2415,7 +2432,6 @@ function setStep(index,focus=false,{scroll=true}={}){
   updateStepNavigation();
   $('#step-count').textContent=mobileChoiceMedia.matches?`${group===2?2:1} von 2`:`${group+1} von 3`;
   $('#editor-step-title').textContent=stepNames[index];$('#editor-step-hint').textContent='';
-  $('.editor-panels').scrollTop=0;
   for(const button of document.querySelectorAll('[data-canvas-step]'))button.setAttribute('aria-pressed',Number(button.dataset.canvasStep)===index);
   if(index===1&&!$('#font-grid').children.length)openFontLibrary('neon');
   if(focus){
@@ -3461,6 +3477,8 @@ async function refreshPresetSizes(){
     if(designRendering||rev!==presetRevision||presetKey!==key){if(rev===presetRevision)presetKey='';return;}
     try{
       const result=await callWorker({...requestBase,axis:'width',valueMm:innerSizeForOuter('width',Number(b.dataset.widthCm)*10)});
+      if(designRendering||rev!==presetRevision||presetKey!==key){if(rev===presetRevision)presetKey='';return;}
+      if(requestBase.type==='render')await prepareTextMinimum({text:requestBase.text},result);
       if(designRendering||rev!==presetRevision||presetKey!==key){if(rev===presetRevision)presetKey='';return;}
       const outer=plateSize(result.size);
       b.querySelector('strong').textContent=dimensions(outer);
