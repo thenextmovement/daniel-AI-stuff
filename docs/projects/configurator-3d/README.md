@@ -529,3 +529,13 @@ Textur. Geprüft in normaler Ansicht, Detail und Nacht sowie im direkten Verglei
 bei −30° und 60°. Keine erfassten Browserfehler oder Warnungen im Konfigurator.
 Beide betroffenen Material-/UV-Tests, Syntax- und Diffprüfung bestehen.
 Nur lokale Vorschau.
+
+Die Silberbürstung verwendet jetzt unterschiedlich lange, weich auslaufende
+Schliffspuren. Ein ausgeglichener Helligkeitsmittelwert je Texturzeile verhindert
+durchgehende helle oder dunkle Bänder. Das natürliche Muster wirkt auf Farbe
+und Rauheit; mittlere Rauheit, feine Linienbreite, Texturmaßstab und die
+abgestimmten Glanz- und Umgebungsparameter bleiben erhalten. Gold ist unverändert.
+Geprüft in normaler Perspektive, Detail und Nacht sowie im direkten Vergleich
+bei −30° und 60°. Keine erfassten Browserfehler oder Warnungen im Konfigurator.
+Beide betroffenen Material-/UV-Tests, Syntax- und Diffprüfung bestehen.
+Nur lokale Vorschau.

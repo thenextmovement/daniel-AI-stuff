@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=28';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=29';
 const fontCache=new Map();
 const SILVER_REFLECTION_FILL=.8;
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
@@ -100,10 +100,27 @@ function brushedTexture(silver=false){
  // normal-view texture filtering. Keep each stroke one texel thin; no broad
  // bands or normal gradient that would make the flat face look inflated.
  const rows=Array.from({length:512},()=>({base:random(),strokes:Array.from({length:17},()=>random())}));
+ // Silver uses irregular, fading scratch lengths instead of a shared row
+ // offset. Removing each row's mean prevents long horizontal light/dark bands.
+ const scratchRow=(min,max)=>{
+  const values=new Float32Array(512);let start=0,from=random();const first=from;
+  while(start<512){
+   const end=Math.min(512,start+Math.round(min+random()*(max-min))),to=end===512?first:random();
+   for(let x=start;x<end;x++){let t=(x-start)/(end-start);t=t*t*(3-2*t);values[x]=from+(to-from)*t;}
+   start=end;from=to;
+  }
+  return values;
+ };
+ const silverRows=silver?Array.from({length:512},()=>{
+  const long=scratchRow(20,58),fine=scratchRow(5,17),values=new Float32Array(512);let mean=0;
+  for(let x=0;x<512;x++){values[x]=long[x]*.65+fine[x]*.35;mean+=values[x]/512;}
+  for(let x=0;x<512;x++)values[x]+=.5-mean;
+  return values;
+ }):null;
  for(let y=0;y<512;y++)for(let x=0;x<512;x++){
-  const cell=x/32,row=rows[y],grain=row.base*.3+(row.strokes[Math.floor(cell)]*(1-cell%1)+row.strokes[Math.floor(cell)+1]*(cell%1))*.7;
-  // More contrast around the same average for silver, at the same one-texel
-  // stroke width. Roughness and microrelief stay identical to preserve glints.
+  const cell=x/32,row=rows[y],grain=silver?silverRows[y][x]:row.base*.3+(row.strokes[Math.floor(cell)]*(1-cell%1)+row.strokes[Math.floor(cell)+1]*(cell%1))*.7;
+  // Keep the fine, readable contrast and the average roughness. Scratch
+  // widths, texture scale and reflection settings remain unchanged.
   const shade=Math.round(silver?238.5+(grain-.5)*56:222+grain*33);
   image.data.set([shade,shade,shade,255],(y*512+x)*4);
   const rough=Math.round(188+grain*67);roughness.data.set([rough,rough,rough,255],(y*512+x)*4);
