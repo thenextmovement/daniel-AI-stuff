@@ -318,6 +318,13 @@ test('business-email error renders one localized mail fallback and clears on val
     assert.equal(input.getAttribute('aria-describedby'), 'email-business-error email-business-error-fallback');
     assert.equal(input.validationMessage, expected.error);
 
+    const link = fallbacks[0].children[1];
+    input.dispatch('change');
+    input.dispatch('blur');
+    assert.equal(fallbacks[0].children[1], link,
+      expected.lang + ' keeps the link pressed before blur available for the first click');
+    assert.equal(link.parentElement, fallbacks[0]);
+
     input.value = 'sales@neontrip.de';
     input.dispatch('input');
     assert.equal(document.getElementById('email-business-error'), null);

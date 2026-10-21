@@ -169,16 +169,16 @@
         fallback.setAttribute('data-nt-business-email-fallback', 'true');
         fallback.style.cssText = 'margin:5px 0 0;color:rgba(10,10,10,.5);font-size:11px;line-height:1.4;font-weight:500';
         message.insertAdjacentElement('afterend', fallback);
+        // Blur validation during pointer-down must preserve the link for the click.
+        var fallbackPrefix = document.createElement('span');
+        fallbackPrefix.textContent = labels.fallbackPrefix + ' ';
+        var fallbackLink = document.createElement('a');
+        fallbackLink.href = 'mailto:support@neontrip.de';
+        fallbackLink.textContent = labels.fallbackLink;
+        fallbackLink.style.cssText = 'color:#0A0A0A;font-weight:650;text-decoration:underline;text-decoration-color:rgba(10,10,10,.25);text-underline-offset:2px';
+        fallback.appendChild(fallbackPrefix);
+        fallback.appendChild(fallbackLink);
       }
-      fallback.textContent = '';
-      var fallbackPrefix = document.createElement('span');
-      fallbackPrefix.textContent = labels.fallbackPrefix + ' ';
-      var fallbackLink = document.createElement('a');
-      fallbackLink.href = 'mailto:support@neontrip.de';
-      fallbackLink.textContent = labels.fallbackLink;
-      fallbackLink.style.cssText = 'color:#0A0A0A;font-weight:650;text-decoration:underline;text-decoration-color:rgba(10,10,10,.25);text-underline-offset:2px';
-      fallback.appendChild(fallbackPrefix);
-      fallback.appendChild(fallbackLink);
     }
     if (advisory) input.removeAttribute('aria-invalid');
     else input.setAttribute('aria-invalid', 'true');

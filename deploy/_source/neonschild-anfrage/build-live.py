@@ -45,7 +45,7 @@ for attrs,content in scripts:
 assert len(head)==5 and len(body)==3,(len(head),len(body))
 page=page.replace('</head>','<link rel="preconnect" href="https://consent.cookiebot.com"><link rel="preconnect" href="https://consentcdn.cookiebot.com"><style>#CybotCookiebotDialog .CybotCookiebotDialogNavItemLink.CybotCookiebotDialogActive{color:#b80d70!important}</style>'+ '\n'.join(head)+'</head>')
 # Keep transport ready before section submit listeners. Defer retains parser order.
-pre='<script defer data-cookieconsent="ignore" src="/assets/js/nt-business-email.js?v=20261016-hints1"></script>'
+pre='<script defer data-cookieconsent="ignore" src="/assets/js/nt-business-email.js?v=20261021-first-click1"></script>'
 pre+='<script defer data-cookieconsent="ignore" src="/assets/js/lp-common.js?v='+sha256((DEPLOY/'assets/js/lp-common.js').read_bytes()).hexdigest()[:10]+'"></script>'
 pre+='<script defer data-cookieconsent="ignore" src="'+PREFIX+'live-integration.js?v='+sha256((PUBLIC/'live-integration.js').read_bytes()).hexdigest()[:10]+'"></script>'
 page=page.replace('<script src="'+PREFIX+'modules.js',pre+'<script src="'+PREFIX+'modules.js')
