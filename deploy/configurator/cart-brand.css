@@ -313,3 +313,16 @@ body.nt-configurator #CookiebotWidget {
 @media(max-width:760px){
  body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor .design-summary>p#cart-editing-note:not([hidden]){display:block!important;grid-column:1/-1;grid-row:3;margin:0;font-size:11px}
 }
+
+/* A real pending state, with no invented percentage or countdown. */
+#delivery-dialog.checkout-is-busy{height:fit-content;max-width:480px;padding:32px 24px}
+#delivery-dialog.checkout-is-busy>:not(.checkout-progress){display:none!important}
+#delivery-dialog .checkout-progress:not([hidden]){display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;text-align:center;outline:none}
+#delivery-dialog .checkout-progress-spinner{width:56px;height:56px;box-sizing:border-box;flex:none;border:4px solid #f2e3ec;border-top-color:#d70c79;border-radius:50%;animation:checkout-wait-spin .9s linear infinite;margin-bottom:28px}
+#delivery-dialog .checkout-progress-eyebrow{font-size:11px;line-height:1.4;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#95516f;margin:0 0 12px}
+#delivery-dialog #checkout-progress-title{max-width:350px;font-size:clamp(25px,5vw,32px);line-height:1.15;letter-spacing:-.025em;color:#232323;margin:0 0 16px}
+#delivery-dialog #checkout-progress-copy{max-width:320px;font-size:15px;line-height:1.6;color:#59534f;margin:0}
+#delivery-dialog .checkout-progress-note{font-size:12px;line-height:1.5;color:#736d68;margin:28px 0 0}
+@keyframes checkout-wait-spin{to{transform:rotate(360deg)}}
+@media(max-width:420px){#delivery-dialog.checkout-is-busy{padding:24px 20px}#delivery-dialog .checkout-progress:not([hidden]){min-height:320px}}
+@media(prefers-reduced-motion:reduce){#delivery-dialog .checkout-progress-spinner{animation:none}}

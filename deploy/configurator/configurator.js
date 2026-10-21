@@ -3168,11 +3168,31 @@ $('#quote-form').addEventListener('submit',async event=>{
 });
 $('#quote-dialog').addEventListener('cancel',event=>{if(quoteSubmitting)event.preventDefault();});
 $('#quote-dialog').addEventListener('close',()=>{quoteCart=null;quoteDelivery=null;});
+const checkoutProgress=document.createElement('section');
+checkoutProgress.className='checkout-progress';checkoutProgress.hidden=true;checkoutProgress.tabIndex=-1;
+checkoutProgress.setAttribute('role','status');checkoutProgress.setAttribute('aria-live','polite');checkoutProgress.setAttribute('aria-atomic','true');
+checkoutProgress.innerHTML='<span class="checkout-progress-spinner" aria-hidden="true"></span><p class="checkout-progress-eyebrow">Sicher zur Kasse</p><h2 id="checkout-progress-title"></h2><p id="checkout-progress-copy"></p><p class="checkout-progress-note">Dein Warenkorb bleibt gespeichert.</p>';
+$('#delivery-dialog').append(checkoutProgress);
+let checkoutWaitTimer;
+function showCheckoutProgress(title,copy){
+ $('#checkout-progress-title').textContent=title;$('#checkout-progress-copy').textContent=copy;
+}
 function setCheckoutBusy(busy){
  cartSyncing=busy;deliveryCalendar.setBusy(busy);
- $('#delivery-dialog').setAttribute('aria-busy',String(busy));
+ // Keep the live status outside the busy calendar so its updates are announced.
+ $('#delivery-calendar-host').setAttribute('aria-busy',String(busy));
+ $('#delivery-dialog').classList.toggle('checkout-is-busy',busy);
+ $('#delivery-dialog').setAttribute('aria-labelledby',busy?'checkout-progress-title':'delivery-title');
  $('#delivery-dialog').querySelectorAll('[data-close],#delivery-back').forEach(button=>button.disabled=busy);
  $('#cart-items').inert=busy;refreshCartButtons();
+ clearTimeout(checkoutWaitTimer);checkoutProgress.hidden=!busy;
+ if(busy){
+  showCheckoutProgress('Deine Kasse wird vorbereitet','Bitte bleib kurz dran. Du wirst automatisch zur Bezahlung weitergeleitet.');
+  $('#delivery-dialog').scrollTop=0;checkoutProgress.focus({preventScroll:true});
+  checkoutWaitTimer=setTimeout(()=>showCheckoutProgress('Einen Moment noch','Wir bereiten deine Kasse weiter vor. Bitte lass diese Seite geöffnet.'),8000);
+ }else if($('#delivery-dialog').open){
+  $('#delivery-calendar-host').querySelector('[data-continue]')?.focus({preventScroll:true});
+ }
 }
 async function goToCheckout(){
  if(!$('#delivery-dialog').open||cartSyncing||cartEditing||!cartReady||!cartItems.length)return;
@@ -3182,15 +3202,18 @@ async function goToCheckout(){
  const reviewedDelivery={...selectedDelivery},reviewedTotal=Math.round((cartTotals.subtotalGross+selectedDelivery.feeGross)*100),reviewedItems=JSON.stringify(cartItems);
  let navigating=false,checkoutRequested=false;setCheckoutBusy(true);status.textContent='Deine sichere Kasse wird vorbereitet …';
  try{
+  // Paint the waiting view before checking the cart and starting the handoff.
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
   if(!await refreshCartPrice())throw new Error('Bitte prüfe die markierten Entwürfe im Warenkorb.');
   const expectedTotalCents=Math.round((cartTotals.subtotalGross+(selectedDelivery?.feeGross||0))*100);
   if(!selectedDelivery||reviewedDelivery.dateIso!==selectedDelivery.dateIso||reviewedDelivery.businessDays!==selectedDelivery.businessDays||reviewedDelivery.feeGross!==selectedDelivery.feeGross||reviewedTotal!==expectedTotalCents||reviewedItems!==JSON.stringify(cartItems)){
    deliveryCalendar.refresh({resetSelection:true});throw new Error('Termin oder Gesamtpreis wurde aktualisiert. Bitte prüfe deine Auswahl und klicke erneut auf „Zur Kasse“.');
   }
   trackConfigurator('begin_checkout',{quantity:cartItems.reduce((sum,item)=>sum+item.quantity,0)});
-  checkoutRequested=true;const receipt=await checkoutClient.prepare(cartItems,selectedDelivery,expectedTotalCents,()=>{status.textContent='Shopify verarbeitet dein Vorschaubild noch. Wir öffnen die Kasse, sobald es bereit ist …';});
+  checkoutRequested=true;const receipt=await checkoutClient.prepare(cartItems,selectedDelivery,expectedTotalCents,()=>{showCheckoutProgress('Einen Moment noch','Wir bereiten deine Kasse weiter vor. Bitte lass diese Seite geöffnet.');});
   if(receipt.status!=='CREATED')throw Object.assign(new Error('Die Kasse ist für diese Konfiguration noch nicht verfügbar. Dein Warenkorb bleibt gespeichert.'),{code:'PRICE_RULE_NOT_APPROVED',attemptId:receipt.attemptId});
   trackConfigurator('configurator_checkout_ready',{key:receipt.id});
+  clearTimeout(checkoutWaitTimer);showCheckoutProgress('Deine Kasse ist bereit','Du wirst jetzt zur sicheren Bezahlung weitergeleitet.');
   status.textContent='Du wirst zur sicheren Bezahlung weitergeleitet …';window.location.assign(receipt.checkoutUrl);navigating=true;
  }catch(error){
   status.textContent=error.message||'Die Übergabe konnte nicht bestätigt werden. Dein Warenkorb bleibt erhalten.';
