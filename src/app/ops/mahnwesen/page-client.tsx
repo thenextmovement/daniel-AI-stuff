@@ -38,6 +38,7 @@ import { OpsPageHeader } from "../ops-page-header";
 import {
   OpsPageIntro,
   OpsStatCard,
+  opsPageContainerClass,
   opsPageShellClass,
 } from "../ops-design";
 import type {
@@ -3008,6 +3009,7 @@ export function DunningOpsClient({
   return (
     <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
       <div className={`mx-auto w-full max-w-[1920px] space-y-6`}>
+        <div className={`${opsPageContainerClass} space-y-6`}>
         <OpsPageHeader active="dunning" label="Forderungsmanagement" />
         {notice && !selected ? <p role="status" className="sticky top-2 z-20 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p> : null}
         {actionBusy ? <p role="status" className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-xl bg-stone-900 px-4 py-3 text-sm text-white">Aktion wird geprüft und gespeichert …</p> : null}
@@ -3025,8 +3027,10 @@ export function DunningOpsClient({
             Aktualisieren
           </button>
         </OpsPageIntro>
+        </div>
         {dashboard ? (
           <>
+            <div className={`${opsPageContainerClass} space-y-6`}>
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
               <OpsStatCard
                 label="Offene Fälle"
@@ -3107,6 +3111,7 @@ export function DunningOpsClient({
                 {dashboard.sendConfigured ? "freigeschaltet" : "gesperrt"}
               </span>
             </section>
+            </div>
             <FilterPanel
               filters={filters}
               setFilters={setFilters}
