@@ -1,13 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {DEFAULT,FONTS,FINISHES,activeFinish,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
+import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
 import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds} from '../../deploy/3d-konfigurator/renderer.js';
 import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3} from '../../deploy/3d-konfigurator/vendor/three.js';
 import {FontLoader} from '../../deploy/3d-konfigurator/vendor/FontLoader.js';
 const font=new FontLoader().parse(JSON.parse(await readFile(new URL('../../deploy/3d-konfigurator/fonts/modern.json',import.meta.url),'utf8')));
 const fonts=Object.fromEntries(await Promise.all(Object.keys(FONTS).map(async id=>[id,new FontLoader().parse(JSON.parse(await readFile(new URL(`../../deploy/3d-konfigurator/fonts/${id}.json`,import.meta.url),'utf8')))])));
+test('All 17 light colours survive a saved draft; original colour values stay supported',()=>{
+ assert.equal(COLORS.length,17);assert.equal(ACRYLICS.length,17);
+ for(const palette of [COLORS,ACRYLICS])assert.equal(new Set(palette.map(([value])=>value)).size,17);
+ for(const [color,name] of COLORS){
+  const state=normalize(JSON.parse(JSON.stringify({...DEFAULT,color,acrylic:'#2474e5'})));
+  assert.equal(state.color,color);assert.match(description(state),new RegExp(name));
+  assert.equal(materialSpec(state).rear.color,'#ffffff','Changing the LED colour does not recolour the opal acrylic substrate');
+  assert.equal(lightColor({...state,lighting:'front'}),'#2474e5');
+ }
+ for(const color of ['#fff1d6','#f5f7ff','#f5c35b','#fc6fa8','#80baff','#8bdfb1'])assert.equal(normalize({...DEFAULT,color}).color,color);
+ for(const acrylic of ['#ffffff','#e62d38','#ff8b24','#ee67af','#2474e5','#26a86b'])assert.ok(ACRYLICS.some(([value])=>value===acrylic));
+});
 test('Font outlines preserve counters and saved choices; all six new fonts include German lettering',()=>{
  for(const [id,font] of Object.entries(fonts)){
   const layout=layoutLetters(font,id==='modern'?'ATLAS & 123':'ÄÖÜ äöü ß & 123',5);

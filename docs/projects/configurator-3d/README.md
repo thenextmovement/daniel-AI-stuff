@@ -93,7 +93,7 @@ konkrete Freigabe, Abgleich mit aktuellem Main und `codex-predeploy ops` sowie
     node --check deploy/3d-konfigurator/app.js
     node --check deploy/3d-konfigurator/renderer.js
 
-15 Tests: gespeicherte Daten/Optionen und Migration, ungültige Eingaben, echte
+16 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, ungültige Eingaben, echte
 Schriftkonturen inklusive Innenräumen, Abstände/Proportionen, gesperrter Kauf,
 Materialtrennung, Acrylrückseite, unabhängige Oberflächen sowie der vorläufige
 Farbaufpreis der Schiene mit Länge, Menge und Ausschluss anderer Montagearten.
@@ -234,7 +234,7 @@ des 3D-Releases und wurden hier nicht überschrieben.
 - Nacht reduziert auch die Umgebungsreflexionen der Wand und Halter sowie die
   direkte Beleuchtung. Nur den Hintergrund zu verdunkeln hatte zuvor die
   tatsächlich sichtbare Wand zu hell gelassen. Der mehrstufige Halo läuft
-  weicher aus; seine Intensität bleibt unter der leuchtenden Acrylkante.
+  weicher aus und bleibt von der massiven Acrylkante getrennt.
   Frontlicht hat eine stärkere Emission und Lichtstreuung. Licht aus entfernt
   Emission und Halo, lässt die weiße Acrylschicht aber bestehen.
 - Rücklicht-Karte, aktuelle Materialbeschreibung und Bildunterschrift nennen
@@ -244,3 +244,22 @@ des 3D-Releases und wurden hier nicht überschrieben.
   Frontlicht bei Tag/Nacht, Licht aus, 30/120/400 cm, Detail/Montage und mobile
   Bedienung bei 320 px ohne horizontalen Überlauf. Preisaufschlag weiterhin
   33/132/440 EUR für 30/120/400 cm Wunschfarbe; Kauf bleibt gesperrt.
+
+## Farbpalette und Lichtwirkung
+
+- 17 benannte Lichtfarben nach der vorhandenen Neon-Palette; auch die Acrylfront
+  bietet 17 Vorgaben und weiterhin eine freie Farbe. Alle bisherigen Farbwerte
+  bleiben gültig. Die Farbnamen stehen direkt unter den Auswahlpunkten, mobil
+  in vier Spalten. Gespeicherte Entwürfe erhalten ihre Auswahl.
+- Ein weißer, weichgezeichneter Konturmasken-Verbund bestimmt die Lichtverteilung.
+  Die gewählte Farbe und ihre Intensität werden separat angewendet. Das ergibt
+  einen deutlich kräftigeren, farbigen Wandschein, besonders bei Nacht.
+- Die 1-cm-Acrylgeometrie behält exakt die Metallkontur und deren Innenräume.
+  Ihre Seiten sind weiß; es gibt keine zusätzliche verbreiterte weiße Kontur
+  um die Vorderseite. Frontal verdeckt der Edelstahl die gleich große
+  Acrylrückseite. Die normale Perspektive zeigt den Schriftzug etwas schräger
+  und näher, sodass die echte seitliche Schicht besser erkennbar ist.
+- Browserprüfung: schwarze Edelstahlfront mit grünem Rücklicht frontal und
+  perspektivisch bei Tag/Nacht, Neon-Pink samt Wiederherstellung, violette
+  Frontbeleuchtung, Licht aus und alle 17 Farben bei 320 px Breite. Keine
+  erfassten Konsolenfehler. Lichtwirkung bleibt eine Gestaltungsvorschau.

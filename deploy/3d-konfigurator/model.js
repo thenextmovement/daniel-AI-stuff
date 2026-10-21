@@ -11,8 +11,9 @@ export const FONTS={
  elegant:{label:'Elegant',style:'Klassischer Charakter'}
 };
 export const LABELS={font:Object.fromEntries(Object.entries(FONTS).map(([id,font])=>[id,font.label])),lighting:{front:'Frontbeleuchtet',back:'Rückbeleuchtet'},mount:{individual:'Einzelbuchstaben',rail:'Auf Schiene',plate:'Auf Platte'},wall:{warm:'Putz',concrete:'Beton',dark:'Anthrazit'}};
-export const COLORS=[['#fff1d6','Warmweiß'],['#f5f7ff','Weiß'],['#f5c35b','Goldgelb'],['#fc6fa8','Rosa'],['#80baff','Blau'],['#8bdfb1','Grün']];
-export const ACRYLICS=[['#ffffff','Weiß'],['#e62d38','Rot'],['#ff8b24','Orange'],['#ee67af','Rosa'],['#2474e5','Blau'],['#26a86b','Grün']];
+// Palette follows the current Neon editor; existing 3D draft values remain valid.
+export const COLORS=[['#fff1d6','Warmweiß'],['#f5f7ff','Weiß'],['#fff97c','Zitronengelb'],['#f5c35b','Goldgelb'],['#ff8d02','Orange'],['#ff7575','Hellrot'],['#ff2a4d','Rot'],['#ff90ff','Neon-Pink'],['#eaa4ff','Weiches Rosa'],['#fc6fa8','Rosa'],['#8c59ff','Lila'],['#0274fc','Dunkelblau'],['#80baff','Hellblau'],['#90dcff','Eisblau'],['#80ffd9','Mintgrün'],['#8bdfb1','Grün'],['#0bd748','Dunkelgrün']];
+export const ACRYLICS=COLORS.map(([color,name])=>[({'Weiß':'#ffffff','Rot':'#e62d38','Orange':'#ff8b24','Rosa':'#ee67af','Hellblau':'#2474e5','Grün':'#26a86b'})[name]||color,name==='Hellblau'?'Blau':name]);
 export const FINISHES={
  'brushed-gold':{label:'Edelstahl gold lackiert',description:'Edelstahl, gebürstet und gold lackiert',color:'#c6a156',metalness:.8,roughness:.34,brushed:true},
  'brushed-steel':{label:'Edelstahl gebürstet',description:'Edelstahl, gebürstet in Natur',color:'#c5c9cc',metalness:1,roughness:.31,brushed:true},

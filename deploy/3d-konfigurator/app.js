@@ -1,4 +1,4 @@
-import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,normalize,validate,description} from './model.js?v=7';
+import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,normalize,validate,description} from './model.js?v=9';
 import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
@@ -54,7 +54,7 @@ function step(index,focus=true){
  if(focus){const title=$('#panel-'+activeStep+' h2');title.tabIndex=-1;title.focus({preventScroll:true});if(matchMedia('(max-width:760px)').matches)$('.controls').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});}
 }
 for(const [target,key,choices] of [['#light-colors','color',COLORS],['#acrylic-colors','acrylic',ACRYLICS]]){
- for(const [value,label] of choices){const button=document.createElement('button');button.type='button';button.dataset[key]=value;button.style.setProperty('--swatch',value);button.title=label;button.setAttribute('aria-label',label);button.addEventListener('click',()=>change(key,value));$(target).append(button);}
+ for(const [value,label] of choices){const button=document.createElement('button');button.type='button';button.dataset[key]=value;button.style.setProperty('--swatch',value);button.title=label;button.setAttribute('aria-label',label);const chip=document.createElement('span');chip.className='swatch-chip';chip.setAttribute('aria-hidden','true');const name=document.createElement('span');name.className='swatch-label';name.textContent=label;button.append(chip,name);const rgb=value.slice(1).match(/../g).map(x=>parseInt(x,16)/255);button.style.setProperty('--tick',rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722<.5?'#fff':'#292524');button.addEventListener('click',()=>change(key,value));$(target).append(button);}
 }
 for(const [id,finish] of Object.entries(FINISHES)){
  const b=document.createElement('button');b.type='button';b.dataset.finish=id;const sample=document.createElement('span');sample.className='finish-sample '+id;sample.setAttribute('aria-hidden','true');const name=document.createElement('strong');name.textContent=finish.label;b.append(sample,name);b.addEventListener('click',()=>change(state.lighting==='front'?'frontFinish':'backFinish',id));$('#finish-options').append(b);
@@ -109,4 +109,4 @@ $('#add-cart').addEventListener('click',()=>{
 });
 $('#new-design').addEventListener('click',()=>{editingId=null;state={...DEFAULT};$('#cart').close();sync();step(0);schedule();});
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=7');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=9');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
