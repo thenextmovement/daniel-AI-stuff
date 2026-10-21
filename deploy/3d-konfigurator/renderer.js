@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,lightColor} from './model.js?v=9';
+import {materialSpec,lightColor} from './model.js?v=10';
 const fontCache=new Map();
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
 async function loadFont(id){
@@ -32,11 +32,13 @@ export function layoutLetters(font,text,spacing){
  for(const item of shapes){item.x-=center.x;item.y-=center.y;}
  return {shapes,width:bounds.max.x-bounds.min.x,height:bounds.max.y-bounds.min.y};
 }
-// A separate rear acrylic layer uses the exact same contours and holes as the metal front.
-// Its shown thickness is illustrative; the complete design keeps the requested total depth.
-export function letterGeometries(shape,scale,s){
- const backingDepth=s.lighting==='back'?Math.min(1,s.depth/3):0;
- const shell=new THREE.ExtrudeGeometry(shape,{depth:(s.depth-backingDepth)/scale,bevelEnabled:true,bevelThickness:.04/scale,bevelSize:.04/scale,bevelSegments:1,curveSegments:10,steps:1});
+// Preview depth emphasis prevents a 1 cm layer on a 4 m sign disappearing
+// below a pixel. Never expand its x/y contour or alter the saved product depth.
+export function acrylicPreviewDepth(s){return s.lighting==='back'?Math.max(1,Math.min(3,s.width/120)):0;}
+export function letterGeometries(shape,scale,s,preview=false){
+ const physicalBacking=s.lighting==='back'?Math.min(1,s.depth/3):0;
+ const backingDepth=preview?acrylicPreviewDepth(s):physicalBacking,displayDepth=s.depth+backingDepth-physicalBacking;
+ const shell=new THREE.ExtrudeGeometry(shape,{depth:(s.depth-physicalBacking)/scale,bevelEnabled:true,bevelThickness:.04/scale,bevelSize:.04/scale,bevelSegments:1,curveSegments:10,steps:1});
  shell.scale(scale,scale,scale);shell.translate(0,0,backingDepth);
  const groups=shell.groups.slice();shell.clearGroups();
  for(const g of groups){
@@ -44,7 +46,7 @@ export function letterGeometries(shape,scale,s){
   if(g.materialIndex===1)shell.addGroup(g.start,g.count,0);
   else if(s.lighting==='front')shell.addGroup(g.start,g.count/2,0);
  }
- const front=new THREE.ShapeGeometry(shape,10);front.scale(scale,scale,scale);front.translate(0,0,s.depth+.05);
+ const front=new THREE.ShapeGeometry(shape,10);front.scale(scale,scale,scale);front.translate(0,0,displayDepth+.05);
  const rear=s.lighting==='back'?new THREE.ExtrudeGeometry(shape,{depth:backingDepth/scale,bevelEnabled:false,curveSegments:10,steps:1}):null;
  if(rear)rear.scale(scale,scale,scale);
  return {shell,front,rear};
@@ -150,7 +152,7 @@ export class SignRenderer{
   this.sun=new THREE.DirectionalLight('#fff3dc',3.2);this.sun.position.set(-100,190,200);this.sun.castShadow=true;this.sun.shadow.mapSize.set(2048,2048);this.sun.shadow.camera.left=-300;this.sun.shadow.camera.right=300;this.sun.shadow.camera.top=250;this.sun.shadow.camera.bottom=-250;this.sun.shadow.camera.near=1;this.sun.shadow.camera.far=900;this.sun.shadow.normalBias=.3;this.sun.shadow.bias=-.0003;this.scene.add(this.sun);
   this.fill=new THREE.DirectionalLight('#c4d6ff',1.2);this.fill.position.set(150,10,80);this.scene.add(this.fill);
   this.wall=new THREE.Mesh(new THREE.PlaneGeometry(8000,4500),new THREE.MeshStandardMaterial({color:wallColors.warm,roughness:.95,map:wallTexture()}));this.wall.position.z=-.3;this.wall.receiveShadow=true;this.scene.add(this.wall);
-  this.group=new THREE.Group();this.scene.add(this.group);this.width=120;this.height=30;this.zoom=1.12;this.angle=.55;this.elevation=.14;this.closeup=false;this.revision=0;
+  this.group=new THREE.Group();this.scene.add(this.group);this.width=120;this.height=30;this.zoom=1.2;this.angle=.68;this.elevation=.18;this.closeup=false;this.revision=0;
   this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(host);
   let drag=null;
   host.addEventListener('pointerdown',e=>{if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,angle:this.angle,elevation:this.elevation};if(e.pointerType==='mouse')host.setPointerCapture(e.pointerId);});
@@ -169,7 +171,7 @@ export class SignRenderer{
   this.camera.near=Math.max(1,d*.05);this.camera.far=Math.max(3000,d*3);this.camera.updateProjectionMatrix();
   this.camera.position.set(Math.sin(this.angle)*d,Math.sin(this.elevation)*d,Math.cos(this.angle)*d).add(target);this.camera.lookAt(target);this.render();
  }
- view(mode){this.closeup=mode==='side'||mode==='mounting';this.zoom=mode==='perspective'?1.12:1;this.angle=mode==='mounting'?1.05:mode==='front'?0:mode==='side'?.7:.55;this.elevation=mode==='mounting'?.08:mode==='front'?0:.14;this.positionCamera();}
+ view(mode){this.closeup=mode==='side'||mode==='mounting';this.zoom=mode==='perspective'?1.2:1;this.angle=mode==='mounting'?1.05:mode==='front'?0:mode==='side'?.7:.68;this.elevation=mode==='mounting'?.08:mode==='front'?0:.18;this.positionCamera();}
  changeZoom(delta){this.zoom=Math.max(.65,Math.min(1.5,this.zoom+delta));this.positionCamera();}
  render(){this.renderer.render(this.scene,this.camera);}
  async update(s){
@@ -182,7 +184,7 @@ export class SignRenderer{
   const rearEdgeMaterial=s.lighting==='back'?materialFromSpec({...spec.rear,emissive:s.lightOn?'#f3f6ff':'#000000',emissiveIntensity:s.night?2:.8},this.brush,s.night):null;
   const mounting=mountingLayout(s,height),backOffset=mounting.letterRear;
   for(const item of layout.shapes){
-   const parts=letterGeometries(item.shape,scale,s);
+   const parts=letterGeometries(item.shape,scale,s,true);
    for(const geometry of Object.values(parts))if(geometry)geometry.translate(item.x*scale,item.y*scale,backOffset);
    const mesh=new THREE.Mesh(parts.shell,[bodyMaterial]);mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
    const positions=parts.front.attributes.position,uv=parts.front.attributes.uv;for(let i=0;i<uv.count;i++)uv.setXY(i,positions.getX(i)/35,positions.getY(i)/35);
@@ -216,8 +218,9 @@ export class SignRenderer{
   const bg=new THREE.Color(wallColors[s.wall]);if(s.night)bg.multiplyScalar(.06);
   this.wall.material.color.set(wallColors[s.wall]).multiplyScalar(s.night?.25:1);this.wall.material.envMapIntensity=s.night?.04:1;
   this.scene.background.copy(bg);this.ambient.intensity=s.night?.04:2;this.sun.intensity=s.night?.06:3.2;this.fill.intensity=s.night?.025:1.2;this.renderer.toneMappingExposure=s.night?1.15:1.35;
-  this.width=width+(s.mount==='plate'?16:8);this.height=height+(s.mount==='plate'?16:0);this.detail=detailBounds(layout,scale);this.letterRear=backOffset;this.depth=s.depth;this.positionCamera();
-  return {width,height,overallWidth:this.width,overallHeight:this.height};
+  const layerEmphasis=Math.max(0,acrylicPreviewDepth(s)-1);
+  this.width=width+(s.mount==='plate'?16:8);this.height=height+(s.mount==='plate'?16:0);this.detail=detailBounds(layout,scale);this.letterRear=backOffset;this.depth=s.depth+layerEmphasis;this.positionCamera();
+  return {width,height,overallWidth:this.width,overallHeight:this.height,layerEmphasis:layerEmphasis>0};
  }
  snapshot(){this.render();return this.renderer.domElement.toDataURL('image/png');}
 }

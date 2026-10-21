@@ -1,4 +1,4 @@
-import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,normalize,validate,description} from './model.js?v=9';
+import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,normalize,validate,description} from './model.js?v=10';
 import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
@@ -41,7 +41,7 @@ async function update(){
  $('#next').disabled=true;$('#download').disabled=true;
  try{
   const dimensions=await renderer.update({...state});if(token!==revision||!dimensions)return;
-  result=dimensions;setError('');const height=dimensions.height.toLocaleString('de-DE',{maximumFractionDigits:1});
+  result=dimensions;setError('');$('#layer-note').hidden=!dimensions.layerEmphasis;const height=dimensions.height.toLocaleString('de-DE',{maximumFractionDigits:1});
   $('#height-label').textContent=height+' cm';$('#dimensions').textContent=`Schriftzug ${state.width} × ${height} cm${state.mount==='plate'?` · Platte ${dimensions.overallWidth.toLocaleString('de-DE')} × ${dimensions.overallHeight.toLocaleString('de-DE',{maximumFractionDigits:1})} cm`:''}`;
   $('#canvas-host').setAttribute('aria-label',`${state.text}, ${LABELS.lighting[state.lighting]}, ${LABELS.mount[state.mount]}, ${finishDescription(state)}, ${state.width} mal ${height} Zentimeter. Mit Ziehen drehen oder die Ansichtsschalter verwenden.`);
   persistDraft();
@@ -109,4 +109,4 @@ $('#add-cart').addEventListener('click',()=>{
 });
 $('#new-design').addEventListener('click',()=>{editingId=null;state={...DEFAULT};$('#cart').close();sync();step(0);schedule();});
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=9');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=10');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}

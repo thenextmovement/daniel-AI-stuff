@@ -93,7 +93,7 @@ konkrete Freigabe, Abgleich mit aktuellem Main und `codex-predeploy ops` sowie
     node --check deploy/3d-konfigurator/app.js
     node --check deploy/3d-konfigurator/renderer.js
 
-16 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, ungültige Eingaben, echte
+17 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, ungültige Eingaben, echte
 Schriftkonturen inklusive Innenräumen, Abstände/Proportionen, gesperrter Kauf,
 Materialtrennung, Acrylrückseite, unabhängige Oberflächen sowie der vorläufige
 Farbaufpreis der Schiene mit Länge, Menge und Ausschluss anderer Montagearten.
@@ -254,7 +254,7 @@ des 3D-Releases und wurden hier nicht überschrieben.
 - Ein weißer, weichgezeichneter Konturmasken-Verbund bestimmt die Lichtverteilung.
   Die gewählte Farbe und ihre Intensität werden separat angewendet. Das ergibt
   einen deutlich kräftigeren, farbigen Wandschein, besonders bei Nacht.
-- Die 1-cm-Acrylgeometrie behält exakt die Metallkontur und deren Innenräume.
+- Die Acrylgeometrie behält exakt die Metallkontur und deren Innenräume.
   Ihre Seiten sind weiß; es gibt keine zusätzliche verbreiterte weiße Kontur
   um die Vorderseite. Frontal verdeckt der Edelstahl die gleich große
   Acrylrückseite. Die normale Perspektive zeigt den Schriftzug etwas schräger
@@ -263,3 +263,24 @@ des 3D-Releases und wurden hier nicht überschrieben.
   perspektivisch bei Tag/Nacht, Neon-Pink samt Wiederherstellung, violette
   Frontbeleuchtung, Licht aus und alle 17 Farben bei 320 px Breite. Keine
   erfassten Konsolenfehler. Lichtwirkung bleibt eine Gestaltungsvorschau.
+
+## Acrylschicht in der Gesamtansicht
+
+Eine maßstäbliche 1-cm-Schicht an einem 400-cm-Schriftzug wird in der normalen
+Vorschau kaum einen Bildpunkt breit. Die Darstellung betont deshalb ab 120 cm
+Schriftzugbreite ausschließlich die Tiefe dieser Schicht: bis maximal 3 cm
+Darstellungstiefe bei unveränderter 1-cm-Produktvorgabe. Der Hinweis unter der
+Vorschau kennzeichnet dies. Maße, Entwurf, Warenkorb und Preisbasis bleiben
+unverändert. Frontbeleuchtung verwendet diese Hervorhebung nicht.
+
+Der Edelstahlkörper behält seine eigene Tiefe und liegt direkt vor dem Acryl.
+Die Rückseite des Bauteils und die Abstandshalter zur Schiene bleiben an ihrem
+Platz. Außenkontur und Innenräume werden nie verbreitert; frontal bleibt die
+Acrylschicht durch den Edelstahl verdeckt. Die normale Perspektive ist etwas
+schräger und näher. Die Tiefenhervorhebung bleibt beim Drehen und beim Wechsel
+in die Detailansicht konsistent.
+
+Geprüft: unveränderte Konturen und Produktdaten sowie alle bisherigen
+Schienen-Raycasts zusätzlich mit der dargestellten Schichtdicke. Browser:
+400 cm / 8 cm, schwarzer Edelstahl und grünes Rücklicht, normale Perspektive,
+Frontal, Tag/Nacht, Licht aus, Desktop 1440×1150 und Mobil 320×740 ohne Überlauf.

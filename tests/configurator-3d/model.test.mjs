@@ -41,7 +41,7 @@ test('The detail camera keeps an entire letter, including umlaut dots, in its fr
 });
 test('The rail is centred against the wall and separated from every letter by spacers',()=>{
  const material=new MeshBasicMaterial();
- for(const font of Object.values(fonts))for(const width of [30,120,400])for(const lighting of ['front','back'])for(const depth of [3,8]){
+ for(const font of Object.values(fonts))for(const width of [30,120,400])for(const lighting of ['front','back'])for(const depth of [3,8])for(const preview of [false,true]){
   const state={...DEFAULT,text:'PRADA',width,depth,lighting,mount:'rail'},layout=layoutLetters(font,state.text,5),scale=width/layout.width;
   const mounting=mountingLayout(state,layout.height*scale),support=mounting.rail;
   assert.equal(support.y,0,'The rail must be halfway up the lettering');
@@ -50,13 +50,13 @@ test('The rail is centred against the wall and separated from every letter by sp
   const rail=new Mesh(new BoxGeometry(width,support.height,support.depth),material);rail.position.set(0,support.y,support.z);rail.updateMatrixWorld();
   for(const item of layout.shapes){
    const point=railAttachment(item,scale,support.y);assert.ok(point?.width>0);
-   const parts=letterGeometries(item.shape,scale,state);
+   const parts=letterGeometries(item.shape,scale,state,preview);
    for(const geometry of Object.values(parts))if(geometry){
     geometry.translate(item.x*scale,item.y*scale,mounting.letterRear);geometry.computeBoundingBox();
     assert.ok(geometry.boundingBox.min.z>support.front,'Neither the shell, face nor acrylic rear may intersect the rail');
    }
    const face=new Mesh(parts.front,material);face.updateMatrixWorld();
-   const target=new Vector3(point.x,support.y,mounting.letterRear+depth+.05);
+   const target=new Vector3(point.x,support.y,parts.front.boundingBox.min.z);
    for(const angle of [-1.22,0,1.22]){
     const origin=target.clone().add(new Vector3(Math.sin(angle)*100,0,Math.cos(angle)*100));
     const hits=new Raycaster(origin,target.clone().sub(origin).normalize()).intersectObjects([rail,face]);
@@ -138,6 +138,20 @@ test('Backlit letters have a separate matching white acrylic rear layer, includi
   for(const geometry of Object.values(parts))geometry?.dispose();
  }
  const front=letterGeometries(shape,1,{...DEFAULT,lighting:'front'});assert.equal(front.rear,null);front.shell.dispose();front.front.dispose();
+});
+
+test('Preview layer emphasis adds depth behind the metal without widening the front silhouette or changing the product',()=>{
+ const state={...DEFAULT,width:400,depth:8},saved=JSON.stringify(state);
+ const shape=layoutLetters(font,'A',5).shapes[0].shape;
+ const actual=letterGeometries(shape,1,state),preview=letterGeometries(shape,1,state,true);
+ for(const parts of [actual,preview])for(const geometry of Object.values(parts))geometry.computeBoundingBox();
+ assert.equal(actual.rear.boundingBox.max.z,1);assert.equal(preview.rear.boundingBox.max.z,3);
+ assert.ok(Math.abs(preview.shell.boundingBox.min.z-preview.rear.boundingBox.max.z)<.05,'The white layer directly touches the steel');
+ for(const part of ['rear','shell','front'])for(const axis of ['x','y'])for(const end of ['min','max'])assert.equal(preview[part].boundingBox[end][axis],actual[part].boundingBox[end][axis],'No expanded outline');
+ assert.ok(Math.abs(preview.front.boundingBox.min.z-actual.front.boundingBox.min.z-2)<.0001);
+ assert.equal(preview.rear.parameters.shapes.holes.length,actual.rear.parameters.shapes.holes.length);
+ assert.equal(JSON.stringify(state),saved);assert.equal(normalize(state).depth,8);assert.match(description(state),/Wunschtiefe: 8 cm/);
+ for(const parts of [actual,preview])for(const geometry of Object.values(parts))geometry.dispose();
 });
 
 test('The EUR 110/m estimate applies only to custom-colour rails and never enables checkout',()=>{
