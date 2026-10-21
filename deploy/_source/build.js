@@ -141,6 +141,8 @@ function replaceVariables(html, config) {
     '{{META_DESCRIPTION}}': config.meta_description,
     '{{CANONICAL}}': config.canonical,
     '{{OG_TITLE}}': config.og_title,
+    '{{SHARE_IMAGE}}': config.share_image || (config.lang === 'en' ? 'https://anfrage.neontrip.de/assets/share/20261021/neon-empfang-text-en-logo.jpg' : 'https://anfrage.neontrip.de/assets/share/20261021/neon-empfang-text-de-logo.jpg'),
+    '{{SHARE_IMAGE_ALT}}': config.share_image_alt || (config.lang === 'en' ? 'Your logo. Your lettering. As an illuminated sign. Visualization of a pink LED neon logo in a reception area.' : 'Dein Logo. Dein Schriftzug. Als Leuchtschild. Visualisierung eines pinken LED-Neonlogos im Empfangsbereich.'),
     '{{OG_DESCRIPTION}}': config.og_description,
     '{{HREFLANG_TAGS}}': config.hreflang_tags || '',
     '{{DKI_SCRIPT}}': generateDkiScript(config),
@@ -201,6 +203,9 @@ function replaceVariables(html, config) {
       '<option value="Unbeleuchtet">Unbeleuchtet</option>',
     ].join('\n                        '),
     '{{STICKY_PRODUKT}}': config.sticky_produkt || 'neonschild',
+    '{{HEADER_CTA_TEXT}}': config.header_cta_text || 'Jetzt 3D-Vorschau erhalten',
+    '{{HEADER_CTA_HREF}}': config.header_cta_href || (config.use_local_form_cta ? '#hero' : `/anfrage?produkt=${encodeURIComponent(config.sticky_produkt || 'neonschild')}`),
+    '{{MOBILE_HEADER_CTA_HREF}}': config.mobile_header_cta_href || config.header_cta_href || (config.use_local_form_cta ? '#hero' : `/anfrage?produkt=${encodeURIComponent(config.sticky_produkt || 'neonschild')}`),
     '{{PRIMARY_CTA_HREF}}': config.use_local_form_cta
       ? '#hero'
       : `/anfrage?produkt=${encodeURIComponent(config.sticky_produkt || 'neonschild')}`,

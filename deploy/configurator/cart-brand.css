@@ -1,0 +1,315 @@
+/* NEONTRIP cart — Inter 600, white surfaces and the shared brand pink.
+   Scoped to the cart: configurator, review, prices and checkout logic stay intact. */
+#cart-dialog {
+  --cart-ink: #181615;
+  --cart-muted: #665f59;
+  --cart-line: #e3e0dd;
+  width: min(1160px, calc(100vw - 64px));
+  max-height: calc(100svh - 64px);
+  padding: 32px 40px;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--cart-ink);
+  font-family: Inter, sans-serif;
+  overscroll-behavior: contain;
+}
+#cart-dialog::backdrop { background: #181615a6; backdrop-filter: blur(6px); }
+#cart-dialog .dialog-close {
+  top: 24px; right: 24px; width: 44px; height: 44px;
+  border: 1px solid var(--cart-line); background: #fff; color: var(--cart-ink);
+}
+#cart-dialog .cart-heading { padding-right: 40px; margin-bottom: 28px; }
+#cart-dialog .config-kicker {
+  color: var(--cart-muted); font-size: 11px; font-weight: 500;
+  letter-spacing: .15em; margin: 0 0 10px;
+}
+#cart-dialog #cart-title {
+  font-size: clamp(34px, 4vw, 52px); font-weight: 600;
+  letter-spacing: -.048em; line-height: 1.04; margin: 0 0 16px;
+}
+#cart-dialog .dialog-intro { color: var(--cart-muted); font-size: 16px; line-height: 1.5; margin: 0; max-width: none; }
+#cart-dialog .cart-layout { display: grid; grid-template-columns: minmax(0,1fr) 350px; gap: 36px; align-items: start; }
+#cart-dialog .cart-products { min-width: 0; }
+#cart-dialog .cart-list-heading {
+  display: flex; justify-content: space-between; gap: 16px;
+  border-bottom: 1px solid var(--cart-line); padding: 0 0 16px;
+  font-size: 12px; font-weight: 500;
+}
+#cart-dialog .cart-list-heading span:last-child { color: var(--cart-muted); font-weight: 400; }
+#cart-dialog .cart-item { grid-template-columns: 160px minmax(0,1fr); gap: 24px; padding: 24px 0; border-color: var(--cart-line); }
+#cart-dialog .cart-item-preview { height: 160px; background: var(--cart-ink); border-radius: 4px; }
+#cart-dialog .cart-item h3 { font-size: 23px; font-weight: 600; line-height: 1.15; letter-spacing: -.035em; margin: 0 0 12px; }
+#cart-dialog .cart-item p { font-size: 13px; line-height: 1.6; color: var(--cart-muted); margin-top: 6px; }
+#cart-dialog .cart-item .cart-colors { font-size: 12px; }
+#cart-dialog .cart-item-price { font-size: 21px; margin-top: 18px; }
+#cart-dialog .cart-item-controls { gap: 4px 16px; margin-top: 18px; }
+#cart-dialog .cart-item-controls label { gap: 10px; font-size: 12px; color: var(--cart-muted); }
+#cart-dialog .cart-item-controls input {
+  width: 64px; height: 44px; padding: 8px 10px; border: 1px solid #b7b1ab;
+  border-radius: 4px; color: var(--cart-ink); background: #fff; font-size: 16px;
+}
+#cart-dialog .cart-item-controls button {
+  min-height: 44px; color: var(--cart-ink); font-size: 12px;
+  text-decoration-color: #b7b1ab; text-underline-offset: 4px;
+}
+#cart-dialog .cart-item-controls button:hover { text-decoration-color: currentColor; }
+#cart-dialog #cart-storage-status { color: var(--cart-muted); font-size: 12px; line-height: 1.6; margin: 18px 0 0; }
+#cart-dialog #cart-storage-status:empty, #cart-dialog #checkout-preparation-status:empty { display: none; }
+#cart-dialog #cart-continue { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 16px; font-size: 13px; font-weight: 500; color: var(--cart-ink); text-decoration: none; }
+#cart-dialog #cart-continue .icon { width: 18px; height: 18px; }
+#cart-dialog #cart-continue:hover { text-decoration: underline; text-underline-offset: 4px; }
+#cart-dialog #cart-checkout { display: block; background: #f4f4f3; border: 0; padding: 24px; margin: 0; border-radius: 4px; min-width: 0; }
+#cart-dialog #cart-checkout h3 { font-size: 22px; font-weight: 600; letter-spacing: -.035em; margin: 0 0 16px; }
+#cart-dialog .cart-total { padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid #dcd8d4; }
+#cart-dialog .cart-total > span { font-size: 13px; color: var(--cart-ink); }
+#cart-dialog .cart-total > strong { margin-top: 14px; font-size: 32px; font-weight: 600; letter-spacing: -.035em; }
+#cart-dialog .cart-total .price-current { font-size: 32px; }
+#cart-dialog #cart-checkout p { font-size: 12px; line-height: 1.6; color: var(--cart-muted); margin: 10px 0 0; max-width: none; }
+#cart-dialog .checkout-preparation { display: grid; gap: 0; }
+#cart-dialog .checkout-preparation .button {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  width: 100%; min-width: 0; min-height: 48px; padding: 14px 16px;
+  border: 1px solid var(--cart-ink); border-radius: 4px;
+  background: var(--cart-ink); color: #fff; font-size: 13px; font-weight: 500; line-height: 1.45;
+  white-space: normal; text-align: center;
+}
+#cart-dialog .checkout-preparation .button .icon { width: 18px; height: 18px; flex-shrink: 0; }
+#cart-dialog .checkout-preparation #prepare-checkout { margin-top: 16px; background: transparent; color: var(--cart-ink); border-color: #b7b1ab; }
+#cart-dialog .checkout-preparation .button:hover:not(:disabled) { background: #35302d; color: #fff; }
+#cart-dialog .checkout-preparation .button:disabled { margin-top: 16px; background: #e3e0dd; border-color: #e3e0dd; color: #77716c; cursor: not-allowed; }
+#cart-dialog #cart-empty { padding: 48px 0; max-width: 440px; font-size: 20px; font-weight: 400; letter-spacing: -.025em; line-height: 1.5; color: var(--cart-muted); }
+#cart-dialog .cart-layout:has(#cart-checkout[hidden]) { grid-template-columns: 1fr; }
+#cart-dialog :is(button,input):focus-visible { outline: 2px solid #fa31a2; outline-offset: 4px; }
+#cart-dialog [hidden] { display: none !important; }
+
+#cart-dialog .cart-wordmark { display: block; width: 148px; height: auto; margin: 0 0 18px; }
+#cart-dialog #cart-checkout .cart-trust-note { font-size: 10px; line-height: 1.45; margin-top: 10px; }
+
+/* Main configurator actions keep white labels on a contrast-safe NEONTRIP pink. */
+body.nt-configurator :is(#next-step, #add-to-cart, #review-add-to-cart, #page-add-to-cart):not(:disabled):not([aria-disabled=true]) {
+  background: #c51a7a !important;
+  border-color: #c51a7a !important;
+  color: #fff !important;
+}
+@media (max-width: 1000px) {
+  #cart-dialog { padding: 32px; width: calc(100vw - 40px); max-height: calc(100svh - 40px); }
+  #cart-dialog .cart-layout { gap: 28px; grid-template-columns: minmax(0,1fr) 300px; }
+  #cart-dialog .cart-item { grid-template-columns: 1fr; gap: 16px; }
+  #cart-dialog .cart-item-preview { height: 170px; }
+}
+@media (max-width: 700px) {
+  #cart-dialog { padding: 28px 20px; width: calc(100vw - 24px); max-height: calc(100svh - 24px); border-radius: 6px; }
+  #cart-dialog .dialog-close { top: 14px; right: 14px; }
+  #cart-dialog .cart-heading { padding-right: 28px; margin-bottom: 28px; }
+  #cart-dialog .config-kicker { font-size: 9px; letter-spacing: .12em; max-width: 170px; line-height: 1.6; margin-bottom: 14px; }
+  #cart-dialog #cart-title { font-size: clamp(30px,8.5vw,42px); margin-bottom: 14px; }
+  #cart-dialog .dialog-intro { font-size: 15px; }
+  #cart-dialog .cart-layout { grid-template-columns: 1fr; gap: 28px; }
+  #cart-dialog .cart-list-heading { font-size: 11px; gap: 8px; }
+  #cart-dialog .cart-item { grid-template-columns: 1fr; gap: 20px; padding: 24px 0; }
+  #cart-dialog .cart-item-preview { height: 180px; }
+  #cart-dialog .cart-item h3 { font-size: 24px; }
+  #cart-dialog .cart-item-controls { gap: 4px 20px; }
+  #cart-dialog #cart-checkout { padding: 24px; }
+  #cart-dialog #cart-empty { font-size: 18px; padding: 32px 0; }
+}
+
+/* One action-button treatment across the new configurator and purchase dialogs.
+   These deliberate overrides resolve the existing layered page styles. */
+body.nt-configurator :is(.button, .nt-content-cta, .delivery-calendar-continue, #next-step, .own-photo-button, .share-comparison-button, .design-tools button) {
+  --nt-button-surface: var(--pink);
+  --nt-button-text: #fff;
+  --nt-button-border: var(--pink);
+  border-radius: 9999px !important;
+  border: 1px solid var(--nt-button-border) !important;
+  background: var(--nt-button-surface) !important;
+  color: var(--nt-button-text) !important;
+  font-family: Inter, sans-serif !important;
+  font-weight: 600 !important;
+  text-decoration: none;
+  box-shadow: none !important;
+  transition: background-color .18s, border-color .18s, color .18s !important;
+}
+body.nt-configurator :is(.button, .nt-content-cta, .delivery-calendar-continue, #next-step) {
+  min-height: 56px !important;
+  line-height: 1.3 !important;
+}
+body.nt-configurator :is(.button:not(.button-dark), #prepare-checkout, .own-photo-button, .share-comparison-button, .design-tools button) {
+  --nt-button-surface: #fff;
+  --nt-button-text: #b00d66;
+}
+body.nt-configurator :is(.button, .nt-content-cta, .delivery-calendar-continue, #next-step, .own-photo-button, .share-comparison-button, .design-tools button):hover:not(:disabled):not([aria-disabled=true]) {
+  --nt-button-surface: #d20b7b;
+  --nt-button-border: #d20b7b;
+  --nt-button-text: #fff;
+  transform: none !important;
+}
+body.nt-configurator :is(.button, .nt-content-cta, .delivery-calendar-continue, #next-step, .own-photo-button, .share-comparison-button, .design-tools button):focus-visible {
+  outline: 2px solid #fa31a2 !important;
+  outline-offset: 4px !important;
+}
+body.nt-configurator :is(.button, .nt-content-cta, .delivery-calendar-continue, #next-step, .own-photo-button, .share-comparison-button, .design-tools button):is(:disabled, [aria-disabled=true]) {
+  --nt-button-surface: #e3e0dd;
+  --nt-button-border: #e3e0dd;
+  --nt-button-text: #77716c;
+  opacity: 1 !important;
+  cursor: not-allowed;
+  transform: none !important;
+}
+@media (max-width: 1000px) {
+  body.nt-configurator :is(.button, .nt-content-cta, .delivery-calendar-continue, #next-step) { min-height: 50px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.nt-configurator :is(.button, .nt-content-cta, .delivery-calendar-continue, #next-step, .own-photo-button, .share-comparison-button, .design-tools button) { transition: none !important; }
+}
+
+/* Delivery stays separate from sign discounts and is included once in the total. */
+#cart-dialog .cart-amounts{display:grid;gap:10px;margin:0 0 20px;font-size:12px;line-height:1.5;color:var(--cart-muted)}
+#cart-dialog .cart-amounts>div{display:flex;justify-content:space-between;gap:12px}
+#cart-dialog .cart-amounts dd{margin:0;text-align:right;color:var(--cart-ink)}
+#cart-dialog #cart-total-price{display:block}
+#cart-dialog #cart-delivery-open:disabled{margin-top:0}
+
+/* Explicit unit/quantity/line prices; the primary price always includes VAT. */
+#cart-dialog .cart-item-price{display:grid;gap:7px;max-width:340px;margin-top:18px;font-weight:400}
+#cart-dialog :is(.cart-unit-price,.cart-line-total){display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-size:12px}
+#cart-dialog .cart-unit-price>strong{font-size:16px;font-weight:600;letter-spacing:-.02em;color:var(--cart-ink)}
+#cart-dialog .cart-price-calculation{font-size:12px;color:var(--cart-muted);font-variant-numeric:tabular-nums}
+#cart-dialog .cart-line-total{border-top:1px solid var(--cart-line);padding-top:9px}
+#cart-dialog .cart-line-total>strong{font-size:22px;font-weight:600;letter-spacing:-.03em;color:var(--cart-ink)}
+#cart-dialog .cart-line-tax{font-size:10px;line-height:1.5;color:var(--cart-muted)}
+#cart-dialog .cart-tax-breakdown{display:grid;gap:5px;margin:12px 0 0;font-size:11px;line-height:1.4;color:var(--cart-muted)}
+#cart-dialog .cart-tax-breakdown>div{display:flex;justify-content:space-between;gap:12px}
+#cart-dialog .cart-tax-breakdown dd{margin:0;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+#cart-dialog .cart-quote-option{margin-top:12px;padding:12px;background:#fff1f8;border:1px solid #f5c3df;border-radius:8px}
+#cart-dialog .cart-quote-option h4{font-size:16px;font-weight:600;line-height:1.3;letter-spacing:-.02em;margin:0}
+#cart-dialog .cart-quote-option #cart-request-quote{gap:10px;margin-top:8px;min-height:56px!important;padding:12px;font-size:12px;line-height:1.4}
+#cart-dialog .cart-quote-option .icon{width:18px;height:18px;flex-shrink:0}
+
+/* V2 landing-page fill direction/timing, adapted to pink with white labels.
+   Reference: neon-schilder-remix/sources/led-neon-usecases-v2/section.css. */
+body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calendar-continue, #next-step, #page-add-to-cart) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calendar-continue, #next-step, #page-add-to-cart):not(:disabled):not([aria-disabled=true]),
+body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calendar-continue, #next-step, #page-add-to-cart):hover:not(:disabled):not([aria-disabled=true]) {
+  --nt-button-surface: var(--pink);
+  --nt-button-border: var(--pink);
+  --nt-button-text: #fff;
+}
+body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calendar-continue, #next-step, #page-add-to-cart):not(:disabled):not([aria-disabled=true])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: #d20b7b;
+  clip-path: inset(0 0 0 100% round 999px);
+  transition: clip-path 450ms cubic-bezier(.785,.135,.15,.86);
+}
+body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calendar-continue, #next-step, #page-add-to-cart):not(:disabled):not([aria-disabled=true]):is(:focus-visible,:active)::before {
+  clip-path: inset(0 round 999px);
+}
+@media (hover: hover) and (pointer: fine) {
+  body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calendar-continue, #next-step, #page-add-to-cart):not(:disabled):not([aria-disabled=true]):hover::before {
+    clip-path: inset(0 round 999px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.nt-configurator :is(.button.button-dark, .nt-content-cta, .delivery-calendar-continue, #next-step, #page-add-to-cart)::before { transition: none; }
+}
+
+/* Keep price/navigation controls clear at every viewport width. Cookie settings
+   remain available in the footer; the consent dialog retains its normal behavior. */
+body.nt-configurator #CookiebotWidget {
+  display: none !important;
+}
+
+/* A single scrolling list and a permanently reachable checkout footer. */
+/* Session replays retain [open] without the browser's native modal top layer.
+   Keep the same viewport placement in both representations. */
+#cart-dialog[open],#delivery-dialog[open]{position:fixed;inset:0;margin:auto;z-index:100}
+#cart-dialog[open]{display:flex;flex-direction:column;height:min(900px,calc(100dvh - 24px));max-height:calc(100dvh - 24px);overflow:hidden;padding:28px}
+#cart-dialog .cart-layout{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:24px;min-height:0;height:100%;overflow:hidden}
+/* Keep the close button clear of prices without reducing checkout height. */
+@media(min-width:761px) and (max-height:500px){
+ #cart-dialog .cart-layout{padding-right:52px}
+}
+#cart-dialog .cart-products{align-self:stretch;min-height:0;overflow:auto;padding-right:12px;overscroll-behavior:contain}
+#cart-dialog #cart-checkout{align-self:end;padding:18px;margin:0;position:static;min-width:0}
+#cart-dialog #cart-checkout :is(.trust-rating-cart,.trust-payments,.trust-payment-note,.cart-trust-note,.cart-tax-breakdown,.trust-shipping){display:none!important}
+#cart-dialog #cart-checkout h3{margin:0 0 12px;font-size:18px}
+#cart-dialog #cart-delivery-summary{font-size:12px;line-height:1.4;margin:8px 0}
+#cart-dialog #cart-pay[hidden],#cart-dialog #prepare-checkout[hidden]{display:none!important}
+#cart-dialog .cart-quote-option{padding:14px;margin:20px 0}
+#cart-dialog .cart-accessories{display:grid;gap:10px;margin-top:16px}
+#cart-dialog .cart-accessory-row{display:grid;gap:6px;border-top:1px solid #e1dbdf;padding-top:10px;font-size:13px;line-height:1.45}
+#cart-dialog .cart-accessory-row>strong{font-size:14px}
+#cart-dialog .cart-accessory-row>small{font-size:12px;color:#655b61}
+#cart-dialog .cart-accessory-actions{display:flex;gap:6px;flex-wrap:wrap}
+#cart-dialog .cart-accessories button{min-height:44px;max-width:100%;padding:8px 10px;border:1px solid #b91176;border-radius:8px;background:white;color:#a90869;font:500 13px/1.4 Inter,system-ui,sans-serif;text-align:left;white-space:normal}
+@media(max-width:760px){
+ #cart-dialog[open]{width:calc(100vw - 12px);max-width:none;height:calc(100dvh - 12px);max-height:calc(100dvh - 12px);padding:12px}
+ #cart-dialog .cart-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;gap:0}
+ #cart-dialog .cart-products{padding:20px 4px 16px}
+ #cart-dialog #cart-checkout{padding:12px;border-top:2px solid #c4107a;border-radius:10px}
+ #cart-dialog #cart-checkout h3,#cart-dialog .cart-amounts{display:none}
+ #cart-dialog #cart-total-price{font-size:25px}
+ #cart-dialog .cart-total p{font-size:11px;margin:4px 0 8px}
+ #cart-dialog #cart-delivery-open{min-height:46px!important;margin:8px 0 0;padding:10px!important}
+ #cart-dialog #cart-delivery-summary{margin:4px 0 0}
+ #cart-dialog .cart-item{gap:12px;padding:14px 0}
+ #cart-dialog .cart-item-preview{height:130px}
+}
+
+#cart-dialog #cart-delivery-open{background:#bd167a!important;color:#fff!important}
+@media(max-width:760px){
+ #cart-dialog .cart-heading{margin-bottom:12px;padding-right:34px}
+ #cart-dialog .cart-wordmark{width:112px;height:auto;margin-bottom:10px}
+ #cart-dialog .cart-heading :is(.config-kicker,.dialog-intro){display:none}
+ #cart-dialog #cart-title{font-size:27px;margin:0 0 8px}
+ #cart-dialog .cart-products{padding-top:10px}
+ #cart-dialog .cart-total{padding:0 0 8px;margin:0}
+ #cart-dialog #cart-total-price{margin:2px 0 0}
+ #cart-dialog .cart-total p{font-size:11px;margin:4px 0}
+}
+
+/* Mobile cart leaves most of the screen to the actual designs. */
+#cart-dialog .cart-accessory-details{margin-top:12px;border-top:1px solid var(--cart-line)}
+#cart-dialog .cart-accessory-details>summary{min-height:44px;padding:12px 0;font-size:13px;font-weight:600;cursor:pointer}
+#cart-dialog .cart-accessory-details .cart-accessories{margin-top:0}
+@media(max-width:760px){
+ #cart-dialog #cart-checkout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);align-items:center;gap:8px 12px;padding:10px 0 0;border-radius:0;background:#fff}
+ #cart-dialog .cart-total{border:0;padding:0;margin:0;min-width:0}
+ #cart-dialog .cart-total>span{display:block;font-size:11px;line-height:1.3}
+ #cart-dialog #cart-total-price{font-size:22px;line-height:1.3;margin:2px 0}
+ #cart-dialog #cart-checkout .cart-total>p{font-size:10px;line-height:1.35;margin:0}
+ #cart-dialog #cart-delivery-open{margin:0;min-height:48px!important;font-size:13px;line-height:1.3}
+ #cart-dialog #cart-delivery-summary{display:none}
+ #cart-dialog #checkout-preparation-status:not(:empty){font-size:11px;line-height:1.4}
+ #cart-dialog .cart-item{grid-template-columns:88px minmax(0,1fr);align-items:start;gap:12px;padding:16px 0}
+ #cart-dialog .cart-item>div{min-width:0}
+ #cart-dialog .cart-item-preview{height:120px;position:sticky;top:0}
+ #cart-dialog .cart-item h3{font-size:18px;line-height:1.3;white-space:normal;margin:0 0 8px;overflow-wrap:anywhere}
+ #cart-dialog .cart-item p{font-size:12px;line-height:1.45}
+ #cart-dialog .cart-item-price{margin-top:12px}
+ #cart-dialog .cart-unit-price,#cart-dialog .cart-price-calculation,#cart-dialog .cart-line-tax{display:none}
+ #cart-dialog .cart-line-total{border:0;padding:0;flex-wrap:wrap;gap:2px 8px}
+ #cart-dialog .cart-line-total>strong{font-size:20px}
+ #cart-dialog .cart-item-controls{margin-top:8px;gap:4px 12px}
+ #cart-dialog .cart-item-controls label{flex-basis:100%}
+ #cart-dialog .cart-compare-choice{font-size:11px;margin-top:12px}
+ #cart-dialog .cart-products{padding-right:0;scrollbar-width:thin}
+}
+
+/* Explicit editing versus adding; preserve the existing compact checkout dock. */
+#cart-dialog #cart-new-design{display:block;min-height:44px;margin:4px 0 0;font-size:13px;text-underline-offset:4px}
+#cart-dialog #cart-step-note{font-size:11px;line-height:1.4;margin:6px 0 0}
+#cart-editing-note{font-size:12px;line-height:1.35;color:#665f59;margin:4px 0}
+@media(max-width:760px){
+ body.lichtbuehne.lichtbuehne-v4.designstudio #main .editor .design-summary>p#cart-editing-note:not([hidden]){display:block!important;grid-column:1/-1;grid-row:3;margin:0;font-size:11px}
+}

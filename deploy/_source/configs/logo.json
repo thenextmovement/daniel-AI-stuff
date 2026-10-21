@@ -1,5 +1,7 @@
 {
   "slug": "logo",
+  "share_image": "https://anfrage.neontrip.de/assets/share/20261021/beleuchtetes-logo-de-logo.jpg",
+  "share_image_alt": "Deine Marke. Im besten Licht. Beleuchtete Logos nach Maß. Visualisierung eines rückbeleuchteten AUREA-Wandlogos.",
   "hero_video_desktop": "../assets/videos/hero-desktop-leuchtbuchstaben.mp4",
   "lang": "de",
   "title": "Ihr Logo als Leuchtschild — LED & Neon | NEONTRIP Düsseldorf",
@@ -430,5 +432,8 @@
   "express_copy": "Machbarkeit und Liefertermin prüfen wir für Ihr Projekt.",
   "preview_headline": "Kostenlose 3D-Vorschau",
   "preview_copy": "Mit Ihrem persönlichen Angebot.",
-  "offer_badge": "Angebot in 24 Stunden"
+  "offer_badge": "Angebot in 24 Stunden",
+  "header_cta_text": "Logo-Angebot anfragen",
+  "header_cta_href": "#hero-form-desktop",
+  "mobile_header_cta_href": "#hero-form"
 }

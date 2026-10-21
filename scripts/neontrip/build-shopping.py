@@ -44,8 +44,10 @@ for p in products:
  page=re.sub(r'<title>.*?</title>',f"<title>{esc(p['name'])} | NEONTRIP</title>",page,count=1)
  page=re.sub(r'<meta name="description" content="[^"]*"\s*/?>',f'<meta name="description" content="{esc(description)}">',page,count=1)
  page=page.replace('href="https://anfrage.neontrip.de/configurator/"','href="'+url+'"',1)
- for prop,value in [('og:title',p['name']),('og:description',description),('og:url',url),('og:image',image),('og:image:alt',p['text']+' – '+p['colorName'])]:
+ for prop,value in [('og:title',p['name']),('og:description',description),('og:url',url),('og:image',image),('og:image:secure_url',image),('og:image:type','image/png'),('og:image:width','1254'),('og:image:height','1254'),('og:image:alt',p['text']+' – '+p['colorName'])]:
   page=re.sub(r'<meta property="'+prop+r'" content="[^"]*">',f'<meta property="{prop}" content="{esc(value)}">',page,count=1)
+ for prop,value in [('twitter:title',p['name']),('twitter:description',description),('twitter:image',image),('twitter:image:alt',p['text']+' – '+p['colorName'])]:
+  page=re.sub(r'<meta name="'+prop+r'" content="[^"]*">',f'<meta name="{prop}" content="{esc(value)}">',page,count=1)
  # Replace generic page metadata with this concrete Product and Offer.
  page=re.sub(r'<script type="application/ld\+json">.*?</script>',lambda _: '<script type="application/ld+json">'+json.dumps(schema,ensure_ascii=False).replace('<','\\u003c')+'</script>',page,count=1,flags=re.S)
  page=page.replace('</head>','<link rel="stylesheet" href="shopping-entry.css?v=20261008-shopping1">\n<script type="application/json" id="shopping-offer">'+json.dumps(p,ensure_ascii=False).replace('<','\\u003c')+'</script></head>',1)

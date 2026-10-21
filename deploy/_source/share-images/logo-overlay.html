@@ -1,0 +1,6 @@
+<!doctype html><html lang="de"><meta charset="utf-8"><title>NEONTRIP – Original-Logo auf Share-Motiv</title><style>*{box-sizing:border-box}html,body{margin:0;width:1672px;height:941px;overflow:hidden;background:transparent}.photo{position:absolute;inset:0;width:1672px;height:941px;display:block}.logo{position:absolute;right:64px;top:64px;width:330px;height:auto;display:block;border:0;outline:0;box-shadow:none;background:transparent}</style><img class="photo" alt="Produktmotiv"><img class="logo" src="./logo-white.svg" alt="NEONTRIP"><script>
+const allowed=["neon-empfang-text-de", "neon-empfang-text-en", "3d-leuchtbuchstaben-de", "beleuchtetes-logo-de", "auslegerschild-de", "leuchtkasten-de", "messe-event-de"];
+const id = new URLSearchParams(location.search).get('image') || allowed[0];
+if (!allowed.includes(id)) throw new Error('Unknown share image');
+document.querySelector('.photo').src='/assets/share/20261021/'+id+'.jpg';
+</script></html>
