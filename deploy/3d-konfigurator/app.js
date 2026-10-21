@@ -1,4 +1,4 @@
-import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,normalize,validate,description} from './model.js?v=16';
+import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,RAL_COLORS,ralCode,normalize,validate,description} from './model.js?v=17';
 import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
@@ -13,21 +13,21 @@ function setPressed(selector,value,key){for(const el of all(selector))el.setAttr
 const euro=value=>(value/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
 function railPriceNote(design,quantity=1){const e=railColorEstimate(design,quantity);return e?`Farbaufpreis Schiene: ca. ${euro(e.totalCents)} (${e.metres.toLocaleString('de-DE')} m × ca. 110 €/m${quantity>1?' × '+quantity+' Stück':''}). Gesamtpreis folgt.`:'';}
 function syncRail(){
- $('#rail-settings').hidden=state.mount!=='rail';$('#rail-color-settings').hidden=!state.railCustomColor;setPressed('[data-rail-finish]',state.railCustomColor?'custom':'standard','railFinish');$('#rail-color').value=state.railColor;$('#rail-color-value').textContent=state.railColor.toUpperCase();$('#rail-color-price').textContent=railPriceNote(state);
+ $('#rail-settings').hidden=state.mount!=='rail';$('#rail-color-settings').hidden=!state.railCustomColor;setPressed('[data-rail-finish]',state.railCustomColor?'custom':'standard','railFinish');$('#rail-color-price').textContent=railPriceNote(state);
 }
 function sync(){
- $('#sign-text').value=state.text;$('#width').value=state.width;$('#width-range').value=state.width;$('#spacing').value=state.spacing;$('#plate-color').value=state.plate;
+ $('#sign-text').value=state.text;$('#width').value=state.width;$('#width-range').value=state.width;$('#spacing').value=state.spacing;
  $('#char-count').textContent=`${state.text.length} / 60`;$('#spacing-label').textContent=state.spacing+' %';
  for(const key of ['font','lighting','mount','wall','depth'])setPressed(`[data-${key}]`,state[key],key);
  setPressed('[data-color]',state.color,'color');setPressed('[data-acrylic]',state.acrylic,'acrylic');setPressed('[data-finish]',activeFinish(state),'finish');
  $('#color-name').textContent=COLORS.find(c=>c[0]===state.color)?.[1];
  $('#acrylic-color').value=state.acrylic;$('#acrylic-value').textContent=state.acrylic.toUpperCase();$('#acrylic-name').textContent=ACRYLICS.find(c=>c[0]===state.acrylic)?.[1]||'Eigene Farbe';
- $('#side-color').value=state.sideColor;$('#side-value').textContent=state.sideColor.toUpperCase();$('#reset-side').disabled=state.sideColor===DEFAULT.sideColor;
- $('#body-color').value=state.body;$('#body-value').textContent=state.body.toUpperCase();$('#paint-settings').hidden=state.lighting==='front'||activeFinish(state)!=='painted-steel';
+ syncPaints();$('#reset-side').disabled=state.sideColor===DEFAULT.sideColor&&!state.sideRal;
+ $('#paint-settings').hidden=state.lighting==='front'||!['painted-steel','brushed-gold'].includes(activeFinish(state));
  const front=state.lighting==='front';$('#acrylic-settings').hidden=!front;$('#halo-settings').hidden=front;$('#surface-settings').hidden=front;$('#side-settings').hidden=!front;$('#surface-title').textContent='Metallfront & Korpus';$('#build-title').textContent=front?'Licht & Seitenfarbe.':'Deine Oberfläche. Dein Stil.';
  $('#classic-look-note').textContent=front?'Weißes Licht · schwarze Seiten':'Edelstahl, gold lackiert · warmweißes Licht';
- $('#reset-look').disabled=front?state.sideColor===DEFAULT.sideColor&&state.acrylic===DEFAULT.acrylic:state.backFinish===DEFAULT.backFinish&&state.color===DEFAULT.color;
- $('#material-note').textContent=finishDescription(state)+'. '+(front?'Korpus und Rückseite aus Edelstahl.':'Hinten ca. 1 cm weißes, opales Acryl in Buchstabenform mit innenliegenden LEDs.');$('#construction-note').textContent=front?'Leuchtende Acrylfront · Edelstahlkorpus mit lackierten Seiten · LEDs innen.':finishDescription(state)+' · ca. 1 cm weißes Acryl hinten · Licht zur Wand.';$('#caption-material').textContent=front?'Seiten '+state.sideColor.toUpperCase():FINISHES[activeFinish(state)].label;
+ $('#reset-look').disabled=front?state.sideColor===DEFAULT.sideColor&&!state.sideRal&&state.acrylic===DEFAULT.acrylic:state.backFinish===DEFAULT.backFinish&&state.color===DEFAULT.color;
+ $('#material-note').textContent=finishDescription(state)+'. '+(front?'Korpus und Rückseite aus Edelstahl.':'Hinten ca. 1 cm weißes, opales Acryl in Buchstabenform mit innenliegenden LEDs.');$('#construction-note').textContent=front?'Leuchtende Acrylfront · Edelstahlkorpus mit lackierten Seiten · LEDs innen.':finishDescription(state)+' · ca. 1 cm weißes Acryl hinten · Licht zur Wand.';$('#caption-material').textContent=front?'Seiten '+paintDescription(state,'sideColor'):FINISHES[activeFinish(state)].label;
  syncDetail();syncRail();$('#plate-settings').hidden=state.mount!=='plate';$('#light').setAttribute('aria-pressed',String(state.lightOn));$('#light').textContent=state.lightOn?'Licht an':'Licht aus';$('#night').setAttribute('aria-pressed',String(state.night));$('#night').textContent=state.night?'Tagansicht':'Nachtansicht';document.body.classList.toggle('night-mode',state.night);
  $('#caption-light').textContent=LABELS.lighting[state.lighting];$('#caption-mount').textContent=LABELS.mount[state.mount];$('#caption-depth').textContent=state.depth+' cm Tiefe';
  $('#cart-count').textContent=cart.reduce((sum,item)=>sum+item.quantity,0);step(activeStep,false);
@@ -54,6 +54,41 @@ function step(index,focus=true){
  $('#previous').hidden=activeStep===0;$('#next').replaceChildren(document.createTextNode(['Weiter zum Material','Weiter zum Aufbau',editingId?'Änderungen prüfen':'Konfiguration prüfen'][activeStep]));const arrow=document.createElement('span');arrow.textContent='→';$('#next').append(arrow);
  if(focus){const title=$('#panel-'+activeStep+' h2');title.tabIndex=-1;title.focus({preventScroll:true});if(matchMedia('(max-width:760px)').matches)$('.controls').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});}
 }
+const paintControls={
+ sideColor:{id:'side',label:'Seiten'},body:{id:'body',label:'Front und Korpus'},railColor:{id:'rail',label:'Schiene'},plate:{id:'plate',label:'Trägerplatte'}
+};
+for(const [code,colour] of Object.entries(RAL_COLORS)){
+ const option=document.createElement('option');option.value='RAL '+code;option.label=colour.name;$('#ral-colours').append(option);
+}
+function syncPaints(){
+ for(const [key,{id}] of Object.entries(paintControls)){
+  const field=PAINT_FIELDS[key],gold=key==='body'&&state.backFinish==='brushed-gold',hex=gold?FINISHES['brushed-gold'].color:state[key],value=gold?'':state[field],code=ralCode(value);
+  $('#'+id+'-color').value=hex;$('#'+id+'-value').textContent=hex.toUpperCase();
+  const input=$('#'+id+'-ral');if(document.activeElement!==input)input.value=value;
+  const invalid=Boolean(value&&!code);input.setAttribute('aria-invalid',String(invalid));
+  $('#'+id+'-ral-note').textContent=invalid?'Bitte einen gültigen vierstelligen RAL-CLASSIC-Ton wählen, z. B. RAL 7016.':code?`RAL ${code} · ${RAL_COLORS[code].name} – für deine Lackierung vorgemerkt.`:'RAL-Nummer eingeben oder einen Vorschlag auswählen.';
+  $('#'+id+'-ral-note').classList.toggle('paint-error',invalid);$('#'+id+'-clear-ral').hidden=!value;
+  for(const button of all(`[data-paint-preset="${key}"]`))button.setAttribute('aria-pressed',String(!value&&button.dataset.paintColor===hex));
+ }
+}
+for(const [key,{id,label}] of Object.entries(paintControls)){
+ const host=$(`[data-paint-key="${key}"]`);
+ host.innerHTML=`<div class="swatches paint-swatches" aria-label="Standardfarben ${label}"></div><label class="custom-color" for="${id}-color"><input type="color" id="${id}-color" aria-label="Eigene Lackfarbe ${label}"><span>Eigene Farbe wählen <output id="${id}-value" for="${id}-color"></output></span></label><div class="ral-control"><label class="field-label" for="${id}-ral">RAL-Ton <span>optional</span></label><input id="${id}-ral" class="ral-input" type="text" list="ral-colours" placeholder="z. B. RAL 7016" maxlength="12" autocomplete="off" spellcheck="false" aria-label="RAL-Ton ${label}" aria-describedby="${id}-ral-note ${id}-ral-preview"><p id="${id}-ral-note" class="field-hint" role="status"></p><button type="button" class="reset-color" id="${id}-clear-ral" hidden>RAL-Auswahl entfernen</button><p id="${id}-ral-preview" class="field-hint ral-preview-note">RAL-Bildschirmfarben sind Näherungen. Für den Lack gilt der gewählte RAL-Ton.</p></div>`;
+ for(const [color,name] of PAINT_PRESETS){
+  const button=document.createElement('button');button.type='button';button.dataset.paintPreset=key;button.dataset.paintColor=color;button.setAttribute('aria-label',name);button.style.setProperty('--swatch',color);button.style.setProperty('--tick',name==='Schwarz'?'#fff':'#292524');
+  const chip=document.createElement('span');chip.className='swatch-chip';chip.setAttribute('aria-hidden','true');const text=document.createElement('span');text.className='swatch-label';text.textContent=name;button.append(chip,text);
+  button.addEventListener('click',()=>{state=choosePaint(state,key,{color});sync();schedule();});host.querySelector('.paint-swatches').append(button);
+ }
+ $('#'+id+'-color').addEventListener('input',event=>{state=choosePaint(state,key,{color:event.target.value});sync();schedule();});
+ const input=$('#'+id+'-ral'),field=PAINT_FIELDS[key];
+ input.addEventListener('input',()=>{
+  const value=input.value.trim(),code=ralCode(value);
+  if(code)state=choosePaint(state,key,{ral:value});else{state[field]=value;if(key==='body'&&value)state.backFinish='painted-steel';}
+  sync();schedule();
+ });
+ input.addEventListener('blur',()=>{input.value=key==='body'&&state.backFinish==='brushed-gold'?'':state[field];});
+ $('#'+id+'-clear-ral').addEventListener('click',()=>{state[field]='';sync();schedule();});
+}
 for(const [target,key,choices] of [['#light-colors','color',COLORS],['#acrylic-colors','acrylic',ACRYLICS]]){
  for(const [value,label] of choices){const button=document.createElement('button');button.type='button';button.dataset[key]=value;button.style.setProperty('--swatch',value);button.title=label;button.setAttribute('aria-label',label);const chip=document.createElement('span');chip.className='swatch-chip';chip.setAttribute('aria-hidden','true');const name=document.createElement('span');name.className='swatch-label';name.textContent=label;button.append(chip,name);const rgb=value.slice(1).match(/../g).map(x=>parseInt(x,16)/255);button.style.setProperty('--tick',rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722<.5?'#fff':'#292524');button.addEventListener('click',()=>change(key,value));$(target).append(button);}
 }
@@ -67,12 +102,12 @@ for(const [id,font] of Object.entries(FONTS)){
  button.append(sample,name,detail);$('#font-options').append(button);
 }
 for(const button of all('[data-rail-finish]'))button.addEventListener('click',()=>change('railCustomColor',button.dataset.railFinish==='custom'));
-for(const [id,key] of [['acrylic-color','acrylic'],['side-color','sideColor'],['body-color','body'],['rail-color','railColor']])$('#'+id).addEventListener('input',event=>change(key,event.target.value));
+$('#acrylic-color').addEventListener('input',event=>change('acrylic',event.target.value));
 $('#reset-look').addEventListener('click',()=>{state=classicLook(state);sync();schedule();});
 $('#reset-acrylic').addEventListener('click',()=>change('acrylic',DEFAULT.acrylic));
-$('#reset-side').addEventListener('click',()=>change('sideColor',DEFAULT.sideColor));
+$('#reset-side').addEventListener('click',()=>{state=choosePaint(state,'sideColor',{color:DEFAULT.sideColor});sync();schedule();});
 for(const key of ['font','lighting','mount','wall','depth'])for(const button of all(`[data-${key}]`))button.addEventListener('click',()=>change(key,key==='depth'?Number(button.dataset[key]):button.dataset[key]));
-for(const [id,key] of [['sign-text','text'],['width','width'],['width-range','width'],['spacing','spacing'],['plate-color','plate']])$('#'+id).addEventListener('input',event=>{
+for(const [id,key] of [['sign-text','text'],['width','width'],['width-range','width'],['spacing','spacing']])$('#'+id).addEventListener('input',event=>{
  const value=['width','spacing'].includes(key)?Number(event.target.value):event.target.value;state[key]=value;
  // Preserve the caret and incomplete numeric input while reflecting paired controls.
  $('#char-count').textContent=`${state.text.length} / 60`;$('#spacing-label').textContent=state.spacing+' %';if(id==='width-range')$('#width').value=value;if(id==='width')$('#width-range').value=value;syncRail();schedule();
@@ -94,7 +129,8 @@ function renderCart(){
  for(const item of cart){
   const row=document.createElement('article');row.className='cart-row';const info=document.createElement('div'),title=document.createElement('h3');title.textContent=item.design.text;info.append(title);
   for(const value of [`${LABELS.lighting[item.design.lighting]} · ${LABELS.mount[item.design.mount]}`,`${item.design.width} cm breit · ${item.design.depth} cm tief`,`Schrift: ${LABELS.font[item.design.font]}`,finishDescription(item.design),item.design.lighting==='front'?`Leuchtfarbe vorne: ${item.design.acrylic.toUpperCase()}`:`Halo: ${COLORS.find(c=>c[0]===item.design.color)?.[1]}`]){const p=document.createElement('p');p.textContent=value;info.append(p);}
-  if(item.design.mount==='rail'){const rail=document.createElement('p');rail.textContent=item.design.railCustomColor?'Schiene in Wunschfarbe '+item.design.railColor.toUpperCase():'Schiene: Standardausführung';info.append(rail);}
+  if(item.design.mount==='rail'){const rail=document.createElement('p');rail.textContent=item.design.railCustomColor?'Schiene in Wunschfarbe '+paintDescription(item.design,'railColor'):'Schiene: Standardausführung';info.append(rail);}
+  if(item.design.mount==='plate'){const plate=document.createElement('p');plate.textContent='Lackfarbe der Platte: '+paintDescription(item.design,'plate');info.append(plate);}
   const surcharge=document.createElement('p');surcharge.className='rail-item-estimate';surcharge.textContent=railPriceNote(item.design,item.quantity);if(surcharge.textContent)info.append(surcharge);
   const actions=document.createElement('div');actions.className='cart-actions';
   for(const [name,fn] of [['Bearbeiten',()=>{editingId=item.id;state=normalize(item.design);$('#cart').close();sync();step(0);schedule();}],['Entfernen',()=>{const previous=cart;cart=cart.filter(x=>x.id!==item.id);try{persistCart();if(editingId===item.id){editingId=null;persistDraft();}renderCart();}catch{cart=previous;$('#cart-status').textContent='Die Änderung konnte nicht gespeichert werden.';}}]]){const b=document.createElement('button');b.textContent=name;b.addEventListener('click',fn);actions.append(b);}info.append(actions);
@@ -111,4 +147,4 @@ $('#add-cart').addEventListener('click',()=>{
 });
 $('#new-design').addEventListener('click',()=>{editingId=null;state={...DEFAULT};$('#cart').close();sync();step(0);schedule();});
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=16');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=17');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}

@@ -93,7 +93,7 @@ konkrete Freigabe, Abgleich mit aktuellem Main und `codex-predeploy ops` sowie
     node --check deploy/3d-konfigurator/app.js
     node --check deploy/3d-konfigurator/renderer.js
 
-20 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, farberhaltende Frontaufhellung, ungültige Eingaben, echte
+24 Tests: gespeicherte Daten/Optionen und Migration, 17 Farboptionen, farberhaltende Frontaufhellung, ungültige Eingaben, echte
 Schriftkonturen inklusive Innenräumen, Abstände/Proportionen, gesperrter Kauf,
 Materialtrennung, Acrylrückseite, unabhängige Oberflächen sowie der vorläufige
 Farbaufpreis der Schiene mit Länge, Menge und Ausschluss anderer Montagearten.
@@ -334,3 +334,38 @@ und unabhängiger Rücksetzungen. Im Browser: Variantenwechsel, beide Einzelrese
 Neuladen, Warenkorb speichern/erneut laden/bearbeiten sowie Desktop 1440×1150 und
 Mobil 320×740. Kein horizontaler Überlauf und keine erfassten Konsolenfehler.
 Testeintrag entfernt. Weiterhin nur lokale Vorschau, Preisplatzhalter und kein Kauf.
+
+
+## Standard-Lackfarben und RAL CLASSIC
+
+Alle vier Lackbereiche (Frontlicht-Seiten, Rücklicht-Front/Korpus, Schiene in
+Wunschfarbe und Trägerplatte) bieten Schwarz, Weiß und Gold als direkte Farbfelder,
+einen freien Farbwähler und eine optionale RAL-Eingabe mit Vorschlagsliste.
+RAL wird ausschließlich für Lackierungen angeboten, nicht für LED-Lichtfarben.
+Bei Rücklicht ist die Eingabe auch aus dem goldlackierten Look erreichbar; eine
+abweichende Lackwahl wechselt zu „Edelstahl lackiert“.
+
+`ral.js` enthält 216 RAL-CLASSIC-Nummern, deutsche Namen und die näherungsweisen
+Bildschirmfarbfelder aus der öffentlichen [RAL-Farben-Übersicht](https://www.ral-farben.de/alle-ral-farben),
+abgerufen am 21.10.2026. Das [RAL-CLASSIC-System](https://www.ral-farben.de/ral-classic)
+verwendet vierstellige Nummern. Die Auswahl prüft echte Katalogeinträge; „7016“,
+„RAL 7016“ und „ral7016“ werden gleich behandelt. Ungültige oder unvollständige
+Nummern verhindern die Übernahme eines aktiven Lackbereichs in den Warenkorb.
+Es werden keine externen Dienste zur Laufzeit geladen. Der Hinweis am Feld
+kennzeichnet die Vorschau als Bildschirmnäherung, nicht als verbindliches Farbmuster.
+
+Die zusätzlichen v3-Felder `sideRal`, `bodyRal`, `railRal` und `plateRal` speichern
+die jeweiligen RAL-Spezifikationen unabhängig. Beim Laden bestimmt ein gültiger
+RAL-Ton seine Vorschaufarbe; alte Entwürfe ohne RAL bleiben unverändert. Ein
+Standardfarbfeld oder eine eigene Farbe entfernt nur die RAL-Zuordnung der
+betroffenen Fläche. Beim Entfernen allein der RAL-Zuordnung bleibt die zuletzt
+angezeigte Vorschaufarbe erhalten. Generisches Gold wird keinem RAL-Ton gleichgesetzt.
+Zusammenfassung und Warenkorb nennen die aktive RAL-Nummer mit Farbnamen.
+
+Geprüft: 24 Modell-/Geometrietests, alle 216 Katalogeinträge, unabhängige
+Speicherung/Normalisierung, Farbumschaltung, Rücksetzungen, aktive Eingabeprüfung,
+Schienenfarbaufpreis und gesperrter Checkout. Browser: Seiten-Gold, RAL 9016,
+freie Farbe und ungültige Nummer; RAL 3000 auf Rücklichtfront, RAL 7016 an der
+Schiene, RAL 6005 an der Platte; Neuladen, Warenkorb/Bearbeiten und Variantenwechsel.
+Mobile Prüfung bei 320×740 ohne horizontalen Überlauf, Desktop 1440×1150/1410,
+keine erfassten Browserfehler. Testeintrag entfernt. Nur lokale Vorschau.

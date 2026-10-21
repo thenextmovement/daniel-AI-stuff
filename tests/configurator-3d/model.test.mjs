@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
+import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,PAINT_PRESETS,PAINT_FIELDS,RAL_COLORS,ralCode,choosePaint,paintDescription,finishDescription,lightColor,materialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
 import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor} from '../../deploy/3d-konfigurator/renderer.js';
 import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace} from '../../deploy/3d-konfigurator/vendor/three.js';
@@ -195,4 +195,50 @@ test('The EUR 110/m estimate applies only to custom-colour rails and never enabl
  assert.equal(railColorEstimate(custom,0),null);assert.equal(railColorEstimate(custom,1.5),null);
  const q=quote3D([{design:custom,quantity:2}]);assert.equal(q.estimates[0].totalCents,26400);assert.equal(q.estimates[0].taxBasis,null);assert.equal(q.grossCents,null);assert.equal(q.purchaseEnabled,false);
  const restored=normalize(JSON.parse(JSON.stringify(custom)));assert.equal(restored.railColor,'#fa31a2');assert.equal(restored.railCustomColor,true);assert.match(description(restored),/Wunschfarbe #FA31A2/);
+});
+
+
+test('All RAL CLASSIC codes resolve to named preview colours and reject unknown or unsafe input',()=>{
+ assert.equal(Object.keys(RAL_COLORS).length,216);
+ for(const [code,{name,hex}] of Object.entries(RAL_COLORS)){
+  assert.match(code,/^\d{4}$/);assert.ok(name.length>2);assert.match(hex,/^#[0-9a-f]{6}$/);
+  for(const input of [code,`RAL ${code}`,` ral${code} `])assert.equal(ralCode(input),code);
+ }
+ for(const value of ['9999','1234','RAL 701','RAL 70166','RAL 7016 foo','<svg>',null,7016,'__proto__'])assert.equal(ralCode(value),'');
+ assert.equal(RAL_COLORS['7016'].name,'Anthrazitgrau');assert.equal(RAL_COLORS['9005'].name,'Tiefschwarz');
+});
+test('Each painted part saves its own RAL code and matching preview colour without changing light colours',()=>{
+ let design={...DEFAULT,lighting:'front',mount:'rail',railCustomColor:true,acrylic:'#2474e5'};
+ for(const [key,code] of [['sideColor','9016'],['body','3000'],['railColor','7016'],['plate','6005']])design=choosePaint(design,key,{ral:code});
+ const saved=normalize(JSON.parse(JSON.stringify(design)));assert.deepEqual(saved,design);
+ for(const key of Object.keys(PAINT_FIELDS)){
+  const code=ralCode(saved[PAINT_FIELDS[key]]);assert.equal(saved[key],RAL_COLORS[code].hex);assert.ok(paintDescription(saved,key).includes(`RAL ${code}`));
+ }
+ assert.equal(saved.acrylic,'#2474e5');assert.equal(saved.color,DEFAULT.color);assert.equal(saved.backFinish,'painted-steel');
+ assert.match(description(saved),/Seiten lackiert \(RAL 9016 · Verkehrsweiß\)/);assert.match(description(saved),/Schiene: Wunschfarbe RAL 7016 · Anthrazitgrau/);
+ assert.match(description({...saved,lighting:'back',mount:'plate'}),/RAL 3000 · Feuerrot/);assert.match(description({...saved,mount:'plate'}),/Lackfarbe der Platte: RAL 6005 · Moosgrün/);
+ assert.equal(railColorEstimate(saved).unitCents,13200);assert.equal(quote3D([{design:saved,quantity:1}]).purchaseEnabled,false);
+});
+test('Paint presets and free colour clear the prior RAL specification only for the chosen part',()=>{
+ assert.deepEqual(PAINT_PRESETS.map(([,name])=>name),['Schwarz','Weiß','Gold']);
+ for(const key of Object.keys(PAINT_FIELDS)){
+  const ralDesign=choosePaint({...DEFAULT,sideRal:'RAL 9005',bodyRal:'RAL 3000',railRal:'RAL 7016',plateRal:'RAL 6005'},key,{ral:'9016'});
+  for(const color of [...PAINT_PRESETS.map(([value])=>value),'#1A2B3C']){
+   const changed=choosePaint(ralDesign,key,{color});assert.equal(changed[key],color.toLowerCase());assert.equal(changed[PAINT_FIELDS[key]],'');
+   for(const [other,field] of Object.entries(PAINT_FIELDS))if(other!==key)assert.equal(changed[field],ralDesign[field]);
+  }
+  assert.deepEqual(choosePaint(ralDesign,key,{ral:'9999'}),ralDesign);
+ }
+ const reset=classicLook({...DEFAULT,lighting:'front',sideRal:'RAL 7016',sideColor:RAL_COLORS['7016'].hex,bodyRal:'RAL 3000'});
+ assert.equal(reset.sideRal,'');assert.equal(reset.sideColor,DEFAULT.sideColor);assert.equal(reset.bodyRal,'RAL 3000');
+});
+test('Incomplete RAL entries block review only when the corresponding painted part is active',()=>{
+ assert.match(validate({...DEFAULT,lighting:'front',sideRal:'RAL 9999'}),/RAL/);
+ assert.match(validate({...DEFAULT,backFinish:'painted-steel',bodyRal:'701'}),/RAL/);
+ assert.match(validate({...DEFAULT,mount:'rail',railCustomColor:true,railRal:'oops'}),/RAL/);
+ assert.match(validate({...DEFAULT,mount:'plate',plateRal:'RAL 0000'}),/RAL/);
+ assert.equal(validate({...DEFAULT,sideRal:'9999',bodyRal:'701',railRal:'oops',plateRal:'0000'}),'');
+ const unsafe=normalize({...DEFAULT,sideRal:'<script>',bodyRal:'RAL 9999',railRal:'url(secret)',plateRal:'__proto__'});
+ for(const field of Object.values(PAINT_FIELDS))assert.equal(unsafe[field],'');
+ const mismatched=normalize({...DEFAULT,sideRal:'RAL 9016',sideColor:'#ff0000'});assert.equal(mismatched.sideColor,RAL_COLORS['9016'].hex);
 });
