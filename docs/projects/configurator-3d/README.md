@@ -539,3 +539,13 @@ Geprüft in normaler Perspektive, Detail und Nacht sowie im direkten Vergleich
 bei −30° und 60°. Keine erfassten Browserfehler oder Warnungen im Konfigurator.
 Beide betroffenen Material-/UV-Tests, Syntax- und Diffprüfung bestehen.
 Nur lokale Vorschau.
+
+Gold nutzt ebenfalls die natürlichen, unterschiedlich langen und weich
+auslaufenden Schliffspuren. Die gemeinsame Mustererzeugung bewahrt die bereits
+abgestimmte Silbertextur. Bei Gold bleiben Farbkontrast, Grundfarbe, mittlere
+Rauheit, Texturmaßstab und sämtliche Glanz-/Umgebungsparameter erhalten.
+Geprüft in normaler Perspektive, Detail und Nacht sowie im direkten
+Vorher-/Nachher-Vergleich bei −30° und 60°: feine Bürstung, Goldton und bewegte
+Metallreflexe bleiben erkennbar. Keine erfassten Browserfehler oder Warnungen
+im Konfigurator. Beide betroffenen Material-/UV-Tests, Syntax- und Diffprüfung
+bestehen. Nur lokale Vorschau.

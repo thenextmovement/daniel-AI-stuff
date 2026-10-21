@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=29';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=30';
 const fontCache=new Map();
 const SILVER_REFLECTION_FILL=.8;
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
@@ -99,9 +99,10 @@ function brushedTexture(silver=false){
  // Fine, broken horizontal strokes with enough contrast to survive the
  // normal-view texture filtering. Keep each stroke one texel thin; no broad
  // bands or normal gradient that would make the flat face look inflated.
- const rows=Array.from({length:512},()=>({base:random(),strokes:Array.from({length:17},()=>random())}));
- // Silver uses irregular, fading scratch lengths instead of a shared row
- // offset. Removing each row's mean prevents long horizontal light/dark bands.
+ // Preserve the established silver sequence when sharing its grain with gold.
+ for(let i=0;i<512*18;i++)random();
+ // Irregular, fading scratches avoid a shared row offset. Removing each
+ // row's mean prevents long horizontal light/dark bands on either metal.
  const scratchRow=(min,max)=>{
   const values=new Float32Array(512);let start=0,from=random();const first=from;
   while(start<512){
@@ -111,14 +112,14 @@ function brushedTexture(silver=false){
   }
   return values;
  };
- const silverRows=silver?Array.from({length:512},()=>{
+ const grainRows=Array.from({length:512},()=>{
   const long=scratchRow(20,58),fine=scratchRow(5,17),values=new Float32Array(512);let mean=0;
   for(let x=0;x<512;x++){values[x]=long[x]*.65+fine[x]*.35;mean+=values[x]/512;}
   for(let x=0;x<512;x++)values[x]+=.5-mean;
   return values;
- }):null;
+ });
  for(let y=0;y<512;y++)for(let x=0;x<512;x++){
-  const cell=x/32,row=rows[y],grain=silver?silverRows[y][x]:row.base*.3+(row.strokes[Math.floor(cell)]*(1-cell%1)+row.strokes[Math.floor(cell)+1]*(cell%1))*.7;
+  const grain=grainRows[y][x];
   // Keep the fine, readable contrast and the average roughness. Scratch
   // widths, texture scale and reflection settings remain unchanged.
   const shade=Math.round(silver?238.5+(grain-.5)*56:222+grain*33);
