@@ -2834,16 +2834,23 @@ function refreshCartButtons(){
     $('#next-step-label').textContent=mobileChoiceMedia.matches?(cartAdding?'Lädt …':designRendering?'Berechnet …':editingCartId?'Übernehmen':'Warenkorb'):label;
   }
   $('#add-to-cart').lastChild.textContent=editingCartId?'Änderungen übernehmen':'In den Warenkorb';
+  $('#page-add-to-cart').firstChild.textContent=editingCartId?'Änderungen übernehmen ':'In den Warenkorb ';
+  if($('#shopping-buy'))$('#shopping-buy').textContent=editingCartId?'Änderungen übernehmen':'In den Warenkorb';
+  $('#cart-editing-note').hidden=!editingCartId||Number(document.body.dataset.activeGroup)!==2;
+  $('#cart-continue').lastChild.textContent=editingCartId?'Entwurf weiter bearbeiten':'Weiter gestalten';
+  $('#cart-new-design').hidden=!cartItems.length;
+  $('#cart-new-design').disabled=cartAdding||cartEditing||cartSyncing;
   $('#review-add-to-cart').disabled=!cartReady||!orderSnapshot?.mount.valid||orderSnapshot?.price.status!=='calculated';
   $('#cart-request-quote').disabled=!cartReady||!cartItems.length||!cartPricesValid||cartSyncing||cartEditing;
-  $('#cart-delivery-open').textContent=needsUpdate?'Entwurf aktualisieren':'Liefertermin wählen';
+  $('#cart-delivery-open').textContent=needsUpdate?'Entwurf aktualisieren':'Weiter zur Kasse';
+  $('#cart-step-note').textContent=needsUpdate?'Zuerst Vorschau und Preis prüfen.':'Zuerst Liefertermin wählen, danach sicher bezahlen.';
   $('#cart-delivery-open').disabled=!cartReady||!cartItems.length||(!needsUpdate&&!cartPricesValid)||cartSyncing||cartEditing;
   $('#prepare-checkout').disabled=!cartReady||!cartItems.length||needsUpdate||!cartPricesValid||cartSyncing||cartEditing||!selectedDelivery;
   $('#cart-pay').disabled=$('#prepare-checkout').disabled;
 }
 async function persistCart(){
   const revision=++cartWriteRevision;
-  const saved=structuredClone({version:1,items:cartItems,editingId:editingCartId,deliveryDateIso:selectedDelivery?.dateIso||null,deliveryBusinessDays:selectedDelivery?.businessDays||null});
+  const saved=structuredClone({version:1,items:cartItems,editingId:editingCartId,editingDraftKey:shoppingDraftKey||null,deliveryDateIso:selectedDelivery?.dateIso||null,deliveryBusinessDays:selectedDelivery?.businessDays||null});
   try{
     const refs=new Map();
     for(const item of saved.items){if(item.design.photo?.assetId)refs.set(item.design.photo.assetId,'photo');if(item.design.fontId?.startsWith('upload-'))refs.set(item.design.fontId,'font');if(item.design.logo?.assetId)refs.set(item.design.logo.assetId,'logo');if(item.design.logo?.originalAssetId)refs.set(item.design.logo.originalAssetId,'original');}
@@ -2942,6 +2949,9 @@ $('#cart-items').addEventListener('click',async event=>{
   const design={...item.design,...priceOptions({...item.design,accessoryQuantities:{...accessoryCounts(item.design),[key]:quantity}})};
   const price=await storedPrice(design);if(price.status!=='calculated')throw new Error('Bitte den Entwurf erneut öffnen.');
   item.design=design;item.snapshot={...item.snapshot,...priceOptions(design),price};
+  // Keep the linked editor's included accessory in sync. Other unsaved edits
+  // stay in the editor and still require explicit confirmation.
+  if(editingCartId===item.id){changeAccessoryQuantity(key,quantity);persistDesign(captureDesign());}
   await persistCart();
  }catch(error){$('#cart-storage-status').textContent=error.message;}
  finally{cartEditing=false;$('#cart-items').inert=false;renderCart();}
@@ -2967,6 +2977,15 @@ $('#cart-continue').addEventListener('click',()=>{
     target?.focus({preventScroll:true});target?.scrollIntoView({block:'center',behavior:'instant'});
   });
 });
+// A separate design is an explicit choice. Closing the cart keeps editing the
+// item just added, so changing its size/backing does not order it a second time.
+function startAdditionalDesign(){
+  if(cartAdding||cartEditing||cartSyncing)return;
+  editingCartId=null;void persistCart();refreshCartButtons();
+  $('#cart-dialog').close();setStep(0,true);
+  $('#sign-text').focus({preventScroll:true});$('#sign-text').select();
+}
+$('#cart-new-design').addEventListener('click',startAdditionalDesign);
 // Existing Offers-based delivery rule, priced from the cart's core signs.
 // Persist the selected tier so the date advances until checkout. Saved/browser
 // fee amounts never serve as the authoritative checkout price.
@@ -2996,7 +3015,6 @@ function refreshDeliverySummary(){
   $('#cart-net-total').textContent=cartCurrency.format(netCents/100);
   $('#cart-vat-total').textContent=cartCurrency.format((grossCents-netCents)/100);
   $('#cart-tax-breakdown').hidden=false;
-  $('#cart-delivery-open').textContent='Liefertermin wählen';
   refreshCartButtons();
 }
 const deliveryCalendar=initDeliveryCalendar($('#delivery-calendar-host'),{
@@ -3040,7 +3058,7 @@ async function addCurrentDesign(){
   if(old)cartItems[cartItems.indexOf(old)]=item;else cartItems.push(item);
   if(storedPriceCache.size>=100)storedPriceCache.delete(storedPriceCache.keys().next().value);
   storedPriceCache.set(PRICE_RULES.version+JSON.stringify(design),Promise.resolve(snapshot.price));
-  editingCartId=null;commitHistory();await persistCart();showCart();$('#cart-add-status').textContent='';
+  editingCartId=item.id;commitHistory();await persistCart();showCart();$('#cart-add-status').textContent='';
   if(!old)trackConfigurator('add_to_cart',{quantity:item.quantity,key:item.id});
  }catch(error){$('#cart-add-status').textContent=error.message||'Bitte prüfe deinen Entwurf.';}
  finally{cartAdding=false;$('.editor').inert=false;$('.preview-column').inert=false;$('.editor-tabs').inert=false;refreshCartButtons();}
@@ -3052,7 +3070,7 @@ async function addReviewedDesign(){
   const old=cartItems.find(item=>item.id===editingCartId);
   const item={id:old?.id||crypto.randomUUID(),quantity,design:structuredClone(orderDesign),snapshot:structuredClone(orderSnapshot),previewSvg:new XMLSerializer().serializeToString($('#order-preview svg'))};
   if(old)cartItems[cartItems.indexOf(old)]=item;else cartItems.push(item);
-  editingCartId=null;$('#order-review').close();showCart();await persistCart();
+  editingCartId=item.id;$('#order-review').close();showCart();await persistCart();
   if(!old)trackConfigurator('add_to_cart',{quantity,key:item.id});
 }
 $('#add-to-cart').addEventListener('click',addCurrentDesign);
@@ -3170,7 +3188,10 @@ async function restoreCart(){
     if(saved){
       if(saved.version!==1||!Array.isArray(saved.items)||saved.items.length>20||saved.items.some(item=>!item||typeof item.id!=='string'||!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>99||typeof item.snapshot?.text!=='string'||typeof item.design?.text!=='string'||!Array.isArray(item.snapshot?.words)||typeof item.previewSvg!=='string'||item.previewSvg.length>4000000||!['widthMm','heightMm'].every(k=>Number.isFinite(item.snapshot?.sign?.[k])&&Number.isFinite(item.snapshot?.plate?.[k]))))throw new Error('Der gespeicherte Warenkorb konnte nicht gelesen werden. Bitte lass diesen Tab geöffnet.');
       removedCable=saved.items.some(item=>hasRetiredCable(item.design)||hasRetiredCable(item.snapshot));
-      cartItems=saved.items.map(item=>({...item,design:{...item.design,...priceOptions(item.design)},snapshot:{...item.snapshot,...priceOptions(item.snapshot)}}));editingCartId=cartItems.some(item=>item.id===saved.editingId)?saved.editingId:null;
+      cartItems=saved.items.map(item=>({...item,design:{...item.design,...priceOptions(item.design)},snapshot:{...item.snapshot,...priceOptions(item.snapshot)}}));
+      // Product entries deliberately start with their advertised design, not
+      // the main editor's draft. Never attach that to a previous cart position.
+      editingCartId=!shoppingOffer&&!saved.editingDraftKey&&cartItems.some(item=>item.id===saved.editingId)?saved.editingId:null;
       // Older carts only stored a calendar date; its original tier cannot be
       // recovered safely. Keep the designs and require a fresh delivery choice.
       if(cartItems.length){try{selectedDelivery=rollingCheckoutDelivery({businessDays:saved.deliveryBusinessDays},{designs:cartItems.map(item=>item.design)});}catch{selectedDelivery=null;}}
@@ -3178,7 +3199,7 @@ async function restoreCart(){
     cartReady=true;renderCart();$('#cart-storage-status').textContent=removedCable?retiredCableMessage:cartItems.length?'Warenkorb auf diesem Gerät wiederhergestellt. Noch keine Bestellung.':'Dein Warenkorb wird auf diesem Gerät gespeichert.';
   }catch(error){cartReady=false;$('#cart-storage-status').textContent=error.message||'Der lokale Warenkorb ist derzeit nicht verfügbar.';refreshCartButtons();void failureReporter.report({stage:'cart',code:'CART_RESTORE_FAILED',attemptId:createFailureAttemptId()});}
 }
-restoreCart();
+const cartRestorePromise=restoreCart();
 function refreshCartDeliveryDate(){if(cartReady&&!cartSyncing&&selectedDelivery){refreshDeliverySummary();refreshCartButtons();}}
 window.addEventListener('focus',refreshCartDeliveryDate);
 window.addEventListener('pageshow',refreshCartDeliveryDate);
@@ -3382,6 +3403,9 @@ async function bootDraft(){
   try{const saved=readDraft();if(saved){await applyDesign(saved);restored=true;}else await update();}
   catch{failure=true;draftWriteGuard.block();entryOnboarding.end();await update();$('#use-replacement-draft').hidden=false;$('#draft-status').textContent='Vorhandener Entwurf konnte nicht geladen werden. Dieser neue Entwurf ist noch nicht gespeichert.';}
   history=new DraftHistory(captureDesign());lastSavedSnapshot=restored?JSON.stringify(captureDesign()):null;draftReady=true;
+  await cartRestorePromise;
+  // A missing/unreadable editor draft is not the cart item being restored.
+  if(!restored&&editingCartId){editingCartId=null;void persistCart();refreshCartButtons();}
   if(!restored&&!failure)persistDesign(captureDesign());
   if(!failure)$('#draft-status').textContent=restored?'Entwurf wiederhergestellt':'Wird auf diesem Gerät gespeichert';
   $('.editor').inert=false;$('.editor-tabs').inert=false;$('.preview-column').inert=false;refreshHistoryButtons();
@@ -3582,7 +3606,7 @@ async function showIncomingDesigns(){
    title.textContent=(incomingDesigns.length===2?(i?'B · ':'A · '):'')+design.text;info.textContent=(design.font||design.fontId)+' · '+(COLORS.find(c=>c.id===design.color)?.name||'');
    card.append(title,info,designButton('Als eigene Kopie öffnen',async()=>{
     if(draftApplying)return;commitHistory();const previous=captureDesign();draftApplying=true;card.querySelector('button').disabled=true;
-    try{const font=saved?await saved.loadFont():null;if(font){const asset=await rememberAsset(design.fontId,font);if(!asset.persisted)throw new Error('Die Schrift konnte auf diesem Gerät nicht gespeichert werden. Dein bisheriger Entwurf bleibt erhalten.');}await applyDesign(design);if(!state.result)throw new Error($('#text-error').textContent||'Dieser Entwurf benötigt eine Korrektur.');acceptReplacementDraft();history.record(captureDesign());persistDesign(captureDesign());dialog.close();setStep(0);$('#save-design-status').textContent='Geteilte Kopie geöffnet. Vorheriger Entwurf: Rückgängig.';}
+    try{const font=saved?await saved.loadFont():null;if(font){const asset=await rememberAsset(design.fontId,font);if(!asset.persisted)throw new Error('Die Schrift konnte auf diesem Gerät nicht gespeichert werden. Dein bisheriger Entwurf bleibt erhalten.');}await applyDesign(design);if(!state.result)throw new Error($('#text-error').textContent||'Dieser Entwurf benötigt eine Korrektur.');acceptReplacementDraft();editingCartId=null;void persistCart();history.record(captureDesign());persistDesign(captureDesign());dialog.close();setStep(0);$('#save-design-status').textContent='Geteilte Kopie geöffnet. Vorheriger Entwurf: Rückgängig.';}
     catch(error){await applyDesign(previous);$('#shared-design-status').textContent=error.message;}
     finally{draftApplying=false;card.querySelector('button').disabled=false;refreshHistoryButtons();}
    }));list.append(card);
@@ -3598,7 +3622,7 @@ function previewImage(record){const img=document.createElement('img');img.src='d
 async function restoreNamed(record,status){
   if(draftApplying)return;
   draftApplying=true;$('.editor').inert=true;
-  try{await applyDesign(record.design);if(!state.result)throw new Error('Dieser Entwurf konnte nicht berechnet werden.');acceptReplacementDraft();history.record(captureDesign());persistDesign(captureDesign());$('#saved-designs').close();$('#design-comparison').close();$('#cart-dialog').close();setStep(0);}
+  try{await applyDesign(record.design);if(!state.result)throw new Error('Dieser Entwurf konnte nicht berechnet werden.');acceptReplacementDraft();editingCartId=null;void persistCart();history.record(captureDesign());persistDesign(captureDesign());$('#saved-designs').close();$('#design-comparison').close();$('#cart-dialog').close();setStep(0);}
   catch(error){status.textContent=error.message;}
   finally{draftApplying=false;$('.editor').inert=false;refreshHistoryButtons();}
 }
