@@ -1,6 +1,6 @@
 "use client";
 
-import { nominationBlockers } from "@/lib/ops/dunning-court-nomination";
+import { nominationBlockers, courtNominationConfirmation } from "@/lib/ops/dunning-court-nomination";
 import {
   useEffect,
   useMemo,
@@ -38,7 +38,6 @@ import { OpsPageHeader } from "../ops-page-header";
 import {
   OpsPageIntro,
   OpsStatCard,
-  opsPageContainerClass,
   opsPageShellClass,
 } from "../ops-design";
 import type {
@@ -59,6 +58,8 @@ import {
 } from "@/lib/ops/dunning-status";
 import {
   hasCreatedDunningCourtApplication,
+  matchesDunningBlockFilter,
+  type DunningBlockFilter,
   matchesDunningOrderAge,
   matchesDunningOrderYear,
   matchesDunningStage,
@@ -83,6 +84,7 @@ type Filters = {
   orderYear: DunningOrderYearFilter;
   hideCreatedCourtApplications: boolean;
   hideBlocked: boolean;
+  blockFilter: DunningBlockFilter;
   hideCourtNominations: boolean;
   delivery: "all" | "fulfilled" | "tracking" | "delivered" | "evidence_missing";
   insolvency: "all" | "pending" | "checked" | "notice" | "review" | "failed";
@@ -97,6 +99,7 @@ const INITIAL_FILTERS: Filters = {
   orderYear: "all",
   hideCreatedCourtApplications: true,
   hideBlocked: true,
+  blockFilter: "all",
   hideCourtNominations: true,
   delivery: "all",
   insolvency: "all",
@@ -208,7 +211,7 @@ function OfferLink({ entry }: { entry: DunningCaseSummary }) {
 function applyFilters(cases: DunningCaseSummary[], filters: Filters) {
   const visible = cases.filter((entry) => {
     if (filters.hideCourtNominations && entry.courtNomination) return false;
-    if (filters.hideBlocked && (entry.paused || entry.stopTag)) return false;
+    if (!matchesDunningBlockFilter(entry, filters.blockFilter, filters.hideBlocked)) return false;
     if (!caseMatchesQuery(entry, filters.query)) return false;
     if (!matchesDunningStatus(entry, filters.status)) return false;
     if (!matchesDunningStage(entry.currentStage, filters.stage)) return false;
@@ -287,6 +290,7 @@ function SelectField({
     <label className="grid min-w-0 gap-1.5 text-xs font-semibold text-stone-600">
       <span>{label}</span>
       <select
+        aria-label={label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="h-10 min-w-0 rounded-xl border border-stone-200 bg-white px-3 text-sm font-normal text-stone-800 outline-none focus:border-[#fa31a2] focus:ring-2 focus:ring-[#fa31a2]/15"
@@ -422,7 +426,7 @@ function FilterPanel({
     filters.orderYear !== "all",
     filters.hideCreatedCourtApplications,
     filters.hideCourtNominations,
-    filters.hideBlocked,
+    filters.blockFilter !== "all" || filters.hideBlocked,
     filters.delivery !== "all",
     filters.insolvency !== "all",
   ].filter(Boolean).length;
@@ -647,8 +651,13 @@ function FilterPanel({
             <input type="checkbox" checked={filters.hideCourtNominations} onChange={event => update("hideCourtNominations", event.target.checked)} />
             Vorgemerkte gelbe Briefe ausblenden
           </label>
+          <SelectField label="Sperren anzeigen" value={filters.blockFilter} onChange={value => update("blockFilter", value as DunningBlockFilter)}>
+            <option value="all">Standardansicht</option>
+            <option value="blocked">Nur gesperrte Fälle</option>
+            <option value="shopify">Nur durch Shopify-Tag gesperrt</option>
+          </SelectField>
           <label className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold">
-            <input type="checkbox" checked={filters.hideBlocked} onChange={event => update("hideBlocked", event.target.checked)} />
+            <input type="checkbox" checked={filters.hideBlocked && filters.blockFilter === "all"} disabled={filters.blockFilter !== "all"} onChange={event => update("hideBlocked", event.target.checked)} />
             Gesperrte Fälle ausblenden
           </label>
           <label className="flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2 sm:col-span-2 lg:col-span-3 xl:col-span-2">
@@ -790,19 +799,20 @@ function CaseTable({
 }) {
   return (
     <section className="overflow-hidden rounded-[22px] border border-[#ded8d0] bg-white shadow-[0_16px_44px_rgba(20,16,12,0.05)]">
-      <div className="hidden overflow-x-auto lg:block">
-        <table className="w-full min-w-[1480px] border-collapse text-left">
+      <div className="hidden xl:block">
+        <table className="w-full table-fixed border-collapse text-left text-sm [&_td]:break-words">
+          <colgroup>{[10,16,8,11,10,12,12,10,11].map((width, i) => <col key={i} style={{width: `${width}%`}} />)}</colgroup>
           <thead className="bg-[#f5f1ea] text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">
             <tr>
-              <th className="px-4 py-3">Bestellung</th>
-              <th className="px-4 py-3">Kunde</th>
-              <th className="px-4 py-3">Offen</th>
-              <th className="px-4 py-3">Versand / Zustellung</th>
-              <th className="px-4 py-3">Mahnstufe</th>
-              <th className="px-4 py-3">Nächste Aktion</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Telefonkontakt</th>
-              <th className="px-4 py-3 text-right">Aktion</th>
+              <th className="px-3 py-3">Bestellung</th>
+              <th className="px-3 py-3">Kunde</th>
+              <th className="px-3 py-3">Offen</th>
+              <th className="px-3 py-3">Versand / Zustellung</th>
+              <th className="px-3 py-3">Mahnstufe</th>
+              <th className="px-3 py-3">Nächste Aktion</th>
+              <th className="px-3 py-3">Status</th>
+              <th className="px-3 py-3">Anruf</th>
+              <th className="px-3 py-3 text-left">Aktion</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
@@ -811,7 +821,7 @@ function CaseTable({
                 key={entry.key}
                 className="align-top transition hover:bg-[#fcfaf7]"
               >
-                <td className="px-4 py-4">
+                <td className="px-3 py-4">
                   <OrderLinks entry={entry} />
                   <p className="mt-1 text-xs text-stone-500">
                     {dateLabel(entry.orderCreatedAt)}
@@ -821,7 +831,7 @@ function CaseTable({
                   </p>
                   <OfferLink entry={entry} />
                 </td>
-                <td className="max-w-[18rem] px-4 py-4">
+                <td className="max-w-[18rem] px-3 py-4">
                   <p className="truncate text-sm font-semibold text-stone-850">
                     {entry.company || entry.customerName || "Kunde unbekannt"}
                   </p>
@@ -839,7 +849,7 @@ function CaseTable({
                     <PhoneCopy phone={entry.phone} />
                   </p>
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-3 py-4">
                   <p className="whitespace-nowrap text-sm font-semibold text-stone-950">
                     {money(entry.amountCents, entry.currency)}
                   </p>
@@ -857,17 +867,17 @@ function CaseTable({
                     </p>
                   ) : null}
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-3 py-4">
                   <ShipmentSummary entry={entry} />
                   <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
                     <WalletCards className="h-3.5 w-3.5" />
                     {entry.financialStatus}
                   </div>
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-3 py-4">
                   <StageBadge entry={entry} />
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-3 py-4">
                   <p className="max-w-[16rem] text-xs font-semibold leading-5 text-stone-800">
                     {entry.nextActionLabel}
                   </p>
@@ -876,7 +886,7 @@ function CaseTable({
                     Letzter Kontakt {dateLabel(entry.lastContactAt, true)}
                   </p>
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-3 py-4">
                   <div className="mb-2">
                     <InsolvencyCheckButton
                       entry={entry}
@@ -884,6 +894,7 @@ function CaseTable({
                     />
                   </div>
                   <StatusBadge entry={entry} />
+                  {(entry.paused || entry.stopTag) ? <p className="mt-2 text-xs leading-5 text-rose-800">{entry.blockers.filter(reason => reason.startsWith("Gesperrt:")).join(" · ") || "Gesperrt – Grund bitte in der Fallakte prüfen"}</p> : null}
                   {entry.courtEvent && entry.state !== "court_review" ? (
                     <div className="mt-2">
                       <CourtStatusBadge entry={entry} />
@@ -901,15 +912,15 @@ function CaseTable({
                     </p>
                   ) : null}
                 </td>
-                <td className="px-4 py-4 text-xs">
+                <td className="px-3 py-4 text-xs">
                   {entry.phoneCalls?.[0] ? <><p className="font-semibold">Angerufen {dateLabel(entry.phoneCalls[0].at, true)}</p><p>{entry.phoneCalls[0].note}</p></> : "Noch kein Anruf erfasst"}
                   <button type="button" className="mt-2 block underline" onClick={() => onOpen(entry)}>Anruf erfassen</button>
                 </td>
-                <td className="px-4 py-4 text-right">
+                <td className="px-3 py-4 text-left">
                   <button
                     onClick={() => onOpen(entry)}
                     disabled={loadingKey === entry.key}
-                    className="inline-flex items-center gap-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-800 transition hover:border-stone-500 disabled:opacity-50"
+                    className="inline-flex w-full items-center justify-between gap-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-800 transition hover:border-stone-500 disabled:opacity-50"
                   >
                     {entry.paymentException
                       ? "Klärfall öffnen"
@@ -929,7 +940,7 @@ function CaseTable({
           </tbody>
         </table>
       </div>
-      <div className="divide-y divide-stone-100 lg:hidden">
+      <div className="divide-y divide-stone-100 xl:hidden">
         {cases.map((entry) => (
           <article key={entry.key} className="p-4">
             <div className="flex items-start justify-between gap-3">
@@ -947,6 +958,7 @@ function CaseTable({
               </div>
               <div className="grid justify-items-end gap-2">
                 <StatusBadge entry={entry} />
+                  {(entry.paused || entry.stopTag) ? <p className="mt-2 text-xs leading-5 text-rose-800">{entry.blockers.filter(reason => reason.startsWith("Gesperrt:")).join(" · ") || "Gesperrt – Grund bitte in der Fallakte prüfen"}</p> : null}
                 {entry.courtEvent && entry.state !== "court_review" ? (
                   <CourtStatusBadge entry={entry} />
                 ) : null}
@@ -1708,6 +1720,7 @@ function DetailDrawer({
               <p className="text-xs text-stone-500">Aktueller Status</p>
               <div className="mt-2">
                 <StatusBadge entry={entry} />
+                  {(entry.paused || entry.stopTag) ? <p className="mt-2 text-xs leading-5 text-rose-800">{entry.blockers.filter(reason => reason.startsWith("Gesperrt:")).join(" · ") || "Gesperrt – Grund bitte in der Fallakte prüfen"}</p> : null}
               </div>
             </div>
           </section>
@@ -2525,6 +2538,8 @@ export function DunningOpsClient({
 }) {
   const [hasSession, setHasSession] = useState(initialHasSession);
   const [password, setPassword] = useState("");
+  const dashboardRequest = useRef(0);
+  const mutationPending = useRef(false);
   const [dashboard, setDashboard] = useState<DunningDashboard | null>(null);
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [loading, setLoading] = useState(false);
@@ -2593,8 +2608,8 @@ export function DunningOpsClient({
   }, [hasSession, localMode]);
 
   async function loadDashboard(silent = false) {
-    if (!silent) setLoading(true);
-    setError(null);
+    const requestId = ++dashboardRequest.current;
+    if (!silent) { setLoading(true); setError(null); }
     try {
       const response = await fetch("/api/ops/dunning", { cache: "no-store" });
       const payload = await response.json();
@@ -2602,11 +2617,12 @@ export function DunningOpsClient({
         throw new Error(
           payload.error || "Mahnwesen konnte nicht geladen werden.",
         );
-      setDashboard(payload.dashboard);
+      if (requestId === dashboardRequest.current && !mutationPending.current) setDashboard(payload.dashboard);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : "Unbekannter Fehler.",
-      );
+      if (requestId === dashboardRequest.current && !mutationPending.current) {
+        const message = loadError instanceof Error ? loadError.message : "Unbekannter Fehler.";
+        setError(current => silent && current ? current : message);
+      }
     } finally {
       if (!silent) setLoading(false);
     }
@@ -2626,6 +2642,7 @@ export function DunningOpsClient({
   }
 
   async function openCase(entry: DunningCaseSummary) {
+    if (mutationPending.current) return;
     detailRequest.current?.abort();
     const request = new AbortController();
     detailRequest.current = request;
@@ -2830,12 +2847,13 @@ export function DunningOpsClient({
   }
 
   async function nominateCourt(entry: DunningCaseSummary) {
-    if (actionBusy || entry.courtNomination) return;
-    if (!window.confirm(`${entry.orderNumber} für einen gelben Brief vormerken?
-
-Es wird jetzt kein Antrag erstellt oder versandt. Vor der späteren Erstellung müssen Zahlung, Kundenkommunikation, Adresse und Insolvenz geprüft werden.`)) return;
+    if (actionBusy || mutationPending.current || entry.courtNomination) return;
+    if (!window.confirm(courtNominationConfirmation(entry.orderNumber, entry.orderCreatedAt))) return;
+    mutationPending.current = true;
+    ++dashboardRequest.current;
     setActionBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const response = await fetch(`/api/ops/dunning/${encodeURIComponent(entry.key)}/actions`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -2843,10 +2861,12 @@ Es wird jetzt kein Antrag erstellt oder versandt. Vor der späteren Erstellung m
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.blockers?.join(" ") || payload.error || "Vormerkung konnte nicht gespeichert werden.");
-      await loadDashboard();
+      setDashboard(current => current ? { ...current, cases: current.cases.map(item => item.key === entry.key ? { ...item, courtNomination: payload.nomination } : item) } : current);
+      setSelected(current => current?.case.key === entry.key ? { ...current, case: { ...current.case, courtNomination: payload.nomination } } : current);
+      setNotice(`${entry.orderNumber}: Gelber Brief vorgemerkt – noch nicht erstellt oder versandt.`);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Vormerkung konnte nicht bestätigt werden. Bitte neu laden.");
-    } finally { setActionBusy(false); }
+    } finally { mutationPending.current = false; setActionBusy(false); void loadDashboard(true); }
   }
 
   async function previewCourtApplication() {
@@ -2882,8 +2902,9 @@ Es wird jetzt kein Antrag erstellt oder versandt. Vor der späteren Erstellung m
   }
 
   async function recordCall(note: string, id: string): Promise<boolean> {
-    if (!selected || actionBusy) return false;
+    if (!selected || actionBusy || mutationPending.current) return false;
     const entry = selected.case;
+    mutationPending.current = true; ++dashboardRequest.current;
     setActionBusy(true); setActionError(null); setNotice(null);
     try {
       const response = await fetch(`/api/ops/dunning/${encodeURIComponent(entry.key)}/actions`, {
@@ -2891,9 +2912,12 @@ Es wird jetzt kein Antrag erstellt oder versandt. Vor der späteren Erstellung m
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Anruf konnte nicht gespeichert werden");
-      await Promise.all([loadDashboard(), openCase(entry)]); setNotice("Anruf mit Datum und Bearbeiter gespeichert."); return true;
+      const updateEntry = (item: DunningCaseSummary) => item.key === entry.key ? { ...item, phoneCalls: [payload.call, ...(item.phoneCalls || []).filter(call => call.id !== payload.call.id)] } : item;
+      setDashboard(current => current ? { ...current, cases: current.cases.map(updateEntry) } : current);
+      setSelected(current => current?.case.key === entry.key ? { ...current, case: updateEntry(current.case) } : current);
+      setNotice("Anruf mit Datum und Bearbeiter gespeichert."); return true;
     } catch (error) { setActionError(error instanceof Error ? error.message : "Speichern fehlgeschlagen"); return false; }
-    finally { setActionBusy(false); }
+    finally { mutationPending.current = false; setActionBusy(false); void loadDashboard(true); }
   }
 
   async function checkCourtInsolvency() {
@@ -2983,8 +3007,10 @@ Es wird jetzt kein Antrag erstellt oder versandt. Vor der späteren Erstellung m
 
   return (
     <main className={`${opsPageShellClass} px-4 py-6 md:px-6`}>
-      <div className={`${opsPageContainerClass} space-y-6`}>
+      <div className={`mx-auto w-full max-w-[1920px] space-y-6`}>
         <OpsPageHeader active="dunning" label="Forderungsmanagement" />
+        {notice && !selected ? <p role="status" className="sticky top-2 z-20 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p> : null}
+        {actionBusy ? <p role="status" className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-xl bg-stone-900 px-4 py-3 text-sm text-white">Aktion wird geprüft und gespeichert …</p> : null}
         <OpsPageIntro
           eyebrow="Mahnwesen"
           title="Offene Forderungen vom ersten Hinweis bis zum Gericht"

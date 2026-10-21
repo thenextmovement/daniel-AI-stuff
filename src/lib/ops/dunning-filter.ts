@@ -111,3 +111,10 @@ export function hasCreatedDunningCourtApplication(
     ].includes(event.eventType),
   );
 }
+
+export type DunningBlockFilter = "all" | "blocked" | "shopify";
+export function matchesDunningBlockFilter(entry: { paused: boolean; stopTag: boolean }, filter: DunningBlockFilter, hideBlocked: boolean): boolean {
+  if (filter === "shopify") return entry.stopTag;
+  if (filter === "blocked") return entry.paused || entry.stopTag;
+  return !hideBlocked || !(entry.paused || entry.stopTag);
+}
