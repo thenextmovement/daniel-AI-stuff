@@ -875,6 +875,8 @@ export function ralCode(value){
 const foldRal=value=>String(value).toLocaleLowerCase('de-DE').normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/ß/g,'ss');
 export const RAL_GROUPS=[
  {id:'all',name:'Alle',hex:null},
+ {id:'gold',name:'Gold',hex:'#c6a156',codes:['1004','1036']},
+ {id:'silver',name:'Silber',hex:'#bfc3c7',codes:['7001','9006','9007','9022','9023']},
  {id:'white',name:'Weiß',hex:'#eff0eb'},
  {id:'black',name:'Schwarz',hex:'#262625'},
  {id:'grey',name:'Grau',hex:'#858585'},
@@ -899,5 +901,8 @@ export function ralGroup(value){
 }
 export function searchRal(query='',group='all'){
  const words=foldRal(query).replace(/^ral\s*/,'').trim().split(/\s+/).filter(Boolean);
- return Object.entries(RAL_COLORS).filter(([code,colour])=>(group==='all'||ralGroup(code)===group)&&words.every(word=>foldRal(code+' '+colour.name).includes(word)));
+ // Gold and silver are additional shortcuts; keep their tones discoverable
+ // in the original yellow/beige and grey families as well.
+ const codes=RAL_GROUPS.find(({id})=>id===group)?.codes;
+ return Object.entries(RAL_COLORS).filter(([code,colour])=>(group==='all'||(codes?codes.includes(code):ralGroup(code)===group))&&words.every(word=>foldRal(code+' '+colour.name).includes(word)));
 }

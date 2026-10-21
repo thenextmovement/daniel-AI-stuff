@@ -418,3 +418,18 @@ aus anderer Gruppe, Escape/Wiederöffnen und alle vier Lackbereiche. Die
 bestehenden Lackierungen bleiben beim Filtern erhalten. Desktop 1440×1150 und
 Mobil 320×740 ohne horizontalen Überlauf, keine erfassten Browserfehler.
 Nur lokale Vorschau; Preis- und Bestelllogik unverändert.
+
+## Gold und Silber direkt finden
+
+Die RAL-Filter beginnen nach „Alle“ mit Gold und Silber. Gold enthält Goldgelb
+(RAL 1004) und Perlgold (RAL 1036); Silber enthält Silbergrau (RAL 7001),
+Weißaluminium (RAL 9006), Graualuminium (RAL 9007), Perlhellgrau (RAL 9022) und
+Perldunkelgrau (RAL 9023). Diese zusätzlichen Suchgruppen belassen alle Töne
+auch in ihren bisherigen Gelb-/Beige- und Grau-Gruppen. Sie fügen keine neuen
+RAL-Töne hinzu und ändern weder Lack-Spezifikation noch Materialdarstellung.
+
+Geprüft: 27 Modell-/Geometrietests; zusätzliche Gruppen, kombinierte Namens- und
+Nummernsuche sowie unveränderte Katalogabdeckung. Browser: Gold/Silber,
+„aluminium“ innerhalb Silber, erhaltene Lackierung, Desktop 1440×1150 und
+Mobil 320×740 ohne horizontalen Überlauf. Keine erfassten Browserfehler.
+Nur lokale Vorschau.

@@ -261,7 +261,7 @@ test('RAL swatch search finds names, numbers and combined queries without losing
 
 
 test('RAL colour groups partition the full catalogue and combine with the name/number search',()=>{
- const grouped=RAL_GROUPS.filter(({id})=>id!=='all').flatMap(({id})=>{
+ const grouped=RAL_GROUPS.filter(({id,codes})=>id!=='all'&&!codes).flatMap(({id})=>{
   const matches=searchRal('',id);assert.ok(matches.length>0,id);
   for(const [code] of matches)assert.equal(ralGroup(code),id);
   return matches.map(([code])=>code);
@@ -276,4 +276,18 @@ test('RAL colour groups partition the full catalogue and combine with the name/n
  assert.deepEqual(searchRal('grun','green').map(([code])=>code),searchRal('grun').filter(([code])=>code.startsWith('6')).map(([code])=>code));
  assert.deepEqual(searchRal('signal','all'),searchRal('signal'));
  assert.deepEqual(searchRal('','unknown'),[]);assert.equal(ralGroup('9999'),'');
+});
+
+
+test('Gold and silver shortcuts preserve the original colour groups and combine with search',()=>{
+ assert.deepEqual(searchRal('', 'gold').map(([code])=>code),['1004','1036']);
+ assert.deepEqual(searchRal('', 'silver').map(([code])=>code),['7001','9006','9007','9022','9023']);
+ assert.deepEqual(searchRal('perl','gold').map(([code])=>code),['1036']);
+ assert.deepEqual(searchRal('aluminium','silver').map(([code])=>code),['9006','9007']);
+ assert.deepEqual(searchRal('RAL 9006','silver').map(([code])=>code),['9006']);
+ assert.deepEqual(searchRal('blau','gold'),[]);
+ for(const group of ['gold','silver'])for(const [code] of searchRal('',group)){
+  assert.ok(searchRal('',ralGroup(code)).some(([found])=>found===code));
+ }
+ assert.equal(searchRal('').length,216);
 });
