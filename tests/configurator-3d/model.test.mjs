@@ -376,6 +376,26 @@ test('Compact camera shows the whole sign and restores the saved detail view and
  assert.deepEqual(renderer.camera.projectionMatrix.elements,normalProjection.elements);
 });
 
+test('Narrow normal previews enlarge and center the sign while leaving room for controls',()=>{
+ for(const [width,height] of [[120,26.6],[400,81],[40,120]])for(const angle of [-1.05,0,.68,1.05]){
+  const points=[];for(const x of [-width/2,width/2])for(const y of [-height/2,height/2])for(const z of [3,11])points.push(x,y,z);
+  const host={clientWidth:800,closest:()=>null};
+  const renderer=Object.assign(Object.create(SignRenderer.prototype),{
+   host,camera:new PerspectiveCamera(36,373/243,.1,3000),width,height,letterRear:3,depth:8,
+   angle,elevation:.18,zoom:1.2,signPoints:Float32Array.from(points),render(){this.camera.updateMatrixWorld();}
+  });
+  renderer.positionCamera();const original=renderer.camera.position.clone(),projection=renderer.camera.projectionMatrix.clone();
+  host.clientWidth=373;renderer.positionCamera();
+  assert.ok(renderer.camera.position.distanceTo(new Vector3(0,0,3))<original.distanceTo(new Vector3(0,0,3)),'Narrow view uses less empty framing space');
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(let i=0;i<points.length;i+=3){const p=new Vector3().fromArray(points,i).project(renderer.camera);minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minY=Math.min(minY,p.y);maxY=Math.max(maxY,p.y);}
+  assert.ok(Math.abs(minX+maxX)<1e-6&&Math.abs(minY+maxY)<1e-6,'Sign stays centered');
+  assert.ok(maxX<.88&&maxY<.66,'Sign stays clear of edges and view buttons');
+  assert.equal(renderer.zoom,1.2);
+  host.clientWidth=800;renderer.positionCamera();assert.ok(renderer.camera.position.distanceTo(original)<1e-9);assert.deepEqual(renderer.camera.projectionMatrix.elements,projection.elements);
+ }
+});
+
 
 test('Compact sign centering balances the visible silhouette without changing its projected size',()=>{
  const layout=layoutLetters(font,'PRADA',5),scale=400/layout.width,group=new Group(),material=new MeshBasicMaterial();

@@ -743,3 +743,46 @@ Viewport-Ereignisse; ein physischer iPhone-/Android-Test mit nativer Tastatur
 steht noch aus. Nur lokal aktualisiert, nicht veröffentlicht.
 Technische Grundlagen: [VisualViewport](https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport)
 und [Chrome: Viewport-Verhalten bei Bildschirmtastaturen](https://developer.chrome.com/blog/viewport-resize-behavior).
+
+
+## Vorschau direkt beim Einstieg und stabiles mobiles Scrollen (22.10.2026)
+
+Der große Marken-Vorspann und die Vorteilszeile entfallen auf allen Geräten.
+Desktop-Vorschau und Formular beginnen 16 px unter der jetzt 64 px hohen
+Kopfzeile. Die zusätzliche Information steht dort weiterhin unter dem Editor.
+Auf dem Handy entfallen auch die nachgelagerten Marketingblöcke; die Kopfzeile
+ist 48 px hoch. Die normale Vorschau nutzt 230–280 px, die kompakte Vorschau
+150–190 px Bildhöhe. Das Schild wird in schmalen Vorschauen größer und mittig
+eingepasst, einschließlich kurzer und hoher Entwürfe sowie gedrehter Ansichten.
+
+Mobile Bild-/Wandoptionen öffnen über „Ansicht & Bild“ direkt in der Vorschau.
+Geöffnete Optionen scrollen im normalen Seitenfluss ohne eigenen Scrollbereich;
+nach dem Schließen greift die automatische Verkleinerung wieder. Redundante
+Schrittüberschriften und Preis-/Speicherzeilen der Aktionsleiste entfallen auf
+dem Handy und im kurzen Querformat. Die zugänglichen Überschriften bleiben für
+Fokus und Screenreader erhalten. Vor/Zurück bleiben immer erreichbar.
+
+Die mobile Aktionsleiste wechselt beim Eintritt/Austritt des Editors nur noch
+ihre Sichtbarkeit, nicht zwischen normalem Seitenfluss und fixer Position.
+Ihr Platz wird dadurch genau einmal reserviert. Die animierte Vorschauhöhe
+und das weiche Scrollen beim mobilen Schrittwechsel entfallen ebenfalls, damit
+Layoutänderungen nicht mit Benutzerscrollen konkurrieren. Cache-Version 39 für
+HTML-Verweise, App, CSS und Renderer; Eingabemodul bleibt Version 38.
+
+Verifikation: 34 Modell-/Geometrietests und acht Eingabecontroller-Tests bestanden.
+Zusätzlicher Geometrietest deckt vergrößerte/zentrierte normale Handy-Vorschauen,
+Drehwinkel und Wiederherstellung der Desktop-Kamera ab. Browserprüfung bei
+393×641, 320×568, 768×1024, 844×390, 1280×720 und 1440×900 px. Alle vier Schritte,
+Vor/Zurück, Optionen, automatisches Verkleinern und Formularende geprüft. Bei
+393×641 px verbleiben am Look-Ende rund 17 px zwischen Panel und 65 px hoher
+Aktionsleiste; kein innerer Formular-Scrollbereich und kein horizontaler Überlauf.
+Simulierte Eingabe bei 393×360 px: Feld endet 12 px oberhalb der Leiste, direkter
+Weiter-Tipp wechselt nach Wiederherstellung der Höhe zum nächsten Schritt.
+Die neun Schriftvorschauen laden vollständig.
+
+Der reale iPhone-Bericht des Auftraggebers und dessen Layoutmessungen waren die
+Grundlage dieser Korrektur. Die neue Version wurde bisher mit Browsergrößen
+geprüft; eine erneute physische iPhone-Prüfung samt nativer Tastatur steht aus.
+Die separate lokale WLAN-Testseite zeigte beim ersten Aufruf im In-App-Browser
+vereinzelt einen Modul-Ladefehler; erneutes Laden funktionierte. Kein Android-
+Gerät verfügbar. Nur lokale Vorschau aktualisiert, nicht veröffentlicht.

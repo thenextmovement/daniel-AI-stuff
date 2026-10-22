@@ -299,7 +299,8 @@ export class SignRenderer{
  positionCamera(){
   const compact=!!this.host.closest('.preview-compact');
   const detail=!compact&&this.closeup&&this.detail;
-  const padding=compact?Math.max(4,Math.min(10,this.height*.08)):detail?Math.max(8,detail.height*.18):35;
+  const narrow=!detail&&this.host.clientWidth>0&&this.host.clientWidth<600;
+  const padding=compact||narrow?Math.max(4,Math.min(10,this.height*.08)):detail?Math.max(8,detail.height*.18):35;
   const target=detail?new THREE.Vector3(detail.x,detail.y,this.letterRear+this.depth/2):new THREE.Vector3(0,0,3);
   const direction=new THREE.Vector3(Math.sin(this.angle),Math.sin(this.elevation),Math.cos(this.angle)).normalize();
   const width=(detail?detail.width+this.depth*2:this.width)+padding,height=(detail?detail.height:this.height)+padding;
@@ -312,7 +313,7 @@ export class SignRenderer{
   // the acrylic face and its glow fight for the same depth at 400 cm width.
   this.camera.near=Math.max(1,d*.05);this.camera.far=Math.max(3000,d*3);this.camera.updateProjectionMatrix();
   this.camera.position.copy(direction).multiplyScalar(d).add(target);this.camera.lookAt(target);
-  if(compact)centerSignProjection(this.camera,this.signPoints);else this.camera.clearViewOffset();
+  if(compact||narrow)centerSignProjection(this.camera,this.signPoints);else this.camera.clearViewOffset();
   this.render();
  }
  view(mode){this.closeup=mode==='side'||mode==='mounting';this.zoom=mode==='perspective'?1.2:1;this.angle=mode==='mounting'?1.05:mode==='front'?0:mode==='side'?.7:.68;this.elevation=mode==='mounting'?.08:mode==='front'?0:.18;this.positionCamera();}

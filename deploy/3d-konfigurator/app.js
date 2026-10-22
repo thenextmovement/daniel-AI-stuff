@@ -83,7 +83,7 @@ function step(index,focus=true){
  const label=activeStep===3?(editingId?'Änderungen speichern':'Entwurf in den Warenkorb'):returnToReview?'Änderungen prüfen':['Weiter zu den Farben','Weiter zur Größe','Entwurf prüfen'][activeStep];
  $('#next').replaceChildren(document.createTextNode(label));const arrow=document.createElement('span');arrow.textContent='→';$('#next').append(arrow);
  if(activeStep===3){returnToReview=false;renderReview();}
- if(focus){const focusPanel=()=>{const title=$('#panel-'+activeStep+' h2');title.tabIndex=-1;title.focus({preventScroll:true});$('.controls').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});};if(mobileInput)mobileInput.finish(focusPanel);else focusPanel();}
+ if(focus){const focusPanel=()=>{const title=$('#panel-'+activeStep+' h2');title.tabIndex=-1;title.focus({preventScroll:true});$('.controls').scrollIntoView({behavior:matchMedia('(max-width:979px), (prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});};if(mobileInput)mobileInput.finish(focusPanel);else focusPanel();}
 }
 const paintControls={
  sideColor:{id:'side',label:'Seiten'},body:{id:'body',label:'Front und Korpus'},railColor:{id:'rail',label:'Schiene'},plate:{id:'plate',label:'Trägerplatte'}
@@ -177,7 +177,7 @@ function previewLayout(){const column=$('.preview-column');document.documentElem
 const layoutObserver=new ResizeObserver(previewLayout);layoutObserver.observe($('.preview-column'));layoutObserver.observe($('.control-footer'));
 function syncPreviewSize(){
  const collapsed=previewColumn.classList.contains('preview-collapsed');
- const small=previewScrolled&&!previewExpanded&&!collapsed;
+ const small=previewScrolled&&!previewExpanded&&!collapsed&&!$('#preview-options').open;
  previewColumn.classList.toggle('preview-scrolled',previewScrolled);
  previewColumn.classList.toggle('preview-compact',small);
  $('#toggle-preview').setAttribute('aria-expanded',String(!collapsed));
@@ -203,11 +203,13 @@ function scrollPreview(){
 addEventListener('scroll',()=>{if(!previewScrollFrame)previewScrollFrame=requestAnimationFrame(scrollPreview);},{passive:true});
 addEventListener('resize',scrollPreview);
 $('#resize-preview').addEventListener('click',()=>{previewExpanded=!previewExpanded;syncPreviewSize();});
-$('#toggle-preview').addEventListener('click',()=>{previewColumn.classList.toggle('preview-collapsed');previewExpanded=false;syncPreviewSize();$('.controls').scrollIntoView({block:'start',behavior:'instant'});});
-function responsivePreview(){if(!compactLayout.matches)previewColumn.classList.remove('preview-collapsed');$('.preview-options').open=!compactLayout.matches;scrollPreview();syncPreviewSize();}
+$('#preview-settings').addEventListener('click',()=>{const options=$('#preview-options');options.open=!options.open;syncPreviewSize();});
+$('#preview-options').addEventListener('toggle',()=>{$('#preview-settings').setAttribute('aria-expanded',String($('#preview-options').open));syncPreviewSize();});
+$('#toggle-preview').addEventListener('click',()=>{previewColumn.classList.toggle('preview-collapsed');previewExpanded=false;$('#preview-options').open=false;syncPreviewSize();$('.controls').scrollIntoView({block:'start',behavior:'instant'});});
+function responsivePreview(){if(!compactLayout.matches)previewColumn.classList.remove('preview-collapsed');$('.preview-options').open=false;scrollPreview();syncPreviewSize();}
 phoneLayout.addEventListener('change',scrollPreview);
 compactLayout.addEventListener('change',responsivePreview);responsivePreview();
 new IntersectionObserver(entries=>document.body.classList.toggle('editor-in-view',entries[0].isIntersecting),{threshold:0}).observe($('#editor'));
 mobileInput=initMobileInput({onLayout:previewLayout});
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=35');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=39');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
