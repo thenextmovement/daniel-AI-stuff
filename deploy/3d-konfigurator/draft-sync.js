@@ -13,10 +13,10 @@ function receipt(raw,items){
  return raw;
 }
 export function createDraftSync({storage,fetcher=fetch,onState=()=>{}}){
- let session=null,desired=null,working=null,stopped=false,state='local';
+ let session=null,desired=null,working=null,stopped=false,state='local',stateCode;
  try{const raw=JSON.parse(storage.getItem(DRAFT_SESSION_KEY)||'null');if(tokenOK(raw?.token)&&Number.isSafeInteger(raw.revision)&&raw.revision>=0)session=raw;}catch{}
- const emit=(status,code)=>{state=status;onState({status,code,references:session?.references||[],savedAt:session?.savedAt});};
- const remember=()=>storage.setItem(DRAFT_SESSION_KEY,JSON.stringify(session));
+ const emit=(status,code)=>{state=status;stateCode=code;onState({status,code,references:session?.references||[],savedAt:session?.savedAt});};
+ const remember=()=>{try{storage.setItem(DRAFT_SESSION_KEY,JSON.stringify(session));}catch{throw new DraftSyncError('DEVICE_STORAGE_UNAVAILABLE');}};
  async function request(method,secret,body){
   const response=await fetcher(PATH,{method,headers:{Authorization:'Bearer '+secret,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),credentials:'omit',cache:'no-store',redirect:'error',signal:AbortSignal.timeout(15000)});
   if(!response.headers.get('content-type')?.includes('application/json'))throw new DraftSyncError('STORAGE_UNAVAILABLE');
@@ -30,7 +30,7 @@ export function createDraftSync({storage,fetcher=fetch,onState=()=>{}}){
    while(desired){
     const items=desired;desired=null;
     const signature=await digest(items);
-    if(session.signature===signature&&session.revision>0){if(!desired)emit('saved');continue;}
+    if(session.signature===signature&&session.revision>0){remember();if(!desired)emit('saved');continue;}
     remember(); // A retry must also persist the access key before any upload.
     emit('saving');
     const reply=receipt(await request('PUT',session.token,{version:1,expectedRevision:session.revision,items}),items);
@@ -43,8 +43,10 @@ export function createDraftSync({storage,fetcher=fetch,onState=()=>{}}){
  function save(items){
   if(!Array.isArray(items)||items.length>MAX_CART_ITEMS)throw new DraftSyncError('INVALID_DRAFT');
   desired=items.map(cartEntry);
-  if(stopped)return Promise.resolve();
-  if(!working)working=drain();
+  if(stopped){emit(state,stateCode);return Promise.resolve();}
+  // Start after assigning the promise: even a synchronous storage failure must
+  // clear `working` in finally, so a later retry can start a fresh attempt.
+  if(!working)working=Promise.resolve().then(drain);
   return working;
  }
  return {

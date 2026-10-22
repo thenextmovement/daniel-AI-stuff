@@ -3,7 +3,7 @@ import {createRalPicker} from './ral-picker.js?v=35';
 import {DEFAULT,SIGN_PROTECTION,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate,description} from './model.js?v=44';
 import {quote3D,railColorEstimate} from './pricing.js';
 import {CART_KEY,MAX_CART_ITEMS,cartEntry,restoreCart,storeCart,safePreview} from './cart.js?v=44';
-import {createDraftSync,newDraftToken} from './draft-sync.js?v=44';
+import {createDraftSync,newDraftToken} from './draft-sync.js?v=45';
 import {prepareCheckout3D} from './checkout-contract.js?v=44';
 import {DELIVERY_LABEL,DELIVERY_NOTE} from './delivery.js?v=41';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
@@ -20,7 +20,7 @@ try{cart=restoreCart(JSON.parse(localStorage.getItem(CART_KEY)||'[]'));}catch{$(
 if(!cart.some(item=>item.id===editingId))editingId=null;
 function persistDraft(){try{localStorage.setItem(DRAFT_KEY,JSON.stringify({...state,cartItemId:editingId}));$('#saved-status').textContent='Dein Entwurf ist auf diesem Gerät gespeichert.';}catch{$('#saved-status').textContent='Speichern auf diesem Gerät nicht möglich. Nutze „Bild speichern“.';}}
 function persistCart(){const saved=storeCart(localStorage,cart);scheduleRemoteSave();return saved;}
-function scheduleRemoteSave(){clearTimeout(remoteTimer);renderStorageStatus({status:'pending'});remoteTimer=setTimeout(()=>draftSync.save(cart).catch(()=>{}),700);}
+function scheduleRemoteSave(){clearTimeout(remoteTimer);if(!['unavailable','conflict'].includes(draftSync.status))renderStorageStatus({status:'pending'});remoteTimer=setTimeout(()=>{remoteTimer=null;draftSync.save(cart).catch(()=>{});},700);}
 for(const el of all('[data-sign-protection]'))el.textContent=SIGN_PROTECTION;
 for(const el of all('[data-delivery-label]'))el.textContent=DELIVERY_LABEL;
 for(const el of all('[data-delivery-note]'))el.textContent=DELIVERY_NOTE;
@@ -230,16 +230,18 @@ function renderCart(){
 let storedReferences=[];
 function updateDraftReferences(){for(const el of all('[data-draft-ref]')){const ref=storedReferences.find(r=>r.localId===el.dataset.draftRef);el.textContent=ref?'Entwurfs-ID: '+ref.designId.slice(0,15)+'…':'';el.title=ref?.designId||'';}}
 function renderStorageStatus(info){
+ // A receipt for an earlier quantity must not confirm newer, debounced edits.
+ if(info.status==='saved'&&remoteTimer)info={...info,status:'pending'};
  remoteStatus=info.status;
  if(info.references)storedReferences=info.references;
  const labels={local:'Bisher nur auf diesem Gerät gespeichert.',pending:'Änderungen werden gesichert …',saving:'Entwürfe werden dauerhaft gesichert …',saved:'Entwürfe dauerhaft gesichert.',unavailable:'Auf diesem Gerät gespeichert. Die dauerhafte Sicherung ist gerade nicht erreichbar.',conflict:'Dieser Warenkorb wurde auf einem anderen Gerät geändert. Deine Änderungen bleiben hier erhalten.'};
- $('#cloud-status').textContent=labels[info.status]||labels.local;
+ $('#cloud-status').textContent=info.code==='DEVICE_STORAGE_UNAVAILABLE'?'Die Sicherung ist angehalten: Der Browserspeicher ist gerade nicht verfügbar. Bitte lasse diese Seite offen und versuche es erneut.':labels[info.status]||labels.local;
  $('#retry-save').hidden=!['unavailable','local'].includes(info.status);$('#fork-save').hidden=info.status!=='conflict';$('#copy-draft-link').disabled=info.status!=='saved';
  if(info.status!=='saved')$('#draft-link-box').hidden=true;
  updateDraftReferences();
 }
-$('#retry-save').addEventListener('click',()=>{clearTimeout(remoteTimer);draftSync.retry(cart).catch(()=>{});});
-$('#fork-save').addEventListener('click',()=>{clearTimeout(remoteTimer);draftSync.fork(cart).catch(()=>{});});
+$('#retry-save').addEventListener('click',()=>{clearTimeout(remoteTimer);remoteTimer=null;draftSync.retry(cart).catch(()=>{});});
+$('#fork-save').addEventListener('click',()=>{clearTimeout(remoteTimer);remoteTimer=null;draftSync.fork(cart).catch(()=>{});});
 $('#copy-draft-link').addEventListener('click',async()=>{
  try{const link=draftSync.link(location.origin);$('#draft-link').value=link;$('#draft-link-box').hidden=false;try{await navigator.clipboard.writeText(link);$('#cloud-status').textContent='Privater Link kopiert.';}catch{$('#cloud-status').textContent='Den privaten Link kannst du hier kopieren.';$('#draft-link').focus();$('#draft-link').select();}}catch{}
 });

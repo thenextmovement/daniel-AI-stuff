@@ -34,6 +34,48 @@ test('Tokens are saved before upload; failed device storage never claims durable
  let network=0;const sync=createDraftSync({storage:{getItem:()=>null,setItem:()=>{throw Error('quota');}},fetcher:()=>{network++;}});
  await assert.rejects(sync.save([item]));await assert.rejects(sync.retry([item]));assert.equal(network,0);assert.equal(sync.status,'unavailable');assert.throws(()=>sync.link('https://example.com'));
 });
+test('A synchronous device-storage failure can recover without reloading or changing the draft',async()=>{
+ const local=storage(),setItem=local.setItem;let available=false,uploads=0;
+ local.setItem=(key,value)=>{if(!available)throw Error('quota');setItem(key,value);};
+ const states=[],sync=createDraftSync({storage:local,onState:s=>states.push(s),fetcher:async(path,init)=>{uploads++;assert.ok(local.getItem(DRAFT_SESSION_KEY));return json(reply(JSON.parse(init.body),1));}});
+ await assert.rejects(sync.save([item]),{code:'DEVICE_STORAGE_UNAVAILABLE'});assert.equal(uploads,0);
+ assert.equal(states.at(-1).code,'DEVICE_STORAGE_UNAVAILABLE');
+ available=true;await sync.retry([{...item,quantity:3}]);
+ assert.equal(uploads,1);assert.equal(sync.status,'saved');assert.equal(JSON.parse(local.getItem(DRAFT_SESSION_KEY)).revision,1);
+});
+test('A receipt that could not be stored is persisted before retry reports success',async()=>{
+ const local=storage(),setItem=local.setItem;let available=true,uploads=0;
+ local.setItem=(key,value)=>{if(!available)throw Error('quota');setItem(key,value);};
+ const sync=createDraftSync({storage:local,fetcher:async(path,init)=>{uploads++;available=false;return json(reply(JSON.parse(init.body),1));}});
+ await assert.rejects(sync.save([item]),{code:'DEVICE_STORAGE_UNAVAILABLE'});
+ await assert.rejects(sync.retry([item]),{code:'DEVICE_STORAGE_UNAVAILABLE'});assert.equal(sync.status,'unavailable');assert.equal(uploads,1);
+ available=true;await sync.retry([item]);assert.equal(sync.status,'saved');assert.equal(uploads,1);assert.equal(JSON.parse(local.getItem(DRAFT_SESSION_KEY)).revision,1);
+});
+test('Edits during a network outage retain the retry state and save the latest quantities',async()=>{
+ let online=false,uploads=0;const states=[];
+ const sync=createDraftSync({storage:storage(),onState:s=>states.push(s.status),fetcher:async(path,init)=>{uploads++;if(!online)throw Error('offline');const body=JSON.parse(init.body);assert.equal(body.items[0].quantity,7);return json(reply(body,1));}});
+ await assert.rejects(sync.save([item]));
+ await sync.save([{...item,quantity:4}]);await sync.save([{...item,quantity:7}]);
+ assert.equal(uploads,1);assert.deepEqual(states.slice(-3),['unavailable','unavailable','unavailable']);assert.throws(()=>sync.link('https://example.com'));
+ online=true;await sync.retry([{...item,quantity:7}]);assert.equal(uploads,2);assert.equal(sync.status,'saved');
+});
+test('Two devices retain both versions on conflict, including edits made after the conflict',async()=>{
+ const collections=new Map();let writes=0;
+ const fetcher=async(path,init)=>{
+  const key=init.headers.Authorization,body=init.body?JSON.parse(init.body):null,current=collections.get(key)||{items:[],revision:0};
+  if(init.method==='GET')return json({...reply(current,current.revision),items:current.items});
+  writes++;if(body.expectedRevision!==current.revision)return json({error:{code:'REVISION_CONFLICT'}},409);
+  const saved={items:body.items,revision:current.revision+1};collections.set(key,saved);return json(reply(saved,saved.revision));
+ };
+ const first=createDraftSync({storage:storage(),fetcher}),states=[],second=createDraftSync({storage:storage(),fetcher,onState:s=>states.push(s.status)});
+ await first.save([item]);const originalToken=first.sessionToken;
+ await second.adopt(originalToken,await second.load(originalToken));
+ await first.save([{...item,quantity:2}]);await assert.rejects(second.save([{...item,quantity:3}]),{code:'REVISION_CONFLICT'});
+ const before=writes;await second.save([{...item,quantity:5}]);assert.equal(writes,before);assert.equal(states.at(-1),'conflict');
+ await second.fork([{...item,quantity:5}]);assert.notEqual(second.sessionToken,originalToken);
+ assert.equal((await first.load(originalToken)).items[0].quantity,2);assert.equal((await second.restoreOwn()).items[0].quantity,5);
+ assert.equal(collections.size,2);assert.equal(second.status,'saved');
+});
 test('Restore validates server response; private token stays in Authorization, not URL',async()=>{
  const secret='a'.repeat(64);const sync=createDraftSync({storage:storage(),fetcher:async(path,init)=>{assert.equal(init.method,'GET');assert.equal(init.headers.Authorization,'Bearer '+secret);assert.ok(!path.includes(secret));return json({...reply({items:[item]},1),items:[item]});}});
  const restored=await sync.load(secret);assert.deepEqual(restored.items,[item]);await sync.adopt(secret,restored);assert.equal(sync.status,'saved');

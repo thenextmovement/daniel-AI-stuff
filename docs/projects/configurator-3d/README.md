@@ -1133,3 +1133,39 @@ bestanden. Alle drei Pages-Handler erfolgreich gebündelt. Browser: 393×741 und
 320×568, zwei verschiedene Schilder, Mengen, privater Link in getrennter
 Browserablage, Änderung eines einzelnen Entwurfs, Reload, Konflikt und separate
 Sicherung. Kauf überall deaktiviert. Kein physischer Handy- oder echter Kauftest.
+
+
+## Live-Speicherung und Wiederherstellung bei Fehlern (22.10.2026)
+
+Der vorherige Abschnitt zur nur lokalen Verfügbarkeit ist überholt. Die dauerhafte
+Sicherung läuft seit dem 22.10.2026 auf `anfrage.neontrip.de/3d-konfigurator/`:
+Offers-Commit `a461648452c73dfe13e5d578502eb8b0f0116d34`, additive Migration
+`20261022195000_configurator_3d_drafts`, bestehende persistente PostgreSQL-Ablage.
+Frontend-Basis dieser Korrektur: `5225ad9f67374117cff3f7daf107dfa300617b78`,
+Pages-Deployment `d2b8d987-9184-4582-b9a5-61abd557523d`.
+
+Die anschließende Prüfung mit Verbindungsabbrüchen und parallelen Änderungen ergab:
+
+- Weitere Mengenänderungen nach einem Fehler oder Versionskonflikt dürfen die
+  Meldung und die passende Aktion nicht durch einen endlosen Sicherungsstatus
+  ersetzen. Der angehaltene Zustand bleibt sichtbar, die aktuellen Entwürfe lokal.
+- Ein synchroner Fehler beim Schreiben des Zugriffsschlüssels konnte den laufenden
+  Promise dauerhaft festhalten. Der neue Versuch startet jetzt auch nach einem
+  vorübergehend nicht verfügbaren Browserspeicher. Vor einem Upload muss der
+  Schlüssel gespeichert sein; vor einer Erfolgsanzeige auch der letzte Beleg.
+- Eine ältere Serverantwort bestätigt keine neuere, noch verzögert wartende
+  Mengenänderung mehr. Der private Link bleibt bis zur letzten Bestätigung gesperrt.
+
+66 automatisierte Tests bestanden, darunter vier neue Fälle zu Speicherknappheit,
+Belegspeicherung, Offline-Änderungen und zwei unabhängigen Clients. Browserprüfung
+bei 393×741 gegen die isolierte lokale PostgreSQL-Datenbank: Konflikt erzeugen,
+weiter ändern, separate Fassung sichern, Verbindung unterbrechen, weiter ändern,
+erneut sichern, verzögerte Antwort bei schneller Folgeänderung und Neuladen mit
+Bild/Spezifikation. Beide Fassungen bleiben erhalten, kein horizontaler Überlauf
+oder JavaScript-Laufzeitfehler. Kein physischer Handytest. Synthetische aktive
+Testwarenkörbe anschließend geleert.
+
+Nur `app.js`, `draft-sync.js` und die Modulversion in `index.html` ändern sich im
+vollständigen Seitenartefakt. Keine Datenbankmigration, kein geänderter API-Vertrag,
+keine Preisfreischaltung; Checkout bleibt auch serverseitig gesperrt. Die separate
+Seitengestaltung im ursprünglichen Worktree gehört nicht zu dieser Korrektur.
