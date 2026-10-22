@@ -23,6 +23,16 @@ await (window.neontripStylesReady || Promise.all([...document.querySelectorAll('
 const $ = selector => document.querySelector(selector);
 const failureReporter=createFailureReporter();
 const trackConfigurator=createConfiguratorTracker(window);
+// Release public controls only. Masked ancestors continue protecting private designs.
+for(const node of document.querySelectorAll('[data-usage],[data-backing],[data-plate-finish],[data-light-mode],[data-width-cm],.studio-mobile-look,.studio-flow,.font-library-switch,#font-categories,#font-count,#font-page-label,#font-more,#font-filter-active,#font-filter-reset,.font-filter-heading,.font-trait,#font-trait-note,.font-preview-help,.font-preview-sort,.font-price-context,#font-price-explanation,.font-upload label > span,#open-font-upload,#open-font-overview > span:last-child > span,.backing-surcharge,.backing-total,[data-accessory-price]'))node.dataset.clarityUnmask='true';
+for(const node of document.querySelectorAll('#upload-state,#rgb-example,#current-color-example'))node.dataset.clarityMask='true';
+function protectSelectedFont(){
+  const privateFont=state.fontId.startsWith('upload-')&&!state.fontSource;
+  for(const node of document.querySelectorAll('#choice-value-1,#current-font-name,#look-font-name,#studio-selected-font,#summary-font')){
+    if(privateFont){delete node.dataset.clarityUnmask;node.dataset.clarityMask='true';}
+    else{delete node.dataset.clarityMask;node.dataset.clarityUnmask='true';}
+  }
+}
 // First real editor interaction, not restoration, a render or tutorial autoplay.
 for(const name of ['input','click'])$('.editor').addEventListener(name,event=>{
   if(event.isTrusted&&!$('.editor').inert&&event.target.closest('button,input,textarea,select'))trackConfigurator('configurator_engaged');
@@ -464,8 +474,8 @@ function renderPriceValue(element,price,quantity=1,{compact=false,unit=false}={}
   before.className='price-before';before.textContent=priceLabel({gross:amounts.regularGross});before.setAttribute('aria-label','Preis ohne Rabatt: '+before.textContent);
   current.className='price-current';current.textContent=priceLabel({gross:amounts.gross});
   before.dataset.clarityUnmask='true';current.dataset.clarityUnmask='true';element.append(before,current);
-  if(!compact){const discount=document.createElement('span');discount.className='price-discount';discount.textContent=`−${INCLUDED_DISCOUNT_PERCENT} % Rabatt`;element.append(discount);}
-  if(unit){const note=document.createElement('small');note.className='price-tax';note.textContent='Inkl. 19 % MwSt.';element.append(note);}
+  if(!compact){const discount=document.createElement('span');discount.dataset.clarityUnmask='true';discount.className='price-discount';discount.textContent=`−${INCLUDED_DISCOUNT_PERCENT} % Rabatt`;element.append(discount);}
+  if(unit){const note=document.createElement('small');note.dataset.clarityUnmask='true';note.className='price-tax';note.textContent='Inkl. 19 % MwSt.';element.append(note);}
 }
 function renderCurrentPrice(element){
   element.setAttribute('aria-busy',String(state.price?.status==='pending'));
@@ -756,7 +766,7 @@ async function update(sizeNotice='',recoveryAttempt=0) {
     syncOuterSize(result.size);
     $('#backing-size').textContent=dimensions(result.size.backing);
     fitTextField();
-    $('#studio-selected-font').textContent=state.font;
+    protectSelectedFont();$('#studio-selected-font').textContent=state.font;
     $('#summary-font').textContent=state.mode==='logo'?'Eigenes Logo':state.font;
     $('#preview-state').hidden=true;
     calculationPhase='paint';designRendering=false;paint();$('#save-design').disabled=false;calculationFailureAttemptId=null;
@@ -862,6 +872,7 @@ function chooseOuterSize(axis,outerMm,{fitBacking=false}={}){
   const belowMinimum=Number.isFinite(outerMm)&&outerMm<Math.round(minimumMm)-1e-7;
   const aboveMaximum=Number.isFinite(outerMm)&&outerMm>Math.round(maximumMm)+1e-7;
   if(normalized===null){
+    if(!fitBacking)window.ntCro?.error('size',{code:'validation'});
     state.sizeValid=false;state.requestedOuter=null;revision++;clearTimeout(timer);
     const message=belowMinimum?`Für diesen Entwurf mindestens ${cm(minimumMm)} cm ${axis==='width'?'Breite':'Höhe'}. Bitte ein größeres Maß eingeben.`:aboveMaximum?`Für diesen Entwurf höchstens ${cm(maximumMm)} cm ${axis==='width'?'Breite':'Höhe'}. Die längste Seite darf 400 cm nicht überschreiten.`:'Bitte eine positive Zahl für das Maß eingeben.';
     $('#size-error').textContent=message;$('#size-error').hidden=false;clearResult(message,true,'invalid-size');
@@ -963,7 +974,7 @@ function explainStandHeight(){
 function changeAccessoryQuantity(key,quantity){
  const minimum=['wall-mount','premium-white','dimmer'].includes(key)?1:0;
  if(!Number.isInteger(quantity)||quantity<minimum||quantity>99)return false;
- if(key==='table-stand'&&quantity>0&&standSelectionTooTall()){explainStandHeight();return false;}
+ if(key==='table-stand'&&quantity>0&&standSelectionTooTall()){window.ntCro?.error('options',{code:'validation'});explainStandHeight();return false;}
  standHeightAttempted=false;
  if(key==='hanging-kit'&&quantity>0&&state.backing==='freestanding')return false;
  state.accessoryQuantities[key]=quantity;
@@ -1025,6 +1036,7 @@ for(const product of accessoryProducts){
  const change=delta=>{
   const next=state.accessoryQuantities[key]+delta;
   if(!changeAccessoryQuantity(key,next))return;
+  window.ntCro?.choice('accessory',key);
   const shown=next-(included?1:0);
   (shown===0?add:delta>0?(next===99?minus:plus):minus).focus({preventScroll:true});
  };
@@ -1125,7 +1137,7 @@ function colorExampleOptions(prefix){
 }
 function refreshColorExamples(){
   if(!state.result||(colorGalleryLayout===state.result.layout&&colorGalleryTarget===state.colorTarget))return;
-  for(const color of AVAILABLE_COLORS){const card=$('#color-palette [data-color="'+color.id+'"]');card.querySelector('svg').replaceWith(createColorExample(color,colorExampleOptions('color-card-'+color.id)));}
+  for(const color of AVAILABLE_COLORS){const card=$('#color-palette [data-color="'+color.id+'"]');const art=createColorExample(color,colorExampleOptions('color-card-'+color.id));art.dataset.clarityMask='true';card.querySelector('svg').replaceWith(art);}
   const rgbExample=createColorExample(COLORS.find(c=>c.id==='red'),colorExampleOptions('rgb-gallery-example'));rgbExample.classList.add('rgb-example-art');$('#rgb-example').replaceChildren(rgbExample);
   colorGalleryLayout=state.result.layout;colorGalleryTarget=state.colorTarget;
 }
@@ -1184,10 +1196,10 @@ function paintColorControls(){
 }
 for(const button of document.querySelectorAll('[data-color-scope]'))button.addEventListener('click',()=>{state.colorScope=button.dataset.colorScope;state.colorTarget='all';renderColorTargets();paint();});
 for(const button of document.querySelectorAll('[data-light-mode]'))button.addEventListener('click',()=>{
-  if(state.outdoor&&button.dataset.lightMode==='rgb'){rgbOutdoorAttempted=true;paintColorControls();return;}
-  rgbOutdoorAttempted=false;state.lightMode=button.dataset.lightMode;paint();
+  if(state.outdoor&&button.dataset.lightMode==='rgb'){window.ntCro?.error('options',{code:'validation'});rgbOutdoorAttempted=true;paintColorControls();return;}
+  rgbOutdoorAttempted=false;state.lightMode=button.dataset.lightMode;window.ntCro?.choice('light_mode',state.lightMode);paint();
 });
-for(const button of document.querySelectorAll('[data-usage]'))button.addEventListener('click',()=>{rgbOutdoorAttempted=false;state.outdoor=button.dataset.usage==='outdoor';state.scene='wall';if(state.outdoor&&state.lightMode==='rgb')state.lightMode='static';paint();});
+for(const button of document.querySelectorAll('[data-usage]'))button.addEventListener('click',()=>{rgbOutdoorAttempted=false;state.outdoor=button.dataset.usage==='outdoor';window.ntCro?.choice('usage',button.dataset.usage);state.scene='wall';if(state.outdoor&&state.lightMode==='rgb')state.lightMode='static';paint();});
 $('#rgb-preview-toggle').addEventListener('click',()=>{rgbPaused=!rgbPaused;paint();});
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',event=>{rgbPaused=event.matches;paint();});
 function originalOutlineGlyph(result,index){
@@ -1527,6 +1539,7 @@ function addFontQuote(button,{id,name,entry=null}){
   const price=document.createElement('span');price.className='font-card-price';price.textContent=button.disabled?'Nicht verfügbar':'Wird berechnet …';
   const size=document.createElement('span');size.className='font-card-size';
   const label=document.createElement('span');label.className='font-card-price-label';label.textContent='Schildpreis inkl. MwSt.';
+  for(const node of [label,price,size])node.dataset.clarityUnmask='true';
   button.append(label,price,size);fontQuoteObserver.observe(button);
 }
 async function calculateFontQuote(context,id,entry,key,isCurrent=()=>key===fontQuoteKey&&!designRendering&&performance.now()>=fontQuoteResumeAt,includeGeometry=false){
@@ -1719,11 +1732,11 @@ async function getCatalogSource(entry,signal){
 }
 
 function makeFontButton(name) {
-  const button=document.createElement('button');button.className='font-option';button.type='button';button.dataset.font=name;button.setAttribute('aria-label',`Schrift ${name}`);
-  const sample=document.createElement('span');sample.className='font-sample';sample.style.fontFamily=`"NT-${name}"`;sample.textContent=sampleText();
-  const label=document.createElement('small');label.textContent=name;button.append(sample,label);
+  const button=document.createElement('button');button.dataset.clarityUnmask='true';button.className='font-option';button.type='button';button.dataset.font=name;button.setAttribute('aria-label',`Schrift ${name}`);
+  const sample=document.createElement('span');sample.dataset.clarityMask='true';sample.className='font-sample';sample.style.fontFamily=`"NT-${name}"`;sample.textContent=sampleText();
+  const label=document.createElement('small');label.dataset.clarityUnmask='true';label.textContent=name;button.append(sample,label);
   addFontQuote(button,{id:name,name});
-  button.addEventListener('click',()=>{fontSelectionRevision++;$('#upload-state').hidden=true;useFontQuoteLayout(name);state.font=name;state.fontId=name;state.fontSource=null;if($('#font-overview').open)$('#font-overview').close();update();});return button;
+  button.addEventListener('click',()=>{fontSelectionRevision++;$('#upload-state').hidden=true;useFontQuoteLayout(name);state.font=name;state.fontId=name;state.fontSource=null;window.ntCro?.choice('font_source','bundled');if($('#font-overview').open)$('#font-overview').close();update();});return button;
 }
 let fontSampleFrame=0;
 function fitQuickFontSamples(){
@@ -1752,7 +1765,7 @@ function updateFontSelection(){
     button.querySelector('.font-sample').textContent=sampleText();
   }
   fitTextField();document.fonts.ready.then(fitQuickFontSamples);
-  $('#studio-selected-font').textContent=state.font;
+  protectSelectedFont();$('#studio-selected-font').textContent=state.font;
   $('#summary-font').textContent=state.mode==='logo'?'Eigenes Logo':state.font;
   $('#all-fonts').firstChild.textContent='Weitere Schriften ';
   $('#look-font-name').textContent=state.font;
@@ -1838,13 +1851,13 @@ $('#studio-all-colors').addEventListener('click',()=>{
 for(const color of AVAILABLE_COLORS){
  const swatch=document.createElement('button');swatch.type='button';swatch.dataset.color=color.id;
  swatch.style.setProperty('--swatch',color.color);swatch.setAttribute('aria-label',color.name);swatch.title=color.name;
- swatch.addEventListener('click',()=>{rgbOutdoorAttempted=false;state.lightMode='static';state.colorTarget='all';state.color=color;state.wordColors.clear();state.charColors.clear();paint();});
+ swatch.addEventListener('click',()=>{rgbOutdoorAttempted=false;state.lightMode='static';state.colorTarget='all';state.color=color;state.wordColors.clear();state.charColors.clear();window.ntCro?.choice('color',color.id);paint();});
  $('.studio-palette').append(swatch);
 }
 for(const color of AVAILABLE_COLORS){
   const button=document.createElement('button');button.type='button';button.className='color-swatch';button.dataset.color=color.id;button.style.setProperty('--swatch',color.color);button.setAttribute('aria-label',color.name);button.title=color.name;const colorLabel=document.createElement('span');colorLabel.className='color-swatch-label';colorLabel.textContent=color.name.replace('Zitronengelb','Zitronen\u00adgelb');
   // Build the wall-photo SVG only when the color gallery is opened.
-  button.append(svg('svg',{'aria-hidden':'true',viewBox:'0 0 780 260'}),colorLabel);
+  button.append(svg('svg',{'data-clarity-mask':'true','aria-hidden':'true',viewBox:'0 0 780 260'}),colorLabel);
   button.addEventListener('click',()=>{
     if(state.lightMode==='rgb')return;
     rgbOutdoorAttempted=false;
@@ -1852,7 +1865,7 @@ for(const color of AVAILABLE_COLORS){
     else if(state.colorTarget.startsWith('char:'))state.charColors.set(state.colorTarget,color);
     else if(state.colorTarget.startsWith('line:')){const lineIndex=Number(state.colorTarget.slice(5));for(const word of state.words)if(word.lineIndex===lineIndex)state.wordColors.set(word.key,color);for(const character of state.characters)if(character.lineIndex===lineIndex)state.charColors.delete(character.key);}
     else {state.wordColors.set(state.colorTarget,color);const word=state.words.find(w=>w.key===state.colorTarget);for(const g of state.result?.layout.glyphs||[])if(g.lineIndex===word?.lineIndex&&g.wordIndex===word?.wordIndex)state.charColors.delete(g.colorKey);}
-    paint();
+    window.ntCro?.choice('color',color.id);paint();
   });$('#color-palette').append(button);
 }
 // The legacy current-color card can become visible after a layout/step change.
@@ -1900,7 +1913,7 @@ for(const axis of ['width','height']){
   if(!edited)return;
   // Clear before rendering so change, blur and Enter cannot commit twice.
   edited=false;
-  chooseOuterSize(axis,input.value.trim()?Number(input.value)*10:NaN);
+  if(chooseOuterSize(axis,input.value.trim()?Number(input.value)*10:NaN))window.ntCro?.choice('size',axis);
  };
  input.addEventListener('input',()=>{
   edited=true;
@@ -1913,6 +1926,7 @@ for(const axis of ['width','height']){
  input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();commitSize();input.blur();}});
 }
 $('#width-slider').addEventListener('input',event=>{chooseOuterSize('width',Number(event.target.value)*10);});
+$('#width-slider').addEventListener('change',()=>{if(state.sizeValid)window.ntCro?.choice('size','width');});
 $('#light-toggle').addEventListener('click',()=>{state.light=!state.light;paint();});
 $('#mobile-light-on').addEventListener('click',()=>{state.light=!state.light;paint();});
 $('#mobile-background').addEventListener('click',()=>$('#scene-dialog').showModal());
@@ -1927,15 +1941,15 @@ function paintFinishControls(){
   $('#plate-finish-name').textContent=finishName(finish);$('#finish-selection').textContent=finishName(finish);$('#finish-preview').dataset.finish=finish.kind;$('#finish-preview').style.setProperty('--finish-color',finish.color);$('#finish-dialog-note').textContent=state.backing==='freestanding'?'Freigestellte Stützstreben bleiben transparent.':'Die Auswahl wird direkt in deinem Entwurf und Gesamtpreis sichtbar.';
   $('#plate-finish-note').textContent=state.backing==='freestanding'?'Die Acrylstreben bleiben transparent.':finish.kind.startsWith('mirror-')?'Verspiegeltes Acryl. Die Reflexion ist in der Vorschau angenähert.':finish.kind==='uv-print'?'Farbige Rückplatte mit UV-Druck. Bildschirmfarben dienen zur Orientierung.':finish.kind==='solid'?'Farbige Acrylrückplatte. Bildschirmfarben dienen zur Orientierung.':'Klare Acrylplatte mit dezenter sichtbarer Kante.';
 }
-for(const button of document.querySelectorAll('[data-plate-finish]'))button.addEventListener('click',()=>{state.plateFinish=normalizedFinish({kind:button.dataset.plateFinish,color:button.dataset.plateColor||'#FFFFFF'});paint();});
+for(const button of document.querySelectorAll('[data-plate-finish]'))button.addEventListener('click',()=>{state.plateFinish=normalizedFinish({kind:button.dataset.plateFinish,color:button.dataset.plateColor||'#FFFFFF'});window.ntCro?.choice('finish',state.plateFinish.kind);paint();});
 $('#plate-custom-color').addEventListener('input',event=>{state.plateFinish=normalizedFinish({kind:'uv-print',color:event.target.value});paint();});
-$('#plate-custom-color').addEventListener('change',commitHistory);
+$('#plate-custom-color').addEventListener('change',()=>{window.ntCro?.choice('finish','uv-print');commitHistory();});
 for(const button of document.querySelectorAll('[data-backing]'))button.addEventListener('click',()=>{
   const reference=state.result||(lastSizeReference?.key===sizeReferenceKey()?lastSizeReference.result:null);
   const outer=reference?plateSize(reference.size):null;
   const previousBacking=state.backing,wasValid=!designRendering&&state.sizeValid&&state.price?.status==='calculated';
   backingSizeAdjustment=null;
-  state.backing=button.dataset.backing;
+  state.backing=button.dataset.backing;window.ntCro?.choice('backing',state.backing);
   state.autoContourNotice=false;
   if(state.backing==='freestanding'){
     state.plateFinish=normalizedFinish();
@@ -1959,6 +1973,7 @@ for(const button of document.querySelectorAll('[data-backing]'))button.addEventL
 });
 for(const button of document.querySelectorAll('.scene-tabs button'))button.addEventListener('click',()=>{state.scene=button.dataset.scene;paint();});
 async function openFontLibrary(library='free'){
+  window.ntCro?.choice('font_library',library);
   if(library!==fontLibrary)fontTraitEnabled=false;
   fontLibrary=library;$('#mobile-font-library').value=library;
   $('.font-filter-toolbar').hidden=library!=='free';
@@ -1966,7 +1981,7 @@ async function openFontLibrary(library='free'){
   for(const b of document.querySelectorAll('[data-font-library]'))b.setAttribute('aria-pressed',b.dataset.fontLibrary===library);
   if(library==='upload')return;
   fontCatalogLimit=24;renderFontCategories();filterFonts();
-  if(library==='free'&&!fontCatalog){$('#font-catalog-status').textContent='Schriftkatalog wird geladen …';try{fontCatalog=await loadFontCatalog();$('#font-catalog-status').textContent='';if(fontLibrary==='free')filterFonts();}catch(error){$('#font-catalog-status').textContent=error.message;}}
+  if(library==='free'&&!fontCatalog){$('#font-catalog-status').textContent='Schriftkatalog wird geladen …';try{fontCatalog=await loadFontCatalog();$('#font-catalog-status').textContent='';if(fontLibrary==='free')filterFonts();}catch(error){window.ntCro?.error('font_catalog',error);$('#font-catalog-status').textContent=error.message;}}
 }
 $('#all-fonts').addEventListener('click',()=>openFontOverview('free'));
 function renderFontCategories(){
@@ -2006,8 +2021,8 @@ function filterFonts(preserveMobilePage=false){
     const pages=[];for(let offset=0;offset<Math.min(fontCatalogLimit,page.total);offset+=60)pages.push(...searchFontCatalog(fontCatalog,{query,category:fontCategory,trait:fontTraitEnabled?'outline':'all',offset,limit:Math.min(60,fontCatalogLimit-offset)}).items);
     for(const entry of pages){
       const card=document.createElement('div');card.className='catalog-font-card';
-      const button=document.createElement('button');button.type='button';button.className='font-option catalog-font-option';button.dataset.catalogFont=entry.id;button.setAttribute('aria-pressed',state.fontId===catalogFontAssetId(entry));
-      const name=document.createElement('strong'),hint=document.createElement('small');name.textContent=entry.family;hint.textContent=entry.file.bytes>5000000?'Über 5 MB · derzeit nicht unterstützt':'Im Schild ausprobieren';button.append(name,hint);button.disabled=entry.file.bytes>5000000;addFontQuote(button,{id:catalogFontAssetId(entry),name:entry.family,entry});button.addEventListener('click',()=>selectCatalogFont(entry));
+      const button=document.createElement('button');button.type='button';button.dataset.clarityUnmask='true';button.className='font-option catalog-font-option';button.dataset.catalogFont=entry.id;button.setAttribute('aria-pressed',state.fontId===catalogFontAssetId(entry));
+      const name=document.createElement('strong'),hint=document.createElement('small');name.dataset.clarityUnmask='true';hint.dataset.clarityUnmask='true';name.textContent=entry.family;hint.textContent=entry.file.bytes>5000000?'Über 5 MB · derzeit nicht unterstützt':'Im Schild ausprobieren';button.append(name,hint);button.disabled=entry.file.bytes>5000000;addFontQuote(button,{id:catalogFontAssetId(entry),name:entry.family,entry});button.addEventListener('click',()=>selectCatalogFont(entry));
       const license=document.createElement('a');license.href=entry.license.url;license.target='_blank';license.rel='noopener noreferrer';license.textContent=entry.license.spdx;license.setAttribute('aria-label',`Lizenz für ${entry.family}`);card.append(button,license);grid.append(card);
     }visible=pages.length;total=page.total;
     $('.font-preview-help').textContent=fontTraitEnabled?'Konturschriften. Nach Auswahl erscheint dein Text in der Neon-Vorschau; zwei fertigbare Lichtlinien sind nicht garantiert.':'Schriftnamen zur Orientierung. Nach Auswahl erscheint dein Text in der tatsächlichen Schrift auf dem Schild.';
@@ -2041,19 +2056,19 @@ async function selectCatalogFont(entry){
     const face=new FontFace('NT-Uploaded',bytes);await face.load();if(token!==fontSelectionRevision)return;
     await rememberAsset(fontId,bytes);if(token!==fontSelectionRevision)return;
     if(uploadedFace)document.fonts.delete(uploadedFace);uploadedFace=face;document.fonts.add(face);fontFile=bytes;loaded.set(fontId,Promise.resolve());
-    useFontQuoteLayout(fontId);state.fontId=fontId;state.font=entry.family;state.fontSource={entry,licenseText};status.textContent='';$('#upload-state').hidden=true;await update();if($('#font-overview').open)$('#font-overview').close();
-  }catch(error){if(token===fontSelectionRevision)status.textContent=errorMessage(error);}
+    useFontQuoteLayout(fontId);state.fontId=fontId;state.font=entry.family;state.fontSource={entry,licenseText};window.ntCro?.choice('font_source','catalog');status.textContent='';$('#upload-state').hidden=true;await update();if($('#font-overview').open)$('#font-overview').close();
+  }catch(error){if(token===fontSelectionRevision){window.ntCro?.error('font_catalog',error,token);status.textContent=errorMessage(error);}}
 }
 $('#font-upload').addEventListener('change',async event=>{
   const file=event.target.files[0];if(!file)return;
   const selectionRev=++fontSelectionRevision;
   const status=$('#upload-state');status.hidden=false;
   try{
-    if(!/\.(ttf|otf|woff2?)$/i.test(file.name)||file.size>5_000_000||file.size<100)throw new Error('Bitte wähle eine gültige TTF-, OTF- oder WOFF-Datei bis 5 MB.');
+    if(!/\.(ttf|otf|woff2?)$/i.test(file.name)||file.size>5_000_000||file.size<100)throw Object.assign(new Error('Bitte wähle eine gültige TTF-, OTF- oder WOFF-Datei bis 5 MB.'),{code:'validation'});
     status.textContent='Schrift wird auf deinem Gerät geprüft …';
     const bytes=await file.arrayBuffer();
     const magic=new DataView(bytes).getUint32(0,false);
-    if(magic!==0x00010000&&magic!==0x4f54544f&&magic!==0x74727565&&magic!==0x774f4646&&magic!==0x774f4632)throw new Error('Die Datei ist keine unterstützte TTF-, OTF- oder WOFF-Schrift.');
+    if(magic!==0x00010000&&magic!==0x4f54544f&&magic!==0x74727565&&magic!==0x774f4646&&magic!==0x774f4632)throw Object.assign(new Error('Die Datei ist keine unterstützte TTF-, OTF- oder WOFF-Schrift.'),{code:'validation'});
     const fontId=`upload-${Date.now()}`;
     await callWorker({type:'load',fontId,bytes});
     const face=new FontFace('NT-Uploaded',bytes);await face.load();
@@ -2062,8 +2077,8 @@ $('#font-upload').addEventListener('change',async event=>{
     await rememberAsset(fontId,bytes);
     if(selectionRev!==fontSelectionRevision)return;
     loaded.set(fontId,Promise.resolve());fontFile=bytes;state.fontId=fontId;state.fontSource=null;state.font=file.name.replace(/\.(ttf|otf|woff2?)$/i,'');
-    compactLineSpacing=true;status.textContent=`${state.font} ist ausgewählt.`;await update();if($('#font-overview').open)$('#font-overview').close();
-  }catch(error){if(selectionRev===fontSelectionRevision)status.textContent=error.message;}
+    window.ntCro?.choice('font_source','uploaded');compactLineSpacing=true;status.textContent=`${state.font} ist ausgewählt.`;await update();if($('#font-overview').open)$('#font-overview').close();
+  }catch(error){if(selectionRev===fontSelectionRevision){window.ntCro?.error('font_upload',error,selectionRev);status.textContent=error.message;}}
   if(selectionRev===fontSelectionRevision)event.target.value='';
 });
 const mobileToggle=$('.hero-mobile-toggle'),mobileNav=$('.hero-mobile-nav'),productsToggle=$('.hero-nav-toggle'),products=$('.hero-dropdown');
@@ -2073,6 +2088,7 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape'){const trigg
 document.addEventListener('click',event=>{if(event.target.closest('.config-site-header a')||!event.target.closest('.hero-product-nav,.hero-mobile-toggle,.hero-mobile-nav'))closeSiteMenus();});
 matchMedia('(max-width:900px)').addEventListener('change',closeSiteMenus);
 function updateChoices(){
+  protectSelectedFont();
   $('#choice-value-0').textContent=state.mode==='logo'?(state.logo?.name||'Logo hochladen'):$('#sign-text').value.trim().replace(/\s+/g,' ')||'Text eingeben';
   $('#choice-value-1').textContent=state.font;
   $('#choice-value-2').textContent=colorSummary();
@@ -2885,7 +2901,7 @@ async function persistCart(){
   }catch{
     if(revision===cartWriteRevision){
       $('#cart-storage-status').textContent='Warenkorb nur in diesem Tab verfügbar. Speichern auf diesem Gerät nicht möglich.';
-      cartStorageFailureAttemptId??=createFailureAttemptId();void failureReporter.report({stage:'cart',code:'CART_STORAGE_FAILED',attemptId:cartStorageFailureAttemptId});
+      cartStorageFailureAttemptId??=createFailureAttemptId();window.ntCro?.error('cart',{code:'storage'},cartStorageFailureAttemptId);void failureReporter.report({stage:'cart',code:'CART_STORAGE_FAILED',attemptId:cartStorageFailureAttemptId});
     }
   }
 }
@@ -2972,7 +2988,7 @@ function renderCart(){
     const accessoryLine=document.createElement('div');accessoryLine.className='cart-accessories';accessoryLine.textContent='Zubehör wird berechnet …';
     const accessoryDetails=document.createElement('details'),accessoryToggle=document.createElement('summary');
     accessoryDetails.className='cart-accessory-details';accessoryDetails.open=expandedAccessories.has(item.id)||!mobileChoiceMedia.matches;
-    accessoryToggle.textContent='Zubehör & Montage';
+    accessoryToggle.dataset.clarityUnmask='true';accessoryToggle.textContent='Zubehör & Montage';
     const included=document.createElement('p');included.className='cart-included-summary';included.textContent=accessorySummary(item.design);
     accessoryDetails.append(accessoryToggle,accessoryLine);
     price.textContent='Wird berechnet …';price.className='cart-item-price';
@@ -3100,7 +3116,7 @@ const deliveryCalendar=initDeliveryCalendar($('#delivery-calendar-host'),{
   onSelect:scheduleEarlyCheckout,
   onContinue:(selection,{changed=false}={})=>{
     if(changed){$('#delivery-checkout-status').textContent='Termin oder Preis wurde aktualisiert. Bitte prüfe die Auswahl und klicke erneut auf „Zur Kasse“.';return;}
-    selectedDelivery=selection;persistCart();goToCheckout();
+    selectedDelivery=selection;window.ntCro?.choice('delivery',selection.feeNet===0?'standard':'express');persistCart();goToCheckout();
   }
 });
 function openDeliverySelection(){
@@ -3139,7 +3155,7 @@ async function addCurrentDesign(){
   storedPriceCache.set(PRICE_RULES.version+JSON.stringify(design),Promise.resolve(snapshot.price));
   editingCartId=item.id;commitHistory();await persistCart();showCart();$('#cart-add-status').textContent='';
   if(!old)trackConfigurator('add_to_cart',{quantity:item.quantity,key:item.id});
- }catch(error){$('#cart-add-status').textContent=error.message||'Bitte prüfe deinen Entwurf.';}
+ }catch(error){window.ntCro?.error('cart',error);$('#cart-add-status').textContent=error.message||'Bitte prüfe deinen Entwurf.';}
  finally{cartAdding=false;$('.editor').inert=false;$('.preview-column').inert=false;$('.editor-tabs').inert=false;refreshCartButtons();}
 }
 async function addReviewedDesign(){
@@ -3450,7 +3466,7 @@ $('#remove-background').addEventListener('click',()=>{
   $('#photo-settings').hidden=true;$('#photo-status').hidden=true;renderSceneButtons();paint();
 });
 
-for(const button of document.querySelectorAll('[data-width-cm]'))button.addEventListener('click',()=>chooseOuterSize('width',Number(button.dataset.widthCm)*10));
+for(const button of document.querySelectorAll('[data-width-cm]'))button.addEventListener('click',()=>{if(chooseOuterSize('width',Number(button.dataset.widthCm)*10))window.ntCro?.choice('size','width');});
 setupPhotoCalibration({getPhoto:()=>ROOMS.find(r=>r.id==='custom'),onApply:({spanMm,calibration})=>{const room=ROOMS.find(r=>r.id==='custom');if(!room)return;room.spanMm=spanMm;room.calibration=calibration;$('#photo-width').value=Math.round(spanMm)/10;state.room='custom';state.scene='wall';paint();}});
 for(const button of document.querySelectorAll('[data-history]'))button.addEventListener('click',()=>moveHistory(button.dataset.history==='undo'?-1:1));
 $('.draft-tools').prepend($('#reset-position'));
