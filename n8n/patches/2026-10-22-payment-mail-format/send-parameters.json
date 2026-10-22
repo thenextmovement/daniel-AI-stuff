@@ -1,0 +1,8 @@
+{
+  "toRecipients": "={{ $json.emailRecipient || 'info@neontrip.de' }}",
+  "subject": "={{ $json.emailSubject || $json.subject }}",
+  "bodyContent": "={{ (() => { const body = String($json.emailBody || $json.body_html || ''); if (/^\\s*<(?:h[1-6]|p|div|table|html|!doctype)\\b/i.test(body)) return body; const at = body.indexOf('<hr>'); const plain = at < 0 ? body : body.slice(0, at); const footer = at < 0 ? '' : body.slice(at); return '<div style=\"font-family:Arial,sans-serif;white-space:pre-line\">' + plain.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>' + footer; })() }}",
+  "additionalFields": {
+    "bodyContentType": "html"
+  }
+}
