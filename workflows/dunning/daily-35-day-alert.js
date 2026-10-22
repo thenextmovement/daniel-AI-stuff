@@ -20,6 +20,20 @@ const body='<p>Aktuell '+cases.length+' Fälle zur Prüfung. Zur Prüfung gehör
 +(automatic.length?'<p><strong>'+automatic.length+' Fälle im automatischen Ablauf:</strong> '+automatic.map(c=>c.order).join(', ')+'. Die nächste Stufe wird nach Frist und erneuter Live-Prüfung bearbeitet.</p>':'')
 +grouped.map(g=>'<p><strong>'+g.orders.join(', ')+'</strong><br>'+actions[g.status]+(['final_stage_review','stage_source_review','automation_review','sender_blocked'].includes(g.status)?'<br>'+g.stageDetails.join('; '):'')+'</p>').join('')
 +'<p>Details und E-Mail-Prüfhinweise stehen in OPS. <a href="https://fuajob.online/workflow/oA57luKTeHEE06uN">Kontrolllauf öffnen</a>.</p>';
+
+// Weekly routine report: Thursday at 12:00 Europe/Berlin.
+// Keep the underlying reconciliation schedule and immediate fault alerts unchanged.
+const reportNow = new Date();
+const berlinParts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+ timeZone:'Europe/Berlin', weekday:'short', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', hourCycle:'h23'
+}).formatToParts(reportNow).map(p=>[p.type,p.value]));
+if (berlinParts.weekday !== 'Thu' || berlinParts.hour !== '12') return [];
+const reportDay = berlinParts.year+'-'+berlinParts.month+'-'+berlinParts.day;
+const reportState = $getWorkflowStaticData('global');
+// Today's report was already delivered; do not resend after this configuration change.
+if ((reportState.dunningReviewReportDay ?? '2026-10-22') === reportDay) return [];
+reportState.dunningReviewReportDay = reportDay;
+
 return [{json:{
  emailRecipient:'support@neontrip.de',emailSubject:'Mahnkontrolle: '+cases.length+' Fälle zur Prüfung',
  emailBody:body,workflowName:'NEONTRIP | Daily 35-Day Dunning Control',source_workflow_name:'NEONTRIP | Daily 35-Day Dunning Control',
