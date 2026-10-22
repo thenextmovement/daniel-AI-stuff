@@ -845,3 +845,105 @@ Als spätere Struktur bietet sich Metallton plus Oberflächenart an. Herstellart
 (z. B. Lackierung/Beschichtung), verbindliche Kundennamen, Verfügbarkeit,
 Aufpreise und physische Farbmuster müssen vor dem Angebot abgeglichen werden.
 Noch keine zusätzlichen auswählbaren oder kaufbaren Varianten eingebaut.
+
+## Plan für die ergänzenden Seitensektionen (22.10.2026)
+
+Status: Planung nach Nutzerbriefing; keine neuen Medien generiert, keine
+Seitensektionen eingebaut oder veröffentlicht. Der gemeinsame Konfigurator für
+Front- und Rückbeleuchtung bleibt erhalten und steht direkt am Seitenanfang.
+Die folgenden Medien und Abschnitte werden darunter angeordnet.
+
+### Vom Auftraggeber konkretisiert
+
+- Lieferzeit: ca. 2–3 Wochen von der Bestellung bis zur Lieferung. Keine Garantie
+  von exakt 14 Tagen daraus ableiten. Die bestehende Leuchtbuchstaben-Landingpage
+  nennt noch 4–6 Wochen; sichtbare Texte, FAQ und strukturierte Angaben müssen im
+  späteren Veröffentlichungsumfang auf Widersprüche geprüft werden.
+- Einzelbuchstaben: In der Acrylrückseite befinden sich Gewindeeinsätze für die
+  mitgelieferten Gewindestangen. Die Wand/Fassade wird für die Befestigung
+  vorbereitet. Die Kabel der einzelnen Buchstaben werden hinter der Wand oder
+  Fassade zusammengeführt und mit dem Netzteil verbunden; dieses hat einen
+  Schuko-Stecker. Diese konkrete Acrylkonstruktion beschreibt Rückbeleuchtung;
+  sie darf nicht ungeprüft auf den Edelstahlrücken der Frontbeleuchtung
+  übertragen werden. Dübel, Befestigungsdetail je Untergrund, Kabellängen und
+  Netzteilposition sind noch nicht spezifiziert.
+- Schiene: Buchstaben bereits vormontiert. Verkabelung läuft in der Schiene;
+  am Ende tritt ein Anschlusskabel aus. Schiene wird als Einheit an der Wand
+  befestigt. Der weitere Anschluss wird mit Netzteil/Schuko dargestellt.
+- Platte: Buchstaben bereits vormontiert; Kabel auf der Rückseite zusammengeführt,
+  anschließend zum Netzteil und Schuko-Stecker.
+- Zusätzliche Produkt- und Einsatzbilder dürfen für die Seite generiert werden.
+  Der aktuelle Auftrag ist zunächst die Planung; Higgsfield und mehrere Agenten
+  wurden als mögliche Produktionswege genannt, noch kein Generierungslauf gestartet.
+
+### Vorgeschlagene Reihenfolge und Medien
+
+1. **Inspiration – So könnte dein Schild aussehen.** Vier Motive: Empfang,
+   Laden/Fassade, Gastronomie, Materialdetail. Geeignete vorhandene Bilder
+   wiederverwenden, fehlende Motive ergänzen. Generierte Motive sichtbar als
+   Visualisierung kennzeichnen; nur nachgewiesene Kundenprojekte als Referenzen
+   bezeichnen. Bildkarten mit Lichtart, Oberfläche und Montage beschriften.
+   „Diesen Look gestalten“ ändert nur die gezeigten Gestaltungseigenschaften und
+   erhält den Kundentext; beim späteren Bau die tatsächlich verfügbaren Optionen
+   verwenden. Kein zusätzlicher großer Hero vor dem Editor.
+2. **Front oder Rück – zwei Lichtwirkungen.** Zwei zusammengehörige Bilder mit
+   demselben neutralen Schriftzug, gleicher Wand, Kamera und Belichtung. Front:
+   gleichmäßig leuchtendes Acryl, lackierte Edelstahlseiten. Rück: sichtbare
+   Edelstahlfront, passgenaues ca. 1 cm Acryl hinten und Licht zur Wand. Keine
+   frontseitige weiße Kontur. Bei Bedarf eine kleine seitliche Schnittdarstellung.
+   Mobil Umschalter mit klarer Beschriftung, Desktop direkter Bildvergleich.
+3. **Materialien und Oberflächen.** Sechs konsistente Nahaufnahmen: Gold gebürstet,
+   Edelstahl gebürstet, Edelstahl verspiegelt, Schwarz lackiert, Weiß lackiert,
+   Beispiel einer RAL-Lackierung. Gleiches Muster, Licht und Perspektive, Bezug
+   auf die vorhandenen Optionen. Fotos/Renderings illustrieren die Oberfläche;
+   RAL-Farbwirkung am Bildschirm ist kein verbindliches physisches Farbmuster.
+   Frontbeleuchtung erklärt hier Acrylfront plus lackierte Seiten. Die zusätzliche
+   Supplier-Palette bleibt ein späterer Ausbau nach Bestätigung.
+4. **Drei Montagearten.** Drei kurze, stumme 3D-Erkläranimationen, ca. 12–18 Sekunden,
+   mit statischem Vorschaubild und Text, der auch ohne Wiedergabe verständlich ist.
+   Einzelbuchstaben: Rückansicht/Gewindeeinsätze → Gewindestangen und Wand →
+   Buchstaben befestigt → einzelne Leitungen zusammengeführt → Netzteil/Stecker.
+   Schiene: vormontierte Einheit → Befestigung der Schiene → Kabelweg innerhalb
+   der Schiene → ein austretendes Kabel → Netzteil/Stecker.
+   Platte: vormontierte Einheit → Rückansicht der Verkabelung → Wandbefestigung →
+   Netzteil/Stecker. Für die technische Geometrie kontrollierte 3D-Animationen
+   verwenden; generierte Kamerafahrten können später ergänzt werden, sofern
+   Bauteile, Kabelwege und Schichten unverändert bleiben. Keine frei erfundenen
+   Befestiger oder Montageanweisung für einen ungeklärten Wandaufbau darstellen.
+5. **Bestellen, fertigen, liefern.** Kurzer Ablauf mit ca. 2–3 Wochen ab Bestellung,
+   individueller Fertigung und Montage je gewählter Variante. Lieferumfang aus
+   den bestätigten Angaben erklären. Bei Freischaltung des Direktkaufs echte
+   Bestell-/Bezahlschritte zeigen. Icons für bestätigte Aussagen verwenden;
+   Zahlungslogos erst passend zu tatsächlich verfügbaren Zahlungsmethoden.
+6. **FAQ und persönliche Beratung.** Aufklappbare Fragen zu Front/Rück,
+   Montagewahl, Aufwand der Einzelmontage, Kabelwegen/Netzteil/Steckdose,
+   Lieferumfang, Lieferzeit, RAL, Größen und Sonderlogos. Außenbereich,
+   Dimmung, Kabelverlängerung, technische Grenzen und Garantiedetails erst nach
+   Produktbestätigung beantworten. Sonderlogos zur bestehenden Beratung führen,
+   da der aktuelle Konfigurator Text gestaltet und keinen Logo-Upload bietet.
+
+### Bestandssichtung und Produktionsfolge
+
+- Quelle: https://anfrage.neontrip.de/leuchtbuchstaben/ und die dort verlinkten
+  Produktpfade zur Anfrage für front-buchstaben und halo-buchstaben.
+- Visuell geprüft: `deploy/assets/images/hero-poster-desktop-leuchtbuchstaben.webp`
+  (1920×1080, goldene Makroaufnahme),
+  `deploy/assets/images/beispiele/halo-buchstaben/01-prada-backlit.webp`
+  (800×535, tatsächlich Apothekenfassade, Dateiname beschreibt den Inhalt nicht),
+  `deploy/assets/images/produkte/halo-buchstaben.webp` (512×362, kleine
+  PRADA-Produktdarstellung). Herkunft und Projektzuordnung vor Wiederverwendung
+  als Kundenreferenz prüfen. Die Makroaufnahme ist ein Kandidat für Atmosphäre,
+  kein verbindliches technisches Schnittbild.
+- `deploy/assets/images/beispiele/front-buchstaben/02-berlin-frontlit.webp`
+  zeigt ein Neonmotiv; nicht als Front-Acrylbuchstaben-Beispiel verwenden.
+  Weitere Bestandsbilder erst nach visueller Prüfung zuordnen.
+- Produktionsvorschlag: zunächst das Vergleichspaar und ein Materialmuster als
+  Stilanker erstellen, dann fehlende Einsatzmotive und restliche Materialbilder.
+  Anschließend pro Montagevideo drei bis fünf technisch geprüfte Schlüsselbilder
+  und erst danach die Animation. Higgsfield-Zugang/Videoausgabe ist noch nicht
+  geprüft; keine Toolverfügbarkeit behaupten.
+- Mobil: Videos erst auf Wunsch laden/abspielen, Standbilder für reduzierte
+  Bewegung; keine drei parallel laufenden Clips. Bildgrößen reservieren,
+  Medien unterhalb des Editors nachladen. Beim Lesen der Sektionen sollen
+  Vorschau und Bestellleiste keine Inhalte überdecken. Rückkehr zum Editor
+  erhält den bestehenden Entwurf.
