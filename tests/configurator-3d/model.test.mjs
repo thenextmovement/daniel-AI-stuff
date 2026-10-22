@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,PAINT_PRESETS,PAINT_FIELDS,RAL_COLORS,ralCode,choosePaint,paintDescription,finishDescription,lightColor,materialSpec,paintMaterialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
-import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor,materialFromSpec,brushedUVs,framingDistance,SignRenderer} from '../../deploy/3d-konfigurator/renderer.js';
-import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace,Texture,Box3,PerspectiveCamera} from '../../deploy/3d-konfigurator/vendor/three.js';
+import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor,materialFromSpec,brushedUVs,framingDistance,SignRenderer,signFramingPoints,centerSignProjection} from '../../deploy/3d-konfigurator/renderer.js';
+import {Group,Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace,Texture,Box3,PerspectiveCamera} from '../../deploy/3d-konfigurator/vendor/three.js';
 import {searchRal,RAL_GROUPS,ralGroup} from '../../deploy/3d-konfigurator/ral.js';
 import {FontLoader} from '../../deploy/3d-konfigurator/vendor/FontLoader.js';
 const font=new FontLoader().parse(JSON.parse(await readFile(new URL('../../deploy/3d-konfigurator/fonts/modern.json',import.meta.url),'utf8')));
@@ -362,9 +362,9 @@ test('Compact camera shows the whole sign and restores the saved detail view and
  const renderer=Object.assign(Object.create(SignRenderer.prototype),{
   host:{closest:()=>compact?{}:null},camera:new PerspectiveCamera(36,2.7,.1,3000),
   width:408,height:81,letterRear:12,depth:10,angle:.68,elevation:.18,zoom:1.5,
-  closeup:true,detail:{x:-150,y:0,width:36,height:81},render(){this.camera.updateMatrixWorld();}
+  signPoints:Float32Array.from([-204,40.5,22,204,40.5,22,-204,-40.5,0,204,-40.5,0]),closeup:true,detail:{x:-150,y:0,width:36,height:81},render(){this.camera.updateMatrixWorld();}
  });
- renderer.positionCamera();const normalPosition=renderer.camera.position.clone(),normalDirection=renderer.camera.getWorldDirection(new Vector3());
+ renderer.positionCamera();const normalPosition=renderer.camera.position.clone(),normalDirection=renderer.camera.getWorldDirection(new Vector3()),normalProjection=renderer.camera.projectionMatrix.clone();
  compact=true;renderer.positionCamera();
  for(const x of [-204,204])for(const y of [-40.5,40.5])for(const z of [0,22]){
   const p=new Vector3(x,y,z).project(renderer.camera);assert.ok(Math.abs(p.x)<.94);assert.ok(Math.abs(p.y)<.9);
@@ -373,4 +373,33 @@ test('Compact camera shows the whole sign and restores the saved detail view and
  compact=false;renderer.positionCamera();
  assert.ok(renderer.camera.position.distanceTo(normalPosition)<1e-9);
  assert.ok(renderer.camera.getWorldDirection(new Vector3()).distanceTo(normalDirection)<1e-9);
+ assert.deepEqual(renderer.camera.projectionMatrix.elements,normalProjection.elements);
+});
+
+
+test('Compact sign centering balances the visible silhouette without changing its projected size',()=>{
+ const layout=layoutLetters(font,'PRADA',5),scale=400/layout.width,group=new Group(),material=new MeshBasicMaterial();
+ for(const item of layout.shapes){
+  const parts=letterGeometries(item.shape,scale,{...DEFAULT,depth:8},true);
+  for(const geometry of Object.values(parts))if(geometry){const mesh=new Mesh(geometry,material);mesh.position.set(item.x*scale,item.y*scale,9);group.add(mesh);}
+ }
+ const rail=new Mesh(new BoxGeometry(400,8,4),material);rail.position.z=2;group.add(rail);
+ const points=signFramingPoints(group),physical=new Box3().setFromObject(group),bounds=physical.clone().expandByScalar(4),target=new Vector3(0,0,3);
+ const extent=camera=>{
+  const p=new Vector3();let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(let i=0;i<points.length;i+=3){p.fromArray(points,i).project(camera);minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minY=Math.min(minY,p.y);maxY=Math.max(maxY,p.y);}
+  return {minX,maxX,minY,maxY,width:maxX-minX,height:maxY-minY};
+ };
+ for(const aspect of [2.5,2.7,4])for(const angle of [-1.05,0,.68,1.05])for(const elevation of [-.25,.18,.45]){
+  const camera=new PerspectiveCamera(36,aspect,1,3000),direction=new Vector3(Math.sin(angle),Math.sin(elevation),Math.cos(angle)).normalize();
+  camera.position.copy(direction).multiplyScalar(framingDistance(bounds,target,direction,aspect,36,true)).add(target);camera.lookAt(target);camera.updateMatrixWorld();
+  const before=extent(camera),position=camera.position.clone(),orientation=camera.quaternion.clone();
+  centerSignProjection(camera,points);const after=extent(camera);
+  assert.ok(Math.abs(after.minX+after.maxX)<1e-10,'Equal left and right margins');assert.ok(Math.abs(after.minY+after.maxY)<1e-10,'Equal top and bottom margins');
+  assert.ok(Math.abs(after.width-before.width)<1e-10,'Sign keeps exactly the same visible width');assert.ok(Math.abs(after.height-before.height)<1e-10,'Sign keeps exactly the same visible height');
+  assert.ok(after.maxX<.94&&after.maxY<.9,'Centered sign stays inside preview');
+  assert.ok(camera.position.equals(position));assert.ok(camera.quaternion.equals(orientation));
+  const projection=camera.projectionMatrix.clone();centerSignProjection(camera,points);assert.deepEqual(camera.projectionMatrix.elements,projection.elements,'Repeated redraws do not accumulate an offset');
+ }
+ for(const child of group.children)child.geometry.dispose();material.dispose();
 });

@@ -636,3 +636,22 @@ die Wiederherstellung von Detailansicht und Zoom. Browserprüfung bei 320×740 u
 390×844 px einschließlich Drehung: Schild größer, keine abgeschnittenen Buchstaben,
 Vorschauhöhe unverändert, kein horizontaler Überlauf, keine Browserwarnungen/-fehler.
 Syntax- und Diffprüfung bestanden. Nur lokal, nicht veröffentlicht.
+
+
+## Zentrierung im kompakten Ausschnitt (22.10.2026)
+
+Die kompakte Vorschau zentriert die projizierten Außenkanten der tatsächlichen
+Buchstaben und Montageelemente horizontal und vertikal. Dazu wird nur der
+Kameraausschnitt verschoben; Kameraposition, Blickwinkel, dargestellte Breite und
+Höhe des Schilds bleiben unverändert. Die Geometriepunkte werden je Entwurf einmal
+gesammelt, vor dem Hinzufügen der Halo-Fläche. Lichtschein und Wand beeinflussen
+die Zentrierung dadurch nicht. Beim Drehen wird die Bildmitte neu ermittelt;
+beim Vergrößern wird die Verschiebung für die normale Ansicht wieder aufgehoben.
+
+Verifikation: 33 Tests bestanden. Die reale PRADA-Geometrie mit Schiene wurde über
+mehrere Winkel, Neigungen und Seitenverhältnisse auf gleiche Ränder, unveränderte
+Bildgröße und wiederholtes Neuzeichnen ohne Drift geprüft. Die große Ansicht
+stellt auch ihre ursprüngliche Projektionsmatrix wieder her. Browserprüfung bei
+390×844 und 320×740 px: mittiger Schriftzug, unveränderte Vorschauhöhen von
+135/186 bzw. 118/169 px (Bild/Gesamtbereich), Drehung und manuelles Vergrößern.
+Kein horizontaler Überlauf oder erfasster Browserfehler. Nur lokal aktualisiert.

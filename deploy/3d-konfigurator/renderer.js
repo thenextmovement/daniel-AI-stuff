@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=34';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=35';
 const fontCache=new Map();
 const SILVER_REFLECTION_FILL=.8;
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
@@ -249,6 +249,32 @@ export function framingDistance(bounds,target,direction,aspect,fov,compact=false
  }
  return distance;
 }
+export function signFramingPoints(group){
+ // Cache physical geometry once per design, before the light-spill plane is
+ // added. The halo and wall must not pull the visible sign off centre.
+ group.updateMatrixWorld(true);
+ const meshes=[];let count=0;
+ group.traverse(object=>{if(object.isMesh){meshes.push(object);count+=object.geometry.attributes.position.count;}});
+ const points=new Float32Array(count*3),point=new THREE.Vector3();let offset=0;
+ for(const mesh of meshes){const positions=mesh.geometry.attributes.position;
+  for(let i=0;i<positions.count;i++){point.fromBufferAttribute(positions,i).applyMatrix4(mesh.matrixWorld).toArray(points,offset);offset+=3;}
+ }
+ return points;
+}
+export function centerSignProjection(camera,points){
+ camera.clearViewOffset();camera.updateMatrixWorld();
+ if(!points?.length)return;
+ const projection=new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse),point=new THREE.Vector3();
+ let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+ for(let i=0;i<points.length;i+=3){
+  point.fromArray(points,i).applyMatrix4(projection);
+  minX=Math.min(minX,point.x);maxX=Math.max(maxX,point.x);minY=Math.min(minY,point.y);maxY=Math.max(maxY,point.y);
+ }
+ // Shift the frustum only: every projected edge keeps exactly the same size,
+ // perspective and distance, with equal margins on either side.
+ const aspect=camera.aspect;
+ camera.setViewOffset(aspect,1,(minX+maxX)*aspect/4,-(minY+maxY)/4,aspect,1);
+}
 export class SignRenderer{
  constructor(host){
   this.host=host;this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#b9ab97');
@@ -285,7 +311,9 @@ export class SignRenderer{
   // Match depth precision to the framed sign. A fixed 0.1 cm near plane made
   // the acrylic face and its glow fight for the same depth at 400 cm width.
   this.camera.near=Math.max(1,d*.05);this.camera.far=Math.max(3000,d*3);this.camera.updateProjectionMatrix();
-  this.camera.position.copy(direction).multiplyScalar(d).add(target);this.camera.lookAt(target);this.render();
+  this.camera.position.copy(direction).multiplyScalar(d).add(target);this.camera.lookAt(target);
+  if(compact)centerSignProjection(this.camera,this.signPoints);else this.camera.clearViewOffset();
+  this.render();
  }
  view(mode){this.closeup=mode==='side'||mode==='mounting';this.zoom=mode==='perspective'?1.2:1;this.angle=mode==='mounting'?1.05:mode==='front'?0:mode==='side'?.7:.68;this.elevation=mode==='mounting'?.08:mode==='front'?0:.18;this.positionCamera();}
  changeZoom(delta){this.zoom=Math.max(.65,Math.min(1.5,this.zoom+delta));this.positionCamera();}
@@ -328,6 +356,7 @@ export class SignRenderer{
    const screwMat=new THREE.MeshStandardMaterial({color:'#9a9a96',metalness:.8,roughness:.35,envMapIntensity:s.night?.15:1});
    for(const x of [-1,1])for(const y of [-1,1]){const screw=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,.25,12),screwMat);screw.rotation.x=Math.PI/2;screw.position.set(x*(width/2+5.5),y*(height/2+5.5),1.75);group.add(screw);}
   }
+  this.signPoints=signFramingPoints(group);
   // A silhouette texture behind the letters gives the halo its actual outline and holes.
   if(s.lightOn){
    const front=s.lighting==='front',g=glowTexture(layout,scale,width,height,front,s.night);
