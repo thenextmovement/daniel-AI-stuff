@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {DEFAULT,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,PAINT_PRESETS,PAINT_FIELDS,RAL_COLORS,ralCode,choosePaint,paintDescription,finishDescription,lightColor,materialSpec,paintMaterialSpec,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {quote3D,railColorEstimate} from '../../deploy/3d-konfigurator/pricing.js';
-import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor,materialFromSpec,brushedUVs,framingDistance} from '../../deploy/3d-konfigurator/renderer.js';
+import {layoutLetters,letterGeometries,mountingLayout,railAttachment,detailBounds,frontLightColor,materialFromSpec,brushedUVs,framingDistance,SignRenderer} from '../../deploy/3d-konfigurator/renderer.js';
 import {Mesh,MeshBasicMaterial,BoxGeometry,Raycaster,Vector3,Color,SRGBColorSpace,Texture,Box3,PerspectiveCamera} from '../../deploy/3d-konfigurator/vendor/three.js';
 import {searchRal,RAL_GROUPS,ralGroup} from '../../deploy/3d-konfigurator/ral.js';
 import {FontLoader} from '../../deploy/3d-konfigurator/vendor/FontLoader.js';
@@ -339,4 +339,38 @@ test('Responsive framing contains rotated signs and tall letters clear of previe
    const projected=new Vector3(x,y,z).project(camera);assert.ok(Math.abs(projected.x)<=.880001,'Letter remains inside horizontal margin');assert.ok(Math.abs(projected.y)<=.660001,'Letter stays clear of top/bottom controls');assert.ok(projected.z>-1&&projected.z<1);
   }
  }
+});
+
+
+test('Compact framing uses the free preview area without clipping rotated or tall signs',()=>{
+ for(const aspect of [2.5,2.7,4,5.5])for(const angle of [-1.05,0,.68,1.05])for(const elevation of [-.25,.18,.45])for(const [width,height] of [[408,81],[48,120],[188,95]]){
+  const bounds=new Box3(new Vector3(-width/2,-height/2,0),new Vector3(width/2,height/2,20)),target=new Vector3(0,0,3),direction=new Vector3(Math.sin(angle),Math.sin(elevation),Math.cos(angle)).normalize();
+  const normal=framingDistance(bounds,target,direction,aspect,36),compact=framingDistance(bounds,target,direction,aspect,36,true);
+  assert.ok(compact<normal,'Compact camera moves closer instead of enlarging the container');
+  const camera=new PerspectiveCamera(36,aspect,1,3000);camera.position.copy(direction).multiplyScalar(compact).add(target);camera.lookAt(target);camera.updateMatrixWorld();
+  let extent=0;
+  for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
+   const p=new Vector3(x,y,z).project(camera);assert.ok(Math.abs(p.x)<=.940001);assert.ok(Math.abs(p.y)<=.900001);assert.ok(p.z>-1&&p.z<1);
+   extent=Math.max(extent,Math.abs(p.x)/.94,Math.abs(p.y)/.9);
+  }
+  assert.ok(extent>.999,'At least one axis fills the usable preview area');
+ }
+});
+
+test('Compact camera shows the whole sign and restores the saved detail view and zoom',()=>{
+ let compact=false;
+ const renderer=Object.assign(Object.create(SignRenderer.prototype),{
+  host:{closest:()=>compact?{}:null},camera:new PerspectiveCamera(36,2.7,.1,3000),
+  width:408,height:81,letterRear:12,depth:10,angle:.68,elevation:.18,zoom:1.5,
+  closeup:true,detail:{x:-150,y:0,width:36,height:81},render(){this.camera.updateMatrixWorld();}
+ });
+ renderer.positionCamera();const normalPosition=renderer.camera.position.clone(),normalDirection=renderer.camera.getWorldDirection(new Vector3());
+ compact=true;renderer.positionCamera();
+ for(const x of [-204,204])for(const y of [-40.5,40.5])for(const z of [0,22]){
+  const p=new Vector3(x,y,z).project(renderer.camera);assert.ok(Math.abs(p.x)<.94);assert.ok(Math.abs(p.y)<.9);
+ }
+ assert.equal(renderer.zoom,1.5);assert.equal(renderer.closeup,true);
+ compact=false;renderer.positionCamera();
+ assert.ok(renderer.camera.position.distanceTo(normalPosition)<1e-9);
+ assert.ok(renderer.camera.getWorldDirection(new Vector3()).distanceTo(normalDirection)<1e-9);
 });

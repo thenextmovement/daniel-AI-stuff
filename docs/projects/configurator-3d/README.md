@@ -617,3 +617,22 @@ Verkleinern und vollständiges Ein-/Ausblenden. Wechsel auf 768×1024 und
 Keine erfassten Browserwarnungen/-fehler. 30 bestehende Modell-/Framingtests,
 JavaScript-Syntaxprüfung und Diffprüfung bestanden. Kein physischer Handytest.
 Nur lokal aktualisiert, nicht veröffentlicht.
+
+
+## Größerer Schild-Ausschnitt in der kompakten Vorschau (22.10.2026)
+
+Die kompakte Kamera nutzt den Platz der ausgeblendeten Ansichtsschalter für das
+Schild: geringere Abstände zum Rand und ein kleinerer, proportionaler Rahmen um
+die Geometrie. Die Vorschauhöhe und der Platz für das Formular bleiben unverändert
+(390×844: 135 px Bild / 186 px Gesamtbereich; 320×740: 118 px / 169 px).
+Die Kamera berücksichtigt weiterhin alle Ecken der gedrehten Geometrie und zeigt
+im kompakten Modus den gesamten Schriftzug. Manueller Zoom und Detailauswahl der
+großen Ansicht werden dabei nur vorübergehend übergangen und beim Vergrößern
+wieder verwendet.
+
+Verifikation: 32 Tests bestanden, darunter kompakte Ausschnitte für schmale,
+breite und hohe Schilder über mehrere Drehwinkel und Seitenverhältnisse sowie
+die Wiederherstellung von Detailansicht und Zoom. Browserprüfung bei 320×740 und
+390×844 px einschließlich Drehung: Schild größer, keine abgeschnittenen Buchstaben,
+Vorschauhöhe unverändert, kein horizontaler Überlauf, keine Browserwarnungen/-fehler.
+Syntax- und Diffprüfung bestanden. Nur lokal, nicht veröffentlicht.

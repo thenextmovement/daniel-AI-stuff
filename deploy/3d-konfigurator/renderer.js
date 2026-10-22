@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.js';
 import {FontLoader} from './vendor/FontLoader.js';
-import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=33';
+import {materialSpec,paintMaterialSpec,lightColor} from './model.js?v=34';
 const fontCache=new Map();
 const SILVER_REFLECTION_FILL=.8;
 const wallColors={warm:'#b9ab97',concrete:'#989d9c',dark:'#34363b'};
@@ -236,15 +236,16 @@ function glowTexture(layout,scale,width,height,front,night){
  if(front){ctx.globalAlpha=1;ctx.filter='none';ctx.globalCompositeOperation='destination-out';ctx.drawImage(mask.canvas,0,0);}
  return {texture:canvasTexture(canvas),width:mask.width,height:mask.height};
 }
-export function framingDistance(bounds,target,direction,aspect,fov){
+export function framingDistance(bounds,target,direction,aspect,fov,compact=false){
  // Fit every corner in camera space, including the near side of a rotated
- // sign. Reserve room for the preview controls in wide, short viewports.
+ // sign. The compact preview has no overlaid controls, so use that space.
+ const horizontal=compact?.94:.88,vertical=compact?.9:.66;
  const right=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),direction).normalize();
  const up=new THREE.Vector3().crossVectors(direction,right).normalize(),tan=Math.tan(THREE.MathUtils.degToRad(fov/2));
  let distance=1;
  for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
   const point=new THREE.Vector3(x,y,z).sub(target),near=point.dot(direction);
-  distance=Math.max(distance,near+Math.abs(point.dot(right))/(tan*aspect*.88),near+Math.abs(point.dot(up))/(tan*.66));
+  distance=Math.max(distance,near+Math.abs(point.dot(right))/(tan*aspect*horizontal),near+Math.abs(point.dot(up))/(tan*vertical));
  }
  return distance;
 }
@@ -270,14 +271,17 @@ export class SignRenderer{
  }
  resize(){const {width,height}=this.host.getBoundingClientRect();if(!width||!height)return;this.renderer.setSize(width,height,false);this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.positionCamera();}
  positionCamera(){
-  const detail=this.closeup&&this.detail;
-  const padding=detail?Math.max(8,detail.height*.18):35;
+  const compact=!!this.host.closest('.preview-compact');
+  const detail=!compact&&this.closeup&&this.detail;
+  const padding=compact?Math.max(4,Math.min(10,this.height*.08)):detail?Math.max(8,detail.height*.18):35;
   const target=detail?new THREE.Vector3(detail.x,detail.y,this.letterRear+this.depth/2):new THREE.Vector3(0,0,3);
   const direction=new THREE.Vector3(Math.sin(this.angle),Math.sin(this.elevation),Math.cos(this.angle)).normalize();
   const width=(detail?detail.width+this.depth*2:this.width)+padding,height=(detail?detail.height:this.height)+padding;
   const center=detail?new THREE.Vector2(detail.x,detail.y):new THREE.Vector2();
   const bounds=new THREE.Box3(new THREE.Vector3(center.x-width/2,center.y-height/2,0),new THREE.Vector3(center.x+width/2,center.y+height/2,(this.letterRear||3)+(this.depth||5)));
-  const d=framingDistance(bounds,target,direction,this.camera.aspect,this.camera.fov)*1.2/this.zoom;
+  // Fit the whole sign in compact mode, preserving the user's zoom/detail
+  // settings for when they expand it again.
+  const d=framingDistance(bounds,target,direction,this.camera.aspect,this.camera.fov,compact)*(compact?1:1.2/this.zoom);
   // Match depth precision to the framed sign. A fixed 0.1 cm near plane made
   // the acrylic face and its glow fight for the same depth at 400 cm width.
   this.camera.near=Math.max(1,d*.05);this.camera.far=Math.max(3000,d*3);this.camera.updateProjectionMatrix();

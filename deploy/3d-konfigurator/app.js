@@ -1,5 +1,5 @@
-import {createRalPicker} from './ral-picker.js?v=33';
-import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate} from './model.js?v=33';
+import {createRalPicker} from './ral-picker.js?v=34';
+import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate} from './model.js?v=34';
 import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
@@ -206,4 +206,4 @@ phoneLayout.addEventListener('change',scrollPreview);
 compactLayout.addEventListener('change',responsivePreview);responsivePreview();
 new IntersectionObserver(entries=>document.body.classList.toggle('editor-in-view',entries[0].isIntersecting),{threshold:0}).observe($('#editor'));
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=33');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=34');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
