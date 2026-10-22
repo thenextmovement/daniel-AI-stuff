@@ -2965,6 +2965,11 @@ async function fetchSaleRowById(saleId: string) {
   return rows[0] || null;
 }
 
+function sameShopifyOrder(left: unknown, right: unknown) {
+  const normalize = (value: unknown) => cleanText(value, 180).replace(/^gid:\/\/shopify\/Order\//, "");
+  return Boolean(normalize(left) && normalize(left) === normalize(right));
+}
+
 async function fetchExistingSaleRow(input: SupplierSaleInput) {
   const shopifyOrderId = nullableText(input.shopifyOrderId, 180);
   if (shopifyOrderId) {
@@ -2974,6 +2979,13 @@ async function fetchExistingSaleRow(input: SupplierSaleInput) {
       limit: 1,
     });
     if (rows[0]) return rows[0];
+    const alternateId = shopifyOrderId.startsWith("gid://shopify/Order/")
+      ? shopifyOrderId.replace("gid://shopify/Order/", "")
+      : `gid://shopify/Order/${shopifyOrderId}`;
+    const alternateRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+      select: "*", shopify_order_id: `eq.${alternateId}`, limit: 1,
+    });
+    if (alternateRows[0]) return alternateRows[0];
   }
 
   const offerId = nullableText(input.offerId, 180);
@@ -3254,7 +3266,12 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
     shopify_payment_status: paymentStatus,
     payment_decision_status: paymentDecision,
     payment_due_at: normalizeIsoTimestamp(input.paymentDueAt, "Zahlungsfrist") || existing?.payment_due_at || null,
-    offer_id: nullableText(input.offerId, 180) || existing?.offer_id || null,
+    // Copied offer attributes are provenance, not the identity of another order.
+    // Keep the original offer's unique row so offer.completed replays cannot
+    // overwrite a replacement or either half of a split Shopify order.
+    offer_id: input.metadata?.source_offer_reference || existing?.metadata?.source_offer_reference
+      ? null
+      : nullableText(input.offerId, 180) || existing?.offer_id || null,
     offer_number: nullableText(input.offerNumber, 120) || existing?.offer_number || null,
     document_reference: nullableText(input.documentReference, 160) || existing?.document_reference || null,
     offer_public_url: nullableText(input.offerPublicUrl, 1000) || existing?.offer_public_url || null,
@@ -3493,7 +3510,34 @@ async function syncShopifyOrderNumberToSourceTrelloCards(row: SupplierSaleRow, a
 }
 
 export async function upsertSupplierSale(input: SupplierSaleInput, actor?: SupplierSaleActor | null) {
-  const existing = await fetchExistingSaleRow(input);
+  let existing: SupplierSaleRow | null = await fetchExistingSaleRow(input);
+  const differentOrder = input.source === "shopify" && input.shopifyOrderId && existing?.shopify_order_id
+    && !sameShopifyOrder(input.shopifyOrderId, existing.shopify_order_id);
+  if (differentOrder && existing) {
+    const sourceRow = existing;
+    input = {
+      ...input,
+      offerId: null,
+      metadata: {
+        ...input.metadata,
+        source_offer_reference: {
+          offer_id: input.offerId || sourceRow.offer_id,
+          sale_id: sourceRow.id,
+          shopify_order_id: sourceRow.shopify_order_id,
+          shopify_order_name: sourceRow.shopify_order_name,
+        },
+        post_order_review: {
+          status: "change_requested",
+          eventId: `shopify-order-reference:${input.shopifyOrderId}`,
+          message: `Diese Shopify-Bestellung verwendet dieselbe Angebotsreferenz wie ${sourceRow.shopify_order_name || sourceRow.offer_number}. Vor der Vergabe bitte aktuelle Positionen, Mengen, Liefertermin und Designs dieser Bestellung pruefen.`,
+        },
+      },
+      idempotencyKey: `supplier-sale:shopify-order:${input.shopifyOrderId}:import`,
+    };
+    existing = null;
+  } else if (existing?.metadata?.source_offer_reference && input.source === "shopify") {
+    input = { ...input, offerId: null, idempotencyKey: `supplier-sale:shopify-order:${input.shopifyOrderId}:import` };
+  }
   const payload = buildSalePayload(input, existing);
   const recommendation = deriveSupplierRecommendation(input.lineItems);
   const rows = existing
@@ -3534,7 +3578,8 @@ export async function upsertSupplierSale(input: SupplierSaleInput, actor?: Suppl
     },
   });
 
-  await syncShopifyOrderNumberToSourceTrelloCards(saleRow, actor);
+  // Multiple real orders may share the source card. Do not alternate its title.
+  if (!saleRow.metadata?.source_offer_reference) await syncShopifyOrderNumberToSourceTrelloCards(saleRow, actor);
 
   if (saleRow.assignment_status === "ready_to_assign" && !saleRow.active_task_id && supplierAssignmentTasksEnabled()) {
     await ensureSupplierAssignmentTask(saleRow.id, actor || undefined).catch(async (error) => {
@@ -4026,11 +4071,18 @@ async function syncRecentShopifyOrdersFromAdmin(
           continue;
         }
         const existing = await fetchExistingSaleRow(parsed.sale);
-        if (!existing && assignedSupplierFromShopifyTags(parsed.sale)) {
+        const sameOrder = existing && sameShopifyOrder(existing.shopify_order_id, parsed.sale.shopifyOrderId);
+        if ((!existing || (existing.shopify_order_id && !sameOrder)) && assignedSupplierFromShopifyTags(parsed.sale)) {
           skippedSupplierTagged += 1;
           continue;
         }
-        if (existing?.shopify_order_id) {
+        if (existing?.shopify_order_id && sameOrder) {
+          skippedExisting += 1;
+          continue;
+        }
+        if (existing?.shopify_order_id && parsed.sale.lineItems.every((item) =>
+          isNonProductionLine(item) || /^aufpreis\b/i.test(cleanText(item.title, 500)))) {
+          // A separately invoiced shipping/payment surcharge is not a new sign.
           skippedExisting += 1;
           continue;
         }

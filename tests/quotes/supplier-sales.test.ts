@@ -3197,6 +3197,126 @@ test("completed offers sync imports recent Shopify orders as fallback", async ()
   assert.equal(salePostCount, 1);
 });
 
+test("copied offer references import distinct Shopify orders without reviving or overwriting the original", async () => {
+  const original = saleRow({
+    id: "original-offer-sale", sale_key: "offer:offer-1", source: "neontrip-offers",
+    shopify_order_id: "1001", shopify_order_name: "#OLD", assignment_status: "canceled",
+    payment_decision_status: "canceled", shopify_payment_status: "pending",
+    metadata: { shopify_cancelled_at: "2026-10-09T11:00:00Z" },
+    offer_snapshot: { lineItems: [{ id: "old-item", title: "Old selection", quantity: 15 }] },
+  });
+  const originalSnapshot = structuredClone(original);
+  const knownGidOrder = saleRow({
+    id: "known-gid-order", sale_key: "shopify:order:3001", source: "shopify",
+    shopify_order_id: "gid://shopify/Order/3001", offer_id: null,
+  });
+  const rows = new Map<string, SupplierSaleRow>([[original.id, original], [knownGidOrder.id, knownGidOrder]]);
+  const items = new Map<string, SupplierSaleItemRow[]>();
+  const eventKeys = new Set<string>();
+  const writes: string[] = [];
+  const order = (id: string, title = "LED Neonschild", quantity = 12) => ({
+    id: `gid://shopify/Order/${id}`, name: `#${id}`, email: "ada@example.com",
+    displayFinancialStatus: "PAID", displayFulfillmentStatus: "UNFULFILLED", tags: [],
+    customAttributes: [
+      { key: "NEONTRIP Offer ID", value: "offer-1" },
+      { key: "NEONTRIP Offer Number", value: "A-1001" },
+      { key: "Idempotency Key", value: "copied-offer-idempotency-key" },
+      { key: "Trello Card ID", value: "source-card" },
+    ],
+    totalPriceSet: { shopMoney: { amount: "2401.64", currencyCode: "EUR" } },
+    lineItems: { nodes: [{
+      id: `gid://shopify/LineItem/${id}`, title, quantity,
+      customAttributes: [{ key: "Bereich", value: title === "Liefertermin Express" ? "Versand" : "LED-Leuchtschild" }],
+    }] },
+  });
+  const orders = [order("2001"), order("2002"), order("2003", "Liefertermin Express", 1),
+    order("2004", "Aufpreis Leuchtschild Design", 1), order("3001")];
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    if (url.hostname === "angebote.test") return Response.json({ ok: true, sales: [] });
+    if (url.hostname === "galaxybuzzdk.myshopify.com") {
+      return Response.json({ data: { orders: { nodes: orders, pageInfo: { hasNextPage: false } } } });
+    }
+    assert.equal(url.origin, "https://supabase.test", "No Trello, mail or other external side effect");
+    const body = JSON.parse(String(init?.body || "null"));
+    if (url.pathname.endsWith("/supplier_sales")) {
+      if (method === "GET") {
+        if (url.searchParams.has("assignment_status")) return Response.json([]);
+        const matched = [...rows.values()].filter((row) => ["id", "shopify_order_id", "offer_id", "offer_number", "document_reference", "sale_key"].every((key) => {
+          const filter = url.searchParams.get(key);
+          return !filter || filter === `eq.${row[key as keyof SupplierSaleRow]}`;
+        }));
+        return Response.json(matched);
+      }
+      if (method === "POST") {
+        assert.equal(body.offer_id, null, "Do not steal the unique original offer row");
+        assert.equal(body.assignment_status, "ready_to_assign");
+        assert.equal(body.shopify_payment_status, "paid");
+        assert.equal(body.metadata.shopify_cancelled_at, null);
+        assert.deepEqual(body.offer_snapshot, {}, "Do not copy removed products or old quantities");
+        const row = saleRow({ ...body, id: `sale-${body.shopify_order_id}` });
+        assert.equal([...rows.values()].some((value) => value.sale_key === row.sale_key), false);
+        rows.set(row.id, row);
+        writes.push(row.id);
+        return Response.json([row]);
+      }
+      if (method === "PATCH") {
+        const id = url.searchParams.get("id")!.slice(3);
+        assert.notEqual(id, original.id, "A sibling order must never mutate the original");
+        const row = { ...rows.get(id)!, ...body };
+        rows.set(id, row);
+        return Response.json([row]);
+      }
+    }
+    if (url.pathname.endsWith("/supplier_sale_items")) {
+      if (method === "POST") {
+        const result = body.map((value: Partial<SupplierSaleItemRow>) => itemRow(value));
+        items.set(result[0].sale_id, result);
+        return Response.json(result);
+      }
+      if (method === "GET") return Response.json(items.get(url.searchParams.get("sale_id")!.slice(3)) || []);
+      return Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
+      eventKeys.add(body.idempotency_key);
+      return Response.json({});
+    }
+    return Response.json([]);
+  }, async () => {
+    process.env.NEONTRIP_OFFERS_BASE_URL = "https://angebote.test";
+    process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "offers-key";
+    process.env.SHOPIFY_SHOP_DOMAIN = "galaxybuzzdk.myshopify.com";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "shopify-token";
+    process.env.SUPPLIER_ASSIGNMENT_TASKS_ENABLED = "false";
+    const first = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" });
+    assert.equal(first.failed, 0, JSON.stringify(first));
+    assert.equal(first.sources?.shopifyOrders.upserted, 2);
+    assert.equal(first.sources?.shopifyOrders.skippedExisting, 3, "Surcharges and a linked GID order stay out of production import");
+    const second = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" });
+    assert.equal(second.sources?.shopifyOrders.upserted, 0);
+    assert.equal(second.sources?.shopifyOrders.skippedExisting, 5);
+
+    // Direct webhook replay also retains the order identity and a completed review.
+    const sibling = rows.get("sale-2001")!;
+    sibling.metadata.post_order_review = { status: "closed", reviewedBy: "Ops" };
+    const replay = buildSupplierSaleInputFromPayload({
+      id: "2001", name: "#2001", offer_id: "offer-1", financial_status: "paid",
+      line_items: [{ id: "2001", title: "LED Neonschild", quantity: 12 }],
+      idempotencyKey: "copied-offer-idempotency-key",
+    });
+    const sale = await upsertSupplierSale(replay.sale);
+    assert.equal(sale.offerId, null);
+    assert.equal(sale.postOrderReview.status, "closed");
+    assert.equal(sale.items[0].quantity, 12);
+  });
+  assert.equal(rows.size, 4);
+  assert.deepEqual(rows.get(original.id), originalSnapshot);
+  assert.deepEqual(rows.get(knownGidOrder.id), knownGidOrder);
+  assert.deepEqual(writes, ["sale-2001", "sale-2002"]);
+  assert.equal(eventKeys.size, 2, "Copied idempotency keys must not collide across orders");
+  assert.equal(rows.get("sale-2002")?.metadata.post_order_review && (rows.get("sale-2002")!.metadata.post_order_review as { status: string }).status, "change_requested");
+});
+
 test("shopify fallback enriches existing completed offer by unique customer email and total", async () => {
   let salePatchCount = 0;
   let salePostCount = 0;

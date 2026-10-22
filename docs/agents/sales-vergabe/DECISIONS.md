@@ -75,6 +75,15 @@
   30-Minuten-Auswahl einzelner n8n-Update-Worker wird hier nicht ausgeweitet.
   Lokale Regression: `tests/quotes/offer-size-ladder.test.ts`.
 
+## Shopify-Ersatz- und Teilbestellungen mit kopierter Angebotsreferenz (2026-10-22)
+
+- `[lokal implementiert; Veröffentlichung und natürlicher Betrieb offen]` Eine neue Shopify-Order mit der Angebotsreferenz einer bereits verknüpften anderen Order ist ein eigener Sale. Der bisherige Fallback übersprang solche Orders; nach Storno des Originals verschwand damit der Vorgang aus der aktiven Vergabe.
+- **Ziel:** Unterschiedliche Shopify-Order-IDs bleiben getrennt, auch bei identischer Offer-ID und kopiertem Idempotenzschlüssel. Numerische und GID-Schreibweise derselben Order gelten als identisch. Wiederholte Imports erzeugen keine weiteren Sales.
+- **Nachbar:** Die ursprüngliche Offer-Zeile bleibt einschließlich Storno und Snapshot erhalten. Ein späteres `offer.completed` darf keine Ersatzbestellung überschreiben. Der neue Sale verwendet aktuelle Shopify-Positionen und Mengen; `metadata.source_offer_reference` bewahrt die Herkunft, während die eindeutige `offer_id` beim Original bleibt. Der gemeinsam referenzierte Trello-Kartentitel wird nicht zwischen Folgeaufträgen umgeschrieben.
+- **Wirkung:** Der bestehende Shopify-Fallback und der vorhandene Sale-Upsert übernehmen die Orders ohne Schema- oder Workflowänderung. Bereits per Supplier-Tag vergebene Orders sowie getrennte reine Versand-/Zahlungs-/Aufpreisrechnungen werden im Fallback weiterhin nicht als neue Produktionsaufträge importiert. Jeder neu erkannte Folgeauftrag erhält den bestehenden `post_order_review: change_requested`-Blocker: Positionen, Mengen, Termin und Designs sind vor Vergabe zu prüfen, insbesondere bei historischen Rechnungsersatzfällen. Es erfolgt keine automatische Supplier-Vergabe oder Kundenkommunikation.
+- **Prüfung:** Die bestehende Supplier-Sales-Regression deckt zwei Teilbestellungen, erhaltenes storniertes Original, abweichende Mengen, Aufpreis-/Expressrechnungen, GID-Abgleich, wiederholten Fallback und Webhook-Replay nach abgeschlossener Prüfung ab. Der bestehende UI-Smoke wartet nach der simulierten AB-Antwort auf deren Rendering, bevor er die nächste Supplier-Auswahl ändert; sonst kann das Board-Update diese Auswahl zurücksetzen. Betroffen sind nur `src/lib/ops/supplier-sales.ts`, die vorhandenen Tests und diese Dokumentation.
+- **Betriebsnachweis/Rollback:** Nach Freigabe der exakten SHA und Veröffentlichung den natürlichen Sync und die persistierten neuen Sale-/Item-Zeilen lesen; ein erfolgreicher Build ersetzt das nicht. Rücknahme durch gezielten Code-Revert gemäß `OPERATIONS.md`; bereits importierte eigenständige Bestellungen nicht löschen oder zum stornierten Original zurückverschieben.
+
 ## Nicht getroffene Entscheidungen
 
 - `[offen]` Ob private Kunden automatisch fünf Minuten nach Annahme einen Shopify-Bezahllink erhalten sollen, ist technisch und fachlich nicht abschließend geregelt.

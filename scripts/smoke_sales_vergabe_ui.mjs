@@ -524,7 +524,12 @@ async function main() {
   await paidCard.getByRole("button", { name: "AB senden" }).click();
   assert(posts.length === 5 && posts[4].body.action === "send_order_confirmation_email", "Auftragsbestaetigung sendet falsche Action");
 
+  // The response replaces board items and resets each card's supplier state.
+  // Finish that render before changing the next card's supplier selection.
+  await page.getByText(/^Auftragsbestaetigung wurde an /).waitFor();
+
   await specialCard.getByLabel("Supplier auswaehlen").selectOption("special");
+  await specialCard.getByLabel("Name weiterer Supplier").waitFor();
   assert(await specialCard.getByLabel("Name weiterer Supplier").isVisible(), "Eingabe fuer weitere Supplier ist nicht sichtbar");
   assert(await specialCard.getByText("Bitte in Shopify den Supplier als Tag eintragen.").isVisible(), "Shopify-Tag-Hinweis fehlt");
   assert(await specialCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Weitere Supplier sind ohne Shopify-Tag-Bestaetigung vergebbar");
