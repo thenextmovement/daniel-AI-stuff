@@ -10,7 +10,7 @@ function setup(){
  const elements=new Map();
  const $=key=>{if(!elements.has(key))elements.set(key,{textContent:'',value:'1',inert:false,close(){},focus(){},select(){}});return elements.get(key);};
  let serial=0;
- const ctx=vm.createContext({$,structuredClone,crypto:{randomUUID:()=>`item-${++serial}`},setTimeout,requestAnimationFrame:f=>f(),XMLSerializer:class{serializeToString(){return '<svg/>';}}});
+ const ctx=vm.createContext({window:{},$,structuredClone,crypto:{randomUUID:()=>`item-${++serial}`},setTimeout,requestAnimationFrame:f=>f(),XMLSerializer:class{serializeToString(){return '<svg/>';}}});
  vm.runInContext(`
  let cartAdding=false,cartReady=true,cartEditing=false,cartSyncing=false,designRendering=false,editingCartId=null;
  let cartItems=[],state={sizeValid:true,result:{},price:{status:'calculated'}},design={text:'Studio',backing:'contour'},orderDesign=null,orderSnapshot=null;
