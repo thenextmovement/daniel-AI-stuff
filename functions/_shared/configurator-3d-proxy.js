@@ -8,7 +8,10 @@ export async function proxy3D(request,path){
  for(const key of ['authorization','content-type','content-length','cf-connecting-ip'])if(request.headers.has(key))headers.set(key,request.headers.get(key));
  headers.set('Origin','https://anfrage.neontrip.de');
  try{
-  const upstream=await fetch('https://angebote.neontrip.de/api/public/configurator-3d/'+path,{method:request.method,headers,body:['PUT','POST'].includes(request.method)?request.body:undefined,redirect:'error',signal:AbortSignal.timeout(20000)});
+  // Workers supports manual/follow, not Fetch's redirect:error. Fail closed
+  // ourselves so the private Authorization header never follows a redirect.
+  const upstream=await fetch('https://angebote.neontrip.de/api/public/configurator-3d/'+path,{method:request.method,headers,body:['PUT','POST'].includes(request.method)?request.body:undefined,redirect:'manual',signal:AbortSignal.timeout(20000)});
+  if(upstream.status>=300&&upstream.status<400){await upstream.body?.cancel();throw new Error('UPSTREAM_REDIRECT_BLOCKED');}
   const outgoing={'Content-Type':upstream.headers.get('content-type')||'application/json','Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','X-Robots-Tag':'noindex, nofollow'};
   if(upstream.headers.has('retry-after'))outgoing['Retry-After']=upstream.headers.get('retry-after');
   return new Response(upstream.body,{status:upstream.status,headers:outgoing});

@@ -41,10 +41,14 @@ test('Restore validates server response; private token stays in Authorization, n
 });
 test('Pages proxy pins Offers upstream, strips cookies, rejects foreign origins and redirects',async()=>{
  const previous=globalThis.fetch;let called=0;
- globalThis.fetch=async(url,init)=>{called++;assert.equal(url,'https://angebote.neontrip.de/api/public/configurator-3d/drafts');assert.equal(init.headers.has('cookie'),false);assert.equal(init.redirect,'error');return json({version:1});};
+ globalThis.fetch=async(url,init)=>{called++;assert.equal(url,'https://angebote.neontrip.de/api/public/configurator-3d/drafts');assert.equal(init.headers.has('cookie'),false);assert.equal(init.redirect,'manual');return json({version:1});};
  try{
   const request=new Request('https://anfrage.neontrip.de/api/public/configurator-3d/drafts',{headers:{cookie:'private',authorization:'Bearer '+ '1'.repeat(64)}});const result=await proxy3D(request,'drafts');assert.equal(result.status,200);assert.equal(result.headers.get('cache-control'),'private, no-store');
   assert.equal((await proxy3D(new Request(request,{headers:{origin:'https://evil.example'}}),'drafts')).status,403);assert.equal(called,1);
   assert.equal((await proxy3D(request,'https://evil.example')).status,404);
+  for(const status of [301,302,303,307,308]){
+   let attempts=0;globalThis.fetch=async(url,init)=>{attempts++;assert.equal(new URL(url).host,'angebote.neontrip.de');assert.equal(init.redirect,'manual');return new Response('redirect',{status,headers:{Location:'https://evil.example'}});};
+   const blocked=await proxy3D(request,'drafts');assert.equal(blocked.status,503);assert.equal(blocked.headers.has('Location'),false);assert.equal((await blocked.json()).error.code,'STORAGE_UNAVAILABLE');assert.equal(attempts,1);
+  }
  }finally{globalThis.fetch=previous;}
 });
