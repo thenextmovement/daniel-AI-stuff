@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f8f6f2">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,interactive-widget=resizes-content"><meta name="theme-color" content="#f8f6f2">
 <title>3D-Leuchtbuchstaben selbst gestalten | NEONTRIP</title>
 <meta name="description" content="Gestalte 3D-Leuchtbuchstaben mit Front- oder Rückbeleuchtung. Vergleiche Einzelbuchstaben, Schiene und Platte in einer interaktiven Vorschau.">
 <link rel="canonical" href="https://anfrage.neontrip.de/3d-konfigurator/">
-<link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="style.css?v=37">
+<link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="style.css?v=38">
 <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/inter-latin.woff2" crossorigin>
 
 </head>
@@ -55,7 +55,7 @@
 </section>
 <section class="panel" id="panel-2" hidden aria-labelledby="size-title"><div class="panel-heading"><p class="eyebrow">03 / GRÖSSE &amp; MONTAGE</p><h2 id="size-title">Größe &amp; Montage.</h2></div>
 
-<label class="field-label" for="width">Breite des Schriftzugs</label><div class="measure-field"><input id="width" inputmode="numeric" aria-describedby="width-hint editor-error" type="number" min="30" max="400" step="1" value="120"><span>cm</span></div><input id="width-range" type="range" min="30" max="400" step="1" value="120" aria-label="Breite einstellen"><div class="range-labels"><span>30 cm</span><span>400 cm</span></div>
+<label class="field-label" for="width">Breite des Schriftzugs</label><div class="measure-field"><input id="width" inputmode="numeric" enterkeyhint="done" aria-describedby="width-hint editor-error" type="number" min="30" max="400" step="1" value="120"><span>cm</span></div><input id="width-range" type="range" min="30" max="400" step="1" value="120" aria-label="Breite einstellen"><div class="range-labels"><span>30 cm</span><span>400 cm</span></div>
 <div class="height-note"><span>Passende Höhe</span><strong id="height-label">—</strong></div><p class="field-hint" id="width-hint">Die Höhe ergibt sich aus Text und Schrift. Die Tiefe wählst du separat.</p>
 <fieldset><legend>Wunschtiefe der Buchstaben</legend><div class="depth-options"><button data-depth="3" aria-pressed="false">3 cm</button><button data-depth="5" aria-pressed="true">5 cm</button><button data-depth="8" aria-pressed="false">8 cm</button></div></fieldset>
 <details class="advanced-options"><summary>Feinabstimmung: Buchstabenabstand <svg class="icon" aria-hidden="true"><use href="#icon-chevron"/></svg></summary><label class="field-label" for="spacing">Buchstabenabstand <span id="spacing-label">5 %</span></label><input id="spacing" type="range" min="0" max="20" step="1" value="5"><p class="field-hint">Die Gesamtbreite bleibt gleich. Die Buchstaben passen sich an.</p>
@@ -69,7 +69,7 @@
 </section>
 <section class="panel" id="panel-3" hidden aria-labelledby="review-title"><div class="panel-heading"><p class="eyebrow">04 / DEIN ENTWURF IM ÜBERBLICK</p><h2 id="review-title">Alles so, wie du es möchtest?</h2><p class="panel-intro">Prüfe deine Auswahl. Du kannst jeden Bereich direkt ändern.</p></div><div id="review-summary" class="review-sections"></div><div class="purchase-note"><svg class="icon" aria-hidden="true"><use href="#icon-check"/></svg><div><strong>Erst gestalten, dann entscheiden.</strong><p>Du speicherst jetzt deinen Entwurf. Preisberechnung und Direktkauf folgen. Es wird keine Bestellung ausgelöst.</p></div></div></section>
 </div>
-<div class="control-footer"><p id="editor-error" role="alert"></p><div class="footer-summary"><div><span id="step-label">Schritt 1 von 4</span><small>Preis folgt · Kauf noch nicht verfügbar</small></div><strong aria-label="Preis folgt">— €</strong></div><div class="actions"><button class="back" id="previous" aria-label="Vorheriger Schritt" hidden>←</button><button class="primary" id="next">Weiter zu den Farben <span>→</span></button></div><span id="saved-status" class="saved-status" role="status">Dein Entwurf wird auf diesem Gerät gespeichert.</span></div>
+<div class="control-footer"><p id="editor-error" role="alert"></p><div class="footer-summary"><div><span id="step-label">Schritt 1 von 4</span><small>Preis folgt · Kauf noch nicht verfügbar</small></div><strong aria-label="Preis folgt">— €</strong></div><div class="actions"><button class="back" id="previous" aria-label="Vorheriger Schritt" hidden>←</button><button class="primary" id="next">Weiter zu den Farben <span>→</span></button><button class="input-done" id="input-done" type="button" aria-label="Tastatur schließen">Fertig</button></div><span id="saved-status" class="saved-status" role="status">Dein Entwurf wird auf diesem Gerät gespeichert.</span></div>
 </section>
 </div>
 <section class="confidence" aria-label="Mit gutem Gefühl gestalten"><article><svg class="icon" aria-hidden="true"><use href="#icon-ruler"/></svg><h3>Für deine Marke gemacht</h3><p>Schrift, Wunschmaß, Licht und Oberflächen individuell zusammenstellen.</p></article><article><svg class="icon" aria-hidden="true"><use href="#icon-check"/></svg><h3>Alle Details im Blick</h3><p>Prüfe Maße, Farben und Montage in deiner persönlichen Zusammenfassung.</p></article><a href="tel:+4921154257240"><svg class="icon" aria-hidden="true"><use href="#icon-help"/></svg><h3>Wir helfen persönlich</h3><p>Fragen zu Material oder Montage?<br><span>0211 54257240 ↗</span></p></a></section>
@@ -78,5 +78,5 @@
 <footer class="site-footer"><a class="brand" href="/"><img src="/assets/logo_weiss_neontrip.webp" alt="NEONTRIP" width="155" height="34" loading="lazy"></a><span>Deine Idee. Unser Handwerk.</span><div><a href="/impressum.html">Impressum</a><a href="/datenschutz.html">Datenschutz</a><a href="/configurator/">Neon-Konfigurator</a></div></footer>
 <dialog id="cart" aria-labelledby="cart-title"><button class="close" data-close aria-label="Schließen">×</button><p class="eyebrow">DEIN WARENKORB</p><h2 id="cart-title">Deine 3D-Schilder.</h2><p>Prüfe deine Entwürfe und wähle die gewünschte Stückzahl.</p><div id="cart-items"></div><div id="cart-totals"><div class="cart-summary"><span>Gesamtpreis · Preis folgt</span><strong aria-label="Gesamtpreis folgt">— €</strong></div><div class="purchase-note"><svg class="icon" aria-hidden="true"><use href="#icon-check"/></svg><div><strong>Gespeichert, noch nicht bestellt.</strong><p>Deine Entwürfe bleiben auf diesem Gerät. Sobald die verbindlichen Preise verfügbar sind, kannst du hier bestellen und bezahlen.</p></div></div><button class="primary" id="checkout" disabled aria-describedby="checkout-note">Zur Kasse <span>→</span></button><p id="checkout-note" class="field-hint">Der Direktkauf ist noch nicht freigeschaltet.</p></div><p class="status-note" id="cart-status" role="status"></p><button class="secondary" id="new-design">Weiteren Schriftzug gestalten</button><button class="text-button" data-close>Zurück zum Entwurf</button></dialog>
 <noscript><p class="noscript">Bitte aktiviere JavaScript für die 3D-Vorschau. Alternativ erreichst du uns unter <a href="tel:+4921154257240">0211 54257240</a>.</p></noscript>
-<script type="module" src="app.js?v=35"></script>
+<script type="module" src="app.js?v=38"></script>
 </body></html>

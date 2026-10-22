@@ -704,3 +704,42 @@ Grenze der Prüfung: simulierte Browsergrößen, kein physischer iPhone-/Android
 Test und keine native Bildschirmtastatur. Kein Zahlungsdurchlauf: verbindliche
 Preise fehlen weiterhin, der Checkout ist absichtlich deaktiviert. Nur lokal
 aktualisiert, nicht veröffentlicht.
+
+
+## Mobile Eingabe mit Bildschirmtastatur (22.10.2026)
+
+Beim Fokus auf Text-, Such- und Zahlenfelder unter 980 px Breite macht die
+Vorschau vorübergehend Platz. Die untere Aktionsleiste zeigt Weiter/Zurück und
+„Fertig“ in einer schmalen Zeile. `mobile-input.js` richtet sie am sichtbaren
+Viewport aus und hält das aktive Feld mit Abstand darüber, auch wenn eine
+Fehlermeldung die Leiste vergrößert. Die Texteingabe kann bei wenig Höhe kleiner
+werden. Das Warenkorbfenster nutzt ebenfalls den sichtbaren Bereich und scrollt
+seine Mengeneingabe innerhalb des Dialogs ins Blickfeld.
+
+Der Controller unterstützt sowohl alleinige Visual-Viewport-Änderungen als auch
+das Verkleinern des Layout-Viewports (`interactive-widget=resizes-content`).
+Pinch-Zoom wird nicht als Tastatur interpretiert. Ein Tippen auf Weiter/Zurück
+hält den Fokus bis zum Klick, damit der Button nicht vor dem abgeschlossenen
+Tippen verrutscht. Erst nach dem Schließen der Tastatur werden die Vorschau und
+der neue Schritt positioniert; ein begrenzter Fallback verhindert einen hängenden
+Eingabemodus bei fehlendem Viewport-Ereignis. „Fertig“ beendet nur die Eingabe.
+Manuell versteckte oder vergrößerte Vorschauzustände bleiben erhalten. RAL-Auswahl
+und der Wechsel zwischen Feldern unterbrechen den Eingabemodus nicht.
+CSS, App und neues Modul verwenden Cache-Version 38.
+
+Verifikation: acht gezielte Controller-/Geometrietests bestanden, einschließlich
+Visual-Viewport-Offsets, beider Resize-Verhaltensweisen, Fokuswechsel,
+Tastatur-Schließen, Navigation, Desktop, Zoom und API-Fallback. Syntax- und
+Diffprüfung bestanden. Im Browser Text und RAL bei 390×460 bzw. 320×360 px,
+Maßfehler bei 390×360 px, direkte Weiter-Navigation, „Fertig“, Wiederherstellung
+der zuvor versteckten Vorschau und Warenkorb-Menge geprüft. Textfeld und
+Aktionsleiste haben bei 390×460 px rund 12 px Abstand; kein horizontaler Überlauf.
+Desktop bei 1440×1000 px behält die Vorschau während der Texteingabe. Keine
+erfassten Browserwarnungen/-fehler. Testeintrag entfernt, ursprünglicher Entwurf
+wiederhergestellt und temporäre Browsergröße zurückgesetzt.
+
+Die Prüfung kombiniert simulierte Browsergrößen und automatisierte
+Viewport-Ereignisse; ein physischer iPhone-/Android-Test mit nativer Tastatur
+steht noch aus. Nur lokal aktualisiert, nicht veröffentlicht.
+Technische Grundlagen: [VisualViewport](https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport)
+und [Chrome: Viewport-Verhalten bei Bildschirmtastaturen](https://developer.chrome.com/blog/viewport-resize-behavior).

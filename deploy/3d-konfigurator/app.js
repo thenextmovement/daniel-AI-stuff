@@ -1,7 +1,9 @@
+import {initMobileInput} from './mobile-input.js?v=38';
 import {createRalPicker} from './ral-picker.js?v=35';
 import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate} from './model.js?v=35';
 import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
+let mobileInput=null;
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
 let state={...DEFAULT},cart=[],activeStep=0,renderer,result=null,revision=0,debounce,editingId=null,returnToReview=false;
 try{const draft=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if([1,2,3].includes(draft?.version)){state=normalize(draft);editingId=typeof draft.cartItemId==='string'?draft.cartItemId:null;}}catch{$('#saved-status').textContent='Der gespeicherte Entwurf konnte nicht geladen werden.';}
@@ -81,7 +83,7 @@ function step(index,focus=true){
  const label=activeStep===3?(editingId?'Änderungen speichern':'Entwurf in den Warenkorb'):returnToReview?'Änderungen prüfen':['Weiter zu den Farben','Weiter zur Größe','Entwurf prüfen'][activeStep];
  $('#next').replaceChildren(document.createTextNode(label));const arrow=document.createElement('span');arrow.textContent='→';$('#next').append(arrow);
  if(activeStep===3){returnToReview=false;renderReview();}
- if(focus){const title=$('#panel-'+activeStep+' h2');title.tabIndex=-1;title.focus({preventScroll:true});$('.controls').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});}
+ if(focus){const focusPanel=()=>{const title=$('#panel-'+activeStep+' h2');title.tabIndex=-1;title.focus({preventScroll:true});$('.controls').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});};if(mobileInput)mobileInput.finish(focusPanel);else focusPanel();}
 }
 const paintControls={
  sideColor:{id:'side',label:'Seiten'},body:{id:'body',label:'Front und Korpus'},railColor:{id:'rail',label:'Schiene'},plate:{id:'plate',label:'Trägerplatte'}
@@ -188,6 +190,7 @@ function syncPreviewSize(){
 }
 function scrollPreview(){
  previewScrollFrame=0;
+ if(document.body.classList.contains('editor-input-active'))return;
  // The editor's start never moves when the sticky preview changes height.
  // Separate entry/exit thresholds prevent flicker at the sticky boundary.
  const top=$('#editor').getBoundingClientRect().top;
@@ -205,5 +208,6 @@ function responsivePreview(){if(!compactLayout.matches)previewColumn.classList.r
 phoneLayout.addEventListener('change',scrollPreview);
 compactLayout.addEventListener('change',responsivePreview);responsivePreview();
 new IntersectionObserver(entries=>document.body.classList.toggle('editor-in-view',entries[0].isIntersecting),{threshold:0}).observe($('#editor'));
+mobileInput=initMobileInput({onLayout:previewLayout});
 sync();$('#next').disabled=true;$('#download').disabled=true;
 try{const {SignRenderer}=await import('./renderer.js?v=35');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}

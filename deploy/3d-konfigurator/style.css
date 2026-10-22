@@ -112,3 +112,19 @@ input[aria-invalid=true],textarea[aria-invalid=true]{border-color:#a82646}
  .controls{scroll-margin-top:8px}
  .panels :is(input,textarea,button,summary){scroll-margin-top:80px}
 }
+
+/* Input mode follows the visible viewport above the mobile keyboard. */
+.input-done{display:none}
+@media(max-width:979px){
+ body.editor-input-active{overflow-anchor:none}
+ .editor-input-active .studio{display:block}
+ .editor-input-active .preview-column,.editor-input-active .step-header{display:none}
+ .editor-input-active .controls{margin-top:0;scroll-margin-top:12px}
+ .editor-input-active .control-footer{position:fixed;left:0;right:0;bottom:var(--input-inset,0px);z-index:10;padding:8px 14px;border-radius:0}
+ .editor-input-active .footer-summary,.editor-input-active .saved-status{display:none}
+ .editor-input-active .input-done{display:block;flex:none;width:52px;min-height:48px;border:1px solid var(--line);border-radius:7px;background:var(--paper);font-size:12px}
+ .editor-input-active .primary{min-height:48px;padding:10px 12px;gap:8px}
+ .editor-input-active .panels :is(input,textarea,button,summary){scroll-margin-top:12px;scroll-margin-bottom:calc(var(--action-height) + 12px)}
+ .editor-input-active #sign-text{min-height:44px;height:clamp(44px,calc(var(--input-height,100dvh) - var(--action-height) - 28px),82px);max-height:150px}
+ .cart-input-active #cart{position:fixed;top:calc(var(--input-top,0px) + 10px);bottom:auto;margin:0 auto;max-height:calc(var(--input-height,100dvh) - 20px)}
+}
