@@ -23,6 +23,18 @@ function fixture(){
  return {state,client,response};
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
+test('inspiration is a separate explicit owned action; early checkout never enrolls',async()=>{
+ const f=fixture();await f.client.prepareEarly(items(),delivery(),10000);
+ assert.equal(f.state.requests.some(body=>body.action==='inspiration_consent'),false);
+ f.state.next.push(body=>Response.json({consent:body.consent}));
+ await f.client.saveInspirationConsent('b'.repeat(64),{consent:true,version:'four-image-mails-inline-v2-20261014',position:1,context:'business',location:'Praxis'});
+ assert.equal(f.state.requests.at(-1).action,'inspiration_consent');assert.equal(f.state.requests.at(-1).position,1);
+ f.state.next.push(()=>Response.json({status:'CREATED'}));
+ await assert.rejects(f.client.saveInspirationConsent('b'.repeat(64),{consent:false}),{code:'INSPIRATION_UNCONFIRMED'});
+ f.state.next.push(body=>Response.json({consent:body.consent}));
+ await f.client.saveInspirationConsent('b'.repeat(64),{consent:false});
+ assert.equal(f.state.requests.at(-1).consent,false);
+});
 test('matching foreground joins one in-flight preparation; no second write',async()=>{
  const f=fixture();let finish;f.state.next.push(body=>new Promise(resolve=>{finish=()=>resolve(f.response(body));}));
  const early=f.client.prepareEarly(items(),delivery(),10000);await tick();

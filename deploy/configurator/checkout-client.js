@@ -433,5 +433,11 @@ export function createCheckoutClient({readSession,saveSession,readFile,readVisit
     for(const ref of refs)payload.assetRefs.push(await upload(ref,token));
     return {payload,token};
   }
-  return {prepare,prepareEarly,prepareDesignAssets,revokeMeasurement};
+  async function saveInspirationConsent(checkoutId,choice){
+    if(!HEX64.test(checkoutId)||!choice||typeof choice.consent!=='boolean')throw new CheckoutClientError('INVALID_INSPIRATION');
+    const token=await session();
+    const {status,result}=await request('/api/public/configurator/checkout',JSON.stringify({action:'inspiration_consent',checkoutId,...choice}),{'Content-Type':'application/json','X-Neontrip-Cart-Token':token});
+    if(status!==200||result?.consent!==choice.consent)throw new CheckoutClientError(result?.error?.code||'INSPIRATION_UNCONFIRMED',result?.error?.message||'Die Anmeldung zu den Bildmails ist noch nicht bestätigt. Bitte versuche es erneut oder wähle die Bildmails im Warenkorb ab.');
+  }
+  return {prepare,prepareEarly,prepareDesignAssets,revokeMeasurement,saveInspirationConsent};
 }

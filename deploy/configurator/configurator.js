@@ -2794,7 +2794,8 @@ $('#design-email-inspiration')?.addEventListener('change',()=>{
   const selected=$('#design-email-inspiration').checked;
   $('#design-email-context').hidden=!selected;$('#design-email-location').required=selected;
 });
-for(const button of document.querySelectorAll('[data-design-email]'))button.addEventListener('click',()=>{
+function openDesignEmail(cartItem=null){
+  if(cartItem&&(cartSyncing||cartEditing))return;
   if(emailSending){$('#design-email-dialog').showModal();return;}
   const dialog=$('#design-email-dialog'),status=$('#design-email-status'),form=$('#design-email-form');
   form.hidden=true;emailDesign=null;emailInspiration=undefined;status.textContent='';
@@ -2803,18 +2804,19 @@ for(const button of document.querySelectorAll('[data-design-email]'))button.addE
   $('#design-email-preview').hidden=true;$('#design-email-summary').textContent='';
   $('#design-email-address').readOnly=false;$('#design-email-submit').disabled=false;$('#design-email-submit').textContent='Entwurf an mich senden';
   try{
-    if(designRendering||!state.result||!state.sizeValid||state.price?.status!=='calculated')throw new Error('Bitte zuerst die gültige Vorschau und den Preis abwarten.');
-    const design=captureDesign();
+    if(cartItem?cartItemNeedsUpdate(cartItem):designRendering||!state.result||!state.sizeValid||state.price?.status!=='calculated')throw new Error('Bitte zuerst die gültige Vorschau und den Preis abwarten.');
+    const design=cartItem?structuredClone(cartItem.design):captureDesign();
     if(design.mode!=='text')throw new Error('Bitte sichere einen Schriftzug per E-Mail. Logos kannst du weiterhin auf diesem Gerät speichern oder als Vorschaubild teilen.');
-    const snapshot=captureOrderSnapshot();emailDesign={quantity:1,design,snapshot};
-    $('#design-email-preview').src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(orderPreview()));
+    const snapshot=cartItem?structuredClone(cartItem.snapshot):captureOrderSnapshot();emailDesign={quantity:1,design,snapshot};
+    $('#design-email-preview').src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(cartItem?cartItem.previewSvg:new XMLSerializer().serializeToString(orderPreview()));
     $('#design-email-preview').hidden=false;
-    $('#design-email-summary').textContent=designName()+' · '+dimensions(snapshot.plate)+' · '+state.font;
+    $('#design-email-summary').textContent=(cartItem?snapshot.text:designName())+' · '+dimensions(snapshot.plate)+' · '+design.fontId;
     form.hidden=false;
   }catch(error){status.textContent=error.message;}
   if(!dialog.open)dialog.showModal();
   if(!form.hidden)$('#design-email-address').focus();
-});
+}
+for(const button of document.querySelectorAll('[data-design-email]'))button.addEventListener('click',()=>openDesignEmail());
 $('#design-email-form')?.addEventListener('submit',async event=>{
   event.preventDefault();if(emailSending||!emailDesign||!event.currentTarget.reportValidity())return;
   emailSending=true;
@@ -2922,6 +2924,41 @@ function accessorySummary(design,multiplier=1){
  const names={'wall-mount':'Wandmontage-Set','premium-white':'Premium-Netzteil','hanging-kit':'Abhängeset','adhesive-kit':'Klebeset','table-stand':'Tischständer',dimmer:'Dimmer',extraCable2m:'2 m Zusatzkabel'};
  return Object.entries(accessoryCounts(design)).filter(([,n])=>n>0).map(([key,n])=>(n*multiplier)+' × '+names[key]).join(' · ');
 }
+const checkoutInspiration=document.createElement('fieldset');
+checkoutInspiration.id='checkout-inspiration';checkoutInspiration.className='cart-quote-option';checkoutInspiration.dataset.clarityMask='true';
+checkoutInspiration.style.cssText='grid-column:1/-1;min-width:0;margin:16px 0;padding:14px;border:1px solid #e2dce0;border-radius:10px;font-size:13px;line-height:1.5';
+checkoutInspiration.innerHTML='<legend>Optionale Bildideen</legend><label style="display:flex;gap:10px;align-items:flex-start"><input id="checkout-inspiration-optin" type="checkbox" style="flex:none;margin-top:4px"><span>Ja, NEONTRIP darf mich innerhalb von etwa zwei Wochen mit bis zu vier E-Mails mit KI-Bildideen an meinen noch nicht bestellten Entwurf erinnern. Jederzeit über den Link in jeder Mail abmeldbar.</span></label><div id="checkout-inspiration-details" hidden><p>Wir verwenden deine E-Mail-Adresse aus dem nächsten Shopify-Bezahlschritt. Aktiviere dort zusätzlich die Option für E-Mail-Neuigkeiten. Ohne beide Einwilligungen startet keine Bildserie.</p><label style="display:block">Entwurf<select id="checkout-inspiration-design" style="display:block;width:100%;min-height:44px"></select></label><label style="display:block;margin-top:8px">Einsatz<select id="checkout-inspiration-use" style="display:block;width:100%;min-height:44px"><option value="business">Geschäftlich</option><option value="home">Zu Hause</option><option value="event">Veranstaltung</option></select></label><label style="display:block;margin-top:8px">Wo soll das Schild hängen oder stehen?<input id="checkout-inspiration-location" type="text" minlength="3" maxlength="180" placeholder="Zum Beispiel: über der Bar im Café" data-clarity-mask="true" style="box-sizing:border-box;width:100%;min-height:44px"></label><p><a href="https://anfrage.neontrip.de/datenschutz" target="_blank" rel="noopener">Datenschutz</a></p></div>';
+$('#cart-checkout .checkout-preparation').before(checkoutInspiration);
+$('#checkout-inspiration-optin').addEventListener('change',()=>{$('#checkout-inspiration-details').hidden=!$('#checkout-inspiration-optin').checked;});
+function refreshCheckoutInspiration(){
+  const select=$('#checkout-inspiration-design'),previous=select.value;
+  select.replaceChildren();
+  for(const item of cartItems.filter(item=>item.design.mode==='text'&&!cartItemNeedsUpdate(item))){
+    const option=document.createElement('option');option.value=item.id;option.textContent=item.snapshot.text;select.append(option);
+  }
+  if([...select.options].some(option=>option.value===previous))select.value=previous;
+  else if(previous){$('#checkout-inspiration-optin').checked=false;$('#checkout-inspiration-details').hidden=true;}
+  checkoutInspiration.hidden=!select.options.length;checkoutInspiration.disabled=cartSyncing||cartEditing;
+}
+function checkoutInspirationChoice(){
+  if(!$('#checkout-inspiration-optin').checked||checkoutInspiration.hidden)return {consent:false};
+  const position=cartItems.findIndex(item=>item.id===$('#checkout-inspiration-design').value)+1,location=$('#checkout-inspiration-location').value.trim();
+  if(!position||location.length<3||location.length>180||/[\u0000-\u001f<>]/.test(location))throw new Error('Bitte ergänze im Warenkorb den Einsatzort für deine Bildideen oder wähle die Bildmails ab.');
+  return {consent:true,version:'four-image-mails-inline-v2-20261014',position,context:$('#checkout-inspiration-use').value,location};
+}
+async function saveCheckoutInspiration(checkoutId,choice){
+  const key='checkout-inspiration-consents-v1',saved=await readAsset(key),ids=Array.isArray(saved)?saved.filter(id=>/^[a-f0-9]{64}$/.test(id)):[];
+  // Remember before the request: a timeout may still have saved the consent.
+  // A later unchecked retry/reload must explicitly withdraw that same consent.
+  for(const id of ids.filter(id=>id!==checkoutId))await checkoutClient.saveInspirationConsent(id,{consent:false});
+  if(choice.consent){
+    await saveAsset(key,[checkoutId]);
+    await checkoutClient.saveInspirationConsent(checkoutId,choice);
+  }else{
+    if(ids.includes(checkoutId))await checkoutClient.saveInspirationConsent(checkoutId,{consent:false});
+    if(ids.length)await saveAsset(key,[]);
+  }
+}
 function renderCart(){
   if(!cartSyncing)$('#checkout-preparation-status').textContent=cartItems.some(cartItemNeedsUpdate)?'Bitte aktualisiere die markierten Entwürfe vor der Bestellung. Prüfe danach Vorschau, Maße und Preis und übernimm die Änderungen.':'';
   for(const id of cartCompareIds)if(!cartItems.some(item=>item.id===id))cartCompareIds.delete(id);
@@ -2950,9 +2987,14 @@ function renderCart(){
       notice.textContent='Bisheriger Preisstand: Dieser gespeicherte Entwurf verwendet eine ältere Vorschau. Bitte aktualisiere ihn vor der Bestellung. Dein bisheriger Entwurf bleibt bis zur Übernahme erhalten.';
       body.append(notice);
     }
-    body.append(price,controls,accessoryDetails,compareLabel);card.append(picture,body);list.append(card);renderCartAccessories(accessoryLine,item);
+    body.append(price,controls,accessoryDetails,compareLabel);
+    if(item.design.mode==='text'){
+      const email=document.createElement('button');email.type='button';email.className='design-email-entry';email.textContent='Entwurf und optionale Bildideen per E-Mail';
+      email.disabled=cartItemNeedsUpdate(item)||cartSyncing||cartEditing;email.addEventListener('click',()=>openDesignEmail(item));body.append(email);
+    }
+    card.append(picture,body);list.append(card);renderCartAccessories(accessoryLine,item);
   }
-  updateCartComparison();refreshCartPrice();
+  updateCartComparison();refreshCartPrice();refreshCheckoutInspiration();
   $('#cart-empty').hidden=cartItems.length>0;$('#cart-checkout').hidden=!cartItems.length;refreshCartButtons();
 }
 function updateCartComparison(){
@@ -3218,6 +3260,7 @@ async function goToCheckout(){
  if(!cartPricesValid||!selectedDelivery)return;
  clearTimeout(earlyCheckoutTimer);earlyCheckoutStarted=true;
  const status=$('#delivery-checkout-status');
+ let inspirationChoice;try{inspirationChoice=checkoutInspirationChoice();}catch(error){status.textContent=error.message;$('#delivery-dialog').close();showCart();$('#checkout-inspiration-location').focus();return;}
  const reviewedDelivery={...selectedDelivery},reviewedTotal=Math.round((cartTotals.subtotalGross+selectedDelivery.feeGross)*100),reviewedItems=JSON.stringify(cartItems);
  let navigating=false,checkoutRequested=false;setCheckoutBusy(true);status.textContent='Deine sichere Kasse wird vorbereitet …';
  try{
@@ -3231,6 +3274,7 @@ async function goToCheckout(){
   trackConfigurator('begin_checkout',{quantity:cartItems.reduce((sum,item)=>sum+item.quantity,0)});
   checkoutRequested=true;const receipt=await checkoutClient.prepare(cartItems,selectedDelivery,expectedTotalCents,()=>{showCheckoutProgress('Einen Moment noch','Wir bereiten deine Kasse weiter vor. Bitte lass diese Seite geöffnet.');});
   if(receipt.status!=='CREATED')throw Object.assign(new Error('Die Kasse ist für diese Konfiguration noch nicht verfügbar. Dein Warenkorb bleibt gespeichert.'),{code:'PRICE_RULE_NOT_APPROVED',attemptId:receipt.attemptId});
+  await saveCheckoutInspiration(receipt.id,inspirationChoice);
   trackConfigurator('configurator_checkout_ready',{key:receipt.id});
   clearTimeout(checkoutWaitTimer);showCheckoutProgress('Deine Kasse ist bereit','Du wirst jetzt zur sicheren Bezahlung weitergeleitet.');
   status.textContent='Du wirst zur sicheren Bezahlung weitergeleitet …';window.location.assign(receipt.checkoutUrl);navigating=true;
