@@ -75,3 +75,19 @@ input[aria-invalid=true],textarea[aria-invalid=true]{border-color:#a82646}
 #cart>.close{position:sticky;top:0;right:0;float:right;z-index:2;margin:-10px -6px -34px 0;background:var(--paper);border:1px solid var(--line);border-radius:50%}
 @media(max-width:979px){.panels :is(input,textarea,button,summary){scroll-margin-top:calc(var(--preview-stack) + 80px);scroll-margin-bottom:calc(var(--action-height) + 16px)}}
 @media(max-width:599px){.ral-groups{flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px;scrollbar-width:thin}.ral-group{flex:none;min-height:40px}}
+
+/* Keep the sign visible while phone users scroll through their settings. */
+.preview-resize{display:none}
+@media(max-width:599px){
+ #editor{overflow-anchor:none}
+ .preview{transition:height .18s ease}
+ .preview-scrolled:not(.preview-collapsed) .preview-resize{display:flex;align-items:center;justify-content:flex-end;grid-column:2;grid-row:1;min-height:44px;padding:0 5px;background:transparent;color:var(--pink);font-size:11px;font-weight:600}
+ .preview-scrolled .preview-meta .zoom{grid-row:2}
+ .preview-scrolled:not(.preview-compact) .preview-meta #dimensions{grid-column:1;grid-row:2;padding:0}
+ .preview-compact .preview{height:clamp(104px,16svh,140px)}
+ .preview-compact .preview-top,.preview-compact .preview-bottom,.preview-compact .preview-options,.preview-compact .zoom,.preview-compact #dimensions{display:none}
+ .preview-compact .preview-meta{min-height:44px;padding:0;gap:0 12px}
+ .preview-compact .preview-toggle{min-height:44px}
+ .preview-collapsed .preview{transition:none}
+}
+@media(max-width:599px) and (prefers-reduced-motion:reduce){.preview{transition:none}}

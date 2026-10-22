@@ -1,5 +1,5 @@
-import {createRalPicker} from './ral-picker.js?v=32';
-import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate} from './model.js?v=32';
+import {createRalPicker} from './ral-picker.js?v=33';
+import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate} from './model.js?v=33';
 import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
@@ -168,11 +168,42 @@ function saveDesign(){
 }
 $('#new-design').addEventListener('click',()=>{editingId=null;returnToReview=false;state={...DEFAULT};result=null;$('#cart').close();sync();step(0);schedule();});
 const compactLayout=matchMedia('(max-width:979px)');
+const phoneLayout=matchMedia('(max-width:599px)');
+const previewColumn=$('.preview-column');
+let previewScrolled=false,previewExpanded=false,previewScrollFrame=0;
 function previewLayout(){const column=$('.preview-column');document.documentElement.style.setProperty('--preview-stack',column.getBoundingClientRect().height+'px');document.documentElement.style.setProperty('--action-height',$('.control-footer').getBoundingClientRect().height+'px');}
 const layoutObserver=new ResizeObserver(previewLayout);layoutObserver.observe($('.preview-column'));layoutObserver.observe($('.control-footer'));
-$('#toggle-preview').addEventListener('click',()=>{const collapsed=$('.preview-column').classList.toggle('preview-collapsed');$('#toggle-preview').setAttribute('aria-expanded',String(!collapsed));$('#toggle-preview span').textContent=collapsed?'3D-Vorschau anzeigen':'Vorschau einklappen';$('#preview').inert=collapsed;previewLayout();$('.controls').scrollIntoView({block:'start',behavior:'instant'});});
-function responsivePreview(){if(!compactLayout.matches){$('.preview-column').classList.remove('preview-collapsed');$('#toggle-preview').setAttribute('aria-expanded','true');$('#toggle-preview span').textContent='Vorschau einklappen';$('#preview').inert=false;}$('.preview-options').open=!compactLayout.matches;previewLayout();}
+function syncPreviewSize(){
+ const collapsed=previewColumn.classList.contains('preview-collapsed');
+ const small=previewScrolled&&!previewExpanded&&!collapsed;
+ previewColumn.classList.toggle('preview-scrolled',previewScrolled);
+ previewColumn.classList.toggle('preview-compact',small);
+ $('#toggle-preview').setAttribute('aria-expanded',String(!collapsed));
+ $('#toggle-preview span').textContent=collapsed?'3D-Vorschau anzeigen':small?'Ausblenden':'Vorschau einklappen';
+ $('#resize-preview').setAttribute('aria-expanded',String(!small));
+ $('#resize-preview').setAttribute('aria-label',small?'3D-Vorschau vergrößern':'3D-Vorschau verkleinern');
+ $('#resize-preview').textContent=small?'Vergrößern':'Verkleinern';
+ $('#preview').inert=collapsed;
+ previewLayout();
+}
+function scrollPreview(){
+ previewScrollFrame=0;
+ // The editor's start never moves when the sticky preview changes height.
+ // Separate entry/exit thresholds prevent flicker at the sticky boundary.
+ const top=$('#editor').getBoundingClientRect().top;
+ const scrolled=phoneLayout.matches&&(previewScrolled?top<16:top<-48);
+ if(scrolled===previewScrolled)return;
+ previewScrolled=scrolled;
+ if(!scrolled)previewExpanded=false;
+ syncPreviewSize();
+}
+addEventListener('scroll',()=>{if(!previewScrollFrame)previewScrollFrame=requestAnimationFrame(scrollPreview);},{passive:true});
+addEventListener('resize',scrollPreview);
+$('#resize-preview').addEventListener('click',()=>{previewExpanded=!previewExpanded;syncPreviewSize();});
+$('#toggle-preview').addEventListener('click',()=>{previewColumn.classList.toggle('preview-collapsed');previewExpanded=false;syncPreviewSize();$('.controls').scrollIntoView({block:'start',behavior:'instant'});});
+function responsivePreview(){if(!compactLayout.matches)previewColumn.classList.remove('preview-collapsed');$('.preview-options').open=!compactLayout.matches;scrollPreview();syncPreviewSize();}
+phoneLayout.addEventListener('change',scrollPreview);
 compactLayout.addEventListener('change',responsivePreview);responsivePreview();
 new IntersectionObserver(entries=>document.body.classList.toggle('editor-in-view',entries[0].isIntersecting),{threshold:0}).observe($('#editor'));
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=32');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=33');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}

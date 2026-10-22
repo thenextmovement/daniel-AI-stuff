@@ -1,6 +1,6 @@
 # NEONTRIP 3D-Schilder-Konfigurator
 
-Stand: 21.10.2026. Implementierung und Veröffentlichungskandidat; noch nicht live.
+Stand: 22.10.2026. Implementierung und Veröffentlichungskandidat; noch nicht live.
 
 ## Auftrag und aktueller Umfang
 
@@ -592,3 +592,28 @@ Front/Rück, Schiene/Platte mit passenden Angaben, ausgeblendete RAL-Suche,
 Preview-Einklappen, Warenkorb-Speicherung, Menge 2 nach Reload, Bearbeitung ohne
 Duplikat und Entfernen des Testentwurfs. Kein erfasster Browserfehler oder Warnung.
 Kein physischer iPad-/Safari-Test und kein echter Kauf; nur lokale Vorschau.
+
+
+## Automatisch kompakte Handy-Vorschau (22.10.2026)
+
+Unter 600 px Breite verkleinert sich die Vorschau beim Scrollen in die Einstellungen.
+Das Schild bleibt als echte, drehbare 3D-Vorschau sichtbar. Sekundäre Ansichtsschalter,
+Maßzeile und Bildoptionen werden in dieser Ansicht ausgeblendet. Bei 390×844 px
+sinkt die gesamte Vorschauhöhe von rund 334 auf 186 px, bei 320×740 px auf 169 px.
+Die Schrittnavigation folgt weiterhin der tatsächlich gemessenen Vorschauhöhe.
+
+„Vergrößern“ holt alle Vorschauoptionen zurück und hält diese Wahl beim weiteren
+Scrollen; „Verkleinern“ wechselt zurück. Vollständiges Ein-/Ausblenden bleibt separat
+möglich. Beim Zurückscrollen zum Anfang wird die normale Größe automatisch
+wiederhergestellt. Der feste Bezugspunkt am Editoranfang und unterschiedliche
+Ein-/Austrittsschwellen verhindern Größenwechsel durch die eigene Höhenänderung.
+Scroll-Anchoring ist in diesem Bereich abgeschaltet, reduzierte Bewegung wird
+berücksichtigt. Tablet- und Desktop-Aufteilung bleiben unverändert.
+
+Verifiziert im Browser: 320×740 und 390×844 px, Scrollen hin/zurück, Schrittwechsel
+mit kompakter Vorschau, manuelles Vergrößern mit anschließendem Scrollen,
+Verkleinern und vollständiges Ein-/Ausblenden. Wechsel auf 768×1024 und
+1440×1000 px stellt das vorhandene Layout wieder her; kein horizontaler Überlauf.
+Keine erfassten Browserwarnungen/-fehler. 30 bestehende Modell-/Framingtests,
+JavaScript-Syntaxprüfung und Diffprüfung bestanden. Kein physischer Handytest.
+Nur lokal aktualisiert, nicht veröffentlicht.
