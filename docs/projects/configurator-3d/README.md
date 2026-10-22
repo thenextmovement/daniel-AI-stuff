@@ -670,3 +670,37 @@ kompakter Vorschau. Berechnete Button-, Rahmen-, Fortschritts- und Linkfarben
 entsprechen dem Pink; kein horizontaler Überlauf mobil und keine erfassten
 Browserwarnungen/-fehler. Alte UI-Beerentöne entfernt, Diffprüfung bestanden.
 Nur lokal aktualisiert, nicht veröffentlicht.
+
+
+## Erneuter mobiler Kundendurchlauf (22.10.2026)
+
+Den Ablauf in der lokalen Browser-Vorschau bei 390×844 und 320×568 px
+durchlaufen: Look → Farben → Größe → Prüfen, die Rückwärtsschritte sowie
+direktes Ändern und Rückkehr zur Zusammenfassung. Front- und Rückbeleuchtung,
+alle drei Montagearten, RAL-Goldfilter, Farbauswahl und Korrektur einer erfolglosen
+RAL-Suche waren bedienbar. Leerer Text und 20 cm Breite sperren Weiter mit
+Fehlermeldung; korrigierte Eingaben geben den nächsten Schritt wieder frei.
+Vergrößern, Verkleinern, vollständiges Ein-/Ausblenden und automatisches
+Kompaktwerden der Vorschau wurden auf dem kleinen Handy geprüft.
+
+Im Querformat gab es einen Engpass: Bei 844×390 px ließen die gestapelte Vorschau
+und die feste untere Leiste praktisch keine sichtbare Formularfläche. Bis 550 px
+Höhe stehen Vorschau und Formular bei 600–979 px Breite jetzt nebeneinander; die
+Schrittnavigation haftet oben am Formular. Geprüft bei 844×390 und 667×375 px,
+mit rund 200 px freier Formularhöhe und erreichbaren Weiter-/Zurück-Buttons.
+Auf schmalen Ansichten mit höchstens 550 px Höhe scrollt die Vorschau mit der
+Seite weg, damit Eingaben Platz haben. Bei 390×480 px blieben das fokussierte
+Textfeld und die Navigation sichtbar. CSS-Version 37; keine JS-Änderung.
+
+Warenkorb: Speichern, Menge 2, Aktualisieren ohne Duplikat, Reload, neuer Entwurf,
+Bearbeiten des gespeicherten Entwurfs sowie Schließen und Zurück zum Entwurf
+geprüft. Der Schließen-Button bleibt beim Scrollen erreichbar. Testeintrag
+entfernt und ursprünglichen PRADA-Entwurf wiederhergestellt. Keine erfassten
+Browserwarnungen/-fehler, kein horizontaler Überlauf in den geprüften Ansichten.
+Diffprüfung bestanden. Bestehende Modelltests nicht erneut ausgeführt, da nur
+CSS und dessen Cache-Version geändert wurden.
+
+Grenze der Prüfung: simulierte Browsergrößen, kein physischer iPhone-/Android-
+Test und keine native Bildschirmtastatur. Kein Zahlungsdurchlauf: verbindliche
+Preise fehlen weiterhin, der Checkout ist absichtlich deaktiviert. Nur lokal
+aktualisiert, nicht veröffentlicht.

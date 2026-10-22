@@ -91,3 +91,24 @@ input[aria-invalid=true],textarea[aria-invalid=true]{border-color:#a82646}
  .preview-collapsed .preview{transition:none}
 }
 @media(max-width:599px) and (prefers-reduced-motion:reduce){.preview{transition:none}}
+
+/* Short phone viewports need room for fields as well as navigation. */
+@media(min-width:600px) and (max-width:979px) and (max-height:550px){
+ .studio{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:16px}
+ .preview-column{top:8px;z-index:4;border-bottom:0}
+ .preview{height:clamp(130px,40svh,200px)}
+ .preview-badge{display:none}
+ .preview-top{justify-content:flex-end}
+ .view-buttons button{font-size:9px;padding:6px 7px}
+ .glass-button{padding:7px 8px}
+ .controls{margin-top:6px;scroll-margin-top:8px}
+ .step-header{top:0}
+ .panels{padding:20px 16px}
+ .panels :is(input,textarea,button,summary){scroll-margin-top:80px}
+}
+@media(max-width:599px) and (max-height:550px){
+ .preview-column{position:relative}
+ .step-header{top:0}
+ .controls{scroll-margin-top:8px}
+ .panels :is(input,textarea,button,summary){scroll-margin-top:80px}
+}
