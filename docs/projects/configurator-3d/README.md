@@ -786,3 +786,62 @@ geprüft; eine erneute physische iPhone-Prüfung samt nativer Tastatur steht aus
 Die separate lokale WLAN-Testseite zeigte beim ersten Aufruf im In-App-Browser
 vereinzelt einen Modul-Ladefehler; erneutes Laden funktionierte. Kein Android-
 Gerät verfügbar. Nur lokale Vorschau aktualisiert, nicht veröffentlicht.
+
+
+## Kompakte Auswahlübersichten und Safari-Lichtschein (22.10.2026)
+
+Look und Farben zeigen nun eine Übersicht statt aller Auswahlraster gleichzeitig.
+Beleuchtungsart und Text sind unmittelbar bedienbar; Schrift, Leuchtfarbe,
+Oberfläche und aktive Lackfarbe erscheinen als Auswahlzeilen mit dem aktuellen
+Wert. Ein Klick öffnet genau diese Palette im bestehenden Formularbereich, neben
+der weiterhin sichtbaren Vorschau. Zurück, Escape und „Auswahl übernehmen“ führen
+zur Übersicht. Die Auswahl wirkt wie bisher sofort auf den Entwurf. Ein Wechsel
+des Hauptschritts schließt die Palette; Rücksprünge aus der Zusammenfassung
+behalten „Änderungen prüfen“. RAL, freie Farbe und Zurücksetzen bleiben erhalten.
+Frontbeleuchtung zeigt weiterhin nur Leuchtfarbe und Lackfarbe der Seiten.
+
+Die Handy-Vorschau berücksichtigt die verfügbare Bildschirmhöhe und Safe Area.
+Beim Öffnen einer Palette wird sie kompakt. Auf 393×641 sowie 320×568 px sind
+Lichtart, Text und Schrift beim Einstieg ohne manuelles Scrollen erreichbar.
+Bei 320×568 endet die Schriftzeile bei 492 px, die Aktionsleiste beginnt bei
+503 px. Auch alle neun Schriften passen in die geöffnete Auswahl. Bei 1280×720
+liegt der gesamte Look-Bereich einschließlich Weiter bei 80–646 px. Tablet
+768×1024 ebenfalls geprüft; keine inneren Formular-Scrollbereiche hinzugefügt.
+Lange RAL-Ergebnislisten bleiben gezielt scrollbar.
+
+Der bisherige Halo verwendete Canvas-2D-`filter`, das Safari nicht zuverlässig
+bereitstellt. Stattdessen erzeugt `paintGlow` eine weiche Schattenmaske mit
+`shadowBlur` und einem transparenten Silhouettenmuster. Quelle und Schatten liegen
+auf einer Zwischenfläche; nur der weiche Schatten wird kopiert, damit keine
+harte weiße Silhouette entsteht. Frontflächen werden wie zuvor ausgespart;
+Leuchtfarben, Radiance, Geometrie und Material bleiben erhalten. Die längste
+Maskenseite ist auf 2048 Pixel begrenzt, auch bei hohen Einzelbuchstaben.
+Grundlagen: [Canvas filter](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/filter)
+und [shadowBlur](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/shadowBlur).
+
+Verifikation: 44 Tests bestanden (34 Modell/Geometrie, acht Eingabecontroller,
+zwei neue echte Canvas-Pixeltests). Die Pixeltests prüfen Licht außerhalb der
+Silhouette, abfallende Helligkeit, beleuchtete Innenräume und eine ausgesparte
+Front auf einem Kontext, der jede Verwendung von `filter` zurückweist. Sie
+nutzen optional `@napi-rs/canvas`; im lokalen Lauf über `NODE_PATH` aus dem
+gebündelten Runtime geladen, keine Tests übersprungen. Ohne Canvas-Modul werden
+nur diese beiden Tests übersprungen. Syntax- und Diffprüfung bestanden.
+Browser: Übersicht/Paletten, Schriftwechsel, Front/Rück, Spiegelstahl/Gold,
+ungültige RAL-Suche und Rückkehr, Änderungen aus der Zusammenfassung, Nacht und
+Licht aus/an geprüft. Simulierter Tastaturbereich 393×360: Textfeld endet bei
+207 px, Aktionsleiste beginnt bei 295 px; direkter Weiter-Tipp und Rückkehr zu
+393×641 funktionieren. Ursprünglicher PRADA-Entwurf wiederhergestellt.
+Cache-Version 40. Kein erneuter physischer iPhone-Test; lokal aktualisiert.
+
+### Supplier-Materialtafel als spätere Erweiterung
+
+Der Auftraggeber hat die fotografierte Materialtafel am 22.10.2026 ausdrücklich
+zunächst zur Information übergeben. Sichtbare Gruppen: Rose Gold, Titanium Gold,
+Champagne Gold und dunkle Gun-Black-Töne mit Sand/Mirror/Frosted-Varianten;
+zusätzlich Water-Plated Rose Gold, Bronze, Red/Brass Copper, Black Bronze,
+K Gold, Shagin, Sand Steel, Mirror Steel und Black-Yellow Copper. Benennungen
+stammen vom Musterfoto und sind noch keine bestätigten Produkt-/Materialverträge.
+Als spätere Struktur bietet sich Metallton plus Oberflächenart an. Herstellart
+(z. B. Lackierung/Beschichtung), verbindliche Kundennamen, Verfügbarkeit,
+Aufpreise und physische Farbmuster müssen vor dem Angebot abgeglichen werden.
+Noch keine zusätzlichen auswählbaren oder kaufbaren Varianten eingebaut.

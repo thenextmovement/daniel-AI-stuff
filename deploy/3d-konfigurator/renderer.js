@@ -194,7 +194,8 @@ export function brushedUVs(geometry,tileSize){
 }
 function silhouette(layout,scale,width,height,pad){
  const w=width+pad*2,h=height+pad*2,canvas=document.createElement('canvas');
- canvas.width=2048;canvas.height=Math.max(128,Math.round(2048*h/w));
+ const density=2048/Math.max(w,h);
+ canvas.width=Math.max(1,Math.round(w*density));canvas.height=Math.max(1,Math.round(h*density));
  const ctx=canvas.getContext('2d'),px=canvas.width/w;ctx.beginPath();
  for(const {shape,x,y} of layout.shapes)for(const loop of [shape,...shape.holes]){
   loop.getPoints(20).forEach((p,i)=>{const a=canvas.width/2+(p.x+x)*scale*px,b=canvas.height/2-(p.y+y)*scale*px;i?ctx.lineTo(a,b):ctx.moveTo(a,b);});ctx.closePath();
@@ -222,18 +223,25 @@ export function frontLightColor(hex){
  const v=value+(1-value)*.9,s=saturation*.76,l=v*(1-s/2);
  return new THREE.Color().setHSL(hue,l===0||l===1?0:(v-l)/Math.min(l,1-l),l,THREE.SRGBColorSpace);
 }
+export function paintGlow(ctx,mask,layers,front,createCanvas=()=>document.createElement('canvas')){
+ // Canvas filter blur is disabled in Safari. Draw the source and its soft
+ // shadow side by side, then copy only the shadow: no hard white silhouette.
+ // Both remain inside the scratch canvas so engines cannot cull the source.
+ const w=mask.canvas.width,h=mask.canvas.height,scratch=createCanvas();scratch.width=w*2;scratch.height=h;
+ const shadow=scratch.getContext('2d');shadow.shadowColor='#fff';shadow.shadowOffsetX=w;shadow.fillStyle=shadow.createPattern(mask.canvas,'no-repeat');
+ for(const [radius,alpha] of layers){shadow.globalAlpha=alpha;shadow.shadowBlur=radius*mask.px*2;shadow.fillRect(0,0,w,h);}
+ ctx.drawImage(scratch,w,0,w,h,0,0,w,h);
+ if(front){ctx.save();ctx.globalCompositeOperation='destination-out';ctx.drawImage(mask.canvas,0,0);ctx.restore();}
+}
 function glowTexture(layout,scale,width,height,front,night){
  const spread=Math.min(front?(night?13:8):(night?20:13),height*(front?.36:.6));
  const mask=silhouette(layout,scale,width,height,Math.max(front?12:25,spread*4));
  const canvas=document.createElement('canvas');canvas.width=mask.canvas.width;canvas.height=mask.canvas.height;const ctx=canvas.getContext('2d');
  // A white light mask keeps saturated colours bright. Colour and radiance
  // are applied in linear space by the material, separately from opacity.
- for(const [radius,alpha] of [[spread,.85],[spread*.4,.75],[Math.min(2,spread*.12),.7]]){
-  ctx.globalAlpha=alpha;ctx.filter=`blur(${radius*mask.px}px)`;ctx.drawImage(mask.canvas,0,0);
- }
  // Front glow surrounds the acrylic rather than adding a second exposure
  // over its face. The letter counters still receive the soft light spill.
- if(front){ctx.globalAlpha=1;ctx.filter='none';ctx.globalCompositeOperation='destination-out';ctx.drawImage(mask.canvas,0,0);}
+ paintGlow(ctx,mask,[[spread,.85],[spread*.4,.75],[Math.min(2,spread*.12),.7]],front);
  return {texture:canvasTexture(canvas),width:mask.width,height:mask.height};
 }
 export function framingDistance(bounds,target,direction,aspect,fov,compact=false){

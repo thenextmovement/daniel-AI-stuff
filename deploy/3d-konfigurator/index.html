@@ -5,7 +5,7 @@
 <title>3D-Leuchtbuchstaben selbst gestalten | NEONTRIP</title>
 <meta name="description" content="Gestalte 3D-Leuchtbuchstaben mit Front- oder Rückbeleuchtung. Vergleiche Einzelbuchstaben, Schiene und Platte in einer interaktiven Vorschau.">
 <link rel="canonical" href="https://anfrage.neontrip.de/3d-konfigurator/">
-<link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="style.css?v=39">
+<link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="style.css?v=40">
 <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/inter-latin.woff2" crossorigin>
 
 </head>
@@ -40,8 +40,8 @@
 <section class="panel" id="panel-0" aria-labelledby="look-title"><div class="panel-heading"><p class="eyebrow">01 / DEIN LOOK</p><h2 id="look-title">Dein Look beginnt hier.</h2><p class="panel-intro">Wähle dein Licht, gib deinen Text ein und finde deine Schrift.</p></div>
 <fieldset><legend>Beleuchtung</legend><div class="light-options"><button data-lighting="front" aria-pressed="false"><span class="sample front-sample">A</span><strong>Frontbeleuchtet</strong><small>Farbiges Acryl leuchtet nach vorne.</small></button><button data-lighting="back" aria-pressed="true"><span class="sample back-sample">A</span><strong>Rückbeleuchtet</strong><small>Edelstahl vorne – z. B. gold lackiert.</small></button></div></fieldset>
 <p id="construction-note" class="construction-note">Edelstahl, gebürstet und gold lackiert · ca. 1 cm weißes Acryl hinten · Licht zur Wand.</p>
-<label class="field-label" for="sign-text">Dein Text <span id="char-count">5 / 60</span></label><textarea id="sign-text" aria-describedby="text-hint editor-error" rows="2" maxlength="60" spellcheck="false" placeholder="Deine Marke">ATLAS</textarea><p class="field-hint" id="text-hint">Ein Wort, einzelne Buchstaben oder bis zu zwei Zeilen.</p>
-<fieldset><legend>Schriftstil <span>9 Schriften</span></legend><div class="font-options" id="font-options"></div><p class="field-hint">Von kräftig bis elegant. Sieh dir jede Schrift direkt an deinem Text an.</p></fieldset>
+<div class="look-text"><label class="field-label" for="sign-text">Dein Text <span id="char-count">5 / 60</span></label><textarea id="sign-text" aria-describedby="text-hint editor-error" rows="2" maxlength="60" spellcheck="false" placeholder="Deine Marke">ATLAS</textarea><p class="field-hint" id="text-hint">Ein Wort, einzelne Buchstaben oder bis zu zwei Zeilen.</p></div>
+<fieldset id="font-settings"><legend>Schriftstil <span>9 Schriften</span></legend><div class="font-options" id="font-options"></div><p class="field-hint">Von kräftig bis elegant. Sieh dir jede Schrift direkt an deinem Text an.</p></fieldset>
 
 </section>
 <section class="panel" id="panel-1" hidden aria-labelledby="build-title"><div class="panel-heading"><p class="eyebrow">02 / FARBEN &amp; MATERIAL</p><h2 id="build-title">Deine Oberfläche. Dein Stil.</h2></div>
@@ -77,5 +77,5 @@
 <footer class="site-footer"><a class="brand" href="/"><img src="/assets/logo_weiss_neontrip.webp" alt="NEONTRIP" width="155" height="34" loading="lazy"></a><span>Deine Idee. Unser Handwerk.</span><div><a href="/impressum.html">Impressum</a><a href="/datenschutz.html">Datenschutz</a><a href="/configurator/">Neon-Konfigurator</a></div></footer>
 <dialog id="cart" aria-labelledby="cart-title"><button class="close" data-close aria-label="Schließen">×</button><p class="eyebrow">DEIN WARENKORB</p><h2 id="cart-title">Deine 3D-Schilder.</h2><p>Prüfe deine Entwürfe und wähle die gewünschte Stückzahl.</p><div id="cart-items"></div><div id="cart-totals"><div class="cart-summary"><span>Gesamtpreis · Preis folgt</span><strong aria-label="Gesamtpreis folgt">— €</strong></div><div class="purchase-note"><svg class="icon" aria-hidden="true"><use href="#icon-check"/></svg><div><strong>Gespeichert, noch nicht bestellt.</strong><p>Deine Entwürfe bleiben auf diesem Gerät. Sobald die verbindlichen Preise verfügbar sind, kannst du hier bestellen und bezahlen.</p></div></div><button class="primary" id="checkout" disabled aria-describedby="checkout-note">Zur Kasse <span>→</span></button><p id="checkout-note" class="field-hint">Der Direktkauf ist noch nicht freigeschaltet.</p></div><p class="status-note" id="cart-status" role="status"></p><button class="secondary" id="new-design">Weiteren Schriftzug gestalten</button><button class="text-button" data-close>Zurück zum Entwurf</button></dialog>
 <noscript><p class="noscript">Bitte aktiviere JavaScript für die 3D-Vorschau. Alternativ erreichst du uns unter <a href="tel:+4921154257240">0211 54257240</a>.</p></noscript>
-<script type="module" src="app.js?v=39"></script>
+<script type="module" src="app.js?v=40"></script>
 </body></html>

@@ -5,7 +5,7 @@ import {quote3D,railColorEstimate} from './pricing.js';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 let mobileInput=null;
 const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
-let state={...DEFAULT},cart=[],activeStep=0,renderer,result=null,revision=0,debounce,editingId=null,returnToReview=false;
+let state={...DEFAULT},cart=[],activeStep=0,activeChoice='',renderer,result=null,revision=0,debounce,editingId=null,returnToReview=false;
 try{const draft=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if([1,2,3].includes(draft?.version)){state=normalize(draft);editingId=typeof draft.cartItemId==='string'?draft.cartItemId:null;}}catch{$('#saved-status').textContent='Der gespeicherte Entwurf konnte nicht geladen werden.';}
 try{const saved=JSON.parse(localStorage.getItem(CART_KEY)||'[]');if(Array.isArray(saved))cart=saved.filter(x=>x&&typeof x.id==='string'&&[1,2,3].includes(x.design?.version)).slice(0,20).map(x=>({...x,design:normalize(x.design),quantity:Number.isInteger(x.quantity)&&x.quantity>0&&x.quantity<=99?x.quantity:1}));}catch{$('#saved-status').textContent='Der gespeicherte Warenkorb konnte nicht geladen werden.';}
 if(!cart.some(item=>item.id===editingId))editingId=null;
@@ -20,6 +20,7 @@ function syncRail(){
 }
 function sync(){
  $('#sign-text').value=state.text;$('#width').value=state.width;$('#width-range').value=state.width;$('#spacing').value=state.spacing;
+ $('.look-text').classList.toggle('is-multiline',state.text.includes('\n'));
  $('#char-count').textContent=`${state.text.length} / 60`;$('#spacing-label').textContent=state.spacing+' %';
  for(const key of ['font','lighting','mount','wall','depth'])setPressed(`[data-${key}]`,state[key],key);
  setPressed('[data-color]',state.color,'color');setPressed('[data-acrylic]',state.acrylic,'acrylic');setPressed('[data-finish]',activeFinish(state),'finish');
@@ -33,7 +34,7 @@ function sync(){
  $('#material-note').textContent=finishDescription(state)+'. '+(front?'Korpus und Rückseite aus Edelstahl.':'Hinten ca. 1 cm weißes, opales Acryl in Buchstabenform mit innenliegenden LEDs.');$('#construction-note').textContent=front?'Leuchtende Acrylfront · Edelstahlkorpus mit lackierten Seiten · LEDs innen.':finishDescription(state)+' · ca. 1 cm weißes Acryl hinten · Licht zur Wand.';$('#caption-material').textContent=front?'Seiten '+paintDescription(state,'sideColor'):FINISHES[activeFinish(state)].label;
  syncDetail();syncRail();$('#plate-settings').hidden=state.mount!=='plate';$('#light').setAttribute('aria-pressed',String(state.lightOn));$('#light').textContent=state.lightOn?'Licht an':'Licht aus';$('#night').setAttribute('aria-pressed',String(state.night));$('#night').textContent=state.night?'Tagansicht':'Nachtansicht';document.body.classList.toggle('night-mode',state.night);
  $('#caption-light').textContent=LABELS.lighting[state.lighting];$('#caption-mount').textContent=LABELS.mount[state.mount];$('#caption-depth').textContent=state.depth+' cm Tiefe';
- $('#cart-count').textContent=cart.reduce((sum,item)=>sum+item.quantity,0);step(activeStep,false);
+ $('#cart-count').textContent=cart.reduce((sum,item)=>sum+item.quantity,0);syncChoices();step(activeStep,false);
 }
 function change(key,value){state[key]=value;if(key==='mount'&&value!=='rail'&&$('[data-view=mounting]').getAttribute('aria-pressed')==='true'){renderer?.view('perspective');setPressed('[data-view]','perspective','view');}sync();schedule();}
 function pendingPaint(){const keys=state.lighting==='front'?['sideColor']:['brushed-gold','painted-steel'].includes(state.backFinish)?['body']:[];if(state.mount==='rail'&&state.railCustomColor)keys.push('railColor');if(state.mount==='plate')keys.push('plate');return keys.some(key=>ralPickers[key]?.pending);}
@@ -75,12 +76,13 @@ function renderReview(){
 }
 function step(index,focus=true){
  if(index===3&&(!result||validate(state)||pendingPaint()))return;
+ if(focus&&activeChoice){activeChoice='';syncChoices();syncPreviewSize();}
  activeStep=Math.min(3,Math.max(0,index));
  for(const button of all('[data-step]')){if(Number(button.dataset.step)===activeStep)button.setAttribute('aria-current','step');else button.removeAttribute('aria-current');}
  for(let i=0;i<4;i++)$('#panel-'+i).hidden=i!==activeStep;
  $('#step-label').textContent=`Schritt ${activeStep+1} von 4`;$('#step-progress').style.width=((activeStep+1)*25)+'%';
- $('#previous').hidden=activeStep===0;
- const label=activeStep===3?(editingId?'Änderungen speichern':'Entwurf in den Warenkorb'):returnToReview?'Änderungen prüfen':['Weiter zu den Farben','Weiter zur Größe','Entwurf prüfen'][activeStep];
+ $('#previous').hidden=activeStep===0&&!activeChoice;$('#previous').setAttribute('aria-label',activeChoice?'Zur Übersicht':'Vorheriger Schritt');
+ const label=activeChoice?'Auswahl übernehmen':activeStep===3?(editingId?'Änderungen speichern':'Entwurf in den Warenkorb'):returnToReview?'Änderungen prüfen':['Weiter zu den Farben','Weiter zur Größe','Entwurf prüfen'][activeStep];
  $('#next').replaceChildren(document.createTextNode(label));const arrow=document.createElement('span');arrow.textContent='→';$('#next').append(arrow);
  if(activeStep===3){returnToReview=false;renderReview();}
  if(focus){const focusPanel=()=>{const title=$('#panel-'+activeStep+' h2');title.tabIndex=-1;title.focus({preventScroll:true});$('.controls').scrollIntoView({behavior:matchMedia('(max-width:979px), (prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});};if(mobileInput)mobileInput.finish(focusPanel);else focusPanel();}
@@ -123,6 +125,50 @@ for(const [id,font] of Object.entries(FONTS)){
  const name=document.createElement('span');name.textContent=font.label;const detail=document.createElement('small');detail.textContent=font.style;
  button.append(sample,name,detail);$('#font-options').append(button);
 }
+// Keep each step an overview. Open one full palette in place, beside the live
+// preview, instead of stacking every font/material/colour control vertically.
+const choices={
+ 'font-settings':{label:'Schrift',value:()=>LABELS.font[state.font],image:()=>`./fonts/${state.font}.svg`},
+ 'halo-settings':{label:'Leuchtfarbe',value:()=>COLORS.find(c=>c[0]===state.color)?.[1],color:()=>state.color},
+ 'acrylic-settings':{label:'Leuchtfarbe',value:()=>ACRYLICS.find(c=>c[0]===state.acrylic)?.[1]||'Eigene Farbe',color:()=>state.acrylic},
+ 'surface-settings':{label:'Oberfläche',value:()=>FINISHES[activeFinish(state)].label,finish:()=>activeFinish(state)},
+ 'paint-settings':{label:'Lackfarbe · Front & Korpus',value:()=>state.backFinish==='brushed-gold'?'Gold gebürstet':paintDescription(state,'body'),color:()=>state.backFinish==='brushed-gold'?FINISHES['brushed-gold'].color:state.body},
+ 'side-settings':{label:'Lackfarbe · Seiten',value:()=>paintDescription(state,'sideColor'),color:()=>state.sideColor}
+};
+for(const [id,choice] of Object.entries(choices)){
+ const field=$('#'+id),button=document.createElement('button');field.classList.add('choice-detail');
+ button.type='button';button.className='choice-row';button.dataset.choice=id;button.setAttribute('aria-controls',id);button.setAttribute('aria-expanded','false');
+ button.innerHTML='<span class="choice-sample" aria-hidden="true"></span><span class="choice-copy"><small></small><strong></strong></span><span class="choice-arrow" aria-hidden="true">›</span>';
+ button.querySelector('small').textContent=choice.label;field.before(button);button.addEventListener('click',()=>openChoice(id));choice.button=button;
+}
+// Light is the first choice in both variants; material/paint follow below it.
+for(const id of ['acrylic-settings','halo-settings'])$('#panel-1 .panel-heading').after(choices[id].button,$('#'+id));
+for(const panel of [$('#panel-0'),$('#panel-1')]){
+ const heading=document.createElement('div');heading.className='picker-heading';heading.innerHTML='<button type="button" class="choice-back" aria-label="Zur Übersicht">←</button><h3 tabindex="-1"></h3>';
+ heading.querySelector('button').addEventListener('click',()=>openChoice(''));panel.prepend(heading);
+}
+function syncChoices(){
+ if(activeChoice&&$('#'+activeChoice).hidden)activeChoice='';
+ for(const [id,choice] of Object.entries(choices)){
+  const button=choice.button,field=$('#'+id);button.hidden=field.hidden;button.setAttribute('aria-expanded',String(activeChoice===id));field.classList.toggle('is-open',activeChoice===id);
+  button.querySelector('strong').textContent=choice.value();const sample=button.querySelector('.choice-sample');
+  if(choice.image){let image=sample.querySelector('img');if(!image){image=document.createElement('img');image.alt='';sample.append(image);}image.src=choice.image();}
+  if(choice.color)sample.style.background=choice.color();
+  if(choice.finish)sample.className='choice-sample finish-sample '+choice.finish();
+ }
+ for(const panel of [$('#panel-0'),$('#panel-1')]){const open=activeChoice&&panel.contains($('#'+activeChoice));panel.classList.toggle('picker-open',Boolean(open));if(open)panel.querySelector('.picker-heading h3').textContent=choices[activeChoice].label;}
+ $('.controls').classList.toggle('choice-open',Boolean(activeChoice));
+}
+function openChoice(id){
+ const previous=activeChoice;
+ const apply=()=>{
+  activeChoice=id;syncChoices();step(activeStep,false);syncPreviewSize();
+  const target=id?$('#panel-'+activeStep+' .picker-heading h3'):choices[previous]?.button;
+  target?.focus({preventScroll:true});$('.controls').scrollIntoView({block:'start',behavior:'instant'});
+ };
+ if(mobileInput)mobileInput.finish(apply);else apply();
+}
+$('.controls').addEventListener('keydown',event=>{if(event.key==='Escape'&&activeChoice){event.preventDefault();openChoice('');}});
 for(const button of all('[data-rail-finish]'))button.addEventListener('click',()=>change('railCustomColor',button.dataset.railFinish==='custom'));
 $('#acrylic-color').addEventListener('input',event=>change('acrylic',event.target.value));
 $('#reset-look').addEventListener('click',()=>{state=classicLook(state);sync();schedule();});
@@ -131,6 +177,7 @@ $('#reset-side').addEventListener('click',()=>{state=choosePaint(state,'sideColo
 for(const key of ['font','lighting','mount','wall','depth'])for(const button of all(`[data-${key}]`))button.addEventListener('click',()=>change(key,key==='depth'?Number(button.dataset[key]):button.dataset[key]));
 for(const [id,key] of [['sign-text','text'],['width','width'],['width-range','width'],['spacing','spacing']])$('#'+id).addEventListener('input',event=>{
  const value=['width','spacing'].includes(key)?Number(event.target.value):event.target.value;state[key]=value;
+ if(key==='text')$('.look-text').classList.toggle('is-multiline',state.text.includes('\n'));
  // Preserve the caret and incomplete numeric input while reflecting paired controls.
  $('#char-count').textContent=`${state.text.length} / 60`;$('#spacing-label').textContent=state.spacing+' %';if(id==='width-range')$('#width').value=value;if(id==='width')$('#width-range').value=value;syncRail();schedule();
 });
@@ -140,8 +187,8 @@ $('#canvas-host').addEventListener('viewchange',()=>setPressed('[data-view]','',
 $('#canvas-host').addEventListener('rendererror',event=>{result=null;setError(event.detail);});
 $('#zoom-in').addEventListener('click',()=>renderer?.changeZoom(.12));$('#zoom-out').addEventListener('click',()=>renderer?.changeZoom(-.12));$('#reset-view').addEventListener('click',()=>{renderer?.view('perspective');setPressed('[data-view]','perspective','view');syncDetail();});
 for(const button of all('[data-step]'))button.addEventListener('click',()=>{returnToReview=false;step(Number(button.dataset.step));});
-$('#previous').addEventListener('click',()=>step(activeStep-1));
-$('#next').addEventListener('click',()=>{if(!result||validate(state))return;if(activeStep<3){step(returnToReview?3:activeStep+1);return;}saveDesign();});
+$('#previous').addEventListener('click',()=>activeChoice?openChoice(''):step(activeStep-1));
+$('#next').addEventListener('click',()=>{if(!result||validate(state)||pendingPaint())return;if(activeChoice){openChoice('');return;}if(activeStep<3){step(returnToReview?3:activeStep+1);return;}saveDesign();});
 for(const button of all('[data-close]'))button.addEventListener('click',()=>button.closest('dialog').close());
 $('#download').addEventListener('click',()=>{if(!result)return;const link=document.createElement('a');link.download='NEONTRIP-3D-Entwurf.png';link.href=renderer.snapshot();link.click();});
 function renderCart(){
@@ -177,7 +224,7 @@ function previewLayout(){const column=$('.preview-column');document.documentElem
 const layoutObserver=new ResizeObserver(previewLayout);layoutObserver.observe($('.preview-column'));layoutObserver.observe($('.control-footer'));
 function syncPreviewSize(){
  const collapsed=previewColumn.classList.contains('preview-collapsed');
- const small=previewScrolled&&!previewExpanded&&!collapsed&&!$('#preview-options').open;
+ const small=phoneLayout.matches&&(previewScrolled||Boolean(activeChoice))&&!previewExpanded&&!collapsed&&!$('#preview-options').open;
  previewColumn.classList.toggle('preview-scrolled',previewScrolled);
  previewColumn.classList.toggle('preview-compact',small);
  $('#toggle-preview').setAttribute('aria-expanded',String(!collapsed));
@@ -212,4 +259,4 @@ compactLayout.addEventListener('change',responsivePreview);responsivePreview();
 new IntersectionObserver(entries=>document.body.classList.toggle('editor-in-view',entries[0].isIntersecting),{threshold:0}).observe($('#editor'));
 mobileInput=initMobileInput({onLayout:previewLayout});
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=39');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=40');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
