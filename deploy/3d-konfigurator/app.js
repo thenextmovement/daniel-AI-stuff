@@ -1,20 +1,26 @@
 import {initMobileInput} from './mobile-input.js?v=38';
 import {createRalPicker} from './ral-picker.js?v=35';
-import {DEFAULT,SIGN_PROTECTION,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate,description} from './model.js?v=43';
+import {DEFAULT,SIGN_PROTECTION,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate,description} from './model.js?v=44';
 import {quote3D,railColorEstimate} from './pricing.js';
-import {CART_KEY,MAX_CART_ITEMS,cartEntry,restoreCart,storeCart,safePreview} from './cart.js?v=43';
-import {prepareCheckout3D} from './checkout-contract.js?v=43';
+import {CART_KEY,MAX_CART_ITEMS,cartEntry,restoreCart,storeCart,safePreview} from './cart.js?v=44';
+import {createDraftSync,newDraftToken} from './draft-sync.js?v=44';
+import {prepareCheckout3D} from './checkout-contract.js?v=44';
 import {DELIVERY_LABEL,DELIVERY_NOTE} from './delivery.js?v=41';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 let mobileInput=null;
 const DRAFT_KEY='neontrip-3d-draft-v1';
 let savingDesign=false;
+let remoteTimer,remoteStatus='local';
+const restoreToken=new URLSearchParams(location.hash.slice(1)).get('entwuerfe');
+if(restoreToken)history.replaceState(null,'',location.pathname+location.search);
+const draftSync=createDraftSync({storage:localStorage,onState:renderStorageStatus});
 let state={...DEFAULT},cart=[],activeStep=0,activeChoice='',renderer,result=null,revision=0,debounce,editingId=null,returnToReview=false;
 try{const draft=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if([1,2,3].includes(draft?.version)){state=normalize(draft);editingId=typeof draft.cartItemId==='string'?draft.cartItemId:null;}}catch{$('#saved-status').textContent='Der gespeicherte Entwurf konnte nicht geladen werden.';}
 try{cart=restoreCart(JSON.parse(localStorage.getItem(CART_KEY)||'[]'));}catch{$('#saved-status').textContent='Der gespeicherte Warenkorb konnte nicht geladen werden.';}
 if(!cart.some(item=>item.id===editingId))editingId=null;
 function persistDraft(){try{localStorage.setItem(DRAFT_KEY,JSON.stringify({...state,cartItemId:editingId}));$('#saved-status').textContent='Dein Entwurf ist auf diesem Gerät gespeichert.';}catch{$('#saved-status').textContent='Speichern auf diesem Gerät nicht möglich. Nutze „Bild speichern“.';}}
-function persistCart(){const saved=storeCart(localStorage,cart);if(saved.previewsOmitted)for(const item of cart)item.preview=null;return saved;}
+function persistCart(){const saved=storeCart(localStorage,cart);scheduleRemoteSave();return saved;}
+function scheduleRemoteSave(){clearTimeout(remoteTimer);renderStorageStatus({status:'pending'});remoteTimer=setTimeout(()=>draftSync.save(cart).catch(()=>{}),700);}
 for(const el of all('[data-sign-protection]'))el.textContent=SIGN_PROTECTION;
 for(const el of all('[data-delivery-label]'))el.textContent=DELIVERY_LABEL;
 for(const el of all('[data-delivery-note]'))el.textContent=DELIVERY_NOTE;
@@ -209,6 +215,7 @@ function renderCart(){
   if(item.preview){const image=document.createElement('img');image.src=item.preview;image.alt='Entwurf: '+item.design.text;image.width=480;image.height=320;image.loading='lazy';preview.append(image);}else{const hint=document.createElement('span');hint.textContent='Vorschau nach Bearbeitung';preview.append(hint);}
   const height=item.dimensions?.height?.toLocaleString('de-DE',{maximumFractionDigits:1});
   for(const value of [`${LABELS.lighting[item.design.lighting]} · ${LABELS.mount[item.design.mount]}`,`${item.design.width} cm breit${height?' × ca. '+height+' cm hoch':''} · ${item.design.depth} cm tief`,finishDescription(item.design),`${LABELS.usage[item.design.usage]} · ${SIGN_PROTECTION}`]){const p=document.createElement('p');p.textContent=value;info.append(p);}
+  const ref=document.createElement('p');ref.className='cart-draft-ref';ref.dataset.draftRef=item.id;info.append(ref);
   const detail=document.createElement('details'),summary=document.createElement('summary'),spec=document.createElement('p');detail.className='cart-specification';summary.textContent='Alle Angaben anzeigen';spec.textContent=description(item.design,item.dimensions?.height)+'\nBuchstabenabstand: '+item.design.spacing+' %'+(item.design.mount==='plate'&&item.dimensions?'\nPlatte: '+item.dimensions.overallWidth.toLocaleString('de-DE')+' × '+item.dimensions.overallHeight.toLocaleString('de-DE',{maximumFractionDigits:1})+' cm':'');detail.append(summary,spec);
   const surcharge=document.createElement('p');surcharge.className='rail-item-estimate';surcharge.textContent=railPriceNote(item.design,item.quantity);
   const actions=document.createElement('div');actions.className='cart-actions';
@@ -218,7 +225,57 @@ function renderCart(){
   for(const [button,delta] of [[minus,-1],[plus,1]])button.addEventListener('click',()=>{quantity.value=Math.max(1,Math.min(99,item.quantity+delta));quantity.dispatchEvent(new Event('input',{bubbles:true}));});stepper.append(minus,quantity,plus);quantityBox.append(quantityLabel,stepper);
   const price=document.createElement('p');price.className='cart-line-price';price.textContent='Stückpreis folgt · — €';quantityBox.append(price);main.append(preview,info);row.append(main,detail);if(surcharge.textContent)row.append(surcharge);row.append(actions,quantityBox);host.append(row);
  }
+ updateDraftReferences();
 }
+let storedReferences=[];
+function updateDraftReferences(){for(const el of all('[data-draft-ref]')){const ref=storedReferences.find(r=>r.localId===el.dataset.draftRef);el.textContent=ref?'Entwurfs-ID: '+ref.designId.slice(0,15)+'…':'';el.title=ref?.designId||'';}}
+function renderStorageStatus(info){
+ remoteStatus=info.status;
+ if(info.references)storedReferences=info.references;
+ const labels={local:'Bisher nur auf diesem Gerät gespeichert.',pending:'Änderungen werden gesichert …',saving:'Entwürfe werden dauerhaft gesichert …',saved:'Entwürfe dauerhaft gesichert.',unavailable:'Auf diesem Gerät gespeichert. Die dauerhafte Sicherung ist gerade nicht erreichbar.',conflict:'Dieser Warenkorb wurde auf einem anderen Gerät geändert. Deine Änderungen bleiben hier erhalten.'};
+ $('#cloud-status').textContent=labels[info.status]||labels.local;
+ $('#retry-save').hidden=!['unavailable','local'].includes(info.status);$('#fork-save').hidden=info.status!=='conflict';$('#copy-draft-link').disabled=info.status!=='saved';
+ if(info.status!=='saved')$('#draft-link-box').hidden=true;
+ updateDraftReferences();
+}
+$('#retry-save').addEventListener('click',()=>{clearTimeout(remoteTimer);draftSync.retry(cart).catch(()=>{});});
+$('#fork-save').addEventListener('click',()=>{clearTimeout(remoteTimer);draftSync.fork(cart).catch(()=>{});});
+$('#copy-draft-link').addEventListener('click',async()=>{
+ try{const link=draftSync.link(location.origin);$('#draft-link').value=link;$('#draft-link-box').hidden=false;try{await navigator.clipboard.writeText(link);$('#cloud-status').textContent='Privater Link kopiert.';}catch{$('#cloud-status').textContent='Den privaten Link kannst du hier kopieren.';$('#draft-link').focus();$('#draft-link').select();}}catch{}
+});
+async function restoreRemote(){
+ const before=JSON.stringify(cart);
+ try{
+  if(restoreToken){
+   const remote=await draftSync.load(restoreToken);
+   if(cart.length===0){storeCart(localStorage,remote.items);cart=remote.items;await draftSync.adopt(restoreToken,remote);}
+   else{
+    const added=remote.items.filter(item=>!cart.some(existing=>JSON.stringify(existing)===JSON.stringify(item))).map(item=>({...item,id:cart.some(existing=>existing.id===item.id)?newDraftToken():item.id}));
+    if(cart.length+added.length>MAX_CART_ITEMS)throw Error('CART_FULL');
+    const merged=[...cart,...added];storeCart(localStorage,merged);cart=merged;await draftSync.fork(cart);
+   }
+   renderCart();$('#cart-status').textContent='Gespeicherte Entwürfe geladen. Vorhandene Entwürfe wurden beibehalten.';$('#cart').showModal();
+  }else if(draftSync.hasSession){
+   const unchanged=await draftSync.unchanged(cart),remote=await draftSync.restoreOwn();
+   if(JSON.stringify(cart)!==before)return;
+   if(unchanged){storeCart(localStorage,remote.items);cart=remote.items;await draftSync.adopt(draftSync.sessionToken,remote);renderCart();}
+   else{
+    // Device storage may have omitted only thumbnails. Recover matching images
+    // without changing local quantities/configurations or adopting a stale revision.
+    if(remote.revision===draftSync.revision){
+     cart=cart.map(item=>{const saved=remote.items.find(row=>row.id===item.id);return !item.preview&&saved&&JSON.stringify([item.design,item.dimensions])===JSON.stringify([saved.design,saved.dimensions])?{...item,preview:saved.preview}:item;});
+     storeCart(localStorage,cart);renderCart();
+    }
+    await draftSync.save(cart);
+   }
+  }else if(cart.length)await draftSync.save(cart);
+ }catch(error){
+  if(restoreToken){$('#cart-status').textContent=error.message==='CART_FULL'?'Der gespeicherte Warenkorb passt nicht zusätzlich hinein (maximal 20 Entwürfe). Deine aktuellen Entwürfe bleiben erhalten.':'Der gespeicherte Warenkorb konnte gerade nicht geladen werden. Öffne deinen Link später erneut.';renderCart();$('#cart').showModal();}
+  if(!['unavailable','conflict'].includes(remoteStatus))renderStorageStatus({status:'unavailable'});
+ }
+ $('#cart-count').textContent=cart.reduce((sum,item)=>sum+item.quantity,0);
+}
+restoreRemote();
 $('#open-cart').addEventListener('click',()=>{renderCart();$('#cart-status').textContent='';$('#cart').showModal();});
 async function cartThumbnail(){
  try{const image=new Image();image.src=renderer.snapshot();await image.decode();const canvas=document.createElement('canvas');canvas.width=Math.min(480,image.naturalWidth);canvas.height=Math.round(image.naturalHeight*canvas.width/image.naturalWidth);canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);return safePreview(canvas.toDataURL('image/jpeg',.7));}catch{return null;}
@@ -230,7 +287,7 @@ async function saveDesign(){
  const token=revision,design={...state},dimensions={...result},oldEditingId=editingId;
  try{
   const preview=await cartThumbnail();if(token!==revision||editingId!==oldEditingId)return;
-  const old=cart,match=cart.find(item=>item.id===editingId),entry=cartEntry({id:match?.id||crypto.randomUUID(),design,dimensions,preview,quantity:match?.quantity||1});cart=match?cart.map(item=>item.id===entry.id?entry:item):[...cart,entry];
+  const old=cart,match=cart.find(item=>item.id===editingId),entry=cartEntry({id:match?.id||newDraftToken(),design,dimensions,preview,quantity:match?.quantity||1});cart=match?cart.map(item=>item.id===entry.id?entry:item):[...cart,entry];
   try{const saved=persistCart();editingId=entry.id;persistDraft();renderCart();$('#cart-status').textContent=saved.previewsOmitted?'Dein Entwurf wurde gespeichert. Für die Vorschaubilder reicht der Gerätespeicher nicht aus.':'Dein Entwurf wurde gespeichert.';$('#cart').showModal();step(activeStep,false);}catch{cart=old;editingId=oldEditingId;$('#editor-error').textContent='Der Warenkorb konnte nicht gespeichert werden. Bitte aktiviere den lokalen Browserspeicher.';}
  }finally{savingDesign=false;syncAvailability();}
 }
@@ -282,5 +339,6 @@ phoneLayout.addEventListener('change',scrollPreview);
 compactLayout.addEventListener('change',responsivePreview);responsivePreview();
 new IntersectionObserver(entries=>document.body.classList.toggle('editor-in-view',entries[0].isIntersecting),{threshold:0}).observe($('#editor'));
 mobileInput=initMobileInput({onLayout:previewLayout});
+
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=43');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=44');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}

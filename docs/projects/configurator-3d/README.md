@@ -15,7 +15,7 @@ Umgesetzt: Text (auch einzelne Buchstaben, bis zwei Zeilen), neun Schriftstile,
 Lichtfarbe, Edelstahloberflächen, freie Acryl-/Lack-/Schienen-/Plattenfarben, Wunschbreite, proportionale Höhe, Wunschtiefe,
 Buchstabenabstand, echte WebGL-Geometrie mit Tiefe und Schatten, Konturlicht,
 Tag/Nacht, drei Wandfarben, Perspektiven und manuelle Drehung/Zoom, PNG-Export,
-Entwurfswiederherstellung sowie separater lokaler 3D-Warenkorb mit Bearbeiten,
+Entwurfswiederherstellung sowie separater 3D-Warenkorb mit lokaler und serverseitiger Sicherung, Bearbeiten,
 Mengen, Entfernen und weiteren Entwürfen. Vier Schritte: Look, Farben, Größe und
 Prüfen. Die Zusammenfassung erlaubt direkte Rücksprünge zum jeweiligen Bereich.
 Kein Logo-Upload in diesem Umfang.
@@ -1077,3 +1077,59 @@ und 320×568 geprüft: Außenschild und Innenschild gemeinsam speichern, nach
 Neuladen vollständig wiederherstellen und Einsatzort eines Artikels ändern,
 ohne Menge oder anderen Eintrag zu verändern. Keine horizontalen Überläufe oder
 erfassten Browserwarnungen/-fehler. Testentwürfe entfernt; nur lokale Vorschau.
+
+## Dauerhafte Entwürfe und gespeicherte Shopify-Übergabe (22.10.2026)
+
+Dieser Abschnitt ersetzt den früheren rein lokalen Speicherstand. Lokal ist die
+neue Funktion mit einer isolierten PostgreSQL-Datenbank aktiv; Produktion wurde
+nicht geändert. Preise bleiben Platzhalter, der Kauf ist weiterhin zwingend gesperrt.
+
+- `draft-sync.js`: automatische Sicherung des Warenkorbs, expliziter Speicherstatus,
+  Wiederholen bei Fehlern und privater Wiederherstellungslink. Das laufende, noch
+  nicht in den Warenkorb übernommene Editorbild bleibt wie bisher ein lokaler Entwurf.
+- Eigene Entwurfs-ID je Position, unveränderliche Versionen/Bilder, Mengen getrennt.
+  Wiederholungen sind idempotent, parallele Änderungen überschreiben sich nicht.
+  Bei Konflikten kann der Kunde seine Änderungen separat sichern.
+- Der Link öffnet die gespeicherten Schilder auf einem anderen Gerät. Bestehende
+  lokale Entwürfe werden beim Import erhalten. Der Zugriffs-Token steht nur im
+  Fragment, wird sofort aus der Adresszeile entfernt und im Auth-Header übertragen.
+- Die Sicherung bestätigt erst einen erfolgreichen Serverbeleg. Offline oder bei
+  Fehlern bleiben lokale Daten erhalten, ein falsches „dauerhaft gesichert“ entfällt.
+  Auch ohne SubtleCrypto auf einer HTTP-LAN-Vorschau funktionieren Token/Fingerprints.
+- Bilder sind JPEGs, serverseitig dekodiert und geprüft, inklusive legitimer Canvas-
+  ICC-Farbprofile. Keine öffentlichen Bild-URLs. Fehlende Vorschaubilder durch lokalen
+  Speichermangel werden aus derselben Serverrevision ergänzt, ohne neue Mengen oder
+  Konfigurationen zu überschreiben.
+
+Server im separaten Offers-Worktree:
+`/Users/danielklesse/codex-worktrees/neontrip-offers-3d-design-storage-20261022-193801`.
+Dort erläutert `docs/configurator-3d/persistence.md` Tabellen, Migration und Betrieb.
+Die neue Familie ist vollständig von Neon-Kalkulation und Neon-Checkout getrennt.
+Keine Supabase-Änderung und keine neue zweite Preisquelle.
+
+Pages-Proxies `drafts.js` / `handoff.js` führen nur zum festen Offers-Host.
+`checkout.js` bleibt unverändert gesperrt. Bei jedem erfolgreichen Speichern legt
+Offers einen BLOCKED-Übergabesnapshot mit Text, RAL, Maßen, Material, Montage,
+Innen/Außen, IP67, Mengen, Bildreferenz und Lieferzeit an. Der separate Handoff-
+Endpoint liest nur gespeicherte Daten; kein clientseitiger Preis wird übernommen.
+Keine echten Shopify-Produkte, Warenkörbe, E-Mails oder Bestellungen werden erzeugt.
+Die vorbereitete `cartCreate`-Mutation ist gegen Storefront 2026-10 validiert.
+
+Export der gemeinsamen Produktregeln (einschließlich SHA-256-Quellenmanifest):
+
+    node tools/configurator-3d/export-server-contract.mjs /absolute/offers/lib/configurator-3d/generated
+
+Die lokale Vorschau unter Port 18877 nutzt jetzt `tools/configurator-3d/preview-server.py`
+und die isolierte API auf 18879. Die iPhone-Vorschau ist im aktuellen WLAN unter
+`http://192.168.1.241:18878/3d-konfigurator/` erreichbar; die frühere 192.168.0.147
+ist nicht mehr die aktuelle Mac-Adresse. Vor Produktion sind beide geprüften
+Repository-Änderungen inklusive Migration nach dem jeweiligen AGENTS-Gate zu
+veröffentlichen. Den alten vollständigen Seitenkandidaten weiterhin nicht unverändert
+hochladen; die Produktionsbasis muss vorher aktualisiert werden.
+
+Prüfung: 62 Frontend/Geometrie/Vertragstests plus 8 Tests gegen echte isolierte
+PostgreSQL-Datenbank. TypeScript, Prisma, gezieltes ESLint und Next-Produktionsbuild
+bestanden. Alle drei Pages-Handler erfolgreich gebündelt. Browser: 393×741 und
+320×568, zwei verschiedene Schilder, Mengen, privater Link in getrennter
+Browserablage, Änderung eines einzelnen Entwurfs, Reload, Konflikt und separate
+Sicherung. Kauf überall deaktiviert. Kein physischer Handy- oder echter Kauftest.
