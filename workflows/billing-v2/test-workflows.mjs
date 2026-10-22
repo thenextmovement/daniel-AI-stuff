@@ -248,7 +248,7 @@ test("VAT review worker produces the internal summary with direct Ops and VIES l
   const source = JSON.stringify(vatReview);
   assert.equal(vatReview.active, false);
   assert.equal(vatReview.nodes[0].typeVersion, 1.3);
-  assert.match(source, /Umsatzsteuer-ID passt nicht zur Firma/);
+  assert.match(source, /Umsatzsteuer-ID noch nicht erfolgreich geprüft/);
   assert.match(source, /ops\/rechnungen\?caseId=/);
   assert.match(source, /taxation_customs\/vies/);
   assert.match(source, /als netto oder brutto freigeben/);
@@ -356,4 +356,17 @@ test("customer delivery cutover resolves invoice email first and never silently 
   assert.match(customerDeliveryMigration, /PROFORMA_UPDATE/);
   assert.match(customerDeliveryMigration, /billing_mark_document_sent_after_job/);
   assert.match(customerDeliveryMigration, /new\.status = 'DONE'/);
+});
+
+
+test("VAT alert distinguishes unavailable validation from a proven mismatch", () => {
+  const code = vatReview.nodes.find(n => n.name === "Prepare VAT Review Alert").parameters.jsCode;
+  const run = validation => vm.runInNewContext("(function(){" + code + "})()", {
+    $env: {}, $json: { claimed: { job: { id: "job", lease_token: "lease" },
+      billingCase: { id: "case", shopify_order_name: "#TEST", vat_validation: validation } } }
+  })[0].json.message;
+  assert.match(run({checked:false, valid:false}), /^Umsatzsteuer-ID noch nicht erfolgreich geprüft/);
+  assert.match(run({checked:true, valid:false}), /^Umsatzsteuer-ID nicht als gültig bestätigt/);
+  assert.match(run({checked:true, valid:true, identityComparison:"MISMATCH"}), /^Umsatzsteuer-ID: Firmenangaben weichen ab/);
+  assert.match(run({checked:true, valid:true, identityComparison:"MATCH"}), /^Umsatzsteuerprüfung: Freigabe und Rechnungsdaten prüfen/);
 });
