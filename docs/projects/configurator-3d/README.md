@@ -655,3 +655,18 @@ stellt auch ihre ursprüngliche Projektionsmatrix wieder her. Browserprüfung be
 390×844 und 320×740 px: mittiger Schriftzug, unveränderte Vorschauhöhen von
 135/186 bzw. 118/169 px (Bild/Gesamtbereich), Drehung und manuelles Vergrößern.
 Kein horizontaler Überlauf oder erfasster Browserfehler. Nur lokal aktualisiert.
+
+
+## Einheitliche NEONTRIP-Akzentfarbe (22.10.2026)
+
+Die UI verwendet das Pink `#FA31A2` des bestehenden Neon-Konfigurators
+(`deploy/configurator/index.html`) und dessen helle Auswahlfläche `#FFF4FA`.
+Primärbuttons, Auswahlrahmen, Fortschritt, Rücksetz-/Bearbeitungslinks und mobile
+Vorschau-Bedienelemente nutzen gemeinsame CSS-Variablen. Die CSS-Version ist 36;
+Material-, Lack- und Leuchtfarben sowie JavaScript bleiben unverändert.
+
+Verifikation: Browserprüfung bei Desktopbreite und 390×844 px, einschließlich
+kompakter Vorschau. Berechnete Button-, Rahmen-, Fortschritts- und Linkfarben
+entsprechen dem Pink; kein horizontaler Überlauf mobil und keine erfassten
+Browserwarnungen/-fehler. Alte UI-Beerentöne entfernt, Diffprüfung bestanden.
+Nur lokal aktualisiert, nicht veröffentlicht.
