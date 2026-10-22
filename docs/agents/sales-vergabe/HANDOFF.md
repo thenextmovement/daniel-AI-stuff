@@ -11,6 +11,7 @@ Stand: 2026-07-21, verifiziert gegen Ops `origin/main` auf Commit `d3e14db4e1da4
 
 ## Aktueller Befund
 
+- `[lokal implementiert; Veröffentlichung offen, 2026-10-22]` Institutionsdomains erhalten eine abgeleitete Kennzeichnung für die bewusste Vergabe vor Zahlung. Bekannte Domains und unbestätigte Muster bleiben getrennt; Zahlung und Vergabefreigabe werden nicht automatisch geändert. Vertrag, Quellen und Tests: [Öffentliche Einrichtungen](./PUBLIC-INSTITUTIONS.md).
 - `[verifiziert]` Die Sales-Vergabe ist im aktuellen Code keine reine Shopify-Liste. Angenommene Angebote werden direkt als `offer.completed` an die Ops-API übertragen; ein Offers-Pull und ein Shopify-Import dienen als Wiederherstellung beziehungsweise Fallback.
 - `[verifiziert]` Die operative Vergabe und ihre Idempotenz werden in den Supabase-Tabellen `supplier_sales`, `supplier_sale_items`, `supplier_sale_events`, `supplier_assignment_attempts` und `supplier_payment_reminders` geführt. Trello ist nur Projektion.
 - `[verifiziert]` Bezahlte offene Sales werden zuerst, unbezahlte Bestandskunden mit früher nachgewiesener Zahlung direkt danach und übrige aktive Sales anschließend sortiert.

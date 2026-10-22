@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Factory,
   ImagePlus,
+  Landmark,
   Mail,
   Pencil,
   RefreshCcw,
@@ -174,7 +175,7 @@ type ScopeFilter = "active" | "ready" | "payment" | "assigned" | "deadline" | "s
 type SupplierFilter = "all" | "quentin" | "said" | "special" | "manual_review";
 type PaymentFilter = "all" | "paid" | "unpaid" | "pending" | "authorized" | "partially_paid" | "unknown";
 type UrgencyFilter = "all" | "rush" | "standard";
-type QuickFilter = "all" | "paid_priority" | "prior_paid_customer" | "missing_payment_link" | "sync_issue" | "deadline";
+type QuickFilter = "all" | "paid_priority" | "prior_paid_customer" | "public_institution" | "missing_payment_link" | "sync_issue" | "deadline";
 
 const BOARD_PAGE_SIZE = 50;
 
@@ -285,6 +286,14 @@ function priorPaidCustomerBasisLabel(sale: SupplierSale) {
   return "Historie";
 }
 
+function publicInstitutionPaymentOpen(sale: SupplierSale) {
+  return Boolean(sale.publicInstitution)
+    && ["unknown", "pending", "authorized", "partially_paid"].includes(sale.shopifyPaymentStatus)
+    && !["paid_confirmed", "canceled", "refunded"].includes(sale.paymentDecisionStatus)
+    && !sale.assignedSupplier
+    && !["assigned", "in_production", "completed", "canceled"].includes(sale.assignmentStatus);
+}
+
 function missingPaymentLinkIssue(sale: SupplierSale) {
   if (sale.shopifyPaymentStatus === "paid") return false;
   if (["assigned", "in_production", "completed", "canceled"].includes(sale.assignmentStatus)) return false;
@@ -354,6 +363,7 @@ function assignmentBlockReason(
   specialSupplierName: string,
   shopifySupplierTagConfirmed: boolean,
 ) {
+  if (sale.postOrderReview.status === "change_requested") return "Kunden-Änderung muss vor der Vergabe geprüft werden.";
   if (!supplier) return "Supplier fehlt.";
   if (supplier === "special" && !specialSupplierName.trim()) return "Name des weiteren Suppliers fehlt.";
   if (supplier === "special" && !shopifySupplierTagConfirmed) return "Shopify-Supplier-Tag muss bestaetigt werden.";
@@ -537,6 +547,7 @@ function QuickFilterButton({
 
 function defaultPaymentDecision(sale: SupplierSale): SupplierSalePaymentDecision {
   if (sale.shopifyPaymentStatus === "paid") return "paid_confirmed";
+  if (sale.paymentDecisionStatus === "wait_for_payment") return "wait_for_payment";
   if (sale.paymentDecisionStatus === "manual_approved_unpaid") return "manual_approved_unpaid";
   return "manual_approved_unpaid";
 }
@@ -850,6 +861,8 @@ function SaleCard({
   const reviewBadge = postOrderReviewBadgeLabel(sale, reviewNow);
   const paidPriority = paidAssignmentPriority(sale);
   const priorPaidPriority = priorPaidCustomerPriority(sale);
+  const institutionPaymentOpen = publicInstitutionPaymentOpen(sale);
+  const institutionKnown = sale.publicInstitution?.matchBasis === "known_domain";
   const saeidSuggestion = !sale.assignedSupplier && shouldSuggestSaeid(sale);
   const orderedAt = sale.orderPlacedAt || sale.createdAt;
   const orderAge = orderAgeLabel(orderedAt, now);
@@ -950,7 +963,7 @@ function SaleCard({
   }
 
   return (
-    <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : priorPaidPriority ? "border-blue-400 ring-2 ring-blue-100" : "border-stone-200"}`}>
+    <article className={`rounded-[0.5rem] border bg-white p-4 shadow-sm ${paidPriority ? "border-emerald-300 ring-2 ring-emerald-100" : institutionPaymentOpen && institutionKnown ? "border-violet-400 ring-2 ring-violet-100" : priorPaidPriority ? "border-blue-400 ring-2 ring-blue-100" : "border-stone-200"}`}>
       <div className="grid gap-4 lg:grid-cols-[7rem_minmax(0,1fr)_minmax(20rem,0.78fr)]">
         <div className="min-w-0">
           <div className="h-28 overflow-hidden rounded-[0.5rem] border border-stone-200 bg-stone-100">
@@ -975,6 +988,21 @@ function SaleCard({
         </div>
 
         <div className="min-w-0">
+          {sale.publicInstitution ? (
+            <div className="mb-3 rounded-[0.5rem] border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">
+              <p className="flex items-start gap-2 font-semibold">
+                <Landmark className="mt-0.5 h-4 w-4 shrink-0" />
+                {institutionKnown ? sale.publicInstitution.institution : "Mögliche öffentliche Einrichtung – prüfen"}
+              </p>
+              <p className="mt-1 break-words text-xs">E-Mail-Domain: {sale.publicInstitution.domain}{institutionKnown ? " · bekannte Institutionsdomain" : " · nur anhand des Domainmusters erkannt"}</p>
+              {institutionPaymentOpen ? (
+                <>
+                  <p className="mt-2 font-semibold">{reviewBlocksAssignment ? "Kunden-Änderung zuerst prüfen" : paymentDecision === "wait_for_payment" ? "Warten auf Zahlung ist ausgewählt" : institutionKnown ? "Vor Zahlung vergeben" : "Vergabe vor Zahlung prüfen"}</p>
+                  <p className="mt-1 text-xs">Institutionellen Auftrag und Zahlungsziel prüfen, dann über „Trotz offener Zahlung vergeben“ bestätigen. Die Zahlung bleibt offen.</p>
+                </>
+              ) : null}
+            </div>
+          ) : null}
           {paidPriority ? (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[0.5rem] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-950">
               <CheckCircle2 className="h-4 w-4 text-emerald-700" />
@@ -1306,7 +1334,9 @@ function SaleCard({
                   const selectedSupplier = supplierLabel(supplier, specialSupplierName);
                   const confirmationMessage =
                     needsManualPaymentRelease && paymentDecision === "manual_approved_unpaid"
-                      ? `Diese Sale ist noch nicht bezahlt. Trotzdem an ${selectedSupplier} vergeben und interne Syncs ausloesen?`
+                      ? institutionPaymentOpen
+                        ? `${sale.publicInstitution?.institution} (${sale.publicInstitution?.domain}): Institutionellen Auftrag und Zahlungsziel geprüft? Vor Zahlung an ${selectedSupplier} vergeben und interne Syncs auslösen? Die Zahlung bleibt offen.`
+                        : `Diese Sale ist noch nicht bezahlt. Trotzdem an ${selectedSupplier} vergeben und interne Syncs ausloesen?`
                       : `Sale an ${selectedSupplier} vergeben und Shopify/Trello/Aufgabe synchronisieren?`;
                   if (!confirmAction(confirmationMessage)) return;
                   void onAction({
@@ -1697,6 +1727,7 @@ export function SupplierSalesClient({
   const visibleItems = useMemo(() => {
     if (quickFilter === "paid_priority") return items.filter(paidAssignmentPriority);
     if (quickFilter === "prior_paid_customer") return items.filter(priorPaidCustomerPriority);
+    if (quickFilter === "public_institution") return items.filter(publicInstitutionPaymentOpen);
     if (quickFilter === "missing_payment_link") return items.filter(missingPaymentLinkIssue);
     if (quickFilter === "sync_issue") return items.filter(hasSyncIssue);
     if (quickFilter === "deadline") return items.filter(isDeadlineRelevant);
@@ -2098,6 +2129,10 @@ export function SupplierSalesClient({
             <QuickFilterButton active={quickFilter === "prior_paid_customer"} onClick={() => setQuickFilter("prior_paid_customer")}>
               <BadgeCheck className="h-3.5 w-3.5" />
               Bestandskunde offen ({items.filter(priorPaidCustomerPriority).length})
+            </QuickFilterButton>
+            <QuickFilterButton active={quickFilter === "public_institution"} onClick={() => setQuickFilter("public_institution")}>
+              <Landmark className="h-3.5 w-3.5" />
+              Einrichtungen offen ({items.filter(publicInstitutionPaymentOpen).length})
             </QuickFilterButton>
             <QuickFilterButton active={quickFilter === "missing_payment_link"} onClick={() => setQuickFilter("missing_payment_link")}>
               <AlertTriangle className="h-3.5 w-3.5" />

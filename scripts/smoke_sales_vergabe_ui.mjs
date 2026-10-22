@@ -213,6 +213,15 @@ const board = {
   },
 };
 
+const institutionMarker = { domain: "verwaltung.uni-koeln.de", institution: "Universität zu Köln", matchBasis: "known_domain" };
+const institutionSale = sale({ id: "sale-institution", customerEmail: "qa@verwaltung.uni-koeln.de", shopifyPaymentStatus: "pending", paymentDecisionStatus: "wait_for_payment", assignmentStatus: "payment_open", publicInstitution: institutionMarker });
+const institutionCandidate = sale({ id: "sale-institution-candidate", shopifyPaymentStatus: "pending", paymentDecisionStatus: "pending", assignmentStatus: "payment_open", publicInstitution: { domain: "uni-beispiel.de", institution: "Mögliche Hochschule", matchBasis: "domain_pattern" } });
+const institutionChange = sale({ ...institutionSale, id: "sale-institution-change", shopifyOrderName: "#QA-sale-institution-change", paymentDecisionStatus: "pending", postOrderReview: { status: "change_requested", message: "Design ändern", expiresAt: null } });
+const institutionPaid = sale({ id: "sale-institution-paid", publicInstitution: institutionMarker });
+const institutionAssigned = sale({ ...institutionSale, id: "sale-institution-assigned", shopifyOrderName: "#QA-sale-institution-assigned", assignedSupplier: "quentin", assignmentStatus: "assigned" });
+board.items.push(institutionSale, institutionCandidate, institutionChange, institutionPaid, institutionAssigned);
+board.counts.total = board.items.length;
+
 const taskPayload = {
   ok: true,
   tasks: [
@@ -369,6 +378,11 @@ function setupRoutes(page, posts) {
             }
           : source.orderConfirmationEmail || null,
       };
+      // This scenario verifies the post-action GET, so its fixture must persist
+      // the assignment rather than returning the original unpaid board again.
+      if (source.publicInstitution && body.action === "assign_supplier") {
+        board.items = board.items.map((item) => item.id === source.id ? updatedSale : item);
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -396,6 +410,7 @@ function dialogHandler(dialogs, action, accept) {
 async function main() {
   const target = baseUrl();
   const browser = await chromium.launch({ headless: true });
+  try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const posts = [];
   const dialogs = [];
@@ -549,6 +564,47 @@ async function main() {
   await page.getByText("AN-LIVE-2").waitFor();
   assert(posts.length === 7 && posts[6].body.action === "diagnose_sales_flow", "Live-Abgleich sendet falsche Action");
 
+  await page.getByRole("button", { name: "Einrichtungen offen (3)" }).click();
+  const institutionCard = page.locator("article").filter({ has: page.getByRole("heading", { name: "#QA-sale-institution", exact: true }) });
+  const candidateCard = page.locator("article").filter({ has: page.getByRole("heading", { name: "#QA-sale-institution-candidate", exact: true }) });
+  const changeCard = page.locator("article").filter({ has: page.getByRole("heading", { name: "#QA-sale-institution-change", exact: true }) });
+  assert(await page.locator("article").count() === 3, "Einrichtungsfilter muss bezahlte, vergebene und private Sales ausschließen");
+  assert(await institutionCard.getByLabel("Zahlungsentscheidung").inputValue() === "wait_for_payment", "Gespeichertes Warten wurde zurückgesetzt");
+  assert(await institutionCard.getByRole("button", { name: "Vergeben", exact: true }).isDisabled(), "Institutionsmarker umgeht Warten");
+  assert(await institutionCard.getByText("Warten auf Zahlung ist ausgewählt", { exact: true }).isVisible(), "Warten-Hinweis fehlt");
+  assert(await candidateCard.getByText("Mögliche öffentliche Einrichtung – prüfen", { exact: true }).isVisible(), "Unbestätigte Domain wird nicht getrennt angezeigt");
+  assert(await candidateCard.getByText("Vor Zahlung vergeben", { exact: true }).count() === 0, "Domainmuster wird als bestätigte Einrichtung dargestellt");
+  assert(await changeCard.getByText("Kunden-Änderung zuerst prüfen", { exact: true }).isVisible(), "Kundenänderung wird vom Institutionshinweis verdeckt");
+  assert(await changeCard.getByRole("button", { name: "Vergeben", exact: true }).isDisabled(), "Institutionsmarker umgeht Kundenänderung");
+  await institutionCard.getByLabel("Zahlungsentscheidung").selectOption("manual_approved_unpaid");
+  assert(await institutionCard.getByText("Vor Zahlung vergeben", { exact: true }).isVisible(), "Vergabehinweis fehlt nach bewusster Auswahl");
+  assert(await institutionCard.getByText(/E-Mail-Domain: verwaltung.uni-koeln.de/).isVisible(), "Erkennungsgrundlage fehlt");
+  assert(posts.length === 7, "Markierung oder Filter hat einen Schreibaufruf erzeugt");
+  page.once("dialog", dialogHandler(dialogs, "dismiss-institution-assign", false));
+  await institutionCard.getByRole("button", { name: "Vergeben", exact: true }).click();
+  assert(posts.length === 7, "Abgebrochene Institutionsvergabe sendet POST");
+  assert(dialogs.at(-1).message.includes("Zahlungsziel geprüft?"), "Institutionsbestätigung erklärt Zahlungsziel nicht");
+
+  const institutionScreenshot = process.env.SALES_VERGABE_UI_INSTITUTION_SCREENSHOT;
+  if (institutionScreenshot) await institutionCard.screenshot({ path: institutionScreenshot });
+  const mobileInstitutionOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  assert(!mobileInstitutionOverflow, "Institutionshinweis läuft mobil horizontal über");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  assert(await institutionCard.getByText("Vor Zahlung vergeben", { exact: true }).isVisible(), "Institutionshinweis fehlt auf Desktop");
+  assert(!await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), "Institutionshinweis läuft auf Desktop über");
+  page.once("dialog", dialogHandler(dialogs, "accept-institution-assign", true));
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/api/ops/supplier-sales") && response.request().method() === "POST"),
+    institutionCard.getByRole("button", { name: "Vergeben", exact: true }).click(),
+  ]);
+  assert(posts.length === 8 && posts[7].body.action === "assign_supplier" && posts[7].body.paymentDecisionStatus === "manual_approved_unpaid", "Institutionsvergabe verwendet nicht die vorhandene unbezahlte Freigabe");
+  await institutionCard.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: /Alle geladenen/ }).click();
+  await institutionCard.waitFor();
+  assert(await institutionCard.getByText("Vor Zahlung vergeben", { exact: true }).count() === 0, "Vergebener Sale fordert weiter zur Vergabe auf");
+  assert(await institutionCard.getByText("offen", { exact: true }).isVisible(), "Vergabe hat offene Zahlung verdeckt");
+  await page.setViewportSize({ width: 390, height: 844 });
+
   const mobileLayout = await page.evaluate(() => ({
     noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,
@@ -562,8 +618,10 @@ async function main() {
     await page.screenshot({ path: screenshotPath, fullPage: true });
   }
 
-  await browser.close();
   console.log(JSON.stringify({ ok: true, baseUrl: target, posts: posts.map((entry) => entry.body?.action || entry.method), dialogs: dialogs.length, mobileLayout, consoleErrors }, null, 2));
+  } finally {
+    await browser.close();
+  }
 }
 
 main().catch((error) => {

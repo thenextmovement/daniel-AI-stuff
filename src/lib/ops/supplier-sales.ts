@@ -207,6 +207,54 @@ export type SupplierSalePriorPaidCustomer = {
   matchBasis: "exact_email" | "company_domain" | "customer_name" | null;
 };
 
+export type SupplierSalePublicInstitution = {
+  domain: string;
+  institution: string;
+  matchBasis: "known_domain" | "domain_pattern";
+};
+
+// Ownership sources and extension policy: docs/agents/sales-vergabe/PUBLIC-INSTITUTIONS.md.
+// This is an operator hint, never proof of payment or automatic unpaid approval.
+const PUBLIC_INSTITUTION_DOMAINS: Record<string, string> = {
+  "memmingen.de": "Stadt Memmingen",
+  "sandersdorf-brehna.de": "Stadt Sandersdorf-Brehna",
+  "solingen.de": "Stadt Solingen",
+  "wernigerode.de": "Stadt Wernigerode",
+  "fraunhofer.de": "Fraunhofer-Gesellschaft",
+  "uni-koeln.de": "Universität zu Köln",
+  "hu-berlin.de": "Humboldt-Universität zu Berlin",
+  "tu-berlin.de": "Technische Universität Berlin",
+  "tum.de": "Technische Universität München",
+};
+
+export function detectSupplierSalePublicInstitution(email: string | null | undefined): SupplierSalePublicInstitution | null {
+  if (!email) return null;
+  const normalized = email.trim().toLowerCase();
+  if (normalized.length > 254 || !/^[^\s@<>]+@[^\s@<>]+$/.test(normalized)) return null;
+  const domain = normalized.split("@")[1];
+  const labels = domain.split(".");
+  if (labels.length < 2 || labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) return null;
+  for (const [knownDomain, institution] of Object.entries(PUBLIC_INSTITUTION_DOMAINS)) {
+    if (domain === knownDomain || domain.endsWith(`.${knownDomain}`)) {
+      return { domain, institution, matchBasis: "known_domain" };
+    }
+  }
+  // Only the registrable-looking DACH domain, never a local part or a lookalike
+  // subdomain such as uni-koeln.de.example.com. Patterns remain unverified hints.
+  const rootDomain = labels.slice(-2).join(".");
+  if (/^(?:uni|univ|universitaet|hochschule|hs|fh|tu|th)-[a-z0-9-]+\.(?:de|at|ch)$/.test(rootDomain)) {
+    return { domain, institution: "Mögliche Hochschule", matchBasis: "domain_pattern" };
+  }
+  if (/^(?:stadt|gemeinde|landkreis|landratsamt|kreis)-[a-z0-9-]+\.(?:de|at|ch)$/.test(rootDomain)
+    || /(?:^|\.)(?:gov\.de|gv\.at|admin\.ch)$/.test(domain)) {
+    return { domain, institution: "Mögliche öffentliche Verwaltung", matchBasis: "domain_pattern" };
+  }
+  if (/^(?:institut|forschungsinstitut)-[a-z0-9-]+\.(?:de|at|ch)$/.test(rootDomain)) {
+    return { domain, institution: "Mögliche Forschungseinrichtung", matchBasis: "domain_pattern" };
+  }
+  return null;
+}
+
 export type SupplierSale = {
   id: string;
   saleKey: string;
@@ -282,6 +330,7 @@ export type SupplierSale = {
   orderConfirmationEmail: SupplierOrderConfirmationEmailState | null;
   postOrderReview: SupplierSalePostOrderReview;
   priorPaidCustomer: SupplierSalePriorPaidCustomer;
+  publicInstitution?: SupplierSalePublicInstitution | null;
 };
 
 export type SupplierSaleItem = {
@@ -2306,6 +2355,7 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     orderConfirmationEmail: mapOrderConfirmationEmailState(row.metadata || {}),
     postOrderReview: postOrderReviewFromRow(row),
     priorPaidCustomer: priorPaidCustomerFromRow(row),
+    publicInstitution: detectSupplierSalePublicInstitution(row.customer_email),
   };
 }
 

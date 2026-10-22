@@ -15,6 +15,7 @@ import {
   deriveAssignmentStatus,
   derivePaymentDecisionStatus,
   deriveSupplierRecommendation,
+  detectSupplierSalePublicInstitution,
   enrichSupplierSalesFromQuentinBoard,
   enrichSupplierSalesWithUniqueRequestTrelloCards,
   generateSupplierOrderConfirmationPdf,
@@ -250,6 +251,63 @@ test("payment and assignment states separate paid, unpaid approval and waiting",
   assert.equal(deriveAssignmentStatus({ paymentDecisionStatus: "wait_for_payment" }), "payment_open");
   assert.equal(deriveAssignmentStatus({ paymentDecisionStatus: "wait_for_payment", completedOfferSource: true }), "payment_open");
   assert.equal(deriveAssignmentStatus({ paymentDecisionStatus: "paid_confirmed", assignedSupplier: "quentin" }), "assigned");
+});
+
+test("public institution detection uses exact domains, subdomains and separate unverified patterns", () => {
+  for (const email of ["office@memmingen.de", "office@sandersdorf-brehna.de", "office@solingen.de", "office@wernigerode.de", "OFFICE@FIT.FRAUNHOFER.DE ", "office@verwaltung.uni-koeln.de", "office@hu-berlin.de", "office@tu-berlin.de", "office@tum.de"]) {
+    assert.equal(detectSupplierSalePublicInstitution(email)?.matchBasis, "known_domain", email);
+  }
+  for (const email of ["office@uni-bonn.de", "office@tu-dresden.de", "office@stadt-beispiel.de", "office@gemeinde-beispiel.at", "office@institut-beispiel.de", "office@bmi.gv.at", "office@admin.ch"]) {
+    assert.equal(detectSupplierSalePublicInstitution(email)?.matchBasis, "domain_pattern", email);
+  }
+  for (const email of [null, "", "broken", "a@@uni-koeln.de", "a@-uni-koeln.de", "a@uni-koeln.de.", "a@uni-koeln..de", "uni-koeln.de@gmail.com", "universitaet@gmx.de", "office@notfraunhofer.de", "office@fraunhofer.de.example.com", "office@uni-koeln.de.example.de", "office@stadt-solingen.de.example.com", "office@institute-consulting.com", "office@community.de", "Name <office@uni-koeln.de>"]) {
+    assert.equal(detectSupplierSalePublicInstitution(email), null, String(email));
+  }
+});
+
+test("institution marker is derived for existing sales without changing payment, assignment or source data", () => {
+  const rows = [saleRow({ id: "institution", customer_email: "office@fit.fraunhofer.de", shopify_payment_status: "pending", payment_decision_status: "wait_for_payment", assignment_status: "payment_open" }), saleRow({ id: "private", customer_email: "office@gmail.com" })];
+  const before = structuredClone(rows);
+  const board = buildSupplierSaleBoardFromRows(rows, []);
+  const institution = board.items.find((item) => item.id === "institution")!;
+  assert.equal(institution.publicInstitution?.institution, "Fraunhofer-Gesellschaft");
+  assert.equal(institution.publicInstitution?.domain, "fit.fraunhofer.de");
+  assert.equal(institution.shopifyPaymentStatus, "pending");
+  assert.equal(institution.paymentDecisionStatus, "wait_for_payment");
+  assert.equal(institution.assignmentStatus, "payment_open");
+  assert.equal(board.items.find((item) => item.id === "private")?.publicInstitution, null);
+  assert.deepEqual(rows, before);
+  assert.equal(board.counts.paidUnassigned, 1);
+});
+
+test("institution assignment still needs explicit unpaid approval and keeps customer-change guard", async () => {
+  let currentRow = saleRow({ id: "institution", customer_email: "office@uni-koeln.de", shopify_payment_status: "pending", payment_decision_status: "wait_for_payment", assignment_status: "payment_open" });
+  const writes: string[] = [];
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET");
+    if (method !== "GET") writes.push(url.pathname);
+    if (url.pathname.endsWith("/supplier_sales")) {
+      if (method === "PATCH") currentRow = { ...currentRow, ...JSON.parse(String(init?.body)) };
+      return Response.json([currentRow]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items")) return Response.json([itemRow({ sale_id: currentRow.id })]);
+    return Response.json([]);
+  }, async () => {
+    process.env.SUPPLIER_TRELLO_PROJECTION_ENABLED = "false";
+    process.env.SUPPLIER_ASSIGNMENT_TASKS_ENABLED = "false";
+    const input = { saleId: currentRow.id, supplier: "quentin" as const, requestedDeliveryDate: "2026-11-20", operatorName: "QA" };
+    await assert.rejects(assignSupplierSale(input), /Unbezahlte Vergabe braucht Freigabe/);
+    assert.equal(writes.length, 0);
+    currentRow.metadata = { post_order_review: { status: "change_requested", changeRequestedAt: "2026-10-22T12:00:00Z" } };
+    await assert.rejects(assignSupplierSale({ ...input, paymentDecisionStatus: "manual_approved_unpaid" }), /Kunden-Aenderung muss geprueft werden/);
+    assert.equal(writes.length, 0);
+    currentRow.metadata = {};
+    const result = await assignSupplierSale({ ...input, paymentDecisionStatus: "manual_approved_unpaid" });
+    assert.equal(result.assignmentStatus, "assigned");
+    assert.equal(result.paymentDecisionStatus, "manual_approved_unpaid");
+    assert.equal(result.shopifyPaymentStatus, "pending");
+    assert.equal(writes.filter((path) => path.endsWith("/supplier_assignment_attempts")).length, 2);
+  });
 });
 
 test("date normalization accepts Shopify note dates and German operator dates", () => {
