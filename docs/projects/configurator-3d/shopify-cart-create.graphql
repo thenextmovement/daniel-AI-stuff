@@ -1,0 +1,8 @@
+# Prepared operation only. No runtime imports/calls until server-verified 3D
+# pricing, product variants, persisted configuration and preview references exist.
+mutation Create3DSignCart($input: CartInput!) {
+  cartCreate(input: $input) {
+    cart { id checkoutUrl }
+    userErrors { field message code }
+  }
+}

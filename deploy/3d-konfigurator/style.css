@@ -243,3 +243,26 @@ input[aria-invalid=true],textarea[aria-invalid=true]{border-color:#a82646}
  .editor-input-active #sign-text{min-height:44px;height:clamp(44px,calc(var(--input-height,100dvh) - var(--action-height) - 28px),82px);max-height:150px}
  .cart-input-active #cart{position:fixed;top:calc(var(--input-top,0px) + 10px);bottom:auto;margin:0 auto;max-height:calc(var(--input-height,100dvh) - 20px)}
 }
+/* Cart preparation: saved previews, complete specifications and clear lead time. */
+#cart{width:min(740px,calc(100% - 28px))}
+#cart .cart-row{display:block;padding:22px 0}
+.cart-item-main{display:grid;grid-template-columns:150px minmax(0,1fr);gap:18px;align-items:start}
+.cart-preview{overflow:hidden;border-radius:9px;background:#e8e2d9;min-height:100px;display:grid;place-items:center}
+.cart-preview img{width:100%;height:auto;display:block;object-fit:contain}
+.cart-preview>span{font-size:10px;line-height:1.5;text-align:center;padding:16px;color:var(--muted)}
+.cart-info{min-width:0}.cart-info h3{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:0}
+.cart-specification{margin-top:8px}.cart-specification>summary{font-size:12px;min-height:44px;display:flex;align-items:center;gap:9px;cursor:pointer;color:var(--muted)}
+.cart-specification>summary::after{content:'+';font-size:18px}.cart-specification[open]>summary::after{content:'−'}
+.cart-specification p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;padding:10px 12px;border-radius:7px;background:#eee8e1}
+#cart .cart-quantity{display:flex;align-items:center;gap:12px;flex-wrap:wrap;width:100%;margin-top:16px}
+#cart .cart-quantity>span{margin:0;font-size:12px}#cart .cart-line-price{margin:0 0 0 auto;font-size:12px;color:var(--muted)}
+.delivery-note{display:flex;gap:12px;align-items:start;padding:16px;border:1px solid var(--line);border-radius:9px;margin-top:20px;background:#fffaf5}
+.delivery-note .icon{color:#846c58;flex:none;margin-top:2px}.delivery-note strong{display:block;font-size:13px}.delivery-note p{font-size:11px;line-height:1.6;color:var(--muted);margin:5px 0 0}
+#cart #checkout{width:100%;margin-top:18px}#cart #new-design{min-height:44px}
+@media(max-width:599px){
+ #cart{width:calc(100% - 20px)}
+ .cart-item-main{grid-template-columns:96px minmax(0,1fr);gap:12px}
+ .cart-preview{min-height:74px}.cart-info h3{font-size:17px}.cart-info>p{font-size:11px}
+ #cart .cart-quantity{justify-content:flex-start;gap:8px}#cart .cart-line-price{font-size:10px}
+ .delivery-note{padding:13px;gap:9px}.delivery-note strong{font-size:12px}
+}

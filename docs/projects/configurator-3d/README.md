@@ -947,3 +947,68 @@ Die folgenden Medien und Abschnitte werden darunter angeordnet.
   Medien unterhalb des Editors nachladen. Beim Lesen der Sektionen sollen
   Vorschau und Bestellleiste keine Inhalte überdecken. Rückkehr zum Editor
   erhält den bestehenden Entwurf.
+
+## Warenkorb und Shopify-Vorbereitung (22.10.2026)
+
+Status: lokal umgesetzt und geprüft, nicht veröffentlicht. Preise bleiben
+Platzhalter; Kauf und Shopify-Weiterleitung sind ausdrücklich gesperrt.
+
+- Warenkorb mit lokalem Vorschaubild, Stückzahl, Maßen, Oberfläche, Lichtart,
+  Montage und aufklappbarer vollständiger Spezifikation einschließlich RAL.
+  Bearbeiten ersetzt den bestehenden Eintrag und erhält dessen Stückzahl.
+  Bestehende gespeicherte Entwürfe werden migriert. Bei knappem Browserspeicher
+  können Vorschaubilder entfallen; Konfigurationen und Stückzahlen bleiben
+  erhalten. Es werden keine Bilder oder Konfigurationen an Shopify gesendet.
+- Lieferhinweis in Prüfung und Warenkorb: **Ca. 2–3 Wochen ab Bestellung**,
+  von Bestellung bis Lieferung. Das Speichern eines Entwurfs startet noch keine
+  Fertigung. Der Hinweis ist gemeinsam in `delivery.js` definiert. Die oben
+  vermerkte Korrektur der bestehenden Landingpage bleibt spätere Seitenscope.
+- Eigener 3D-Vertrag in `checkout-contract.js`: ausschließlich aktive
+  Produktmerkmale, Stückzahlen und lokale Eintrags-IDs. Vorschaumaße sind
+  ausdrücklich keine serverseitig verifizierten Fertigungsmaße. Preise,
+  Checkout-URLs und Freischaltflags werden weder aus lokalen Entwürfen übernommen
+  noch im Serververtrag akzeptiert.
+- Vorbereiteter Pages-Handler unter
+  `/api/public/configurator-3d/checkout`: prüft Methode, JSON, Nutzlastgröße und
+  Vertrag; gültige Anfragen erhalten ausnahmslos HTTP 409 mit `BLOCKED`,
+  `purchaseEnabled: false`, `grossCents: null` und `checkoutUrl: null`.
+  Es gibt keine Umgebungsvariable, die diesen Handler freischaltet, und keine
+  Shopify-/Datenbank-Aufrufe. Das Frontend löst derzeit keine Anfrage aus.
+- `functions/_shared/configurator-3d-shopify.js` bereitet nur Positionsmetadaten
+  vor. `shopify-cart-create.graphql` ist gegen Storefront API **2026-10** validiert,
+  aber noch unbenutzt. Shopify benötigt echte Produktvarianten mit verbindlichem
+  Preis; Positionsattribute ersetzen keine Preisberechnung. Keine Nullpreis-
+  Produkte oder scheinbar bestellbaren Platzhalter anlegen.
+
+### Vor einer echten Freischaltung
+
+Bestätigte Kalkulation und Preisversion, serverseitige Geometrie-/Fertigungsprüfung,
+Steuern und Versand sowie die verbindliche Shopify-Produkt-/Preiszuordnung fehlen
+noch. Konfiguration und Vorschau müssen serverseitig nachvollziehbar der Position
+zugeordnet werden. Die spätere kaufende Route benötigt außerdem Session-/Origin-
+und Missbrauchsschutz, idempotente Verarbeitung, geprüfte Preisangebote und eine
+validierte Shopify-Checkout-URL samt Fehlerbehandlung. Die vorhandene
+Neon-Kalkulation wird nicht für 3D-Buchstaben wiederverwendet.
+
+Der lokale HTTP-Server liefert nur statische Dateien. Der neue API-Handler ist
+im Quellbaum vorbereitet und direkt automatisiert getestet; er ist weder unter
+dem lokalen HTTP-Link noch produktiv aktiv. Das lokale `site-release` enthält
+die aktualisierten Browserdateien, aber keine neue Functions-Bereitstellung.
+Vor Veröffentlichung müssen die Functions inklusive ihrer gemeinsamen
+Modulabhängigkeiten aus dem aktuellen Quellbaum gebaut und geprüft werden;
+zusätzlich gilt weiterhin die nötige Aktualisierung der Produktionsbasis.
+
+### Prüfung
+
+53 Tests bestanden, kein Test übersprungen: 34 Modell-/Geometrietests,
+8 Tastaturtests, 2 echte Canvas-Pixeltests und 9 Warenkorb-/Checkouttests.
+Die neuen Tests decken Migration, Speicherknappheit, Mengenvalidierung,
+Manipulation des Übergabevertrags, Nutzlastgrenzen und die unveränderliche
+Kaufsperre ohne Provider-Aufrufe ab. GraphQL-Schemavalidierung erfolgreich.
+
+Browserprüfung bei 1280×800/1000, 393×741 und 320×568: Speichern, Neuladen,
+Mengenänderung, ungültige Menge beim Verlassen des Feldes, Bearbeiten ohne
+Duplikat, vollständige Angaben, Lieferzeit und gesperrte Kasse geprüft. Keine
+horizontalen Überläufe in den geprüften Handyansichten und keine erfassten
+Browserwarnungen/-fehler. Temporären Testartikel wieder entfernt. Kein echter
+Shopify-Kauf und kein erneuter Test mit physischer iPhone-/Android-Tastatur.

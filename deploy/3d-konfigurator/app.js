@@ -1,16 +1,22 @@
 import {initMobileInput} from './mobile-input.js?v=38';
 import {createRalPicker} from './ral-picker.js?v=35';
-import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate} from './model.js?v=35';
+import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate,description} from './model.js?v=35';
 import {quote3D,railColorEstimate} from './pricing.js';
+import {CART_KEY,MAX_CART_ITEMS,cartEntry,restoreCart,storeCart,safePreview} from './cart.js?v=41';
+import {prepareCheckout3D} from './checkout-contract.js?v=41';
+import {DELIVERY_LABEL,DELIVERY_NOTE} from './delivery.js?v=41';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 let mobileInput=null;
-const DRAFT_KEY='neontrip-3d-draft-v1',CART_KEY='neontrip-3d-cart-v1';
+const DRAFT_KEY='neontrip-3d-draft-v1';
+let savingDesign=false;
 let state={...DEFAULT},cart=[],activeStep=0,activeChoice='',renderer,result=null,revision=0,debounce,editingId=null,returnToReview=false;
 try{const draft=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if([1,2,3].includes(draft?.version)){state=normalize(draft);editingId=typeof draft.cartItemId==='string'?draft.cartItemId:null;}}catch{$('#saved-status').textContent='Der gespeicherte Entwurf konnte nicht geladen werden.';}
-try{const saved=JSON.parse(localStorage.getItem(CART_KEY)||'[]');if(Array.isArray(saved))cart=saved.filter(x=>x&&typeof x.id==='string'&&[1,2,3].includes(x.design?.version)).slice(0,20).map(x=>({...x,design:normalize(x.design),quantity:Number.isInteger(x.quantity)&&x.quantity>0&&x.quantity<=99?x.quantity:1}));}catch{$('#saved-status').textContent='Der gespeicherte Warenkorb konnte nicht geladen werden.';}
+try{cart=restoreCart(JSON.parse(localStorage.getItem(CART_KEY)||'[]'));}catch{$('#saved-status').textContent='Der gespeicherte Warenkorb konnte nicht geladen werden.';}
 if(!cart.some(item=>item.id===editingId))editingId=null;
 function persistDraft(){try{localStorage.setItem(DRAFT_KEY,JSON.stringify({...state,cartItemId:editingId}));$('#saved-status').textContent='Dein Entwurf ist auf diesem Gerät gespeichert.';}catch{$('#saved-status').textContent='Speichern auf diesem Gerät nicht möglich. Nutze „Bild speichern“.';}}
-function persistCart(){localStorage.setItem(CART_KEY,JSON.stringify(cart));}
+function persistCart(){const saved=storeCart(localStorage,cart);if(saved.previewsOmitted)for(const item of cart)item.preview=null;return saved;}
+for(const el of all('[data-delivery-label]'))el.textContent=DELIVERY_LABEL;
+for(const el of all('[data-delivery-note]'))el.textContent=DELIVERY_NOTE;
 function syncDetail(){const shown=Boolean(renderer?.closeup);$('#detail-note').hidden=!shown;$('#detail-note').textContent=state.lighting==='back'?'Detailansicht · Edelstahl vorne, ca. 1 cm leuchtendes Acryl direkt dahinter.':'Detailansicht · Leuchtende Acrylfront auf dem Edelstahlkorpus.';}
 function setPressed(selector,value,key){for(const el of all(selector))el.setAttribute('aria-pressed',String(el.dataset[key]===String(value)));}
 const euro=value=>(value/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
@@ -193,28 +199,45 @@ for(const button of all('[data-close]'))button.addEventListener('click',()=>butt
 $('#download').addEventListener('click',()=>{if(!result)return;const link=document.createElement('a');link.download='NEONTRIP-3D-Entwurf.png';link.href=renderer.snapshot();link.click();});
 function renderCart(){
  const host=$('#cart-items');host.replaceChildren();$('#cart-count').textContent=cart.reduce((sum,item)=>sum+item.quantity,0);
- $('#cart-totals').hidden=!cart.length;$('#new-design').textContent=cart.length?'Weiteren Schriftzug gestalten':'Neuen Schriftzug gestalten';$('#checkout').disabled=!quote3D(cart).purchaseEnabled; // Remains fail-closed until authoritative 3D pricing is connected.
+ $('#cart-totals').hidden=!cart.length;$('#new-design').textContent=cart.length?'Weiteren Schriftzug gestalten':'Neuen Schriftzug gestalten';$('#checkout').disabled=true;
+ const quote=quote3D(cart);$('#cart-total-price').textContent=quote.grossCents===null?'— €':euro(quote.grossCents);
  if(!cart.length){const p=document.createElement('p');p.className='status-note';p.textContent='Hier ist Platz für deine Ideen. Gestalte deinen ersten Schriftzug und speichere ihn nach der Prüfung.';host.append(p);return;}
  for(const item of cart){
-  const row=document.createElement('article');row.className='cart-row';const info=document.createElement('div'),title=document.createElement('h3');title.textContent=item.design.text;info.append(title);
-  for(const value of [`${LABELS.lighting[item.design.lighting]} · ${LABELS.mount[item.design.mount]}`,`${item.design.width} cm breit · ${item.design.depth} cm tief`,`Schrift: ${LABELS.font[item.design.font]}`,finishDescription(item.design),item.design.lighting==='front'?`Leuchtfarbe vorne: ${item.design.acrylic.toUpperCase()}`:`Halo: ${COLORS.find(c=>c[0]===item.design.color)?.[1]}`]){const p=document.createElement('p');p.textContent=value;info.append(p);}
-  if(item.design.mount==='rail'){const rail=document.createElement('p');rail.textContent=item.design.railCustomColor?'Schiene in Wunschfarbe '+paintDescription(item.design,'railColor'):'Schiene: Standardausführung';info.append(rail);}
-  if(item.design.mount==='plate'){const plate=document.createElement('p');plate.textContent='Lackfarbe der Platte: '+paintDescription(item.design,'plate');info.append(plate);}
+  const row=document.createElement('article');row.className='cart-row';
+  const main=document.createElement('div'),preview=document.createElement('div'),info=document.createElement('div'),title=document.createElement('h3');main.className='cart-item-main';preview.className='cart-preview';info.className='cart-info';title.textContent=item.design.text;info.append(title);
+  if(item.preview){const image=document.createElement('img');image.src=item.preview;image.alt='Entwurf: '+item.design.text;image.width=480;image.height=320;image.loading='lazy';preview.append(image);}else{const hint=document.createElement('span');hint.textContent='Vorschau nach Bearbeitung';preview.append(hint);}
+  const height=item.dimensions?.height?.toLocaleString('de-DE',{maximumFractionDigits:1});
+  for(const value of [`${LABELS.lighting[item.design.lighting]} · ${LABELS.mount[item.design.mount]}`,`${item.design.width} cm breit${height?' × ca. '+height+' cm hoch':''} · ${item.design.depth} cm tief`,finishDescription(item.design)]){const p=document.createElement('p');p.textContent=value;info.append(p);}
+  const detail=document.createElement('details'),summary=document.createElement('summary'),spec=document.createElement('p');detail.className='cart-specification';summary.textContent='Alle Angaben anzeigen';spec.textContent=description(item.design,item.dimensions?.height)+'\nBuchstabenabstand: '+item.design.spacing+' %'+(item.design.mount==='plate'&&item.dimensions?'\nPlatte: '+item.dimensions.overallWidth.toLocaleString('de-DE')+' × '+item.dimensions.overallHeight.toLocaleString('de-DE',{maximumFractionDigits:1})+' cm':'');detail.append(summary,spec);info.append(detail);
   const surcharge=document.createElement('p');surcharge.className='rail-item-estimate';surcharge.textContent=railPriceNote(item.design,item.quantity);if(surcharge.textContent)info.append(surcharge);
   const actions=document.createElement('div');actions.className='cart-actions';
   for(const [name,fn] of [['Bearbeiten',()=>{editingId=item.id;state=normalize(item.design);$('#cart').close();result=null;returnToReview=false;sync();step(0);schedule();}],['Entfernen',()=>{const previous=cart;cart=cart.filter(x=>x.id!==item.id);try{persistCart();if(editingId===item.id){editingId=null;persistDraft();}renderCart();$('#cart-status').textContent='Entwurf entfernt.';step(activeStep,false);}catch{cart=previous;$('#cart-status').textContent='Die Änderung konnte nicht gespeichert werden.';}}]]){const b=document.createElement('button');b.textContent=name;b.addEventListener('click',fn);actions.append(b);}info.append(actions);
-  const quantity=document.createElement('input');quantity.type='number';quantity.min='1';quantity.max='99';quantity.value=item.quantity;quantity.inputMode='numeric';quantity.setAttribute('aria-label','Menge für '+item.design.text);quantity.addEventListener('input',()=>{const n=Number(quantity.value);if(!Number.isInteger(n)||n<1||n>99){quantity.setCustomValidity('Bitte eine Menge von 1 bis 99 eingeben.');quantity.setAttribute('aria-invalid','true');$('#cart-status').textContent='Bitte eine Stückzahl von 1 bis 99 eingeben.';return;}quantity.setCustomValidity('');quantity.removeAttribute('aria-invalid');const old=item.quantity;item.quantity=n;try{persistCart();$('#cart-count').textContent=cart.reduce((sum,line)=>sum+line.quantity,0);surcharge.textContent=railPriceNote(item.design,item.quantity);minus.disabled=n<=1;plus.disabled=n>=99;$('#cart-status').textContent='Menge gespeichert.';}catch{item.quantity=old;quantity.value=old;$('#cart-status').textContent='Die Menge konnte nicht gespeichert werden.';}});quantity.addEventListener('change',()=>{if(!quantity.checkValidity()){quantity.value=item.quantity;quantity.setCustomValidity('');quantity.removeAttribute('aria-invalid');$('#cart-status').textContent='Die zuletzt gültige Stückzahl wurde beibehalten.';}});
+  const quantity=document.createElement('input');quantity.type='number';quantity.min='1';quantity.max='99';quantity.value=item.quantity;quantity.inputMode='numeric';quantity.setAttribute('aria-label','Menge für '+item.design.text);quantity.addEventListener('input',()=>{const n=Number(quantity.value);if(!Number.isInteger(n)||n<1||n>99){quantity.setCustomValidity('Bitte eine Menge von 1 bis 99 eingeben.');quantity.setAttribute('aria-invalid','true');$('#cart-status').textContent='Bitte eine Stückzahl von 1 bis 99 eingeben.';return;}quantity.setCustomValidity('');quantity.removeAttribute('aria-invalid');const old=item.quantity;item.quantity=n;try{persistCart();$('#cart-count').textContent=cart.reduce((sum,line)=>sum+line.quantity,0);surcharge.textContent=railPriceNote(item.design,item.quantity);minus.disabled=n<=1;plus.disabled=n>=99;$('#cart-status').textContent='Menge gespeichert.';}catch{item.quantity=old;quantity.value=old;$('#cart-status').textContent='Die Menge konnte nicht gespeichert werden.';}});const restoreQuantity=()=>{if(!quantity.validity.valid){quantity.value=item.quantity;quantity.setCustomValidity('');quantity.removeAttribute('aria-invalid');$('#cart-status').textContent='Die zuletzt gültige Stückzahl wurde beibehalten.';}};quantity.addEventListener('change',restoreQuantity);quantity.addEventListener('blur',restoreQuantity);
   const quantityBox=document.createElement('div'),quantityLabel=document.createElement('span'),stepper=document.createElement('div'),minus=document.createElement('button'),plus=document.createElement('button');quantityBox.className='cart-quantity';quantityLabel.textContent='Stückzahl';stepper.className='quantity-stepper';minus.textContent='−';plus.textContent='+';minus.setAttribute('aria-label','Menge verringern für '+item.design.text);plus.setAttribute('aria-label','Menge erhöhen für '+item.design.text);minus.disabled=item.quantity<=1;plus.disabled=item.quantity>=99;
-  for(const [button,delta] of [[minus,-1],[plus,1]])button.addEventListener('click',()=>{quantity.value=Math.max(1,Math.min(99,item.quantity+delta));quantity.dispatchEvent(new Event('input',{bubbles:true}));});stepper.append(minus,quantity,plus);quantityBox.append(quantityLabel,stepper);row.append(info,quantityBox);host.append(row);
+  for(const [button,delta] of [[minus,-1],[plus,1]])button.addEventListener('click',()=>{quantity.value=Math.max(1,Math.min(99,item.quantity+delta));quantity.dispatchEvent(new Event('input',{bubbles:true}));});stepper.append(minus,quantity,plus);quantityBox.append(quantityLabel,stepper);
+  const price=document.createElement('p');price.className='cart-line-price';price.textContent='Stückpreis folgt · — €';quantityBox.append(price);main.append(preview,info);row.append(main,quantityBox);host.append(row);
  }
 }
 $('#open-cart').addEventListener('click',()=>{renderCart();$('#cart-status').textContent='';$('#cart').showModal();});
-function saveDesign(){
- if(!result||validate(state)||pendingPaint())return;const old=cart,oldEditingId=editingId;
- if(!editingId&&cart.length>=20){$('#editor-error').textContent='Du kannst bis zu 20 Entwürfe speichern. Entferne zuerst einen Entwurf.';return;}
- const match=cart.find(item=>item.id===editingId);const entry={id:match?.id||crypto.randomUUID(),design:{...state},quantity:match?.quantity||1};cart=match?cart.map(item=>item.id===entry.id?entry:item):[...cart,entry];
- try{persistCart();editingId=entry.id;persistDraft();renderCart();$('#cart-status').textContent='Dein Entwurf wurde gespeichert.';$('#cart').showModal();step(activeStep,false);}catch{cart=old;editingId=oldEditingId;$('#editor-error').textContent='Der Warenkorb konnte nicht gespeichert werden. Bitte aktiviere den lokalen Browserspeicher.';}
+async function cartThumbnail(){
+ try{const image=new Image();image.src=renderer.snapshot();await image.decode();const canvas=document.createElement('canvas');canvas.width=Math.min(480,image.naturalWidth);canvas.height=Math.round(image.naturalHeight*canvas.width/image.naturalWidth);canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);return safePreview(canvas.toDataURL('image/jpeg',.7));}catch{return null;}
 }
+async function saveDesign(){
+ if(savingDesign||!result||validate(state)||pendingPaint())return;
+ if(!editingId&&cart.length>=MAX_CART_ITEMS){$('#editor-error').textContent='Du kannst bis zu 20 Entwürfe speichern. Entferne zuerst einen Entwurf.';return;}
+ savingDesign=true;$('#next').disabled=true;
+ const token=revision,design={...state},dimensions={...result},oldEditingId=editingId;
+ try{
+  const preview=await cartThumbnail();if(token!==revision||editingId!==oldEditingId)return;
+  const old=cart,match=cart.find(item=>item.id===editingId),entry=cartEntry({id:match?.id||crypto.randomUUID(),design,dimensions,preview,quantity:match?.quantity||1});cart=match?cart.map(item=>item.id===entry.id?entry:item):[...cart,entry];
+  try{const saved=persistCart();editingId=entry.id;persistDraft();renderCart();$('#cart-status').textContent=saved.previewsOmitted?'Dein Entwurf wurde gespeichert. Für die Vorschaubilder reicht der Gerätespeicher nicht aus.':'Dein Entwurf wurde gespeichert.';$('#cart').showModal();step(activeStep,false);}catch{cart=old;editingId=oldEditingId;$('#editor-error').textContent='Der Warenkorb konnte nicht gespeichert werden. Bitte aktiviere den lokalen Browserspeicher.';}
+ }finally{savingDesign=false;syncAvailability();}
+}
+$('#checkout').addEventListener('click',async()=>{
+ // Defence in depth if the disabled DOM button is manually re-enabled.
+ $('#checkout').disabled=true;
+ try{await prepareCheckout3D(cart);$('#cart-status').textContent='Die verbindliche Kalkulation fehlt noch. Dein Entwurf bleibt gespeichert; es wurde keine Bestellung ausgelöst.';}catch{$('#cart-status').textContent='Bitte prüfe die Angaben deiner Entwürfe. Der Kauf ist noch gesperrt.';}
+});
 $('#new-design').addEventListener('click',()=>{editingId=null;returnToReview=false;state={...DEFAULT};result=null;$('#cart').close();sync();step(0);schedule();});
 const compactLayout=matchMedia('(max-width:979px)');
 const phoneLayout=matchMedia('(max-width:599px)');
