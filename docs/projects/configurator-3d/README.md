@@ -1012,3 +1012,68 @@ Duplikat, vollständige Angaben, Lieferzeit und gesperrte Kasse geprüft. Keine
 horizontalen Überläufe in den geprüften Handyansichten und keine erfassten
 Browserwarnungen/-fehler. Temporären Testartikel wieder entfernt. Kein echter
 Shopify-Kauf und kein erneuter Test mit physischer iPhone-/Android-Tastatur.
+
+## Mehrere Schilder im mobilen Warenkorb (22.10.2026)
+
+Auf 393×741 und 320×568 im Browser als Kunde geprüft, mit separatem lokalen
+Testursprung, damit der ursprüngliche Entwurf auf `127.0.0.1` unverändert bleibt:
+
+- Zweizeiliger Schriftzug, Rückbeleuchtung, Gold, Schiene in RAL 7016;
+  Frontbeleuchtung auf Platte in RAL 6005 mit Seiten in RAL 9016;
+  langer Schriftzug in Oswald, verspiegelte Einzelbuchstaben.
+- Stückzahlen per Plus/Minus und direkter Eingabe ändern. 0 und 100 werden
+  verworfen; direkte Folgeklicks auf Plus bzw. Bearbeiten erhalten den letzten
+  gültigen Wert. Bei 99 ist Plus gesperrt. Mengenänderung verschiebt die
+  gemessenen Kartenpositionen/-größen nicht.
+- Mittleren Artikel in Text, Farbe und Breite ändern, anschließend den ersten
+  Artikel in der Breite. Menge und Position bleiben erhalten; kein Duplikat.
+  Nicht bearbeitete Spezifikationen und Vorschaubilder wurden exakt verglichen.
+- Zusätzlich zwei gleich benannte Schilder mit unterschiedlicher Lichtart/
+  Montage geprüft: Bearbeiten und Mengenänderung betreffen nur den gewählten
+  Eintrag. Ungespeicherte Editoränderungen überschreiben den Warenkorb nicht.
+- Neuladen stellt alle drei Spezifikationen, Bilder und Mengen exakt wieder her.
+  Entfernen des mittleren Artikels erhält die beiden anderen vollständig,
+  einschließlich nach erneutem Neuladen.
+
+Gefundene Layoutschwäche korrigiert: Aufgeklappte Angaben, Schienenfarbaufpreis
+und Bearbeiten/Entfernen liegen unter der Bild-/Kurztextzeile über die ganze
+Kartenbreite. Die Detailtexte sind dadurch auf schmalen Handys lesbar und werden
+nicht in eine lange schmale Spalte gedrängt. Details bei 320 px: 244 px nutzbare
+Breite statt der zuvor schmalen Bild-Nebenspalte. Keine gemessenen horizontalen
+Überläufe. Desktop bei 1280×900 gegengeprüft, ebenfalls ohne Überlauf.
+
+9 bestehende Warenkorb-/Checkouttests erneut bestanden, Syntax- und Diffprüfung
+erfolgreich, keine erfassten Browserwarnungen/-fehler. Kauf unverändert gesperrt.
+Testartikel am Ende entfernt und Testtab geschlossen. Es handelt sich um
+Browser-Viewport-Prüfungen, nicht um einen physischen iPhone-/Android-Tastaturtest.
+Die Änderung ist nur lokal verfügbar, nicht veröffentlicht.
+
+## Einsatzort und Schutzart (22.10.2026)
+
+Nutzerbestätigung: Innen-/Außenbereich ist für Auswahl und spätere Bestellung
+wichtig; die Schutzart des Schilds ist **IP67**. Die UI nennt entsprechend
+„Schutzart des Schilds: IP67“. Daraus werden keine zusätzlichen Aussagen über
+separate Netzteile, Stecker, Zertifizierungen oder Befestigungsdetails abgeleitet.
+Dies ergänzt die zuvor noch offene IP-Angabe im Seitendesign-Briefing.
+
+- Schritt „Größe & Montage“ beginnt mit Innenbereich/Außenbereich und IP67.
+  Innenbereich ist die sichtbare Voreinstellung, auch für alte gespeicherte
+  Entwürfe ohne Einsatzort; die übrigen Eigenschaften bleiben erhalten.
+- `usage` (`indoor`/`outdoor`) wird pro Entwurf gespeichert. Es ist unabhängig
+  von der Vorschauwand und Lichtart. Die Schutzart kommt aus der zentralen
+  Produktangabe `SIGN_PROTECTION`, nicht aus einem frei editierbaren Kundenfeld.
+- Prüfung, Warenkorb-Kurztext und vollständige Spezifikation enthalten Einsatzort
+  und IP67. Der vorbereitete Shopify-Adapter hat zusätzlich eigene sichtbare
+  Positionsattribute „Einsatzort“ und „Schutzart des Schilds“.
+- Der weiterhin gesperrte Checkout-Vertrag hat jetzt Version 2 und verlangt den
+  Einsatzort ausdrücklich. Fehlende/ungültige Werte oder eingeschleuste
+  Schutzart-Angaben werden auf der Servergrenze abgewiesen. Lokale Altdaten
+  werden vorher migriert. Keine neue Preisregel und keine Kauf-Freischaltung.
+
+55 Tests bestanden, kein Test übersprungen. Zwei zusätzliche Tests decken alle
+12 Kombinationen aus Einsatzort, Lichtart und Montage sowie Altdatenmigration,
+Speichern/Neuladen, Metadaten und ungültige Übergaben ab. Im Browser auf 393×741
+und 320×568 geprüft: Außenschild und Innenschild gemeinsam speichern, nach
+Neuladen vollständig wiederherstellen und Einsatzort eines Artikels ändern,
+ohne Menge oder anderen Eintrag zu verändern. Keine horizontalen Überläufe oder
+erfassten Browserwarnungen/-fehler. Testentwürfe entfernt; nur lokale Vorschau.

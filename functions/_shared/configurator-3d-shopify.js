@@ -1,5 +1,5 @@
 import {parseCheckout3DRequest} from '../../deploy/3d-konfigurator/checkout-contract.js';
-import {description} from '../../deploy/3d-konfigurator/model.js';
+import {description,LABELS,SIGN_PROTECTION} from '../../deploy/3d-konfigurator/model.js';
 import {DELIVERY_LABEL} from '../../deploy/3d-konfigurator/delivery.js';
 
 // Pure mapping for the future SERVER adapter, not an executable checkout.
@@ -16,6 +16,8 @@ export function shopify3DLineMetadata(request){
    {key:'Schriftzug',value:line.configuration.text},
    {key:'Ausführung',value:description(line.configuration,line.previewDimensions?.height)},
    {key:'Buchstabenabstand',value:line.configuration.spacing+' %'},
+   {key:'Einsatzort',value:LABELS.usage[line.configuration.usage]},
+   {key:'Schutzart des Schilds',value:SIGN_PROTECTION},
    {key:'Lieferzeit',value:DELIVERY_LABEL}
   ]
  }));

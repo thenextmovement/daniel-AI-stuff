@@ -1,4 +1,4 @@
-import {normalize,validate} from './model.js?v=35';
+import {normalize,validate} from './model.js?v=43';
 
 export const CART_KEY = 'neontrip-3d-cart-v1';
 export const MAX_CART_ITEMS = 20;

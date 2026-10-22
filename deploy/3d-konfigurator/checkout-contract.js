@@ -1,5 +1,5 @@
-import {normalize,validate} from './model.js?v=35';
-import {MAX_CART_ITEMS,validQuantity,previewDimensions} from './cart.js?v=41';
+import {normalize,validate} from './model.js?v=43';
+import {MAX_CART_ITEMS,validQuantity,previewDimensions} from './cart.js?v=43';
 import {DELIVERY_3D} from './delivery.js?v=41';
 
 export const CHECKOUT_3D_PATH='/api/public/configurator-3d/checkout';
@@ -16,7 +16,7 @@ function exactKeys(value,keys){
 export function productConfiguration(raw){
  if(!raw||raw.version!==3)fail();
  const clean=normalize(raw);
- const keys=['version','text','font','lighting','mount','width','depth','spacing',
+ const keys=['version','text','font','lighting','mount','usage','width','depth','spacing',
   ...(clean.lighting==='front'?['acrylic','sideColor','sideRal']:['backFinish','color',...(clean.backFinish==='painted-steel'?['body','bodyRal']:[])]),
   ...(clean.mount==='rail'?['railCustomColor',...(clean.railCustomColor?['railColor','railRal']:[])]:clean.mount==='plate'?['plate','plateRal']:[])];
  // Reject changed/truncated/coerced input, instead of silently ordering defaults.
@@ -31,11 +31,11 @@ export function checkoutPayload3D(items){
   seen.add(item.id);
   return {id:item.id,quantity:item.quantity,configuration:productConfiguration(item.design),previewDimensions:previewDimensions(item.dimensions)};
  });
- return {contractVersion:1,productFamily:PRODUCT_FAMILY,items:lines,delivery:{...DELIVERY_3D}};
+ return {contractVersion:2,productFamily:PRODUCT_FAMILY,items:lines,delivery:{...DELIVERY_3D}};
 }
 export function parseCheckout3DRequest(raw){
  exactKeys(raw,['contractVersion','productFamily','items','delivery']);
- if(raw.contractVersion!==1||raw.productFamily!==PRODUCT_FAMILY)fail();
+ if(raw.contractVersion!==2||raw.productFamily!==PRODUCT_FAMILY)fail();
  exactKeys(raw.delivery,Object.keys(DELIVERY_3D));
  if(Object.keys(DELIVERY_3D).some(key=>raw.delivery[key]!==DELIVERY_3D[key])||!Array.isArray(raw.items))fail();
  const items=raw.items.map(line=>{

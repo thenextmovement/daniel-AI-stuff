@@ -251,9 +251,9 @@ input[aria-invalid=true],textarea[aria-invalid=true]{border-color:#a82646}
 .cart-preview img{width:100%;height:auto;display:block;object-fit:contain}
 .cart-preview>span{font-size:10px;line-height:1.5;text-align:center;padding:16px;color:var(--muted)}
 .cart-info{min-width:0}.cart-info h3{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:0}
-.cart-specification{margin-top:8px}.cart-specification>summary{font-size:12px;min-height:44px;display:flex;align-items:center;gap:9px;cursor:pointer;color:var(--muted)}
+.cart-specification{margin-top:8px}.cart-specification>summary{justify-content:space-between;font-size:12px;min-height:44px;display:flex;align-items:center;gap:9px;cursor:pointer;color:var(--muted)}
 .cart-specification>summary::after{content:'+';font-size:18px}.cart-specification[open]>summary::after{content:'−'}
-.cart-specification p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;padding:10px 12px;border-radius:7px;background:#eee8e1}
+.cart-specification p{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;padding:10px 12px;border-radius:7px;background:#eee8e1}
 #cart .cart-quantity{display:flex;align-items:center;gap:12px;flex-wrap:wrap;width:100%;margin-top:16px}
 #cart .cart-quantity>span{margin:0;font-size:12px}#cart .cart-line-price{margin:0 0 0 auto;font-size:12px;color:var(--muted)}
 .delivery-note{display:flex;gap:12px;align-items:start;padding:16px;border:1px solid var(--line);border-radius:9px;margin-top:20px;background:#fffaf5}
@@ -266,3 +266,7 @@ input[aria-invalid=true],textarea[aria-invalid=true]{border-color:#a82646}
  #cart .cart-quantity{justify-content:flex-start;gap:8px}#cart .cart-line-price{font-size:10px}
  .delivery-note{padding:13px;gap:9px}.delivery-note strong{font-size:12px}
 }
+
+/* Installation location is part of each saved sign, independent of its preview wall. */
+.usage-settings{margin:0 0 22px}.usage-options{display:grid;grid-template-columns:1fr 1fr;gap:8px}.usage-options button{min-height:48px;padding:12px 8px;background:transparent;border:1px solid var(--line);border-radius:7px;font-size:12px}.usage-options button[aria-pressed=true]{border-color:var(--pink);background:var(--pink-soft);box-shadow:inset 0 0 0 .5px var(--pink)}
+.protection-note{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin:10px 0 0}.protection-note .icon{width:17px;height:17px;flex:none}.protection-note strong{color:#251f1b;font-weight:600}

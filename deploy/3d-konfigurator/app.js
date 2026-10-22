@@ -1,9 +1,9 @@
 import {initMobileInput} from './mobile-input.js?v=38';
 import {createRalPicker} from './ral-picker.js?v=35';
-import {DEFAULT,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate,description} from './model.js?v=35';
+import {DEFAULT,SIGN_PROTECTION,LABELS,FONTS,COLORS,ACRYLICS,FINISHES,activeFinish,classicLook,finishDescription,paintDescription,choosePaint,PAINT_PRESETS,PAINT_FIELDS,normalize,validate,description} from './model.js?v=43';
 import {quote3D,railColorEstimate} from './pricing.js';
-import {CART_KEY,MAX_CART_ITEMS,cartEntry,restoreCart,storeCart,safePreview} from './cart.js?v=41';
-import {prepareCheckout3D} from './checkout-contract.js?v=41';
+import {CART_KEY,MAX_CART_ITEMS,cartEntry,restoreCart,storeCart,safePreview} from './cart.js?v=43';
+import {prepareCheckout3D} from './checkout-contract.js?v=43';
 import {DELIVERY_LABEL,DELIVERY_NOTE} from './delivery.js?v=41';
 const $=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
 let mobileInput=null;
@@ -15,6 +15,7 @@ try{cart=restoreCart(JSON.parse(localStorage.getItem(CART_KEY)||'[]'));}catch{$(
 if(!cart.some(item=>item.id===editingId))editingId=null;
 function persistDraft(){try{localStorage.setItem(DRAFT_KEY,JSON.stringify({...state,cartItemId:editingId}));$('#saved-status').textContent='Dein Entwurf ist auf diesem Gerät gespeichert.';}catch{$('#saved-status').textContent='Speichern auf diesem Gerät nicht möglich. Nutze „Bild speichern“.';}}
 function persistCart(){const saved=storeCart(localStorage,cart);if(saved.previewsOmitted)for(const item of cart)item.preview=null;return saved;}
+for(const el of all('[data-sign-protection]'))el.textContent=SIGN_PROTECTION;
 for(const el of all('[data-delivery-label]'))el.textContent=DELIVERY_LABEL;
 for(const el of all('[data-delivery-note]'))el.textContent=DELIVERY_NOTE;
 function syncDetail(){const shown=Boolean(renderer?.closeup);$('#detail-note').hidden=!shown;$('#detail-note').textContent=state.lighting==='back'?'Detailansicht · Edelstahl vorne, ca. 1 cm leuchtendes Acryl direkt dahinter.':'Detailansicht · Leuchtende Acrylfront auf dem Edelstahlkorpus.';}
@@ -28,7 +29,7 @@ function sync(){
  $('#sign-text').value=state.text;$('#width').value=state.width;$('#width-range').value=state.width;$('#spacing').value=state.spacing;
  $('.look-text').classList.toggle('is-multiline',state.text.includes('\n'));
  $('#char-count').textContent=`${state.text.length} / 60`;$('#spacing-label').textContent=state.spacing+' %';
- for(const key of ['font','lighting','mount','wall','depth'])setPressed(`[data-${key}]`,state[key],key);
+ for(const key of ['font','lighting','mount','wall','depth','usage'])setPressed(`[data-${key}]`,state[key],key);
  setPressed('[data-color]',state.color,'color');setPressed('[data-acrylic]',state.acrylic,'acrylic');setPressed('[data-finish]',activeFinish(state),'finish');
  $('#color-name').textContent=COLORS.find(c=>c[0]===state.color)?.[1];
  $('#acrylic-color').value=state.acrylic;$('#acrylic-value').textContent=state.acrylic.toUpperCase();$('#acrylic-name').textContent=ACRYLICS.find(c=>c[0]===state.acrylic)?.[1]||'Eigene Farbe';
@@ -70,7 +71,7 @@ function renderReview(){
   {title:'Farben & Material',step:1,rows:state.lighting==='front'?[
    ['Leuchtfarbe',(ACRYLICS.find(c=>c[0]===state.acrylic)?.[1]||'Eigene Farbe')+' · '+state.acrylic.toUpperCase()],['Seiten','Edelstahl · '+paintDescription(state,'sideColor')]
   ]:[['Oberfläche',finishDescription(state)],['Leuchtfarbe',COLORS.find(c=>c[0]===state.color)?.[1]],['Rückseite','Ca. 1 cm weißes Acryl mit LEDs']]},
-  {title:'Größe & Montage',step:2,rows:[['Breite × Höhe',cm(state.width)+' × '+cm(result.height)],['Buchstabentiefe',cm(state.depth)],['Montage',LABELS.mount[state.mount]],['Buchstabenabstand',state.spacing+' %']]}
+  {title:'Größe & Montage',step:2,rows:[['Einsatzort',LABELS.usage[state.usage]],['Schutzart des Schilds',SIGN_PROTECTION],['Breite × Höhe',cm(state.width)+' × '+cm(result.height)],['Buchstabentiefe',cm(state.depth)],['Montage',LABELS.mount[state.mount]],['Buchstabenabstand',state.spacing+' %']]}
  ];
  if(state.mount==='rail')sections[2].rows.push(['Schiene',state.railCustomColor?paintDescription(state,'railColor'):'Standardausführung']);
  if(state.mount==='plate')sections[2].rows.push(['Plattenmaß',cm(result.overallWidth)+' × '+cm(result.overallHeight)],['Plattenfarbe',paintDescription(state,'plate')]);
@@ -180,7 +181,7 @@ $('#acrylic-color').addEventListener('input',event=>change('acrylic',event.targe
 $('#reset-look').addEventListener('click',()=>{state=classicLook(state);sync();schedule();});
 $('#reset-acrylic').addEventListener('click',()=>change('acrylic',DEFAULT.acrylic));
 $('#reset-side').addEventListener('click',()=>{state=choosePaint(state,'sideColor',{color:DEFAULT.sideColor});sync();schedule();});
-for(const key of ['font','lighting','mount','wall','depth'])for(const button of all(`[data-${key}]`))button.addEventListener('click',()=>change(key,key==='depth'?Number(button.dataset[key]):button.dataset[key]));
+for(const key of ['font','lighting','mount','wall','depth','usage'])for(const button of all(`[data-${key}]`))button.addEventListener('click',()=>change(key,key==='depth'?Number(button.dataset[key]):button.dataset[key]));
 for(const [id,key] of [['sign-text','text'],['width','width'],['width-range','width'],['spacing','spacing']])$('#'+id).addEventListener('input',event=>{
  const value=['width','spacing'].includes(key)?Number(event.target.value):event.target.value;state[key]=value;
  if(key==='text')$('.look-text').classList.toggle('is-multiline',state.text.includes('\n'));
@@ -207,15 +208,15 @@ function renderCart(){
   const main=document.createElement('div'),preview=document.createElement('div'),info=document.createElement('div'),title=document.createElement('h3');main.className='cart-item-main';preview.className='cart-preview';info.className='cart-info';title.textContent=item.design.text;info.append(title);
   if(item.preview){const image=document.createElement('img');image.src=item.preview;image.alt='Entwurf: '+item.design.text;image.width=480;image.height=320;image.loading='lazy';preview.append(image);}else{const hint=document.createElement('span');hint.textContent='Vorschau nach Bearbeitung';preview.append(hint);}
   const height=item.dimensions?.height?.toLocaleString('de-DE',{maximumFractionDigits:1});
-  for(const value of [`${LABELS.lighting[item.design.lighting]} · ${LABELS.mount[item.design.mount]}`,`${item.design.width} cm breit${height?' × ca. '+height+' cm hoch':''} · ${item.design.depth} cm tief`,finishDescription(item.design)]){const p=document.createElement('p');p.textContent=value;info.append(p);}
-  const detail=document.createElement('details'),summary=document.createElement('summary'),spec=document.createElement('p');detail.className='cart-specification';summary.textContent='Alle Angaben anzeigen';spec.textContent=description(item.design,item.dimensions?.height)+'\nBuchstabenabstand: '+item.design.spacing+' %'+(item.design.mount==='plate'&&item.dimensions?'\nPlatte: '+item.dimensions.overallWidth.toLocaleString('de-DE')+' × '+item.dimensions.overallHeight.toLocaleString('de-DE',{maximumFractionDigits:1})+' cm':'');detail.append(summary,spec);info.append(detail);
-  const surcharge=document.createElement('p');surcharge.className='rail-item-estimate';surcharge.textContent=railPriceNote(item.design,item.quantity);if(surcharge.textContent)info.append(surcharge);
+  for(const value of [`${LABELS.lighting[item.design.lighting]} · ${LABELS.mount[item.design.mount]}`,`${item.design.width} cm breit${height?' × ca. '+height+' cm hoch':''} · ${item.design.depth} cm tief`,finishDescription(item.design),`${LABELS.usage[item.design.usage]} · ${SIGN_PROTECTION}`]){const p=document.createElement('p');p.textContent=value;info.append(p);}
+  const detail=document.createElement('details'),summary=document.createElement('summary'),spec=document.createElement('p');detail.className='cart-specification';summary.textContent='Alle Angaben anzeigen';spec.textContent=description(item.design,item.dimensions?.height)+'\nBuchstabenabstand: '+item.design.spacing+' %'+(item.design.mount==='plate'&&item.dimensions?'\nPlatte: '+item.dimensions.overallWidth.toLocaleString('de-DE')+' × '+item.dimensions.overallHeight.toLocaleString('de-DE',{maximumFractionDigits:1})+' cm':'');detail.append(summary,spec);
+  const surcharge=document.createElement('p');surcharge.className='rail-item-estimate';surcharge.textContent=railPriceNote(item.design,item.quantity);
   const actions=document.createElement('div');actions.className='cart-actions';
-  for(const [name,fn] of [['Bearbeiten',()=>{editingId=item.id;state=normalize(item.design);$('#cart').close();result=null;returnToReview=false;sync();step(0);schedule();}],['Entfernen',()=>{const previous=cart;cart=cart.filter(x=>x.id!==item.id);try{persistCart();if(editingId===item.id){editingId=null;persistDraft();}renderCart();$('#cart-status').textContent='Entwurf entfernt.';step(activeStep,false);}catch{cart=previous;$('#cart-status').textContent='Die Änderung konnte nicht gespeichert werden.';}}]]){const b=document.createElement('button');b.textContent=name;b.addEventListener('click',fn);actions.append(b);}info.append(actions);
+  for(const [name,fn] of [['Bearbeiten',()=>{editingId=item.id;state=normalize(item.design);$('#cart').close();result=null;returnToReview=false;sync();step(0);schedule();}],['Entfernen',()=>{const previous=cart;cart=cart.filter(x=>x.id!==item.id);try{persistCart();if(editingId===item.id){editingId=null;persistDraft();}renderCart();$('#cart-status').textContent='Entwurf entfernt.';step(activeStep,false);}catch{cart=previous;$('#cart-status').textContent='Die Änderung konnte nicht gespeichert werden.';}}]]){const b=document.createElement('button');b.textContent=name;b.addEventListener('click',fn);actions.append(b);}
   const quantity=document.createElement('input');quantity.type='number';quantity.min='1';quantity.max='99';quantity.value=item.quantity;quantity.inputMode='numeric';quantity.setAttribute('aria-label','Menge für '+item.design.text);quantity.addEventListener('input',()=>{const n=Number(quantity.value);if(!Number.isInteger(n)||n<1||n>99){quantity.setCustomValidity('Bitte eine Menge von 1 bis 99 eingeben.');quantity.setAttribute('aria-invalid','true');$('#cart-status').textContent='Bitte eine Stückzahl von 1 bis 99 eingeben.';return;}quantity.setCustomValidity('');quantity.removeAttribute('aria-invalid');const old=item.quantity;item.quantity=n;try{persistCart();$('#cart-count').textContent=cart.reduce((sum,line)=>sum+line.quantity,0);surcharge.textContent=railPriceNote(item.design,item.quantity);minus.disabled=n<=1;plus.disabled=n>=99;$('#cart-status').textContent='Menge gespeichert.';}catch{item.quantity=old;quantity.value=old;$('#cart-status').textContent='Die Menge konnte nicht gespeichert werden.';}});const restoreQuantity=()=>{if(!quantity.validity.valid){quantity.value=item.quantity;quantity.setCustomValidity('');quantity.removeAttribute('aria-invalid');$('#cart-status').textContent='Die zuletzt gültige Stückzahl wurde beibehalten.';}};quantity.addEventListener('change',restoreQuantity);quantity.addEventListener('blur',restoreQuantity);
   const quantityBox=document.createElement('div'),quantityLabel=document.createElement('span'),stepper=document.createElement('div'),minus=document.createElement('button'),plus=document.createElement('button');quantityBox.className='cart-quantity';quantityLabel.textContent='Stückzahl';stepper.className='quantity-stepper';minus.textContent='−';plus.textContent='+';minus.setAttribute('aria-label','Menge verringern für '+item.design.text);plus.setAttribute('aria-label','Menge erhöhen für '+item.design.text);minus.disabled=item.quantity<=1;plus.disabled=item.quantity>=99;
   for(const [button,delta] of [[minus,-1],[plus,1]])button.addEventListener('click',()=>{quantity.value=Math.max(1,Math.min(99,item.quantity+delta));quantity.dispatchEvent(new Event('input',{bubbles:true}));});stepper.append(minus,quantity,plus);quantityBox.append(quantityLabel,stepper);
-  const price=document.createElement('p');price.className='cart-line-price';price.textContent='Stückpreis folgt · — €';quantityBox.append(price);main.append(preview,info);row.append(main,quantityBox);host.append(row);
+  const price=document.createElement('p');price.className='cart-line-price';price.textContent='Stückpreis folgt · — €';quantityBox.append(price);main.append(preview,info);row.append(main,detail);if(surcharge.textContent)row.append(surcharge);row.append(actions,quantityBox);host.append(row);
  }
 }
 $('#open-cart').addEventListener('click',()=>{renderCart();$('#cart-status').textContent='';$('#cart').showModal();});
@@ -282,4 +283,4 @@ compactLayout.addEventListener('change',responsivePreview);responsivePreview();
 new IntersectionObserver(entries=>document.body.classList.toggle('editor-in-view',entries[0].isIntersecting),{threshold:0}).observe($('#editor'));
 mobileInput=initMobileInput({onLayout:previewLayout});
 sync();$('#next').disabled=true;$('#download').disabled=true;
-try{const {SignRenderer}=await import('./renderer.js?v=40');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}
+try{const {SignRenderer}=await import('./renderer.js?v=43');renderer=new SignRenderer($('#canvas-host'));await update();}catch{setError('Die 3D-Vorschau benötigt WebGL. Bitte verwende einen aktuellen Browser mit aktivierter Grafikbeschleunigung.');}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {DEFAULT,choosePaint} from '../../deploy/3d-konfigurator/model.js';
+import {DEFAULT,SIGN_PROTECTION,choosePaint,normalize,validate,description} from '../../deploy/3d-konfigurator/model.js';
 import {cartEntry,restoreCart,storeCart,CART_KEY,safePreview} from '../../deploy/3d-konfigurator/cart.js';
 import {checkoutPayload3D,parseCheckout3DRequest,prepareCheckout3D,blockedCheckout3D} from '../../deploy/3d-konfigurator/checkout-contract.js';
 import {DELIVERY_3D,DELIVERY_LABEL} from '../../deploy/3d-konfigurator/delivery.js';
@@ -71,4 +71,39 @@ test('Lead time is approximate and begins with an order, not a saved draft',asyn
  assert.equal(DELIVERY_LABEL,'Ca. 2–3 Wochen ab Bestellung');assert.equal(DELIVERY_3D.startsAt,'order');assert.equal(DELIVERY_3D.approximate,true);
  const html=await readFile(new URL('../../deploy/3d-konfigurator/index.html',import.meta.url),'utf8');
  assert.equal((html.match(/data-delivery-label/g)||[]).length,2);assert.match(html, /id="checkout" disabled/);assert.match(html,/Speichern eines Entwurfs startet noch keine Fertigung/);
+});
+
+test('Indoor/outdoor survives saving, reload and metadata for each lighting and mounting choice',()=>{
+ let index=0;
+ const items=[];
+ for(const usage of ['indoor','outdoor'])for(const lighting of ['front','back'])for(const mount of ['individual','rail','plate']){
+  items.push(line({...DEFAULT,usage,lighting,mount},{id:'location-'+index++,quantity:3}));
+ }
+ let stored;
+ storeCart({setItem(key,value){stored=value;}},items);
+ const restored=restoreCart(JSON.parse(stored));assert.deepEqual(restored,items);
+ const payload=checkoutPayload3D(restored);assert.equal(payload.contractVersion,2);assert.deepEqual(parseCheckout3DRequest(payload),payload);
+ const metadata=shopify3DLineMetadata(payload);
+ items.forEach((item,i)=>{
+  assert.equal(payload.items[i].configuration.usage,item.design.usage);
+  const attributes=Object.fromEntries(metadata[i].attributes.map(x=>[x.key,x.value]));
+  assert.equal(attributes.Einsatzort,item.design.usage==='indoor'?'Innenbereich':'Außenbereich');
+  assert.equal(attributes['Schutzart des Schilds'],SIGN_PROTECTION);
+  assert.match(attributes['Ausführung'],/Schutzart des Schilds: IP67/);
+ });
+ assert.equal(SIGN_PROTECTION,'IP67');
+});
+
+test('Older drafts retain their design with indoor default; checkout requires an explicit valid location',()=>{
+ const legacy={...DEFAULT,text:'ALT',mount:'rail',width:180};delete legacy.usage;
+ for(const version of [1,2,3]){
+  const restored=restoreCart([{id:'old',quantity:4,design:{...legacy,version}}])[0];
+  assert.equal(restored.design.usage,'indoor');assert.equal(restored.design.text,'ALT');assert.equal(restored.design.width,180);assert.equal(restored.quantity,4);
+ }
+ assert.equal(normalize({...DEFAULT,usage:'outdoor'}).usage,'outdoor');
+ assert.notEqual(validate({...DEFAULT,usage:'terrace'}),'');
+ assert.match(description({...DEFAULT,usage:'outdoor'}),/Einsatzort: Außenbereich/);
+ for(const mutate of [x=>delete x.items[0].configuration.usage,x=>x.items[0].configuration.usage='terrace',x=>x.items[0].configuration.protectionRating='IP68',x=>x.contractVersion=1]){
+  const payload=checkoutPayload3D([line()]);mutate(payload);assert.throws(()=>parseCheckout3DRequest(payload));
+ }
 });

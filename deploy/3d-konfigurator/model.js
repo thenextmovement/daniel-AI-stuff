@@ -1,6 +1,8 @@
 import {RAL_COLORS,ralCode} from './ral.js?v=35';
 export {RAL_COLORS,ralCode};
-export const DEFAULT = Object.freeze({version:3,text:'ATLAS',font:'modern',lighting:'back',mount:'individual',width:120,depth:5,color:'#fff1d6',acrylic:'#ffffff',backFinish:'brushed-gold',sideColor:'#252525',sideRal:'',bodyRal:'',railRal:'',plateRal:'',body:'#252525',plate:'#d8d0c4',railCustomColor:false,railColor:'#252525',wall:'warm',lightOn:true,night:false,spacing:5});
+// Product owner confirmed IP67 for the sign; not a claim about separate accessories.
+export const SIGN_PROTECTION='IP67';
+export const DEFAULT = Object.freeze({version:3,text:'ATLAS',font:'modern',lighting:'back',mount:'individual',usage:'indoor',width:120,depth:5,color:'#fff1d6',acrylic:'#ffffff',backFinish:'brushed-gold',sideColor:'#252525',sideRal:'',bodyRal:'',railRal:'',plateRal:'',body:'#252525',plate:'#d8d0c4',railCustomColor:false,railColor:'#252525',wall:'warm',lightOn:true,night:false,spacing:5});
 export const FONTS={
  modern:{label:'Modern',style:'Klar & kräftig'},
  montserrat:{label:'Montserrat',style:'Markant & vielseitig'},
@@ -12,7 +14,7 @@ export const FONTS={
  cormorantgaramond:{label:'Cormorant Garamond',style:'Fein & elegant'},
  elegant:{label:'Elegant',style:'Klassischer Charakter'}
 };
-export const LABELS={font:Object.fromEntries(Object.entries(FONTS).map(([id,font])=>[id,font.label])),lighting:{front:'Frontbeleuchtet',back:'Rückbeleuchtet'},mount:{individual:'Einzelbuchstaben',rail:'Auf Schiene',plate:'Auf Platte'},wall:{warm:'Putz',concrete:'Beton',dark:'Anthrazit'}};
+export const LABELS={usage:{indoor:'Innenbereich',outdoor:'Außenbereich'},font:Object.fromEntries(Object.entries(FONTS).map(([id,font])=>[id,font.label])),lighting:{front:'Frontbeleuchtet',back:'Rückbeleuchtet'},mount:{individual:'Einzelbuchstaben',rail:'Auf Schiene',plate:'Auf Platte'},wall:{warm:'Putz',concrete:'Beton',dark:'Anthrazit'}};
 // Palette follows the current Neon editor; existing 3D draft values remain valid.
 export const COLORS=[['#fff1d6','Warmweiß'],['#f5f7ff','Weiß'],['#fff97c','Zitronengelb'],['#f5c35b','Goldgelb'],['#ff8d02','Orange'],['#ff7575','Hellrot'],['#ff2a4d','Rot'],['#ff90ff','Neon-Pink'],['#eaa4ff','Weiches Rosa'],['#fc6fa8','Rosa'],['#8c59ff','Lila'],['#0274fc','Dunkelblau'],['#80baff','Hellblau'],['#90dcff','Eisblau'],['#80ffd9','Mintgrün'],['#8bdfb1','Grün'],['#0bd748','Dunkelgrün']];
 export const ACRYLICS=COLORS.map(([color,name])=>[({'Weiß':'#ffffff','Rot':'#e62d38','Orange':'#ff8b24','Rosa':'#ee67af','Hellblau':'#2474e5','Grün':'#26a86b'})[name]||color,name==='Hellblau'?'Blau':name]);
@@ -57,7 +59,7 @@ export function materialSpec(s){
 export function normalize(raw={}){
  if(!raw||typeof raw!=='object')raw={};
  const s={...DEFAULT};
- for(const key of ['font','lighting','mount','wall'])if(Object.hasOwn(LABELS[key],raw[key]))s[key]=raw[key];
+ for(const key of ['font','lighting','mount','wall','usage'])if(Object.hasOwn(LABELS[key],raw[key]))s[key]=raw[key];
  if(typeof raw.text==='string')s.text=raw.text.replace(/[\u0000-\u0008\u000b-\u001f<>]/g,'').slice(0,60);
  for(const [key,min,max] of [['width',30,400],['depth',3,12],['spacing',0,20]])if(Number.isFinite(Number(raw[key])))s[key]=Math.min(max,Math.max(min,Number(raw[key])));
  for(const key of ['lightOn','night','railCustomColor'])if(typeof raw[key]==='boolean')s[key]=raw[key];
@@ -79,6 +81,7 @@ export function normalize(raw={}){
  return s;
 }
 export function validate(s){
+ if(!Object.hasOwn(LABELS.usage,s.usage))return 'Bitte wähle den Innen- oder Außenbereich.';
  const paintKeys=[s.lighting==='front'?'sideColor':s.backFinish==='painted-steel'?'body':null,s.mount==='plate'?'plate':null,s.mount==='rail'&&s.railCustomColor?'railColor':null].filter(Boolean);
  for(const key of paintKeys)if(s[PAINT_FIELDS[key]]&&!ralCode(s[PAINT_FIELDS[key]]))return 'Bitte einen gültigen RAL-CLASSIC-Ton wählen, z. B. RAL 7016, oder die RAL-Eingabe leeren.';
  if(!s.text.trim())return 'Gib einen Schriftzug oder einen einzelnen Buchstaben ein.';
@@ -88,7 +91,7 @@ export function validate(s){
  return '';
 }
 export function description(s,height){return [
- '3D-Leuchtbuchstaben – Konfiguration',`Text: ${s.text}`,`Schrift: ${LABELS.font[s.font]}`,`Lichtart: ${LABELS.lighting[s.lighting]}`,`Montage: ${LABELS.mount[s.mount]}`,
+ '3D-Leuchtbuchstaben – Konfiguration',`Text: ${s.text}`,`Schrift: ${LABELS.font[s.font]}`,`Lichtart: ${LABELS.lighting[s.lighting]}`,`Montage: ${LABELS.mount[s.mount]}`,`Einsatzort: ${LABELS.usage[s.usage]}`,`Schutzart des Schilds: ${SIGN_PROTECTION}`,
  `Schriftzug: ${s.width} cm breit${height?`, ca. ${height.toLocaleString('de-DE',{maximumFractionDigits:1})} cm hoch`:''}`,`Wunschtiefe: ${s.depth} cm`,
  s.lighting==='front'?`Leuchtfarbe vorne: ${ACRYLICS.find(c=>c[0]===s.acrylic)?.[1]||'Eigene Farbe'} (${s.acrylic.toUpperCase()}) · Acrylfront`:`Front und Korpus: ${finishDescription(s)}`,
  s.lighting==='front'?`Korpus: Edelstahl · ${finishDescription(s)}`:`Lichtfarbe (Halo): ${COLORS.find(c=>c[0]===s.color)?.[1]}`,
