@@ -3836,7 +3836,7 @@ test("PDF anchors match by dimensions, not drawing order; ambiguous design owner
   assert.deepEqual(groups[0]![0],anchor(1,50,33));
   assert.throws(()=>bindSourceDimensionsToAnchors(groups,{...source,drawings:[...source.drawings,drawing(50,33.5)]}),/nicht eindeutig/);
   assert.throws(()=>bindSourceDimensionsToAnchors([[anchor(1,50,33)],[anchor(2,50,33)]],{...source,sizeFields:{size_1:"50x33cm",size_2:"50x33cm"}}),/mehreren Designs/);
-  assert.throws(()=>bindSourceDimensionsToAnchors(groups,{...source,drawings:[drawing(50,34.01),drawing(190,9.25)]}),/nicht eindeutig/);
+  assert.throws(()=>bindSourceDimensionsToAnchors(groups,{...source,drawings:[drawing(50,34.01),drawing(190,9.25)]}),/Keine PDF-Zeichnung/);
   assert.doesNotThrow(()=>bindSourceDimensionsToAnchors(groups,{...source,drawings:[drawing(50,34),drawing(190,9.25)]}));
 });
 
@@ -3849,4 +3849,90 @@ test("PDF base precision prevents source rounding from growing into centimetres 
   assert.equal(ladder.options.at(-1)?.widthCm,250);
   assert.equal(ladder.options.at(-1)?.heightCm,104.75);
   for(const option of ladder.options)assert.ok(Math.abs(option.heightCm-option.widthCm*nativeHeight/50)<0.02);
+});
+
+
+test("single-design PDF variants share dimensions without changing the offered variant or supplier price", async () => {
+  const oldFetch = globalThis.fetch;
+  const oldBase = process.env.NEONTRIP_OFFERS_BASE_URL;
+  const oldKey = process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+  process.env.NEONTRIP_OFFERS_BASE_URL = "https://offers.test";
+  process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = "test-only";
+  const sourceSHA256 = "d".repeat(64);
+  // Native parser output from two 80 x 12.8 cm supplier variants; translated
+  // PDF coordinates differ by less than 0.00001 cm, not by a real product size.
+  const widths = [79.99754750254989, 79.99754833626304];
+  const height = 12.779858305555546;
+  const drawings = widths.map(width => ({
+    sourceSHA256, drawingWidthCm: width, drawingHeightCm: height, aspectRatio: height / width,
+  }));
+  try {
+    for (const size of ["80x12cm", "80x13cm"]) {
+      const card: TrelloCardData = {
+        id: "sameSizeVariants", idBoard: "63d10c34105771f01ccf4296", name: "LED NEON FLEX single design",
+        customFields: { Size_1: size, Price_1: "130", Color_1: "Warmweiß", Backboard_1: "Formzuschnitt" },
+        attachments: [
+          { id: "source", name: "mockup1234.jpg" },
+          { id: "technical", name: "Technicaldrawing1234.jpg" },
+          { id: "pdf", name: "supplier.pdf", date: "2026-10-22T14:39:35Z" },
+        ],
+      };
+      const before = structuredClone(card);
+      let reads = 0;
+      globalThis.fetch = async (url, init) => {
+        assert.equal(String(url), "https://offers.test/api/internal/trello-offer/preflight");
+        assert.deepEqual(JSON.parse(String(init?.body)), { cardIdOrUrl: card.id, purpose: "source_dimensions" });
+        reads++;
+        return Response.json({ sourceDimensions: {
+          status: "checked", cardId: card.id, sourceAttachmentId: "pdf", sourceSHA256,
+          sizeFields: { size_1: size }, drawings,
+        } });
+      };
+      const result = await buildQuoteReadySizeLadderPreflightFromTrelloCard(card, {
+        persist: false, projectToTrello: false, commentToTrello: false,
+      });
+      assert.deepEqual(result.issues, []);
+      assert.equal(result.status, "needs_review", "Existing single-anchor pricing review is preserved");
+      assert.equal(classifyManualReleaseSizeLadderPreflight(result).decision, "ready");
+      assert.equal(result.designs.length, 1);
+      assert.equal(result.designs[0]!.sourceMockupName, "mockup1234.jpg");
+      assert.equal(reads, 1, "Only the read-only PDF inspection is called");
+      assert.deepEqual(card, before, "Original variant, source attachments and fields are unchanged");
+      const ladder = result.designs[0]!.sizeLadder;
+      assert.equal(ladder.anchorList[0]!.supplierTotal, 130);
+      assert.equal(ladder.anchorList[0]!.widthCm, 80);
+      assert.equal(ladder.anchorList[0]!.heightCm, 12.78);
+      assert.deepEqual(ladder.sourcePdf, { attachmentId: "pdf", sha256: sourceSHA256 });
+      for (const option of ladder.options) {
+        assert.ok(Math.abs(option.heightCm - option.widthCm * height / widths[0]!) < 0.02);
+      }
+    }
+  } finally {
+    globalThis.fetch = oldFetch;
+    if (oldBase === undefined) delete process.env.NEONTRIP_OFFERS_BASE_URL;
+    else process.env.NEONTRIP_OFFERS_BASE_URL = oldBase;
+    if (oldKey === undefined) delete process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY;
+    else process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY = oldKey;
+  }
+});
+
+test("PDF duplicate-dimension handling still rejects real size, orientation and multiple-design ambiguity", () => {
+  const sourceSHA256 = "e".repeat(64);
+  const drawing = (w: number, h: number) => ({ sourceSHA256, drawingWidthCm: w, drawingHeightCm: h, aspectRatio: h / w });
+  const anchor = { role: "minimum" as const, fieldIndex: 1, widthCm: 80, heightCm: 13, productionPrice: 100, shippingPrice: 30 };
+  const source = {
+    status: "checked" as const, cardId: "variants", sourceAttachmentId: "pdf", sourceSHA256,
+    sizeFields: { size_1: "80x13cm", size_2: "80x13cm" }, drawings: [drawing(80, 12.8), drawing(80, 12.8)],
+  };
+  const bound = bindSourceDimensionsToAnchors([[anchor]], source);
+  assert.deepEqual(bound, [[{ ...anchor, heightCm: 12.8 }]]);
+  for (const conflicting of [drawing(80, 12.9), drawing(80.001, 12.8), drawing(12.8, 80)]) {
+    assert.throws(() => bindSourceDimensionsToAnchors([[anchor]], {
+      ...source, drawings: [source.drawings[0]!, conflicting],
+    }), /Size_1.*2 PDF-Zeichnungen.*nicht eindeutig/);
+  }
+  assert.throws(() => bindSourceDimensionsToAnchors([[anchor]], {
+    ...source, drawings: [drawing(80, 14.01)],
+  }), /Size_1.*Keine PDF-Zeichnung.*1 cm/);
+  assert.throws(() => bindSourceDimensionsToAnchors([[anchor], [{ ...anchor, fieldIndex: 2 }]], source), /nicht eindeutig/);
 });

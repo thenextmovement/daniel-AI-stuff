@@ -1970,10 +1970,27 @@ export function bindSourceDimensionsToAnchors(
       const swapped = Math.max(Math.abs(anchor.heightCm - drawing.drawingWidthCm), Math.abs(anchor.widthCm - drawing.drawingHeightCm));
       return Math.min(direct, swapped) <= 1 + 1e-9 ? [{ drawing, index }] : [];
     });
-    if (matches.length !== 1) {
-      throw new QuoteValidationError("PDF-Zeichnung nicht eindeutig innerhalb von 1 cm zugeordnet.", ["pdf_size_assignment_ambiguous"], 422);
+    const sizeLabel = `Size_${anchor.fieldIndex} (${anchor.widthCm} × ${anchor.heightCm} cm)`;
+    if (!matches.length) {
+      throw new QuoteValidationError(
+        `${sizeLabel}: Keine PDF-Zeichnung innerhalb von ±1 cm je Maß gefunden. Size-Feld und aktuelle PDF prüfen.`,
+        ["pdf_size_assignment_ambiguous"], 422,
+      );
     }
     const { drawing, index } = matches[0]!;
+    // A single offered design only needs common dimensions, not a PDF variant
+    // selection. Allow tiny PDF-coordinate noise (0.0001 mm), never the 1 cm
+    // anchor tolerance, when comparing candidates. Preserve horizontal width.
+    const sameDimensions = matches.every(({ drawing: candidate }) =>
+      Math.abs(candidate.drawingWidthCm - drawing.drawingWidthCm) <= 1e-5
+      && Math.abs(candidate.drawingHeightCm - drawing.drawingHeightCm) <= 1e-5,
+    );
+    if (matches.length > 1 && (groups.length !== 1 || !sameDimensions)) {
+      throw new QuoteValidationError(
+        `${sizeLabel}: ${matches.length} PDF-Zeichnungen passen innerhalb von ±1 cm je Maß; Maße oder Designzuordnung sind nicht eindeutig. Aktuelle PDF auf die angebotene Variante begrenzen.`,
+        ["pdf_size_assignment_ambiguous"], 422,
+      );
+    }
     if (owners.has(index) && owners.get(index) !== designIndex) {
       throw new QuoteValidationError("Dieselbe PDF-Zeichnung passt zu mehreren Designs.", ["pdf_size_assignment_ambiguous"], 422);
     }
