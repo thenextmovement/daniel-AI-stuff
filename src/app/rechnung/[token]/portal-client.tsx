@@ -302,6 +302,7 @@ export function BillingPortalClient({ token }: { token: string }) {
   const [invoiceConfirmed, setInvoiceConfirmed] = useState(false);
   const [requestingInvoice, setRequestingInvoice] = useState(false);
   const invoiceInFlight = useRef(false);
+  const invoiceDialogRef = useRef<HTMLDialogElement>(null);
   const [invoiceMessage, setInvoiceMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [form, setForm] = useState<InvoiceForm>(EMPTY_FORM);
@@ -321,6 +322,7 @@ export function BillingPortalClient({ token }: { token: string }) {
   }, [token]);
 
   async function load() {
+    invoiceDialogRef.current?.close();
     setInvoiceConfirmed(false);
     setLoading(true);
     try {
@@ -468,8 +470,15 @@ export function BillingPortalClient({ token }: { token: string }) {
     await load();
   }
 
+  function openInvoiceReview() {
+    if (editing || sending || data?.readOnly || invoiceInFlight.current) return;
+    setInvoiceConfirmed(false);
+    setInvoiceMessage(null);
+    invoiceDialogRef.current?.showModal();
+  }
+
   async function requestInvoice() {
-    if (!invoiceConfirmed || editing || sending || data?.readOnly || invoiceInFlight.current || !data?.billingCase) return;
+    if (!invoiceDialogRef.current?.open || !invoiceConfirmed || editing || sending || data?.readOnly || invoiceInFlight.current || !data?.billingCase) return;
     invoiceInFlight.current = true;
     setRequestingInvoice(true);
     setInvoiceMessage(null);
@@ -486,6 +495,7 @@ export function BillingPortalClient({ token }: { token: string }) {
       });
       const payload = await response.json().catch(() => null);
       if (response.ok && payload?.ok) {
+        invoiceDialogRef.current?.close();
         setData((current) => current?.billingCase ? {
           ...current,
           readOnly: true,
@@ -541,6 +551,7 @@ export function BillingPortalClient({ token }: { token: string }) {
   const documents = portalDocuments(data);
   const pendingChange = portalChanges(data).find((change) => ["PENDING", "OPEN"].includes(String(change.status)));
   const invoiceRequested = Boolean(billing.invoice_requested_at);
+  const invoiceReviewForm = formFromBilling(billing);
   const invoiceDocument = documents.find((document) => document.document_type === "INVOICE");
   const currentProforma = documents.find((document) => document.document_type === "PROFORMA"
     && Number(document.revision) === Number(billing.current_revision)
@@ -663,12 +674,38 @@ export function BillingPortalClient({ token }: { token: string }) {
                 </div>
               </section>
 
-              <section className="grid min-w-0 gap-3 rounded-2xl border border-stone-200 bg-[#f7f4ee] p-4 sm:grid-cols-2 xl:col-span-2 [&>label]:min-w-0">
-                <div className="sm:col-span-2"><p className="text-sm font-semibold text-stone-950">Rechnungsversand</p><p className="mt-1 text-xs text-stone-500">Hierhin senden wir Pro-forma-Rechnung und spätere Rechnungsdokumente.</p></div>
+              <section aria-labelledby="invoice-delivery-title" className="grid min-w-0 gap-3 rounded-2xl border border-stone-200 bg-[#f7f4ee] p-4 sm:grid-cols-2 xl:col-span-2 [&>label]:min-w-0">
+                <div className="sm:col-span-2"><p id="invoice-delivery-title" className="text-sm font-semibold text-stone-950">Rechnungsversand</p><p className="mt-1 text-xs text-stone-500">Hierhin senden wir Pro-forma-Rechnung und spätere Rechnungsdokumente.</p></div>
                 <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Rechnungs-E-Mail</span><input required={editing} type="email" value={effectiveInvoiceEmail} readOnly={!editing} onChange={(event) => setForm({ ...form, invoiceEmail: event.target.value })} className={fieldClass(editing)} /></label>
                 <label className="grid gap-1.5 text-xs font-semibold text-stone-600"><span>Projektnummer (optional)</span><input value={form.projectNumber} readOnly={!editing} onChange={(event) => setForm({ ...form, projectNumber: event.target.value })} className={fieldClass(editing)} /></label>
+                {!data.readOnly ? (
+                  <div className="mt-1 sm:col-span-2">
+                    <button type="button" onClick={openInvoiceReview} disabled={editing || sending || requestingInvoice} aria-haspopup="dialog" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-stone-950 px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-[#b91c73] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500">
+                      <ReceiptText className="h-4 w-4 shrink-0" />
+                      Proforma in reguläre Rechnung umwandeln
+                    </button>
+                    {editing ? <p className="mt-2 text-xs leading-5 text-stone-500">Bitte schließen Sie zuerst die Bearbeitung ab.</p> : null}
+                  </div>
+                ) : null}
               </section>
             </fieldset>
+
+            {data.readOnly ? (
+            <div className="mt-4 space-y-3 text-sm leading-6 text-stone-600" role="status">
+              <p>{["SYNC_BLOCKED", "MANUAL_REVIEW"].includes(String(billing.status))
+                ? "Erstellung oder Versand benötigen eine Prüfung durch NEONTRIP. Bitte kontaktieren Sie support@neontrip.de. Die bestätigten Daten bleiben gesperrt."
+                : invoiceDocument?.status === "SENT"
+                ? "Ihre Rechnung wurde per E-Mail versendet. Sie können das PDF auch unter Dokumente öffnen."
+                : billing.final_invoice_at
+                  ? "Ihre Rechnung wurde erstellt. Der Versand per E-Mail wird vorbereitet."
+                  : "Ihre Rechnung wurde angefordert und wird erstellt. Anschließend wird sie automatisch per E-Mail versendet."}</p>
+              <p>Pro-forma und Rechnungsdaten sind für Änderungen gesperrt.</p>
+              {invoiceRequested && invoiceDocument?.status !== "SENT" ? (
+                <button type="button" onClick={() => void load()} className="rounded-xl border border-stone-300 bg-white px-4 py-2 font-semibold text-stone-800">Status aktualisieren</button>
+              ) : null}
+            </div>
+            ) : null}
+            {invoiceMessage ? <p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{invoiceMessage}</p> : null}
 
             {!editing && !data.readOnly ? (
               <div className="mt-5 flex items-center gap-2 text-xs text-stone-500"><LockKeyhole className="h-4 w-4" /> Die Rechnungsdaten sind geschützt.</div>
@@ -732,46 +769,57 @@ export function BillingPortalClient({ token }: { token: string }) {
           </div>
         </section>
 
-        <section aria-labelledby="invoice-request-title" className="rounded-[24px] border border-[#ded8d0] bg-[#fffdf9] p-5 sm:p-7">
-          <div className="flex items-center gap-3">
-            <ReceiptText className="h-5 w-5 shrink-0 text-[#b91c73]" />
-            <h2 id="invoice-request-title" className="text-xl font-semibold">Verbindliche Rechnung</h2>
-          </div>
-          {data.readOnly ? (
-            <div className="mt-4 space-y-3 text-sm leading-6 text-stone-600" role="status">
-              <p>{["SYNC_BLOCKED", "MANUAL_REVIEW"].includes(String(billing.status))
-                ? "Erstellung oder Versand benötigen eine Prüfung durch NEONTRIP. Bitte kontaktieren Sie support@neontrip.de. Die bestätigten Daten bleiben gesperrt."
-                : invoiceDocument?.status === "SENT"
-                ? "Ihre Rechnung wurde per E-Mail versendet. Sie können das PDF auch unter Dokumente öffnen."
-                : billing.final_invoice_at
-                  ? "Ihre Rechnung wurde erstellt. Der Versand per E-Mail wird vorbereitet."
-                  : "Ihre Rechnung wurde angefordert und wird erstellt. Anschließend wird sie automatisch per E-Mail versendet."}</p>
-              <p>Pro-forma und Rechnungsdaten sind für Änderungen gesperrt.</p>
-              {invoiceRequested && invoiceDocument?.status !== "SENT" ? (
-                <button type="button" onClick={() => void load()} className="rounded-xl border border-stone-300 bg-white px-4 py-2 font-semibold text-stone-800">Status aktualisieren</button>
-              ) : null}
+        <dialog ref={invoiceDialogRef} aria-labelledby="invoice-review-title" aria-describedby="invoice-review-description" onClose={() => setInvoiceConfirmed(false)} onCancel={(event) => { if (invoiceInFlight.current) event.preventDefault(); }} className="m-auto max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-2xl overflow-y-auto overscroll-contain rounded-[24px] border border-[#ded8d0] bg-[#fffdf9] p-0 text-[#171412] shadow-2xl backdrop:bg-stone-950/50">
+          <div className="p-5 sm:p-7">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#b91c73]">{billing.shopify_order_name}</p>
+                <h2 id="invoice-review-title" className="mt-2 text-xl font-semibold sm:text-2xl">Reguläre Rechnung erstellen</h2>
+              </div>
+              <button type="button" autoFocus aria-label="Popup schließen" disabled={requestingInvoice} onClick={() => invoiceDialogRef.current?.close()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 hover:text-stone-950 disabled:opacity-50"><X className="h-5 w-5" /></button>
             </div>
-          ) : (
-            <div className="mt-4 max-w-3xl">
-              <p className="text-sm leading-6 text-stone-600">Sie benötigen eine Rechnung für Ihre Buchhaltung? Prüfen Sie zuerst alle Positionen und Beträge in der aktuellen Pro-forma sowie die oben angezeigten Rechnungsdaten. Nach Ihrer Bestätigung erstellen wir die Rechnung und senden sie automatisch an <strong className="break-all font-medium text-stone-800">{effectiveInvoiceEmail || "Ihre Rechnungs-E-Mail"}</strong>. Die Verarbeitung dauert in der Regel wenige Minuten. Ihr Zahlungsziel bleibt bestehen.</p>
-              {currentProforma ? <a href={"/api/rechnung/" + encodeURIComponent(token) + "/documents/" + encodeURIComponent(String(currentProforma.id))} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:border-[#fa31a2]"><FileText className="h-4 w-4" />Aktuelle Pro-forma prüfen</a> : null}
-              <label className={"mt-5 flex items-start gap-3 rounded-2xl border border-stone-200 bg-white p-4 text-sm leading-6 " + (invoiceBlocked ? "text-stone-500" : "cursor-pointer text-stone-800")}>
-                <input type="checkbox" checked={invoiceConfirmed} disabled={invoiceBlocked} onChange={(event) => setInvoiceConfirmed(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-[#b91c73] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b91c73]" />
-                <span>{INVOICE_CONSENT_TEXT}</span>
-              </label>
-              <button type="button" onClick={() => void requestInvoice()} disabled={!invoiceConfirmed || invoiceBlocked} className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-stone-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#b91c73] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500">
-                <ReceiptText className="h-4 w-4 shrink-0" />
-                {requestingInvoice ? "Rechnung wird angefordert …" : "Verbindliche Rechnung erstellen"}
+            <p id="invoice-review-description" className="mt-3 text-sm leading-6 text-stone-600">Bitte prüfen Sie Ihre gespeicherten Rechnungsdaten. Nach Ihrer Bestätigung erstellen wir aus der Proforma eine reguläre Rechnung und senden sie per E-Mail. Ihr Zahlungsziel bleibt bestehen.</p>
+
+            <div className="mt-5 grid gap-4 rounded-2xl border border-stone-200 bg-white p-4 text-sm sm:grid-cols-2">
+              <div className="min-w-0">
+                <h3 className="font-semibold">Rechnungsanschrift</h3>
+                <address className="mt-2 break-words not-italic leading-6 text-stone-600">
+                  {invoiceReviewForm.company ? <div>{invoiceReviewForm.company}</div> : null}
+                  {[invoiceReviewForm.billingFirstName, invoiceReviewForm.billingLastName].filter(Boolean).length ? <div>{[invoiceReviewForm.billingFirstName, invoiceReviewForm.billingLastName].filter(Boolean).join(" ")}</div> : null}
+                  <div>{invoiceReviewForm.street}</div>
+                  <div>{[invoiceReviewForm.zip, invoiceReviewForm.city].filter(Boolean).join(" ")}</div>
+                  <div>{countryLabel(invoiceReviewForm.country)}</div>
+                </address>
+              </div>
+              <dl className="min-w-0 space-y-3">
+                <div><dt className="font-semibold">Rechnungs-E-Mail</dt><dd className="mt-2 break-all text-stone-600">{invoiceReviewForm.invoiceEmail || "Nicht hinterlegt"}</dd></div>
+                {invoiceReviewForm.projectNumber ? <div><dt className="font-semibold">Projektnummer</dt><dd className="mt-1 break-words text-stone-600">{invoiceReviewForm.projectNumber}</dd></div> : null}
+                {invoiceReviewForm.vatId ? <div><dt className="font-semibold">Umsatzsteuer-ID</dt><dd className="mt-1 break-words text-stone-600">{invoiceReviewForm.vatId}</dd></div> : null}
+              </dl>
+              <div className="border-t border-stone-200 pt-3 sm:col-span-2">
+                <h3 className="font-semibold">Positionen</h3>
+                <ul className="mt-2 space-y-1 text-stone-600">{(Array.isArray(billing.line_items) ? billing.line_items : []).map((item: Record<string, any>, index: number) => <li key={index} className="break-words">{Number(item.normalizedQuantity || item.quantity || 1)} × {String(item.title || "Position")}</li>)}</ul>
+                <div className="mt-3 flex justify-between gap-4 border-t border-stone-200 pt-3 font-semibold"><span>Gesamtbetrag</span><span>{money(Number(billing.total_gross_cents), currency)}</span></div>
+                {currentProforma ? <a href={"/api/rechnung/" + encodeURIComponent(token) + "/documents/" + encodeURIComponent(String(currentProforma.id))} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[#b91c73] underline underline-offset-4"><FileText className="h-4 w-4" />Aktuelle Pro-forma prüfen</a> : null}
+              </div>
+            </div>
+
+            {invoiceBlocked && !requestingInvoice ? <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">{pendingChange
+              ? "Eine Änderung wird noch geprüft. Hier sehen Sie die bisher gespeicherten Daten. Die Rechnung kann erst nach Abschluss der Prüfung und Aktualisierung der Pro-forma erstellt werden."
+              : "Die aktuelle Pro-forma und alle Prüfungen müssen zuerst abgeschlossen sein. Bitte aktualisieren Sie den Status in Kürze."}</p> : null}
+            <label className={"mt-4 flex items-start gap-3 rounded-2xl border border-stone-200 bg-white p-4 text-sm leading-6 " + (invoiceBlocked ? "text-stone-500" : "cursor-pointer text-stone-800")}>
+              <input type="checkbox" checked={invoiceConfirmed} disabled={invoiceBlocked} onChange={(event) => setInvoiceConfirmed(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-[#b91c73] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b91c73]" />
+              <span>{INVOICE_CONSENT_TEXT}</span>
+            </label>
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button type="button" disabled={requestingInvoice} onClick={() => invoiceDialogRef.current?.close()} className="min-h-11 rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-700 disabled:opacity-50">Abbrechen</button>
+              <button type="button" onClick={() => void requestInvoice()} disabled={!invoiceConfirmed || invoiceBlocked} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-stone-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#b91c73] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500">
+                <ReceiptText className="h-4 w-4 shrink-0" />{requestingInvoice ? "Rechnung wird angefordert …" : "Jetzt reguläre Rechnung erstellen"}
               </button>
-              {invoiceBlocked && !requestingInvoice ? <p className="mt-3 text-sm leading-6 text-stone-500">{editing
-                ? "Bitte schließen Sie zuerst die Bearbeitung ab."
-                : pendingChange ? "Eine Änderung wird noch geprüft. Die Rechnung kann nach Abschluss und Aktualisierung der Pro-forma angefordert werden."
-                : "Die aktuelle Pro-forma und alle Prüfungen müssen zuerst abgeschlossen sein. Bitte aktualisieren Sie den Status in Kürze."}</p> : null}
-              {!editing && !requestingInvoice ? <button type="button" onClick={() => void load()} className="mt-3 block rounded-lg px-1 py-2 text-sm font-medium text-stone-600 underline underline-offset-4">Status aktualisieren</button> : null}
             </div>
-          )}
-          {invoiceMessage ? <p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{invoiceMessage}</p> : null}
-        </section>
+            <p className="mt-3 text-xs leading-5 text-stone-500">Erstellung und Versand dauern in der Regel wenige Minuten. Danach sind Proforma und Rechnungsdaten über dieses Portal nicht mehr änderbar.</p>
+          </div>
+        </dialog>
 
         <footer className="px-2 pb-4 text-center text-xs leading-5 text-stone-400">Der Zugriff ist auf diesen Auftrag begrenzt. Die Bestellnummer ist ausschließlich innerhalb dieses geschützten Portals sichtbar.</footer>
       </div>

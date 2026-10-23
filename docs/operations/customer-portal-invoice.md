@@ -3,7 +3,7 @@
 Issue #218; PROJ-001; owner Rahim. Customer portal: `https://rechnung.neontrip.de/<private-token>`.
 Ops repository: `thenextmovement/daniel-AI-stuff`; Coolify application `zs80848k80oskk0ow0kc0cos`, production branch `main`.
 
-The customer reviews the current Pro-forma PDF and saved invoice fields, then explicitly confirms consent version `2026-10-23`. POST `/api/rechnung/[token]/invoice` queues the existing canonical `CREATE_INVOICE` job immediately. Existing minute workers create and send the invoice; payment method, due days and paid state are unchanged. No new workflow or schedule.
+The customer opens the review dialog using the button directly below the invoice email field in Rechnungsversand. The dialog shows the saved invoice address, recipient email, project/VAT references, positions, gross total and current Pro-forma PDF. Opening or closing it has no billing side effect. The customer then explicitly confirms consent version `2026-10-23`. POST `/api/rechnung/[token]/invoice` queues the existing canonical `CREATE_INVOICE` job immediately. Existing minute workers create and send the invoice; payment method, due days and paid state are unchanged. No new workflow or schedule.
 
 The service-role RPC locks the billing case, verifies the viewed revision/timestamp, current finalized Pro-forma, no pending edits/jobs, valid recipient and eligible status. Consent and confirmed invoice inputs are recorded in `billing_events`. Replays reuse the request. `invoice_requested_at` locks editing immediately; database triggers also prevent Ops/automation from rewriting the confirmed financial fields while a worker is using them. Payment recording, status transitions and document finalization remain available.
 
@@ -22,7 +22,7 @@ All development tests use synthetic data; no production mutation or actual docum
 - `npm run build`
 - SQL fixture `tests/sql/billing-portal-invoice.test.sql`: disposable PostgreSQL with migrations `20260819170000`, `20260819180000`, `20260821153000`, `20260822130000`, then the new migration. Tests run inside a rollback transaction.
 - `node tests/sql/billing-portal-invoice-concurrency.test.mjs`: requires the isolated Docker container `portal-invoice-test-20261023` (or `BILLING_TEST_CONTAINER`), with network mode `none`; tests request/request and both request/edit lock orders.
-- Start the built app on loopback port 3218, then `node tests/browser/billing-portal-invoice.mjs`. Customer APIs are mocked and external browser requests blocked. Tests cover unchecked consent, edit/reset, pending edits, stale view, reload, lost response, blocked worker, desktop/mobile and overflow.
+- Start the built app on loopback port 3218, then `node tests/browser/billing-portal-invoice.mjs`. Customer APIs are mocked and external browser requests blocked. Tests cover button placement, saved review data, no request on opening, unchecked/reset consent, focus containment/Escape, edit/pending guards, stale view, reload, lost response, blocked worker, desktop/mobile and overflow.
 - Alert patch validated using n8n MCP `validateOnly`; recipient expression and active worker command/message preparation exercised with synthetic data. Actual email delivery remains a live verification step.
 
 ## Operational limits and rollback

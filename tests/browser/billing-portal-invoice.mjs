@@ -49,29 +49,59 @@ await page.route("**/*", async route => {
   if (requestUrl.pathname === "/api/rechnung/" + token) return route.fulfill({ status: 200, json: current });
   return route.continue();
 });
-const checkbox = () => page.getByRole("checkbox", { name: /Ich bestätige, dass alle Positionen/ });
-const action = () => page.getByRole("button", { name: "Verbindliche Rechnung erstellen", exact: true });
-const section = () => page.getByRole("region", { name: "Verbindliche Rechnung", exact: true });
+const launch = () => page.getByRole("button", { name: "Proforma in reguläre Rechnung umwandeln", exact: true });
+const dialog = () => page.getByRole("dialog", { name: "Reguläre Rechnung erstellen", exact: true });
+const checkbox = () => dialog().getByRole("checkbox", { name: /Ich bestätige, dass alle Positionen/ });
+const action = () => dialog().getByRole("button", { name: "Jetzt reguläre Rechnung erstellen", exact: true });
+const deliverySection = () => page.getByRole("region", { name: "Rechnungsversand", exact: true });
 async function ready() {
   await page.goto(url);
-  await action().waitFor();
+  await launch().waitFor({ timeout: 5000 });
+}
+async function openReview() {
+  await launch().click();
+  await dialog().waitFor();
 }
 try {
   await ready();
+  assert.equal(await dialog().count(), 0);
+  assert.equal(await deliverySection().getByRole("button", { name: "Proforma in reguläre Rechnung umwandeln" }).count(), 1);
+  const emailBox = await page.getByLabel("Rechnungs-E-Mail", { exact: true }).boundingBox();
+  const buttonBox = await launch().boundingBox();
+  assert.ok(buttonBox.y >= emailBox.y + emailBox.height, "Launch button must sit below the invoice email");
+  assert.equal(requests, 0);
+  await deliverySection().screenshot({ path: "/tmp/portal-invoice-button-20261023.png" });
+
+  await openReview();
+  assert.equal(requests, 0, "Opening the review must not request an invoice");
+  for (const value of ["Testkommune", "Testweg 1", "10115 Berlin", "accounts@example.com", "Testschild", "119,00"]) {
+    assert.ok((await dialog().innerText()).includes(value), "Review missing " + value);
+  }
   assert.equal(await checkbox().isChecked(), false);
   assert.equal(await action().isDisabled(), true);
-  assert.equal(requests, 0);
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press("Tab");
+    assert.equal(await page.evaluate(() => !!document.activeElement?.closest("dialog")), true, "Keyboard focus escaped modal");
+  }
+  await checkbox().check();
+  await page.keyboard.press("Escape");
+  assert.equal(await dialog().count(), 0);
+  assert.equal(await launch().evaluate(element => element === document.activeElement), true);
+  await openReview();
+  assert.equal(await checkbox().isChecked(), false);
+  await dialog().getByRole("button", { name: "Abbrechen", exact: true }).click();
+  await page.getByRole("button", { name: "Rechnungsdaten bearbeiten" }).click();
+  assert.equal(await launch().isDisabled(), true);
+  await page.getByRole("button", { name: "Abbrechen", exact: true }).click();
+  await openReview();
   await checkbox().check();
   assert.equal(await action().isEnabled(), true);
-  await page.getByRole("button", { name: "Rechnungsdaten bearbeiten" }).click();
-  assert.equal(await checkbox().isChecked(), false);
-  assert.equal(await checkbox().isDisabled(), true);
-  await page.getByRole("button", { name: /Abbrechen/ }).click();
-  await checkbox().check();
-  await section().screenshot({ path: "/tmp/portal-invoice-desktop-20261023.png" });
+  await dialog().screenshot({ path: "/tmp/portal-invoice-popup-desktop-20261023.png" });
   await action().click();
   await page.getByText("Ihre Rechnung wurde angefordert und wird erstellt.", { exact: false }).waitFor();
   assert.equal(requests, 1);
+  assert.equal(await dialog().count(), 0);
+  assert.equal(await launch().count(), 0);
   assert.equal(await page.getByRole("button", { name: "Rechnungsdaten bearbeiten" }).count(), 0);
   await page.reload();
   await page.getByText("Pro-forma und Rechnungsdaten sind für Änderungen gesperrt.").waitFor();
@@ -79,43 +109,56 @@ try {
   current = structuredClone(base);
   mode = "stale";
   await ready();
+  await openReview();
   await checkbox().check();
   await action().click();
   await page.getByRole("alert").filter({ hasText: /zwischenzeitlich aktualisiert/ }).waitFor();
+  assert.equal(await dialog().count(), 0);
+  await openReview();
   assert.equal(await checkbox().isChecked(), false);
   assert.equal(await action().isDisabled(), true);
 
   current = structuredClone(base);
   current.changes = [{ status: "PENDING", requested_changes: { billingAddress: { city: "Hamburg" } } }];
   await ready();
+  await openReview();
   assert.equal(await checkbox().isDisabled(), true);
+  assert.ok((await dialog().innerText()).includes("10115 Berlin"), "Only saved invoice data can be confirmed");
 
   current = structuredClone(base);
   mode = "lost-response";
   await ready();
+  await openReview();
   await checkbox().check();
   await action().click();
   await page.getByText("Pro-forma und Rechnungsdaten sind für Änderungen gesperrt.").waitFor();
-  assert.equal(await action().count(), 0);
+  assert.equal(await dialog().count(), 0);
+  assert.equal(await launch().count(), 0);
 
   current = structuredClone(base);
   mode = "success";
   await page.setViewportSize({ width: 390, height: 844 });
   await ready();
-  await section().scrollIntoViewIfNeeded();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
-  await section().screenshot({ path: "/tmp/portal-invoice-mobile-20261023.png" });
+  await deliverySection().screenshot({ path: "/tmp/portal-invoice-button-mobile-20261023.png" });
+  await openReview();
+  assert.equal(await dialog().evaluate(element => element.scrollWidth > element.clientWidth), false);
+  await dialog().screenshot({ path: "/tmp/portal-invoice-popup-mobile-20261023.png" });
   await checkbox().check();
   assert.equal(await action().isEnabled(), true);
+  await action().scrollIntoViewIfNeeded();
+  await dialog().getByRole("button", { name: "Abbrechen", exact: true }).click();
+  assert.equal(await launch().evaluate(element => element === document.activeElement), true);
+
   current = structuredClone(base);
   current.readOnly = true;
   current.billingCase.invoice_requested_at = "2026-10-23T10:02:00.000Z";
   current.billingCase.status = "SYNC_BLOCKED";
   await page.reload();
   await page.getByText("Erstellung oder Versand benötigen eine Prüfung durch NEONTRIP.", { exact: false }).waitFor({ timeout: 5000 });
-  assert.equal(await action().count(), 0);
+  assert.equal(await launch().count(), 0);
   assert.deepEqual(errors, []);
-  console.log("PASS: default consent, edit reset, pending changes, stale data, immediate/reloaded lock, lost response, desktop/mobile and no horizontal overflow.");
+  console.log("PASS: placement, review data, no request on open, consent/reset, modal focus/Escape, edit/pending/stale guards, response-loss recovery and responsive dialog.");
 } finally {
   await browser.close();
 }
