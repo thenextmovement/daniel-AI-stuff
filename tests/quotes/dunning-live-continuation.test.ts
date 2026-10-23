@@ -106,3 +106,46 @@ test("a newer complaint and undelivered invoice cannot be dismissed by old invoi
  const f:any=fixture();f.data["Graph Read Prior Reminder Threads"][0].body.value.push({id:"complaint",internetMessageId:"<c>",conversationId:"thread1",from:{emailAddress:{address:"test@example.com"}},receivedDateTime:"2026-10-19T12:00:00Z",isDraft:false,internetMessageHeaders:[],subject:"#NEONT9000",body:{contentType:"text",content:"Das Schild ist beschädigt. Bitte klären."}});
  const r=run("reply-decision.js",f.data);assert.equal(r.requires_ai,true);assert.equal(r.resolved_document_request_evidence,false);
 });
+
+const rejection=(overrides:any={})=>({id:"rejection",internetMessageId:"<rejection>",conversationId:"new-thread",from:{emailAddress:{address:"noReply@duesseldorf.de"}},receivedDateTime:"2026-10-20T11:30:45Z",isDraft:false,internetMessageHeaders:[{name:"Auto-Submitted",value:"auto-replied"}],subject:"Ihre Mail konnte nicht verarbeitet werden",body:{contentType:"text",content:"Ihre Mail konnte leider nicht verarbeitet werden. Jede Mail darf nur ein Rechnungsdokument enthalten."},...overrides});
+test("processing rejection from another mailbox on billing domain blocks even without order reference",()=>{
+ const f:any=fixture();f.c.mirror_email="erechnung@duesseldorf.de";
+ f.data["Graph Read Prior Reminder Threads"][0].body.value.push(rejection());
+ const r=run("reply-decision.js",f.data);assert.equal(r.blocking_delivery_reply.message_id,"rejection");assert.equal(r.requires_ai,false);
+ const decision=run("validate-reply-decision.js",{"Build T268 Reply Decision Request":[r]});assert.equal(decision.decision,"uncertain");assert.equal(decision.is_new_decision,true);assert.equal(decision.requires_human_review,true);
+ f.data["Validate T268 Reply Decision"]=[decision];assert.equal(run("live-send-gate.js",f.data).send_allowed,false);
+});
+test("later acknowledgement cannot hide unresolved processing rejection",()=>{
+ const f:any=fixture();f.c.mirror_email="erechnung@duesseldorf.de";
+ f.data["Graph Read Prior Reminder Threads"][0].body.value.push(rejection(),rejection({id:"ack",subject:"Automatische Antwort",receivedDateTime:"2026-10-20T12:00:00Z",body:{contentType:"text",content:"Vielen Dank. Ihre Nachricht ist eingegangen."}}));
+ assert.equal(run("reply-decision.js",f.data).blocking_delivery_reply.message_id,"rejection");
+});
+test("unrelated domain rejection never gets attributed to this customer",()=>{
+ const f:any=fixture();f.data["Graph Read Prior Reminder Threads"][0].body.value.push(rejection());assert.equal(run("reply-decision.js",f.data).latest_reply,null);
+});
+test("automatic invoice requirements are evaluated while simple acknowledgement stays ignored",()=>{
+ const f:any=fixture(),m=rejection({from:{emailAddress:{address:"test@example.com"}},subject:"Automatische Antwort",body:{contentType:"text",content:"Bitte geben Sie die Bestellnummer an. Ohne diese kann die Rechnung nicht verarbeitet werden."}});
+ f.data["Graph Read Prior Reminder Threads"][0].body.value.push(m);const r=run("reply-decision.js",f.data);assert.ok(r.blocking_delivery_reply || r.requires_ai);
+ m.body.content="Vielen Dank. Ihre Nachricht ist eingegangen.";assert.equal(run("reply-decision.js",f.data).latest_reply,null);
+});
+test("all earlier substantive replies are supplied, not just the last thanks",()=>{
+ const f:any=fixture(),messages=f.data["Graph Read Prior Reminder Threads"][0].body.value;
+ messages.push(rejection({from:{emailAddress:{address:"test@example.com"}},subject:"Rechnung",internetMessageHeaders:[],body:{contentType:"text",content:"Bitte die Projekt-ID ergänzen."}}));
+ messages.push(rejection({id:"thanks",from:{emailAddress:{address:"test@example.com"}},subject:"Danke",receivedDateTime:"2026-10-20T12:00:00Z",internetMessageHeaders:[],body:{contentType:"text",content:"Danke für Ihre Nachricht."}}));
+ assert.match(run("reply-decision.js",f.data).prompt_user,/Bitte die Projekt-ID ergänzen/);
+});
+test("search includes billing domain but never expands a shared public provider",()=>{
+ const source=readFileSync("workflows/dunning/correspondence-search.expression","utf8").trim().slice(3,-2).trim();
+ const search=(address:string)=>new Function("$","return "+source)((name:string)=>({first:()=>({json:name==="Select Earliest Due Future Stage"?{mirror_email:address,shopify_order_name:"#NEONT4774"}:{}})}));
+ assert.match(decodeURIComponent(search("erechnung@duesseldorf.de")),/from:duesseldorf.de/);
+ assert.doesNotMatch(decodeURIComponent(search("customer@gmail.com")),/from:gmail.com/);
+});
+test("missing pages cannot authorize a send",()=>{
+ const f:any=fixture();f.data["Graph Read Prior Reminder Threads"][0].body["@odata.nextLink"]="https://graph.microsoft.com/v1.0/me/messages?skip=100";
+ const r=run("reply-decision.js",f.data);assert.equal(r.reply_evidence.complete,false);f.data["Validate T268 Reply Decision"]=[r];assert.equal(run("live-send-gate.js",f.data).send_allowed,false);
+});
+test("different explicit order and shared provider rejection do not cause domain-only holds",()=>{
+ for(const [address,from,subject] of [["a@gmail.com","noReply@gmail.com","Ihre Mail konnte nicht verarbeitet werden"],["erechnung@duesseldorf.de","noReply@duesseldorf.de","Rechnung #NEONT9999 konnte nicht verarbeitet werden"]]){
+ const f:any=fixture();f.c.mirror_email=address;f.data["Graph Read Prior Reminder Threads"][0].body.value.push(rejection({from:{emailAddress:{address:from}},subject}));assert.equal(run("reply-decision.js",f.data).latest_reply,null);
+ }
+});
