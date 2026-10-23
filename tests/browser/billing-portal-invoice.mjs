@@ -74,6 +74,8 @@ try {
 
   await openReview();
   assert.equal(requests, 0, "Opening the review must not request an invoice");
+  await launch().evaluate(element => element.focus());
+  assert.equal(await page.evaluate(() => !!document.activeElement?.closest("dialog")), true, "Background controls must stay inert");
   for (const value of ["Testkommune", "Testweg 1", "10115 Berlin", "accounts@example.com", "Testschild", "119,00"]) {
     assert.ok((await dialog().innerText()).includes(value), "Review missing " + value);
   }
@@ -81,7 +83,8 @@ try {
   assert.equal(await action().isDisabled(), true);
   for (let i = 0; i < 12; i++) {
     await page.keyboard.press("Tab");
-    assert.equal(await page.evaluate(() => !!document.activeElement?.closest("dialog")), true, "Keyboard focus escaped modal");
+    // Native dialogs allow the browser toolbar to receive focus, but never background page controls.
+    assert.equal(await page.evaluate(() => !document.hasFocus() || !!document.activeElement?.closest("dialog")), true, "Page focus escaped modal");
   }
   await checkbox().check();
   await page.keyboard.press("Escape");
@@ -96,7 +99,7 @@ try {
   await openReview();
   await checkbox().check();
   assert.equal(await action().isEnabled(), true);
-  await dialog().screenshot({ path: "/tmp/portal-invoice-popup-desktop-20261023.png" });
+  await dialog().screenshot({ path: "/tmp/portal-invoice-popup-desktop-20261023.png", animations: "disabled" });
   await action().click();
   await page.getByText("Ihre Rechnung wurde angefordert und wird erstellt.", { exact: false }).waitFor();
   assert.equal(requests, 1);
