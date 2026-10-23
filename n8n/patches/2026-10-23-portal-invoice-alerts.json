@@ -1,0 +1,13 @@
+{
+  "id": "M4uG1HAtN9Zggxww",
+  "operations": [
+    {
+      "type": "updateNode",
+      "nodeName": "Send Prepared Alert Email",
+      "updates": {
+        "parameters.toRecipients": "={{ ['u48KZyTcU2J9pw2P', 'wqaTsVKuKqKnp2AG'].some(id => id === $json.source_workflow_id || ($json.metadata?.affected_workflow_ids || []).includes(id)) ? 'support@neontrip.de' : 'info@NeonTrip.de' }}"
+      }
+    }
+  ],
+  "intent": "Route invoice creation/delivery failures to support@neontrip.de; preserve other recipients, throttling, nodes, connections and activation."
+}

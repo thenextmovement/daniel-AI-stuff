@@ -38,6 +38,7 @@ export type BillingCaseRow = {
   paid_at: string | null;
   delivered_at: string | null;
   final_invoice_at: string | null;
+  invoice_requested_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -116,7 +117,7 @@ export async function getBillingCase(id: string) {
 export async function getBillingPortal(token: string) {
   const hash = portalTokenHash(token);
   const cases = await supabaseRequest<BillingCaseRow[]>("billing_cases", undefined, {
-    select: "id,shopify_order_name,customer_email,project_number,customer,billing_address,delivery_address,line_items,totals,currency,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,vat_validation,status,current_revision,portal_revoked_at,paid_at,delivered_at,final_invoice_at,created_at,updated_at",
+    select: "id,shopify_order_name,customer_email,project_number,customer,billing_address,delivery_address,line_items,totals,currency,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,vat_validation,status,current_revision,portal_revoked_at,paid_at,delivered_at,final_invoice_at,invoice_requested_at,created_at,updated_at",
     portal_token_hash: `eq.${hash}`,
     portal_revoked_at: "is.null",
     limit: 1,
@@ -140,15 +141,15 @@ export async function getBillingPortal(token: string) {
     billingCase: {
       ...billingCase,
       invoiceEmail:
+        String((billingCase.billing_address as Record<string, unknown>)?.invoiceEmail || "").trim() ||
         billingCase.customer_email ||
-        String((billingCase.billing_address as Record<string, unknown>)?.invoiceEmail || "") ||
         String((billingCase.customer as Record<string, unknown>)?.invoiceEmail || "") ||
         String((billingCase.customer as Record<string, unknown>)?.email || "") ||
         null,
     },
     documents: selectCurrentBillingDocuments(documents as Array<BillingDocumentVersion & Record<string, unknown>>),
     changes,
-    readOnly: Boolean(billingCase.final_invoice_at),
+    readOnly: Boolean(billingCase.final_invoice_at || billingCase.invoice_requested_at),
   };
 }
 
@@ -168,6 +169,18 @@ export async function getBillingPortalDocument(token: string, documentId: string
   });
   const document = selectCurrentBillingDocuments(documents).find((entry) => entry.id === documentId) || null;
   return document?.easybill_document_id && ["FINALIZED", "SENT"].includes(document.status) ? document : null;
+}
+
+export async function requestBillingPortalInvoice(input: {
+  token: string; confirmed: true; revision: number; updatedAt: string; consentVersion: string;
+}) {
+  return supabaseRpc<{ id: string; status: string; duplicate: boolean; invoiceRequestedAt: string }>("billing_portal_request_invoice", {
+    p_portal_token_hash: portalTokenHash(input.token),
+    p_confirmed: input.confirmed,
+    p_revision: input.revision,
+    p_updated_at: input.updatedAt,
+    p_consent_version: input.consentVersion,
+  });
 }
 
 export async function submitBillingPortalChange(input: { token: string; changes: Record<string, unknown>; requesterEmail?: string | null; idempotencyKey?: string }) {

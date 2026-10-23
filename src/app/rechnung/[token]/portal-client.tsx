@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { INVOICE_CONSENT_TEXT, INVOICE_CONSENT_VERSION } from "@/lib/ops/billing/portal-invoice";
 import {
   BadgeCheck,
   CheckCircle2,
@@ -298,6 +299,10 @@ export function BillingPortalClient({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [invoiceConfirmed, setInvoiceConfirmed] = useState(false);
+  const [requestingInvoice, setRequestingInvoice] = useState(false);
+  const invoiceInFlight = useRef(false);
+  const [invoiceMessage, setInvoiceMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [form, setForm] = useState<InvoiceForm>(EMPTY_FORM);
   const [vatCheck, setVatCheck] = useState<VatCheck>({ status: "idle" });
@@ -316,12 +321,14 @@ export function BillingPortalClient({ token }: { token: string }) {
   }, [token]);
 
   async function load() {
+    setInvoiceConfirmed(false);
     setLoading(true);
     try {
       const response = await fetch(`/api/rechnung/${encodeURIComponent(token)}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({ ok: false, error: "portal_unavailable" }));
       setData(payload);
       if (payload.ok && payload.billingCase) {
+        if (payload.readOnly) setEditing(false);
         const requested = pendingChanges(payload);
         const nextForm = formFromBilling(payload.billingCase, requested);
         setForm(nextForm);
@@ -387,7 +394,7 @@ export function BillingPortalClient({ token }: { token: string }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!editing || data?.readOnly) return;
+    if (!editing || data?.readOnly || invoiceInFlight.current) return;
     const deliveryCountry = normalizeCountry(form.deliveryCountry);
     const needsVatCheck = Boolean(form.vatId.trim()) && deliveryCountry !== "DE" && EU_COUNTRIES.has(deliveryCountry);
     if (needsVatCheck && (vatCheck.status !== "valid" || vatCheck.normalizedVatId !== normalizedVatInput(form.vatId))) {
@@ -461,6 +468,54 @@ export function BillingPortalClient({ token }: { token: string }) {
     await load();
   }
 
+  async function requestInvoice() {
+    if (!invoiceConfirmed || editing || sending || data?.readOnly || invoiceInFlight.current || !data?.billingCase) return;
+    invoiceInFlight.current = true;
+    setRequestingInvoice(true);
+    setInvoiceMessage(null);
+    try {
+      const response = await fetch("/api/rechnung/" + encodeURIComponent(token) + "/invoice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          confirmed: true,
+          consentVersion: INVOICE_CONSENT_VERSION,
+          revision: data.billingCase.current_revision,
+          updatedAt: data.billingCase.updated_at,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload?.ok) {
+        setData((current) => current?.billingCase ? {
+          ...current,
+          readOnly: true,
+          billingCase: { ...current.billingCase, invoice_requested_at: payload.invoiceRequestedAt, status: payload.status },
+        } : current);
+        setEditing(false);
+      } else {
+        const messages: Record<string, string> = {
+          BILLING_INVOICE_STALE: "Die Daten wurden zwischenzeitlich aktualisiert. Bitte prüfen Sie die aktuelle Pro-forma und bestätigen Sie die Angaben erneut.",
+          BILLING_INVOICE_CHANGES_PENDING: "NEONTRIP prüft noch eine Änderung. Bitte warten Sie auf die aktualisierte Pro-forma.",
+          BILLING_VAT_REVIEW_REQUIRED: "Die steuerlichen Angaben werden noch geprüft. Anschließend können Sie die Rechnung anfordern.",
+          BILLING_INVOICE_JOBS_PENDING: "Ein Dokument oder eine Änderung wird bereits verarbeitet. Bitte aktualisieren Sie den Status in Kürze.",
+          BILLING_INVOICE_PROFORMA_NOT_READY: "Die aktuelle Pro-forma ist noch nicht verfügbar. Bitte aktualisieren Sie den Status in Kürze.",
+          BILLING_INVOICE_DATA_INVALID: "Bitte prüfen und vervollständigen Sie zunächst die Rechnungsdaten einschließlich Rechnungs-E-Mail.",
+          BILLING_INVOICE_NOT_READY: "Für diesen Auftrag kann derzeit keine Rechnung angefordert werden. Bitte kontaktieren Sie NEONTRIP.",
+          BILLING_PORTAL_READ_ONLY: "Die Rechnung wurde bereits angefordert oder erstellt. Änderungen sind nicht mehr möglich.",
+        };
+        setInvoiceMessage(messages[payload?.error] || "Die Anforderung konnte nicht bestätigt werden. Bitte prüfen Sie den aktualisierten Status oder kontaktieren Sie NEONTRIP.");
+        await load();
+      }
+    } catch {
+      setInvoiceMessage("Die Verbindung wurde unterbrochen. Bitte prüfen Sie den aktualisierten Status, bevor Sie die Rechnung erneut anfordern.");
+      await load();
+    } finally {
+      invoiceInFlight.current = false;
+      setRequestingInvoice(false);
+      setInvoiceConfirmed(false);
+    }
+  }
+
   if (loading) {
     return <main className="grid min-h-screen place-items-center bg-[#f7f4ee] text-stone-600">Rechnungsdaten werden geladen …</main>;
   }
@@ -472,7 +527,7 @@ export function BillingPortalClient({ token }: { token: string }) {
         <div className="max-w-md rounded-[24px] border border-stone-200 bg-white p-8 text-center">
           <LockKeyhole className="mx-auto h-8 w-8 text-stone-700" />
           <h1 className="mt-4 text-xl font-semibold">{temporarilyUnavailable ? "Portal vorübergehend nicht erreichbar" : "Link nicht verfügbar"}</h1>
-          <p className="mt-2 text-sm leading-6 text-stone-500">{temporarilyUnavailable ? "Bitte laden Sie die Seite erneut. Ihre Rechnungsdaten bleiben unverändert." : "Der Rechnungslink ist ungültig oder wurde von NEONTRIP widerrufen."}</p>
+          <p className="mt-2 text-sm leading-6 text-stone-500">{temporarilyUnavailable ? "Bitte laden Sie die Seite erneut, um den aktuellen Stand Ihrer Rechnungsdaten und Dokumente zu prüfen." : "Der Rechnungslink ist ungültig oder wurde von NEONTRIP widerrufen."}</p>
           {temporarilyUnavailable ? <button type="button" onClick={() => window.location.reload()} className="mt-5 h-11 rounded-xl bg-stone-950 px-5 text-sm font-semibold text-white">Erneut laden</button> : null}
         </div>
       </main>
@@ -485,6 +540,14 @@ export function BillingPortalClient({ token }: { token: string }) {
   const paymentLabel = billing.payment_method === "VORKASSE" ? "Zahlbar sofort" : `${billing.payment_terms_days || 14} Tage nach Erhalt`;
   const documents = portalDocuments(data);
   const pendingChange = portalChanges(data).find((change) => ["PENDING", "OPEN"].includes(String(change.status)));
+  const invoiceRequested = Boolean(billing.invoice_requested_at);
+  const invoiceDocument = documents.find((document) => document.document_type === "INVOICE");
+  const currentProforma = documents.find((document) => document.document_type === "PROFORMA"
+    && Number(document.revision) === Number(billing.current_revision)
+    && ["FINALIZED", "SENT"].includes(String(document.status)));
+  const invoiceBlocked = editing || sending || requestingInvoice || Boolean(pendingChange)
+    || billing.tax_review_status === "REVIEW_REQUIRED" || !currentProforma
+    || !["PAYMENT_PENDING", "PAID", "DELIVERED"].includes(String(billing.status));
   const taxReviewVerified = String(billing.tax_review_status || "") === "VERIFIED";
   const taxLabel = preview.vat === 0
     ? preview.isThirdCountry
@@ -542,8 +605,8 @@ export function BillingPortalClient({ token }: { token: string }) {
                 <h2 className="mt-2 text-2xl font-semibold">Rechnungsempfänger</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-500">Die Angaben sind zunächst geschützt. Ihr Auftrag und die bestellten Produkte werden durch eine Änderung nicht verändert. NEONTRIP prüft jede eingereichte Änderung vor der Übernahme.</p>
               </div>
-              {!data.readOnly && !editing ? (
-                <button type="button" onClick={() => { setEditing(true); setMessage(null); }} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-stone-950 px-4 text-sm font-semibold text-white transition hover:bg-[#b91c73]">
+              {!data.readOnly && !editing && !requestingInvoice ? (
+                <button type="button" onClick={() => { setEditing(true); setMessage(null); setInvoiceConfirmed(false); setInvoiceMessage(null); }} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-stone-950 px-4 text-sm font-semibold text-white transition hover:bg-[#b91c73]">
                   <Pencil className="h-4 w-4" />
                   Rechnungsdaten bearbeiten
                 </button>
@@ -551,13 +614,13 @@ export function BillingPortalClient({ token }: { token: string }) {
             </div>
 
             {data.readOnly ? (
-              <div className="mt-5 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-600">Die finale Rechnung wurde erstellt. Änderungen sind nicht mehr möglich; der Link bleibt für Dokumente aktiv.</div>
+              <div className="mt-5 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-600">{billing.final_invoice_at ? "Die finale Rechnung wurde erstellt." : "Die verbindliche Rechnung wurde angefordert."} Pro-forma und Rechnungsdaten können nicht mehr geändert werden; der Link bleibt für Dokumente aktiv.</div>
             ) : null}
             {pendingChange ? (
               <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Eine Änderung wird bereits von NEONTRIP geprüft. Sie können die aktuell gespeicherten Daten weiterhin ansehen.</div>
             ) : null}
 
-            <fieldset disabled={Boolean(data.readOnly)} className="mt-6 grid min-w-0 gap-4 xl:grid-cols-2">
+            <fieldset disabled={Boolean(data.readOnly || requestingInvoice)} className="mt-6 grid min-w-0 gap-4 xl:grid-cols-2">
               <section className="min-w-0 rounded-2xl border border-stone-200 bg-white p-4 sm:p-5">
                 <div className="mb-4 border-b border-stone-200 pb-3">
                   <p className="text-sm font-semibold text-stone-950">Rechnungsadresse</p>
@@ -667,6 +730,47 @@ export function BillingPortalClient({ token }: { token: string }) {
               </div>
             )) : <p className="py-3 text-xs text-stone-500">Die erste Pro-forma-Rechnung wird gerade vorbereitet.</p>}
           </div>
+        </section>
+
+        <section aria-labelledby="invoice-request-title" className="rounded-[24px] border border-[#ded8d0] bg-[#fffdf9] p-5 sm:p-7">
+          <div className="flex items-center gap-3">
+            <ReceiptText className="h-5 w-5 shrink-0 text-[#b91c73]" />
+            <h2 id="invoice-request-title" className="text-xl font-semibold">Verbindliche Rechnung</h2>
+          </div>
+          {data.readOnly ? (
+            <div className="mt-4 space-y-3 text-sm leading-6 text-stone-600" role="status">
+              <p>{["SYNC_BLOCKED", "MANUAL_REVIEW"].includes(String(billing.status))
+                ? "Erstellung oder Versand benötigen eine Prüfung durch NEONTRIP. Bitte kontaktieren Sie support@neontrip.de. Die bestätigten Daten bleiben gesperrt."
+                : invoiceDocument?.status === "SENT"
+                ? "Ihre Rechnung wurde per E-Mail versendet. Sie können das PDF auch unter Dokumente öffnen."
+                : billing.final_invoice_at
+                  ? "Ihre Rechnung wurde erstellt. Der Versand per E-Mail wird vorbereitet."
+                  : "Ihre Rechnung wurde angefordert und wird erstellt. Anschließend wird sie automatisch per E-Mail versendet."}</p>
+              <p>Pro-forma und Rechnungsdaten sind für Änderungen gesperrt.</p>
+              {invoiceRequested && invoiceDocument?.status !== "SENT" ? (
+                <button type="button" onClick={() => void load()} className="rounded-xl border border-stone-300 bg-white px-4 py-2 font-semibold text-stone-800">Status aktualisieren</button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="mt-4 max-w-3xl">
+              <p className="text-sm leading-6 text-stone-600">Sie benötigen eine Rechnung für Ihre Buchhaltung? Prüfen Sie zuerst alle Positionen und Beträge in der aktuellen Pro-forma sowie die oben angezeigten Rechnungsdaten. Nach Ihrer Bestätigung erstellen wir die Rechnung und senden sie automatisch an <strong className="break-all font-medium text-stone-800">{effectiveInvoiceEmail || "Ihre Rechnungs-E-Mail"}</strong>. Die Verarbeitung dauert in der Regel wenige Minuten. Ihr Zahlungsziel bleibt bestehen.</p>
+              {currentProforma ? <a href={"/api/rechnung/" + encodeURIComponent(token) + "/documents/" + encodeURIComponent(String(currentProforma.id))} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 hover:border-[#fa31a2]"><FileText className="h-4 w-4" />Aktuelle Pro-forma prüfen</a> : null}
+              <label className={"mt-5 flex items-start gap-3 rounded-2xl border border-stone-200 bg-white p-4 text-sm leading-6 " + (invoiceBlocked ? "text-stone-500" : "cursor-pointer text-stone-800")}>
+                <input type="checkbox" checked={invoiceConfirmed} disabled={invoiceBlocked} onChange={(event) => setInvoiceConfirmed(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-[#b91c73] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b91c73]" />
+                <span>{INVOICE_CONSENT_TEXT}</span>
+              </label>
+              <button type="button" onClick={() => void requestInvoice()} disabled={!invoiceConfirmed || invoiceBlocked} className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-stone-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#b91c73] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500">
+                <ReceiptText className="h-4 w-4 shrink-0" />
+                {requestingInvoice ? "Rechnung wird angefordert …" : "Verbindliche Rechnung erstellen"}
+              </button>
+              {invoiceBlocked && !requestingInvoice ? <p className="mt-3 text-sm leading-6 text-stone-500">{editing
+                ? "Bitte schließen Sie zuerst die Bearbeitung ab."
+                : pendingChange ? "Eine Änderung wird noch geprüft. Die Rechnung kann nach Abschluss und Aktualisierung der Pro-forma angefordert werden."
+                : "Die aktuelle Pro-forma und alle Prüfungen müssen zuerst abgeschlossen sein. Bitte aktualisieren Sie den Status in Kürze."}</p> : null}
+              {!editing && !requestingInvoice ? <button type="button" onClick={() => void load()} className="mt-3 block rounded-lg px-1 py-2 text-sm font-medium text-stone-600 underline underline-offset-4">Status aktualisieren</button> : null}
+            </div>
+          )}
+          {invoiceMessage ? <p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{invoiceMessage}</p> : null}
         </section>
 
         <footer className="px-2 pb-4 text-center text-xs leading-5 text-stone-400">Der Zugriff ist auf diesen Auftrag begrenzt. Die Bestellnummer ist ausschließlich innerhalb dieses geschützten Portals sichtbar.</footer>
