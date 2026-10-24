@@ -111,6 +111,13 @@ BEGIN
         AND o.draft_message_id IS NULL AND o.provider_message_id IS NULL
         AND o.internet_message_id IS NULL AND o.sent_at IS NULL
         AND o.email_subject IS NULL AND o.email_body IS NULL AND o.consent_checked_at IS NULL
+        AND NOT EXISTS(SELECT 1 FROM public.repeat_business_outreach other WHERE NOT other.is_test AND other.id<>o.id
+          AND (lower(btrim(other.customer_email))=lower(btrim(o.customer_email)) OR other.organization_key=o.organization_key
+            OR (o.company_key IS NOT NULL AND (other.company_key=o.company_key OR regexp_replace(lower(coalesce(other.company_name,'')),'[^[:alnum:]]','','g')=o.company_key))))
+        AND NOT EXISTS(SELECT 1 FROM public.master_customers mc JOIN public.customer_communication_draft_jobs j ON j.source_id=mc.id::text
+          WHERE j.communication_kind='repeat_business' AND (lower(btrim(mc.email))=lower(btrim(o.customer_email))
+            OR (o.organization_key LIKE 'domain:%' AND lower(split_part(btrim(mc.email),'@',2))=substr(o.organization_key,8))
+            OR (o.company_key IS NOT NULL AND regexp_replace(lower(coalesce(mc.company_name,'')),'[^[:alnum:]]','','g')=o.company_key)))
       ORDER BY o.updated_at,o.id LIMIT 1 FOR UPDATE;
     IF v_row.id IS NOT NULL THEN
       UPDATE public.repeat_business_outreach SET status='reserved',claim_token=gen_random_uuid(),

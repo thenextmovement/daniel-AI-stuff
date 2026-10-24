@@ -21,7 +21,7 @@ The defect is proven independently of the missing trigger error: five read-only 
 
 ## Verification
 
-Isolated PostgreSQL 17 tests fail on the old functions and pass on the candidate. They cover callback idempotency, claim binding, bounded retries/backoff, draft and unknown guards, business hours and cadence. Node tests fail on the old error expression and pass with the two-node patch. The actual installed n8n expression engine also evaluated the candidate successfully.
+Isolated PostgreSQL 17 tests fail on the old functions and pass on the candidate. They cover callback idempotency, claim binding, bounded retries/backoff, draft and unknown guards, business hours, cadence, existing communication draft jobs and duplicate recipient/organization/company outreach. Node tests fail on the old error expression and pass with the two-node patch. The actual installed n8n expression engine also evaluated the candidate successfully.
 
 Strict MCP validation reports the same three existing false positives on unchanged jsCode object braces (BuildValidatedMikaMail, ValidateReservation, ValidateShopifyAndConsent) for baseline and candidate. The candidate has 35 valid connections, zero invalid connections and no new validation errors. The actual unchanged read-only code was executed successfully.
 

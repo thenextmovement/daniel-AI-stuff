@@ -75,6 +75,26 @@ BEGIN
  r:=claim_repeat_business_send('draft-guard');
  ASSERT r->>'route'='none','Persisted draft blocks preflight recovery';
  UPDATE repeat_business_outreach SET draft_message_id=NULL WHERE id=j;
+
+ -- A different workflow can create outreach/draft state during the backoff.
+ INSERT INTO customer_communication_draft_jobs(source_id,communication_kind) VALUES(customer::text,'repeat_business');
+ r:=claim_repeat_business_send('existing-draft-job');
+ ASSERT r->>'route'='none' AND (SELECT status='preflight_failed' FROM repeat_business_outreach WHERE id=j),'Communication draft job blocks preflight recovery';
+ DELETE FROM customer_communication_draft_jobs;
+ INSERT INTO repeat_business_outreach(customer_email,campaign_key,organization_key,status) VALUES('colleague@fixture.invalid','other-campaign','domain:fixture.invalid','skipped');
+ r:=claim_repeat_business_send('existing-organization-outreach');
+ ASSERT r->>'route'='none' AND (SELECT status='preflight_failed' FROM repeat_business_outreach WHERE id=j),'Other organization outreach blocks preflight recovery across campaigns';
+ DELETE FROM repeat_business_outreach WHERE id<>j;
+ INSERT INTO repeat_business_outreach(customer_email,campaign_key,organization_key,status) VALUES('buyer@fixture.invalid','other-campaign','domain:elsewhere.invalid','skipped');
+ r:=claim_repeat_business_send('existing-recipient-outreach');
+ ASSERT r->>'route'='none','Other recipient outreach blocks preflight recovery';
+ DELETE FROM repeat_business_outreach WHERE id<>j;
+ UPDATE repeat_business_outreach SET company_key='fixturecompany' WHERE id=j;
+ INSERT INTO repeat_business_outreach(customer_email,campaign_key,organization_key,company_name,status) VALUES('someone@elsewhere.invalid','other-campaign','domain:elsewhere.invalid','Fixture Company','skipped');
+ r:=claim_repeat_business_send('existing-company-outreach');
+ ASSERT r->>'route'='none','Normalized company outreach blocks preflight recovery';
+ DELETE FROM repeat_business_outreach WHERE id<>j;
+ UPDATE repeat_business_outreach SET company_key=NULL WHERE id=j;
  PERFORM set_config('repeat_test.now','2026-10-25 10:00:00Z',true);
  r:=claim_repeat_business_send('sunday');
  ASSERT r->>'reason'='outside_business_hours','Preflight recovery respects business days';
