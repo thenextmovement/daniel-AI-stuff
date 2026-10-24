@@ -1,0 +1,22 @@
+{
+  "id": "M4uG1HAtN9Zggxww",
+  "expectedVersionId": "c5d1dd55-d8ff-40b3-bf1d-ea72e4fc05a7",
+  "operations": [
+    {
+      "type": "updateNode",
+      "nodeName": "Send Prepared Alert Email",
+      "updates": {
+        "parameters.toRecipients": "={{ ['u48KZyTcU2J9pw2P', 'wqaTsVKuKqKnp2AG', 'cW08nxn9ANfGFEou'].some(id => id === $json.source_workflow_id || ($json.metadata?.affected_workflow_ids || []).includes(id)) ? 'support@neontrip.de' : 'info@NeonTrip.de' }}"
+      }
+    }
+  ],
+  "rollbackOperations": [
+    {
+      "type": "updateNode",
+      "nodeName": "Send Prepared Alert Email",
+      "updates": {
+        "parameters.toRecipients": "={{ ['u48KZyTcU2J9pw2P', 'wqaTsVKuKqKnp2AG'].some(id => id === $json.source_workflow_id || ($json.metadata?.affected_workflow_ids || []).includes(id)) ? 'support@neontrip.de' : 'info@NeonTrip.de' }}"
+      }
+    }
+  ]
+}

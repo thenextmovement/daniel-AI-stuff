@@ -1,0 +1,1022 @@
+{
+  "id": "cW08nxn9ANfGFEou",
+  "name": "NEONTRIP Repeat Business v3 — Mika · geprüfter Versand",
+  "active": true,
+  "versionId": "8e056326-f8ba-4658-8a5a-9136b2a34821",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "* 9-18 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Prüfung jede Minute · max 10 Mails pro Werktag",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_repeat_business_send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_execution_id:String($execution.id),p_internal_test:false}) }}"
+      },
+      "id": "get-candidates",
+      "name": "ReserveRepeatBusiness",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-empty-condition",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "check",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-empty",
+      "name": "CanCheckShopify?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$('ValidateShopifyAndConsent').first().json;\nconst responses=$input.all().flatMap(item=>{\n let body=item.json.body;\n if(typeof body==='string'){try{body=JSON.parse(body);}catch{throw new Error('trello_batch_invalid_json');}}\n if(!Array.isArray(body)) throw new Error('trello_batch_missing');\n return body;\n});\nconst skip=reason=>[{json:{...r,route:'skip',reason}}];\nconst evidence={...r.evidence};\nif(r.is_test){\n if(responses.length!==1||responses[0]['200']?.id!=='62bae9b97705e7419ed64593') throw new Error('internal_trello_read_failed');\n}else{\n if(responses.length!==r.request_ids.length*2) throw new Error('trello_batch_incomplete');\n const cards=[];\n for(let i=0;i<r.request_ids.length;i++){\n   const pair=[responses[2*i]['200'],responses[2*i+1]['200']];\n   if(pair.some(response=>!response||!Array.isArray(response.cards))) throw new Error('trello_search_failed');\n   if(pair.some(response=>response.cards.length>=100)) return skip('trello_search_truncated');\n   const id=r.request_ids[i];\n   const rx=new RegExp('(^|[^a-z0-9-])'+id+'(?![a-z0-9-])','i');\n   const unique=[...new Map(pair.flatMap(response=>response.cards).map(c=>[c.id,c])).values()];\n   const matches=unique.filter(c=>c.idBoard==='62bae9b97705e7419ed64593'&&rx.test(String(c.name||'')+' '+String(c.desc||'')));\n   if(matches.some(c=>['6347e0a2f062500084675062','646b8c9613dc4e7000f6657e'].includes(c.idList))) return skip('trello_problem_or_resolved');\n   if(matches.length===0 || (/^\\d{10}$/.test(id)&&matches.length!==1)) return skip('trello_match_missing_or_ambiguous');\n   // A request UUID/ticket may have archived design revisions: inspect every exact match.\n   cards.push(...matches.map(c=>c.id));\n }\n evidence.trello_result='all_orders_matched_no_problem'; evidence.trello_card_ids=cards;\n}\nconst htmlEscape=s=>String(s).replaceAll('&','&amp;').replaceAll('\"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');\nconst template=\"<div style=\\\"font-family:Arial,Helvetica,sans-serif;color:#111111;font-size:15px;line-height:1.6;max-width:600px;\\\">\\n        <p style=\\\"margin:0 0 16px;\\\">Hallo,</p>\\n        <p style=\\\"margin:0 0 16px;\\\">ich bin Mika von NEONTRIP und kümmere mich bei uns um den Vertrieb. Sie haben in der Vergangenheit schon einmal bei uns bestellt – deshalb wollte ich kurz nachfragen, ob aktuell wieder ein Projekt ansteht.</p>\\n        <p style=\\\"margin:0 0 16px;\\\">Planen Sie ein neues Firmenlogo am Empfang, einen Markenauftritt auf einer Messe oder ein Leuchtschild für Ihren Standort? Auch für Projekte Ihrer Kunden setzen wir vorhandene Logos und Designs als Leuchtschilder um.</p>\\n        <p style=\\\"margin:0 0 16px;\\\">Wenn gerade ein Projekt ansteht, antworten Sie mir einfach mit Ihrem Logo oder Design, der ungefähren gewünschten Breite und dem Einsatzort (innen oder außen). Falls die Details noch offen sind, reichen für den Anfang ein paar Stichworte zu Ihrer Idee.</p>\\n        <p style=\\\"margin:0;\\\">Viele Grüße</p>\\n      </div>\\n      <table role=\\\"presentation\\\" cellpadding=\\\"0\\\" cellspacing=\\\"0\\\" border=\\\"0\\\" width=\\\"100%\\\" style=\\\"font-family:Arial,Helvetica,sans-serif;color:#111111;margin-top:24px;max-width:600px;\\\">\\n        <tbody>\\n          <tr><td style=\\\"padding:16px 0;\\\">\\n            <table role=\\\"presentation\\\" cellpadding=\\\"0\\\" cellspacing=\\\"0\\\" border=\\\"0\\\" width=\\\"100%\\\"><tbody><tr>\\n              <td valign=\\\"top\\\" style=\\\"width:112px;padding-right:16px;\\\">\\n                <img src=\\\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/Mika_3.jpg?v=1770127459\\\" alt=\\\"Mika Zangane\\\" width=\\\"96\\\" height=\\\"120\\\" style=\\\"display:block;width:96px;height:120px;border-radius:8px;border:0;\\\">\\n              </td>\\n              <td valign=\\\"top\\\" style=\\\"padding-top:2px;\\\">\\n                <div style=\\\"font-size:16px;font-weight:700;margin:0 0 4px;\\\">Mika Zangane</div>\\n                <div style=\\\"font-size:12px;color:#6b7280;margin:0 0 10px;\\\">Vertrieb</div>\\n                <div style=\\\"font-size:13px;font-weight:700;margin:0 0 8px;\\\">NEONTRIP&reg;</div>\\n                <div style=\\\"font-size:13px;line-height:1.6;\\\">\\n                  Tel: <a href=\\\"tel:+4921154257240\\\" style=\\\"color:#111111;text-decoration:none;\\\">+49 211 54257240</a><br>\\n                  E-Mail: <a href=\\\"mailto:support@neontrip.de\\\" style=\\\"color:#111111;text-decoration:none;\\\">support@neontrip.de</a><br>\\n                  Web: <a href=\\\"https://www.neontrip.de\\\" style=\\\"color:#111111;text-decoration:none;\\\">www.neontrip.de</a><br>\\n                  Bilker Allee 29, 40219 Düsseldorf\\n                </div>\\n              </td>\\n            </tr></tbody></table>\\n          </td></tr>\\n          <tr><td style=\\\"padding:18px 16px;background:#121212;border-radius:10px;text-align:center;\\\">\\n            <img src=\\\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/weiss_logo_NEONTRIP.png?v=1764003450\\\" alt=\\\"NEONTRIP\\\" width=\\\"420\\\" style=\\\"display:block;width:100%;max-width:420px;height:auto;border:0;margin:0 auto;\\\">\\n            <div style=\\\"margin-top:8px;font-size:11px;font-weight:700;letter-spacing:.6px;color:#fff;\\\">UNIQUE LIGHTING AND BRANDING</div>\\n          </td></tr>\\n        </tbody>\\n      </table>\";\nconst footer=r.is_test\n ? '<p style=\"font:11px Arial;color:#666\">Interner Versandtest. Der persönliche Abmeldelink wird ausschließlich bei einer Kundenmail nach aktueller Shopify-Prüfung eingesetzt.</p>'\n : '<p style=\"font:11px Arial;color:#666\">Sie möchten keine solchen E-Mails mehr erhalten? <a href=\"'+htmlEscape(r.unsubscribe_url)+'\">Abmelden</a></p>';\nconst body=template+footer;\nconst subject=(r.is_test?'[INTERNER TEST] ':'')+'Steht bei Ihnen ein neues Projekt an?';\nconst graph_draft={subject,body:{contentType:'HTML',content:body},toRecipients:[{emailAddress:{address:r.customer_email}}],replyTo:[{emailAddress:{address:'support@neontrip.de',name:'Mika Zangane · NEONTRIP'}}],internetMessageHeaders:[{name:'X-NEONTRIP-Repeat-Business-Id',value:r.id}]};\nreturn [{json:{...r,route:'draft',subject,body,evidence,graph_draft}}];"
+      },
+      "id": "parse-email",
+      "name": "BuildValidatedMikaMail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        304
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/me/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.graph_draft) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\""
+            }
+          ]
+        }
+      },
+      "id": "send-email",
+      "name": "CreateRepeatBusinessDraft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        304
+      ],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "repeat-validate",
+      "name": "ValidateReservation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        304
+      ],
+      "parameters": {
+        "jsCode": "const r=$json;\nif(r.route==='stop') return []; // No reservation exists; preserve the database hold without a finish RPC.\nif(r.route!=='reserved') return [];\nif(!r.id || !r.claim_token || !Array.isArray(r.organization_emails)) throw new Error('invalid_reservation');\nconst email=String(r.customer_email||'').trim().toLowerCase();\nif(!/^[A-Za-z0-9.!#$%&*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$/.test(email)) throw new Error('invalid_recipient');\nif(r.is_test ? email!=='support@neontrip.de' : /@(neontrip\\.de|riesenobjekte\\.de|example\\.com)$/.test(email)) throw new Error('recipient_scope_mismatch');\nif(r.organization_emails.length>50 || r.organization_emails.some(e=>!e||/[\"\\\\]/.test(e))) return [{json:{...r,route:'skip',reason:'organization_lookup_requires_manual_review'}}];\nconst search=r.organization_emails.map(e=>'email:\"'+e+'\"').join(' OR ');\nreturn [{json:{...r,route:'check',shopify_request:{query:\"query RepeatBusinessLiveCheck($search: String!) { shop { name myshopifyDomain } customers(first: 50, query: $search) { nodes { id note numberOfOrders defaultEmailAddress { emailAddress marketingState marketingUpdatedAt marketingUnsubscribeUrl } orders(first: 50, sortKey: CREATED_AT, reverse: true) { nodes { id note createdAt cancelledAt displayFinancialStatus displayFulfillmentStatus } pageInfo { hasNextPage endCursor } } } pageInfo { hasNextPage endCursor } } }\",variables:{search}}}}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "repeat-claim",
+      "name": "AuthorizeRepeatBusinessSend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        304
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/authorize_repeat_business_send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_id:$('ReserveRepeatBusiness').first().json.id,p_claim_token:$('ReserveRepeatBusiness').first().json.claim_token,p_draft_id:String($json.id||''),p_subject:$('BuildValidatedMikaMail').first().json.subject,p_body:$('BuildValidatedMikaMail').first().json.body,p_evidence:$('BuildValidatedMikaMail').first().json.evidence}) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "repeat-route",
+      "name": "ValidateSendAuthorization",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        304
+      ],
+      "parameters": {
+        "jsCode": "if($json.route!=='send'||!$json.draft_message_id) throw new Error('repeat_business_send_not_authorized'); return [{json:$json}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "repeat-stop",
+      "name": "StopRepeatBusinessSafely",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4180,
+        620
+      ],
+      "parameters": {
+        "jsCode": "throw new Error('Repeat Business angehalten: Versandstatus unklar. Kein automatischer Neuversand.');\nreturn [];"
+      }
+    },
+    {
+      "id": "repeat-complete",
+      "name": "CompleteRepeatBusinessSend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3960,
+        304
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/finish_repeat_business_send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_id:$('ReserveRepeatBusiness').first().json.id,p_claim_token:$('ReserveRepeatBusiness').first().json.claim_token,p_outcome:'sent',p_message:$json}) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "repeat-unknown",
+      "name": "MarkRepeatBusinessUnknown",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3960,
+        620
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/finish_repeat_business_send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_id:$('ReserveRepeatBusiness').first().json.id,p_claim_token:$('ReserveRepeatBusiness').first().json.claim_token,p_outcome:'unknown',p_reason:'provider_or_validation_failed_no_retry'}) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "get-history",
+      "name": "CheckShopifyLive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        304
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-07/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.shopify_request) }}"
+      },
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "prep-context",
+      "name": "ValidateShopifyAndConsent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        304
+      ],
+      "parameters": {
+        "jsCode": "const r=$('ValidateReservation').first().json;\nconst d=$json.data;\nif($json.errors || !d || d.shop?.myshopifyDomain!=='galaxybuzzdk.myshopify.com' || d.shop?.name!=='NEONTRIP') throw new Error('shopify_live_check_failed');\nconst skip=reason=>[{json:{...r,route:'skip',reason}}];\nif(r.is_test) return [{json:{...r,route:'check',request_ids:[],trello_request_urls:['/boards/62bae9b97705e7419ed64593?fields=id%2Cname'],trello_urls:'/boards/62bae9b97705e7419ed64593?fields=id%2Cname',evidence:{mode:'internal_test',shop:d.shop.myshopifyDomain}}}];\nif(d.customers?.pageInfo?.hasNextPage) return skip('shopify_customer_lookup_incomplete');\nconst cs=d.customers?.nodes||[];\nconst normalized=c=>String(c.defaultEmailAddress?.emailAddress||'').trim().toLowerCase();\nconst required=r.organization_order_emails||r.verification?.organization_order_emails;\nif(!Array.isArray(required)||!required.includes(r.customer_email)) throw new Error('organization_order_coverage_missing');\nif(cs.some(c=>!r.organization_emails.includes(normalized(c))) || required.some(e=>cs.filter(c=>normalized(c)===e).length!==1) || cs.some(c=>cs.filter(x=>normalized(x)===normalized(c)).length!==1)) return skip('shopify_buyer_identity_incomplete');\nconst selected=cs.find(c=>normalized(c)===r.customer_email);\nif(!selected) return skip('shopify_selected_customer_missing');\n// Daniel confirmed consent outside Shopify. Never invent a Shopify subscription.\n// Explicit stored opt-outs remain held for review; unmaintained subscription fields do not block.\nif(cs.some(c=>c.defaultEmailAddress?.marketingState==='UNSUBSCRIBED')) return skip('explicit_shopify_opt_out_requires_review');\nconst unsub=String(selected.defaultEmailAddress.marketingUnsubscribeUrl||'');\nif(!/^https:\\/\\/(www\\.)?neontrip\\.de\\//.test(unsub)||/[<>\"\\r\\n]/.test(unsub)) return skip('unsubscribe_url_invalid');\nconst ids=new Set();\nconst cutoff=Date.now()-30*86400000;\nconst identifiers=text=>{\n const value=String(text||'');\n const uuid=/\\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b/ig;\n const ticket=/\\b0441-\\d{4,10}(?:-\\d{4,10})?\\b/g;\n const found=[...value.matchAll(uuid),...value.matchAll(ticket)].map(m=>m[0].toLowerCase());\n const remainder=value.replace(uuid,' ').replace(ticket,' ');\n found.push(...[...remainder.matchAll(/(?:^|[^a-z0-9-])([0-9]{10})(?![a-z0-9-])/ig)].map(m=>m[1]));\n return [...new Set(found)];\n};\nfor(const c of cs){\n const orders=c.orders?.nodes||[];\n if(c.orders?.pageInfo?.hasNextPage || orders.length!==Number(c.numberOfOrders)) return skip('shopify_order_history_incomplete');\n for(const o of orders){\n   if(o.cancelledAt || ['REFUNDED','PARTIALLY_REFUNDED','VOIDED'].includes(o.displayFinancialStatus)) return skip('cancelled_or_refunded_order_history');\n   if(!Number.isFinite(Date.parse(o.createdAt)) || Date.parse(o.createdAt)>=cutoff) return skip('company_purchased_within_30_days');\n   if(o.displayFinancialStatus!=='PAID'||o.displayFulfillmentStatus!=='FULFILLED') return skip('order_not_paid_and_fulfilled');\n   const found=identifiers(o.note);\n   if(found.length===0) return skip('order_missing_trello_identifier');\n   found.forEach(id=>ids.add(id));\n }\n identifiers(c.note).forEach(id=>ids.add(id));\n}\nif(ids.size===0||ids.size>10) return skip('trello_identifier_coverage_requires_review');\nconst request_ids=[...ids];\nconst trello_request_urls=request_ids.flatMap(id=>['is:open','is:archived'].map(state=>'/search?query='+encodeURIComponent(id+' '+state)+'&idBoards=62bae9b97705e7419ed64593&modelTypes=cards&card_fields=id%2Cname%2Cdesc%2CidBoard%2CidList%2Cclosed%2Curl&cards_limit=100&partial=false'));\nreturn [{json:{...r,route:'check',request_ids,trello_request_urls,trello_urls:trello_request_urls.slice(0,10).join(','),unsubscribe_url:unsub,evidence:{mode:'customer',recipient:r.customer_email,consent_state:'OWNER_CONFIRMED',consent_source:'daniel_thread_01a06143-4981-7b13-99d6-1519f836f022_20260903',consent_checked_at:new Date().toISOString(),shopify_marketing_state:selected.defaultEmailAddress.marketingState||null,shopify_opt_out:false,shopify_customer_id:selected.id,shop:d.shop.myshopifyDomain,shopify_order_count:cs.reduce((n,c)=>n+Number(c.numberOfOrders),0),organization_buyer_emails:required,nonbuyer_contacts_not_in_shopify:r.organization_emails.filter(e=>!cs.some(c=>normalized(c)===e))}}}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "consent-gate",
+      "name": "CanCheckTrello?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        304
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "consent-gate-condition",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "check",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "trello-live",
+      "name": "CheckTrelloLive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        304
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.trello.com/1/batch",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "autodetect",
+              "fullResponse": true
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "urls",
+                    "value": "={{ $('ValidateShopifyAndConsent').first().json.trello_request_urls.slice($pageCount*10,($pageCount+1)*10).join(',') }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ ($pageCount+1)*10 >= $('ValidateShopifyAndConsent').first().json.trello_request_urls.length }}",
+              "limitPagesFetched": true,
+              "maxRequests": 2,
+              "requestInterval": 250
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "urls",
+              "value": "={{ $json.trello_urls }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "trelloApi": {
+          "id": "96DRckmFxj423JUR",
+          "name": "Trello account"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "draft-gate",
+      "name": "CanCreateDraft?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1980,
+        304
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "draft-gate-condition",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "draft",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-draft",
+      "name": "SendRepeatBusinessDraft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        304
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://graph.microsoft.com/v1.0/me/messages/'+encodeURIComponent($json.draft_message_id)+'/send' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "autodetect",
+              "fullResponse": true
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\""
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "verify-wait",
+      "name": "AllowSentItemsToSettle",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3080,
+        304
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 90,
+        "unit": "seconds"
+      },
+      "webhookId": "f2229c7d-3627-4afd-b2e7-283dec88b37c"
+    },
+    {
+      "id": "sent-proof",
+      "name": "ReadSentMessage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        304
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://graph.microsoft.com/v1.0/me/messages/'+encodeURIComponent($('AuthorizeRepeatBusinessSend').first().json.draft_message_id)+'?$select=id,isDraft,subject,body,from,toRecipients,ccRecipients,bccRecipients,sentDateTime,internetMessageId,parentFolderId' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\""
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "sent-folder",
+      "name": "ReadSentItemsFolder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        304
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/me/mailFolders/sentitems?$select=id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\""
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "verify-proof",
+      "name": "ValidateSentEvidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        304
+      ],
+      "parameters": {
+        "jsCode": "const m=$('ReadSentMessage').first().json;\nconst expected=$('BuildValidatedMikaMail').first().json;\nconst body=String(m.body?.content||'');\n// Outlook may wrap/sanitize HTML. Verify the fixed text, both exact asset URLs,\n// recipient-specific opt-out URL (decoded HTML entities), and no extra recipients.\nconst normalize=s=>String(s).replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/\\s+/g,' ').trim();\nconst plain=normalize(body);\nconst phrases=['ich bin Mika von NEONTRIP','kümmere mich bei uns um den Vertrieb','Mika Zangane','Wenn gerade ein Projekt ansteht, antworten Sie mir einfach mit Ihrem Logo oder Design, der ungefähren gewünschten Breite und dem Einsatzort (innen oder außen). Falls die Details noch offen sind, reichen für den Anfang ein paar Stichworte zu Ihrer Idee.'];\nm.body_hash_match=phrases.every(s=>plain.includes(s)) && body.includes('Mika_3.jpg?v=1770127459') && body.includes('weiss_logo_NEONTRIP.png?v=1764003450')\n && (expected.is_test||body.replaceAll('&amp;','&').includes(expected.unsubscribe_url))\n && (!m.ccRecipients||m.ccRecipients.length===0)&&(!m.bccRecipients||m.bccRecipients.length===0);\nm.in_sent_items=m.parentFolderId===$json.id;\nreturn [{json:m}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "assert-complete",
+      "name": "AssertVerifiedSent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4180,
+        304
+      ],
+      "parameters": {
+        "jsCode": "if($json.status!=='sent') throw new Error('repeat_business_send_proof_missing_no_retry'); return [{json:$json}];"
+      }
+    },
+    {
+      "id": "skip-repeat",
+      "name": "RecordSkippedCandidate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        620
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/finish_repeat_business_send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_id:$('ReserveRepeatBusiness').first().json.id,p_claim_token:$('ReserveRepeatBusiness').first().json.claim_token,p_outcome:'skipped',p_reason:String($json.reason||'not_eligible')}) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "onError": "stopWorkflow",
+      "retryOnFail": false
+    }
+  ],
+  "connections": {
+    "Prüfung jede Minute · max 10 Mails pro Werktag": {
+      "main": [
+        [
+          {
+            "node": "ReserveRepeatBusiness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ReserveRepeatBusiness": {
+      "main": [
+        [
+          {
+            "node": "ValidateReservation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ValidateReservation": {
+      "main": [
+        [
+          {
+            "node": "CanCheckShopify?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CanCheckShopify?": {
+      "main": [
+        [
+          {
+            "node": "CheckShopifyLive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RecordSkippedCandidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CheckShopifyLive": {
+      "main": [
+        [
+          {
+            "node": "ValidateShopifyAndConsent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ValidateShopifyAndConsent": {
+      "main": [
+        [
+          {
+            "node": "CanCheckTrello?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CanCheckTrello?": {
+      "main": [
+        [
+          {
+            "node": "CheckTrelloLive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RecordSkippedCandidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CheckTrelloLive": {
+      "main": [
+        [
+          {
+            "node": "BuildValidatedMikaMail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BuildValidatedMikaMail": {
+      "main": [
+        [
+          {
+            "node": "CanCreateDraft?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CanCreateDraft?": {
+      "main": [
+        [
+          {
+            "node": "CreateRepeatBusinessDraft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RecordSkippedCandidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CreateRepeatBusinessDraft": {
+      "main": [
+        [
+          {
+            "node": "AuthorizeRepeatBusinessSend",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AuthorizeRepeatBusinessSend": {
+      "main": [
+        [
+          {
+            "node": "ValidateSendAuthorization",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ValidateSendAuthorization": {
+      "main": [
+        [
+          {
+            "node": "SendRepeatBusinessDraft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SendRepeatBusinessDraft": {
+      "main": [
+        [
+          {
+            "node": "AllowSentItemsToSettle",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AllowSentItemsToSettle": {
+      "main": [
+        [
+          {
+            "node": "ReadSentMessage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ReadSentMessage": {
+      "main": [
+        [
+          {
+            "node": "ReadSentItemsFolder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ReadSentItemsFolder": {
+      "main": [
+        [
+          {
+            "node": "ValidateSentEvidence",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ValidateSentEvidence": {
+      "main": [
+        [
+          {
+            "node": "CompleteRepeatBusinessSend",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MarkRepeatBusinessUnknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CompleteRepeatBusinessSend": {
+      "main": [
+        [
+          {
+            "node": "AssertVerifiedSent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MarkRepeatBusinessUnknown": {
+      "main": [
+        [
+          {
+            "node": "StopRepeatBusinessSafely",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  }
+}

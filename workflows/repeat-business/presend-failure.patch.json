@@ -1,0 +1,20 @@
+{
+  "id": "cW08nxn9ANfGFEou",
+  "expectedVersionId": "8e056326-f8ba-4658-8a5a-9136b2a34821",
+  "operations": [
+    {
+      "type": "updateNode",
+      "nodeName": "MarkRepeatBusinessUnknown",
+      "updates": {
+        "parameters.jsonBody": "={{ (() => {\n const reservation=$('ReserveRepeatBusiness').first().json;\n const source=$prevNode.name;\n const preflight=[\"ValidateReservation\",\"CheckShopifyLive\",\"ValidateShopifyAndConsent\",\"CheckTrelloLive\",\"BuildValidatedMikaMail\"].includes(source);\n const payload={p_id:reservation.id,p_claim_token:reservation.claim_token,p_outcome:preflight?'preflight_failed':'unknown',p_reason:preflight?'pre_send_check_failed':'provider_or_validation_failed_no_retry'};\n if(preflight){\n  const message=String(($json.error && $json.error.message)||$json.error||$json.message||'');\n  const known=[\"trello_batch_invalid_json\",\"trello_batch_missing\",\"internal_trello_read_failed\",\"trello_batch_incomplete\",\"trello_search_failed\",\"invalid_reservation\",\"invalid_recipient\",\"recipient_scope_mismatch\",\"shopify_live_check_failed\",\"organization_order_coverage_missing\"];\n  const code=known.find(value=>message.includes(value))||'provider_read_failed';\n  payload.p_message={source_node:source,error_code:code};\n }\n return JSON.stringify(payload);\n})() }}"
+      }
+    },
+    {
+      "type": "updateNode",
+      "nodeName": "StopRepeatBusinessSafely",
+      "updates": {
+        "parameters.jsCode": "if($input.first().json.status==='preflight_failed') throw new Error('Repeat Business: Vorprüfung fehlgeschlagen, kein Versandversuch. Maximal zwei erneute Vorprüfungen mit fünf Minuten Abstand; danach Einzelfall prüfen.');\nthrow new Error('Repeat Business angehalten: Versandstatus unklar. Kein automatischer Neuversand.');\nreturn [];"
+      }
+    }
+  ]
+}
