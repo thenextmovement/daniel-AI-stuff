@@ -330,6 +330,16 @@ test("customer delivery worker is isolated, generated inactive and validates rec
   assert.doesNotMatch(prepared.json.message, /Zahlungsart Vorkasse/);
   assert.match(prepared.json.message, /rechnung\.neontrip\.de\/test-token/);
   assert.match(prepared.json.message, /angebote\.neontrip\.de\/legal\/agb/);
+  for (const kind of ["ORDER_CONFIRMATION_PROFORMA", "PROFORMA_UPDATE", "INVOICE", "CREDIT", "CANCELLATION"]) {
+    const [city] = await run("ERECHNUNG@DUESSELDORF.DE", kind);
+    assert.equal(city.json.recipient, "erechnung@duesseldorf.de");
+    assert.doesNotMatch(city.json.message, /https?:|www\.|<a\b/i);
+    assert.match(city.json.message, /Beleg als PDF/);
+    const [normal] = await run("kunde@example.com", kind);
+    assert.match(normal.json.message, /rechnung\.neontrip\.de/);
+    for (const field of ["easybillDocumentId", "documentNumber", "shopifyOrderName", "kind", "subject"])
+      assert.equal(city.json[field], normal.json[field]);
+  }
   const [realRecipient] = await run("kunde@example.com");
   assert.equal(realRecipient.json.recipient, "kunde@example.com");
   await assert.rejects(() => run(""), /FATAL_billing_customer_delivery_recipient_missing_or_invalid/);
