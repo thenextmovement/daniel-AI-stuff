@@ -80,3 +80,12 @@ Immediate operational rollback is non-destructive:
 The additive database objects can remain safely unused. If they must be removed, first deploy an app version that no longer references them, export any required audit data, obtain explicit approval, then use `supabase/rollbacks/20260720094159_create_arrival_label_automation_rollback.sql`. This rollback deletes arrival-label audit data and is therefore a last resort.
 
 For a future partially created carrier label: block the case, reconcile EasyDPD by idempotency key and tracking number, and require an operator to decide whether to void it. Never retry creation until reconciliation proves that no label exists. For a `dispatching`, `submitted` or uncertain CUPS job, physically inspect the printer and CUPS history before any manual reprint.
+
+
+## Production A6 ownership — 24 October 2026
+
+The active German label flow prints through `leo-brother-print.service` on the Hermes server over WireGuard. Only `hermes-server-arrival-label-a6-01` may claim `shipping-a6`. The migration `20261024123000_arrival_print_server_only.sql` closes the legacy shared-queue path used by retired Mac workers, before lease resumption or any queue mutation. It leaves the separate A4 delivery-note routing, historical CUPS confirmation endpoint, retry exhaustion events and existing review-mail digest limits unchanged. A worker ID is routing identity, not proof of a physical host.
+
+Regression fixture: in an isolated PostgreSQL database, load `tests/sql/arrival-print-fallback-base.sql`, the `20261008120000` migration, the new migration, then `tests/sql/arrival-print-server-only.test.sql`. The new test must fail against the old function. Apply the matching rollback and run `tests/sql/arrival-print-fallback.test.sql` to verify restoration. Never run these fixture files against production.
+
+Before release, verify the server service uses the exact approved worker ID and check for active legacy claims. After release, check both Mac A6 IDs return no work and that the server remains healthy. Preserve any `dispatching`, `submitted` or uncertain job, its CUPS ID and its original owner. In particular, incident #NEONT4710 (print job `91e6c81d-b596-4854-8e01-7de12accdc01`, CUPS `Brother_QL_1110NWB-292`) must not be reprinted or marked printed without evidence of its actual completion. Rollback restores the former Mac-capable routing and therefore requires an explicit decision.
