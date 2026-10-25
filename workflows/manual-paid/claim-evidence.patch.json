@@ -1,0 +1,39 @@
+{
+  "workflowId": "6NZnfGpyfUVikqpf",
+  "expectedVersionId": "a55e769c-959c-4621-9b3a-145dd846a2f0",
+  "expectedActiveVersionId": "a55e769c-959c-4621-9b3a-145dd846a2f0",
+  "expectedActive": true,
+  "operations": [
+    {
+      "type": "updateNode",
+      "nodeId": "manual-paid-durable-intake",
+      "updates": {
+        "onError": "continueErrorOutput"
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "manual-paid-claim-unconfirmed",
+        "name": "Stop Unconfirmed Manual Paid Claim",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -640,
+          1120
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "const prepared = $('Prepare Manual Paid Durable Intake').first()?.json?.request;\nconst executionId = String($execution.id);\nif (!/^[0-9]{1,30}$/.test(executionId) || prepared?.executionId !== executionId ||\n    prepared?.scope !== 'MANUAL_SHOPIFY_PAID' || !['claim','admit'].includes(prepared.operation) ||\n    !Array.isArray(prepared.candidates)) throw new Error('MANUAL_PAID_CLAIM_CONTEXT_INVALID');\nconst input = $input.first()?.json || {};\nconst error = input.error;\nconst codes = [error?.httpCode,error?.statusCode,error?.status,error?.response?.statusCode,input.statusCode]\n  .filter(value => value !== undefined && value !== null && value !== '').map(String);\nconst httpStatus = codes.length && codes.every(value => value === codes[0]) && /^[45][0-9]{2}$/.test(codes[0]) ? codes[0] : 'unknown';\nconst ids = [...new Set(prepared.candidates.map(row => String(row?.shopifyOrderId || '')).filter(id => /^[0-9]{1,30}$/.test(id)))];\nconst context = 'executionId=' + executionId + '; operation=' + prepared.operation + '; httpStatus=' + httpStatus\n  + '; candidateOrderIds=' + (ids.slice(0,5).join(',') || 'none') + '; candidateCount=' + prepared.candidates.length\n  + '; selection=unknown';\nthrow new Error('MANUAL_PAID_CLAIM_UNCONFIRMED; ' + context\n  + '; Übernahme nicht bestätigt. Dauerhaften Claim-Beleg zu dieser Ausführung prüfen. Kandidaten sind kein Nachweis des ausgewählten Auftrags. Fehlender Beleg bedeutet ungeklärt. Kein automatischer Neuversuch.');\n"
+        }
+      }
+    },
+    {
+      "type": "addConnection",
+      "source": "Admit or Claim Manual Paid Reconciliation",
+      "target": "Stop Unconfirmed Manual Paid Claim",
+      "sourceIndex": 1,
+      "targetIndex": 0
+    }
+  ]
+}

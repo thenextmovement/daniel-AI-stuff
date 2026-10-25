@@ -1,0 +1,88 @@
+{
+  "id": "6NZnfGpyfUVikqpf",
+  "versionId": "a55e769c-959c-4621-9b3a-145dd846a2f0",
+  "activeVersionId": "a55e769c-959c-4621-9b3a-145dd846a2f0",
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "M4uG1HAtN9Zggxww"
+  },
+  "nodes": [
+    {
+      "id": "manual-paid-queue",
+      "name": "Queue and Select Candidate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1040,
+        -60
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const prepared = $('Prepare Manual Paid Durable Intake').first().json;\nconst response = $input.first()?.json || {};\nconst body = response.body ?? response;\nconst status = Number(response.statusCode || 0);\nif ((status && (status < 200 || status >= 300)) || body.ok !== true || body.scope !== 'MANUAL_SHOPIFY_PAID' || !Array.isArray(body.intake) || !Object.hasOwn(body,'claimed') || !Object.hasOwn(body,'legacySelected')) throw new Error('MANUAL_PAID_CLAIM_RESPONSE_INVALID');\nif (body.claimed && body.legacySelected) throw new Error('MANUAL_PAID_MULTIPLE_SELECTIONS');\nconst expected = new Map(prepared.request.candidates.map(row => [row.origin + ':' + row.shopifyOrderId,row]));\nconst intake = new Map();\nconst allowed = new Set(['ACCEPTED','UNCHANGED','BUSY','NOT_DUE','FRESH_REUSED','UNMAPPED','IDENTITY_MISMATCH','BLOCKED']);\nfor (const row of body.intake) {\n  const key = row.origin + ':' + row.shopifyOrderId;\n  if (!expected.has(key) || intake.has(key) || !allowed.has(row.result)) throw new Error('MANUAL_PAID_INTAKE_MAPPING_INVALID');\n  intake.set(key,row);\n}\nif (intake.size !== expected.size) throw new Error('MANUAL_PAID_INTAKE_MAPPING_INCOMPLETE');\nconst pending = JSON.parse(JSON.stringify(prepared.prospectivePending));\nfor (const row of body.intake) {\n  if (row.billingCaseId && row.jobId && row.result !== 'UNMAPPED' && row.result !== 'IDENTITY_MISMATCH') delete pending[row.shopifyOrderId];\n}\nlet selected = null;\nif (prepared.request.operation === 'admit') {\n  if (body.claimed !== null || body.legacySelected !== null) throw new Error('MANUAL_PAID_ADMIT_CLAIM_FORBIDDEN');\n  const now = Date.now();\n  selected = Object.values(pending).filter(row => (intake.get('legacy_due:' + row.shopifyOrderId)?.result === 'UNMAPPED' || intake.get('handoff:' + row.shopifyOrderId)?.result === 'UNMAPPED') && Date.parse(row.nextAttemptAt) <= now && Number(row.lockedUntil || 0) <= now)\n    .sort((a,b) => Date.parse(a.nextAttemptAt)-Date.parse(b.nextAttemptAt) || Date.parse(a.firstSeenAt)-Date.parse(b.firstSeenAt) || String(a.shopifyOrderId).localeCompare(String(b.shopifyOrderId)))[0] || null;\n} else if (prepared.request.operation === 'claim') {\n  if (body.legacySelected) {\n    const legacy = body.legacySelected;\n    const source = pending[legacy.shopifyOrderId];\n    const origin = legacy.origin;\n    const offered = expected.get(origin + ':' + legacy.shopifyOrderId);\n    if (!source || !offered || !['handoff','legacy_due'].includes(origin) || intake.get(origin + ':' + legacy.shopifyOrderId)?.result !== 'UNMAPPED' || legacy.shopifyOrderName !== source.shopifyOrderName || !Number.isFinite(Date.parse(legacy.firstSeenAt)) || !Number.isFinite(Date.parse(legacy.nextAttemptAt)) || !Number.isSafeInteger(Number(legacy.lockedUntil)) || Number(legacy.lockedUntil) < 0 || (origin === 'legacy_due' && (legacy.firstSeenAt !== offered.firstSeenAt || legacy.nextAttemptAt !== offered.nextAttemptAt || Number(legacy.lockedUntil) !== offered.lockedUntil))) throw new Error('MANUAL_PAID_LEGACY_SELECTION_INVALID');\n    selected = {...source,firstSeenAt:legacy.firstSeenAt,nextAttemptAt:legacy.nextAttemptAt,lockedUntil:Number(legacy.lockedUntil)};\n  }\n} else throw new Error('MANUAL_PAID_OPERATION_INVALID');\nlet canonical = null;\nif (body.claimed) {\n  const {job,billingCase,claimContext} = body.claimed;\n  const observation = job?.payload?.input?.observation;\n  const numericId = String(billingCase?.shopify_order_id || '').replace(/^gid:\\/\\/shopify\\/Order\\//i,'');\n  if (!job?.id || job.job_type !== 'RECONCILE' || job.status !== 'PROCESSING' || !job.lease_token || !billingCase?.id || job.billing_case_id !== billingCase.id || !observation || observation.shopifyOrderId !== numericId || observation.shopifyOrderName !== String(billingCase.shopify_order_name || '').toUpperCase() || claimContext?.executionId !== prepared.request.executionId || !Number.isInteger(claimContext?.inputGeneration) || claimContext.inputGeneration < 1 || !/^[a-f0-9]{64}$/.test(claimContext.inputFingerprint || '') || !/^[a-f0-9]{64}$/.test(claimContext.bindingFingerprint || '') || !Number.isFinite(Date.parse(claimContext.startedAt))) throw new Error('MANUAL_PAID_CANONICAL_CLAIM_INVALID');\n  canonical = {\n    shopifyOrderId:observation.shopifyOrderId,shopifyOrderGid:'gid://shopify/Order/' + observation.shopifyOrderId,shopifyOrderName:observation.shopifyOrderName,\n    _manualPaidMode:'canonical',\n    _manualPaidReconcile:{jobId:job.id,leaseToken:job.lease_token,...claimContext,manualPaidAlerts:job.payload.manualPaidAlerts || {}},\n  };\n}\n// Keep separate UNMAPPED intake, including when fair selection picked a different canonical job.\nconst legacyAdmissions = prepared.request.candidates.filter(row => row.origin === 'handoff' && intake.get('handoff:' + row.shopifyOrderId)?.result === 'UNMAPPED').map(row => pending[row.shopifyOrderId]);\nconst mappedLegacyIds = [...new Set(body.intake.filter(row => row.billingCaseId && row.jobId && row.result !== 'UNMAPPED' && row.result !== 'IDENTITY_MISMATCH' && prepared.existingLegacyIds.includes(row.shopifyOrderId)).map(row => row.shopifyOrderId))];\n// A pure canonical request must never touch StaticData. Mixed legacy migration still has n8n's known whole-object persistence boundary.\nif (!selected && !legacyAdmissions.length && !mappedLegacyIds.length) return canonical ? [{json:canonical}] : [];\nconst legacyCapacityExceeded = Object.keys(pending).length > 200;\nconst state = $getWorkflowStaticData('global');\nif (!state.pendingManualPaid || typeof state.pendingManualPaid !== 'object') state.pendingManualPaid = {};\nfor (const id of mappedLegacyIds) delete state.pendingManualPaid[id];\nfor (const row of legacyAdmissions) state.pendingManualPaid[row.shopifyOrderId] = row;\nif (selected) {\n  selected.lockedUntil = Date.now() + 2 * 60 * 1000;\n  selected.attempts = Number(selected.attempts || 0) + 1;\n  selected.lastAttemptAt = new Date().toISOString();\n  state.pendingManualPaid[selected.shopifyOrderId] = selected;\n  return [{json:{...selected,_manualPaidMode:'legacy',...(legacyCapacityExceeded ? {_manualPaidLegacyCapacityExceeded:true} : {})}}];\n}\nreturn canonical ? [{json:{...canonical,...(legacyCapacityExceeded ? {_manualPaidLegacyCapacityExceeded:true} : {})}}] : [];\n"
+      }
+    },
+    {
+      "id": "manual-paid-durable-prepare",
+      "name": "Prepare Manual Paid Durable Intake",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1450,
+        -200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const operation = 'claim';\nconst now = Date.now();\nconst manualPaidGraceMs = 10 * 60 * 1000;\nconst maxClockSkewMs = 60 * 1000;\nconst state = $getWorkflowStaticData('global');\nconst clone = value => JSON.parse(JSON.stringify(value));\nconst pending = clone(state.pendingManualPaid && typeof state.pendingManualPaid === 'object' && !Array.isArray(state.pendingManualPaid) ? state.pendingManualPaid : {});\nconst existingLegacyIds = Object.keys(pending);\nif (existingLegacyIds.length > 200) throw new Error('MANUAL_PAID_LEGACY_PENDING_LIMIT');\nconst alerts = clone(state.manualPaidAlerts && typeof state.manualPaidAlerts === 'object' && !Array.isArray(state.manualPaidAlerts) ? state.manualPaidAlerts : {});\nconst text = value => String(value ?? '').trim();\nconst handoffs = [];\nconst graceHandoffs = [];\nfor (const item of $input.all()) {\n  const input = item.json || {};\n  const numericId = text(input.shopifyOrderId || input.orderId || input.id || input.payload?.shopifyOrderId).replace(/^gid:\\/\\/shopify\\/Order\\//i, '').replace(/\\D/g, '');\n  const orderName = text(input.shopifyOrderName || input.orderName || input.name || input.payload?.shopifyOrderName).toUpperCase();\n  if (!/^\\d+$/.test(numericId) || !/^#NEONT\\d+$/.test(orderName)) continue;\n  if (handoffs.length) throw new Error('MANUAL_PAID_HANDOFF_LIMIT');\n  const current = pending[numericId] || {};\n  const sourceUpdatedAtMs = Date.parse(input.sourceRevision?.updatedAt || '');\n  const graceUntilMs = Number.isFinite(sourceUpdatedAtMs) && sourceUpdatedAtMs <= now + maxClockSkewMs && now - sourceUpdatedAtMs < manualPaidGraceMs\n    ? sourceUpdatedAtMs + manualPaidGraceMs\n    : null;\n  const priorAttemptAt = Date.parse(current.lastAttemptAt || '');\n  const staleLock = Number.isFinite(priorAttemptAt) && now - priorAttemptAt >= 2 * 60 * 1000;\n  const prospective = {\n    ...current,\n    shopifyOrderId: numericId, shopifyOrderGid: 'gid://shopify/Order/' + numericId, shopifyOrderName: orderName,\n    firstSeenAt: current.firstSeenAt || new Date(now).toISOString(), lastSeenAt: new Date(now).toISOString(),\n    nextAttemptAt: current.nextAttemptAt || new Date(now).toISOString(), attempts: Number(current.attempts || 0),\n    alertedAt: current.alertedAt || null,\n    sourceEventId: text(input.sourceEventId) || current.sourceEventId || null,\n    billingCasePayload: input.billingCasePayload && typeof input.billingCasePayload === 'object' ? clone(input.billingCasePayload) : (current.billingCasePayload || null),\n    lockedUntil: staleLock ? 0 : Math.min(Number(current.lockedUntil || 0), now + 2 * 60 * 1000),\n  };\n  pending[numericId] = prospective;\n  const handoff = {...prospective, amountCents: input.amountCents ?? null, currency: input.currency ?? null, sourceRevision: input.sourceRevision || undefined};\n  handoffs.push(handoff);\n  if (graceUntilMs && graceUntilMs > now) graceHandoffs.push({...handoff,firstSeenAt:prospective.firstSeenAt,nextAttemptAt:new Date(graceUntilMs).toISOString(),lockedUntil:0});\n}\n// Webhook handoffs only revisit their own legacy order; the scheduled poll owns the shared backlog.\nconst rows = existingLegacyIds.filter(id => handoffs.length === 0 || handoffs.some(row => row.shopifyOrderId === id)).map(id => pending[id]);\nfunction candidate(row, origin) {\n  const id = text(row.shopifyOrderId), name = text(row.shopifyOrderName).toUpperCase();\n  if (!/^[0-9]{1,30}$/.test(id) || !/^#NEONT[0-9]+$/.test(name)) throw new Error('MANUAL_PAID_LEGACY_IDENTITY_INVALID');\n  const result = {origin, shopifyOrderId:id, shopifyOrderName:name};\n  const amount = origin === 'handoff' ? row.amountCents : (row.amountCents ?? (row.billingCasePayload?.totals?.totalGross != null ? Math.round(Number(row.billingCasePayload.totals.totalGross) * 100) : null));\n  const currency = text(origin === 'handoff' ? row.currency : (row.currency || row.billingCasePayload?.totals?.currency)).toUpperCase();\n  if (amount != null) {\n    if (Number.isSafeInteger(amount) && amount >= 0) result.amountCents = amount;\n    else if (origin !== 'handoff') throw new Error('MANUAL_PAID_CANDIDATE_AMOUNT_INVALID');\n  }\n  if (currency === 'EUR') result.currency = currency;\n  else if (currency && origin !== 'handoff') throw new Error('MANUAL_PAID_CANDIDATE_CURRENCY_INVALID');\n  if (row.sourceEventId) result.sourceEventId = text(row.sourceEventId);\n  if (row.sourceRevision) result.sourceRevision = clone(row.sourceRevision);\n  result.legacyAlerts = Object.entries(alerts).filter(([key]) => key.startsWith(id + '|')).map(([key,markedAt]) => ({key,markedAt}));\n  if (result.legacyAlerts.length > 200) throw new Error('MANUAL_PAID_LEGACY_ALERT_LIMIT');\n  for (const alert of result.legacyAlerts) if (!/^[0-9]{1,30}\\|[A-Za-z0-9_-]+$/.test(alert.key) || !Number.isFinite(Date.parse(alert.markedAt)) || Date.parse(alert.markedAt) > now) throw new Error('MANUAL_PAID_LEGACY_ALERT_INVALID');\n  if (origin === 'legacy_due') {\n    if (!Number.isFinite(Date.parse(row.firstSeenAt)) || !Number.isFinite(Date.parse(row.nextAttemptAt)) || !Number.isSafeInteger(Number(row.lockedUntil || 0)) || Number(row.lockedUntil || 0) < 0) throw new Error('MANUAL_PAID_LEGACY_TIMING_INVALID');\n    Object.assign(result,{firstSeenAt:row.firstSeenAt,nextAttemptAt:row.nextAttemptAt,lockedUntil:Number(row.lockedUntil || 0)});\n  }\n  return result;\n}\nconst graceCandidates = existingLegacyIds.length < 200 ? graceHandoffs.map(row => candidate(row,'legacy_due')) : [];\n// The claim API requires one candidate per origin/order. Preserve the later due time and lock.\nconst uniqueCandidates = new Map();\nfor (const row of [...handoffs.map(row => candidate(row,'handoff')), ...graceCandidates, ...rows.map(row => candidate(row,'legacy_due'))]) {\n  const key = row.origin + ':' + row.shopifyOrderId;\n  const previous = uniqueCandidates.get(key);\n  if (!previous) uniqueCandidates.set(key,row);\n  else if (row.origin === 'legacy_due') uniqueCandidates.set(key,{\n    ...row,...previous,\n    firstSeenAt:Date.parse(row.firstSeenAt) < Date.parse(previous.firstSeenAt) ? row.firstSeenAt : previous.firstSeenAt,\n    nextAttemptAt:Date.parse(row.nextAttemptAt) > Date.parse(previous.nextAttemptAt) ? row.nextAttemptAt : previous.nextAttemptAt,\n    lockedUntil:Math.max(row.lockedUntil,previous.lockedUntil),\n  });\n  else throw new Error('MANUAL_PAID_HANDOFF_LIMIT');\n}\nconst candidates = [...uniqueCandidates.values()];\nconst executionId = String($execution.id);\nif (!/^[0-9]{1,30}$/.test(executionId)) throw new Error('MANUAL_PAID_EXECUTION_ID_INVALID');\nreturn [{json:{request:{scope:'MANUAL_SHOPIFY_PAID',operation,worker:'manual-paid-reconciliation',jobTypes:['RECONCILE'],leaseSeconds:120,executionId,candidates},prospectivePending:pending,existingLegacyIds}}];\n"
+      }
+    },
+    {
+      "id": "manual-paid-durable-intake",
+      "name": "Admit or Claim Manual Paid Reconciliation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1250,
+        -200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ops.neontrip.de/api/internal/billing/jobs/claim",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.request }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "retryOnFail": false,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Admit or Claim Manual Paid Reconciliation": {
+      "main": [
+        [
+          {
+            "node": "Queue and Select Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "alertRecipient": "={{ ['u48KZyTcU2J9pw2P', 'wqaTsVKuKqKnp2AG', 'cW08nxn9ANfGFEou'].some(id => id === $json.source_workflow_id || ($json.metadata?.affected_workflow_ids || []).includes(id)) ? 'support@neontrip.de' : 'info@NeonTrip.de' }}"
+}

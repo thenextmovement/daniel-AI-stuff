@@ -1,0 +1,15 @@
+{
+  "workflowId": "M4uG1HAtN9Zggxww",
+  "expectedVersionId": "2a996f52-972a-4d33-8c1f-1f10effa9398",
+  "expectedActiveVersionId": "2a996f52-972a-4d33-8c1f-1f10effa9398",
+  "expectedActive": true,
+  "operations": [
+    {
+      "type": "updateNode",
+      "nodeName": "Send Prepared Alert Email",
+      "updates": {
+        "parameters.toRecipients": "={{ ['u48KZyTcU2J9pw2P', 'wqaTsVKuKqKnp2AG', 'cW08nxn9ANfGFEou', '6NZnfGpyfUVikqpf'].some(id => id === $json.source_workflow_id || ($json.metadata?.affected_workflow_ids || []).includes(id)) ? 'support@neontrip.de' : 'info@NeonTrip.de' }}"
+      }
+    }
+  ]
+}
