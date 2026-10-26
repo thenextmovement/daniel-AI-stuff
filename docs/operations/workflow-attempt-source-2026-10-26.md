@@ -103,9 +103,13 @@ immutable identity/action binding, terminal/fresh state preservation, all three
 business decisions (open/resolved/ignored), incident dedupe and the actual
 Preview-Delivery queue consumer's unrelated-success path.
 Additional checks cover repeat application, pre-existing source settings and
-rollback/reapply and atomic rejection of unknown function drift. The queue
+rollback/reapply and atomic rejection of unknown function drift. Regression
+checks also cover a pre-existing, unmarked source: after the real scanner creates
+three gaps, rollback refuses and preserves the corrected function, source row
+and all incident rows. Other incident types referencing that source also block
+rollback. The queue
 consumer is the actual unchanged production function with an isolated input
-table. A referenced source cannot be rolled back by discarding history.
+table. No incident evidence is discarded to permit rollback.
 
 After explicit approval of the exact commit, apply only
 `supabase/migrations/20261026200000_register_workflow_attempt_source.sql` through
@@ -114,7 +118,10 @@ row, exact corrected function and unchanged cron definitions. Wait for a natural
 verify its real terminal result plus durable scanner evidence. Do not trigger a
 test scan or classify an empty cron-error list as success.
 
-Rollback atomically restores the old scanner and removes only this migration's
-marked, unused registration. Foreign-key rejection after evidence references it
-also rolls back the function change. Retain evidence and investigate instead of
-cascading deletion or rewriting source attribution.
+Rollback first refuses if an incident references `workflow_attempt` or has the
+gap type/fingerprint, regardless of whether this migration owns the source row.
+Only before such incident evidence exists does it atomically restore the old
+scanner and remove this migration's marked registration. Other existing foreign
+keys can still reject deletion of that marked row and roll back the function
+change. A pre-existing unmarked row remains unchanged. Retain evidence and
+investigate instead of cascading deletion or rewriting source attribution.

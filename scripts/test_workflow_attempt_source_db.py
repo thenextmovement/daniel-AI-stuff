@@ -92,7 +92,7 @@ try:
         try:
             sql(ROLLBACK.read_text())
         except RuntimeError as error:
-            assert 'violates foreign key constraint' in str(error), str(error)
+            assert 'workflow_attempt_incident_evidence_exists' in str(error), str(error)
         else:
             raise AssertionError('Rollback discarded a referenced source')
         assert sql("select count(*) from company_brain_operational_incidents where incident_type='workflow_attempt_gap'") == '3'
@@ -110,6 +110,33 @@ try:
         sql("insert into company_source_registry(source_key,display_name,source_kind,authority,owner_team,description,active,metadata) values('workflow_attempt','Existing owner choice','projection','projection','operations','Existing',false,'{\"owner_setting\":true}');")
         existing = sql("select row_to_json(r) from company_source_registry r where source_key='workflow_attempt'")
         sql(MIGRATION.read_text())
+        print(sql((ROOT / 'tests/sql/workflow-attempt-source.test.sql').read_text()), flush=True)
+        gaps_before = sql("select jsonb_agg(to_jsonb(i) order by i.id) from company_brain_operational_incidents i where source_key='workflow_attempt'")
+        try:
+            sql(ROLLBACK.read_text())
+        except RuntimeError as error:
+            assert 'workflow_attempt_incident_evidence_exists' in str(error), str(error)
+        else:
+            raise AssertionError('Rollback restored the legacy scanner over unmarked-source incident evidence')
+        assert sql("select md5(prosrc) from pg_proc where oid='scan_company_brain_workflow_attempt_gaps()'::regprocedure") == '90257d3d984f5351c8bb80e6efae0d4a'
+        assert sql("select row_to_json(r) from company_source_registry r where source_key='workflow_attempt'") == existing
+        assert sql("select jsonb_agg(to_jsonb(i) order by i.id) from company_brain_operational_incidents i where source_key='workflow_attempt'") == gaps_before
+        assert sql("select count(*) from company_brain_operational_incidents where incident_type='workflow_attempt_gap'") == '3'
+        print('PASS unmarked-source incident evidence blocks rollback; function, source and gaps are unchanged', flush=True)
+        sql('truncate company_brain_operational_incidents cascade; truncate company_brain_workflow_attempts;')
+        sql("insert into company_brain_operational_incidents(fingerprint,incident_type,severity,title,detail,root_cause_code,source_key) values('existing-attempt-evidence','workflow_failure','warning','Existing evidence','Preserve this source reference','existing_specific_cause','workflow_attempt');")
+        other_evidence = sql("select row_to_json(i) from company_brain_operational_incidents i where fingerprint='existing-attempt-evidence'")
+        try:
+            sql(ROLLBACK.read_text())
+        except RuntimeError as error:
+            assert 'workflow_attempt_incident_evidence_exists' in str(error), str(error)
+        else:
+            raise AssertionError('Rollback bypassed an existing non-gap attempt incident')
+        assert sql("select md5(prosrc) from pg_proc where oid='scan_company_brain_workflow_attempt_gaps()'::regprocedure") == '90257d3d984f5351c8bb80e6efae0d4a'
+        assert sql("select row_to_json(r) from company_source_registry r where source_key='workflow_attempt'") == existing
+        assert sql("select row_to_json(i) from company_brain_operational_incidents i where fingerprint='existing-attempt-evidence'") == other_evidence
+        print('PASS unmarked-source non-gap incident evidence also blocks rollback unchanged', flush=True)
+        sql('truncate company_brain_operational_incidents cascade;')
         sql(ROLLBACK.read_text())
         assert sql("select row_to_json(r) from company_source_registry r where source_key='workflow_attempt'") == existing
         print('PASS unused rollback/reapply and pre-existing source settings are preserved', flush=True)

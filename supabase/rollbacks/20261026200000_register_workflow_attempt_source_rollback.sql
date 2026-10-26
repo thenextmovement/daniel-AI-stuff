@@ -1,5 +1,5 @@
--- Restore the previous scanner only when registration is unused.
--- A referenced source aborts this whole transaction; never discard evidence.
+-- Restore the previous scanner only before any attempt incident evidence exists.
+-- Preserve pre-existing source rows and never discard their incident evidence.
 begin;
 do $$
 begin
@@ -9,6 +9,14 @@ begin
       and md5(prosrc) in ('586275f42f145687dc0d7df33c0736ee', '90257d3d984f5351c8bb80e6efae0d4a')
   ) then
     raise exception 'workflow_attempt_scanner_definition_changed';
+  end if;
+  if exists (
+    select 1 from public.company_brain_operational_incidents
+    where source_key = 'workflow_attempt'
+      or incident_type = 'workflow_attempt_gap'
+      or fingerprint like 'workflow_attempt_gap:%'
+  ) then
+    raise exception 'workflow_attempt_incident_evidence_exists';
   end if;
 end;
 $$;
