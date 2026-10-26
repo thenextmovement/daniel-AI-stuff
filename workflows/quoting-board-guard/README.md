@@ -8,7 +8,7 @@ Execution 10401215 (26 October 2026, 14:20:38–14:22:00 UTC) waited 70 seconds 
 ## Limited candidate
 
 - Read the live card immediately before the first label mutation and before the failure-label path. Verify immutable card ID, source board, original input list and not archived.
-- Missing, mismatched or failed reads remain explicit unconfirmed failures; a proven move/closure is an explicit blocked error. No label writes follow either guard failure. Original processing-error text is retained on the failure branch.
+- Missing, mismatched or failed reads remain explicit unconfirmed failures; a proven move/closure is an explicit blocked error. No label writes follow either guard failure. Original processing-error text is retained on the failure branch. Full HTTP response envelopes preserve empty or array bodies so the guard always receives an item; only a valid HTTP 200 card body is accepted.
 - Disable alwaysOutputData only on Add Description Processing Label so its error output cannot also feed the normal analysis branch.
 - Use existing error workflow ArT3LN25Mb1PAuBE. Its existing Outlook recipient includes support@neontrip.de; throttle, digest and disabled WhatsApp branch remain unchanged.
 

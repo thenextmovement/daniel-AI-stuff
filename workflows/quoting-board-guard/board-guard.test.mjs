@@ -6,8 +6,9 @@ import { guardCode, patchWorkflow } from './board-guard.mjs';
 const cardId='6adf61b57c4288abebd49c63';
 const candidate={card_id:cardId,correlation_id:'quote_analysis_v1:'+cardId,previous_change_log:[]};
 const live={id:cardId,idBoard:'63d10c34105771f01ccf4296',idList:'64ca588f8bd547afc087a6ea',closed:false};
-function run(card, failure=false, row=candidate) {
-  const context={ $input:{first:()=>({json:card})}, $:name=>({first:()=>({json:name==='Prepare Description Failure Status'?{card_id:cardId,failure_message:'original network error'}:row})}) };
+function run(card, failure=false, row=candidate) { return runResponse({statusCode:200,body:card},failure,row); }
+function runResponse(response, failure=false, row=candidate) {
+  const context={ $input:{first:()=>({json:response})}, $:name=>({first:()=>({json:name==='Prepare Description Failure Status'?{card_id:cardId,failure_message:'original network error'}:row})}) };
   return vm.runInNewContext('(function(){'+guardCode(failure)+'})()', context);
 }
 function fixture(){
@@ -88,4 +89,24 @@ test('unexpected workflow or changed edges/alert route are rejected',()=>{
 });
 test('repeat patch is rejected to prevent duplicate node installation',()=>{
  assert.throws(()=>patchWorkflow(patchWorkflow(fixture())));
+});
+
+function httpOutput(body, node) {
+ // HTTP Request 4.x emits one full-response envelope; body-only arrays are split.
+ return node.parameters.options.response.response.fullResponse
+   ? [{json:{body,statusCode:200,headers:{},statusMessage:'OK'}}]
+   : (Array.isArray(body)?body:[body]).map(json=>({json}));
+}
+test('empty HTTP array reaches each guard and cannot silently succeed',()=>{
+ const w=patchWorkflow(fixture());
+ for(const [name,failure] of [['Trello: Read Initial Label Context',false],['Trello: Read Failure Label Context',true]]) {
+  const node=w.nodes.find(n=>n.name===name), items=httpOutput([],node);
+  assert.equal(items.length,1,'Empty HTTP response must still deliver a guard input');
+  assert.throws(()=>runResponse(items[0].json,failure),e=>/QUOTE_CARD_CONTEXT_UNCONFIRMED/.test(e.message)&&(!failure||e.message.includes('original network error')));
+ }
+});
+test('HTTP envelope rejects errors, non-200 statuses and malformed bodies',()=>{
+ for(const response of [{error:'timeout'},{statusCode:502,body:live},{statusCode:204,body:null},{statusCode:200,body:[live]},live,{}]){
+  assert.throws(()=>runResponse(response,true),e=>/QUOTE_CARD_CONTEXT_UNCONFIRMED/.test(e.message)&&e.message.includes('original network error'));
+ }
 });

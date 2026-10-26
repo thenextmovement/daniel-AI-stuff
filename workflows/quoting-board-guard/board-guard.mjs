@@ -4,10 +4,11 @@ export const ALERT_WORKFLOW_ID = 'ArT3LN25Mb1PAuBE';
 export function guardCode(failure = false) {
   const source = failure ? 'Prepare Description Failure Status' : 'Select Eligible Candidate';
   return `const candidate=$('${source}').first().json||{};
-const live=$input.first().json;
+const response=$input.first().json;
+const live=response?.body;
 const cardId=String(candidate.card_id||'');
 const context=${failure ? "': '+String(candidate.failure_message||'Unknown original failure').slice(0,240)" : "''"};
-if(!/^[a-f0-9]{24}$/.test(cardId)||!live||Array.isArray(live)||live.id!==cardId||typeof live.idBoard!=='string'||typeof live.idList!=='string'||typeof live.closed!=='boolean'){
+if(response?.statusCode!==200||!/^[a-f0-9]{24}$/.test(cardId)||!live||Array.isArray(live)||live.id!==cardId||typeof live.idBoard!=='string'||typeof live.idList!=='string'||typeof live.closed!=='boolean'){
   throw new Error('QUOTE_CARD_CONTEXT_UNCONFIRMED '+cardId+context);
 }
 if(live.closed||live.idBoard!=='63d10c34105771f01ccf4296'||live.idList!=='64ca588f8bd547afc087a6ea'){
@@ -45,7 +46,7 @@ export function patchWorkflow(input) {
       parameters:{method:'GET',url:"=https://api.trello.com/1/cards/{{ $('"+from+"').first().json.card_id }}",
         authentication:'predefinedCredentialType',nodeCredentialType:'trelloApi',sendQuery:true,
         queryParameters:{parameters:[{name:'fields',value:'id,idBoard,idList,closed'}]},
-        options:{response:{response:{responseFormat:'json'}},timeout:20000}},
+        options:{response:{response:{responseFormat:'json',fullResponse:true}},timeout:20000}},
       credentials:structuredClone(clear.credentials),retryOnFail:true,maxTries:3,waitBetweenTries:2000,
       // Route a failed GET only to a guard that always throws on unconfirmed data.
       // This preserves the original processing error on the failure branch.
