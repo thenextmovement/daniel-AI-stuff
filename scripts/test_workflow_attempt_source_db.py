@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the existing gap scanner in disposable PostgreSQL, without network."""
+"""Exercise the gap scanner and actual incident consumers without network."""
 import os
 import subprocess
 import time
@@ -57,10 +57,20 @@ try:
         sql(table(incidents, name))
     sql(table(attempts, 'company_brain_workflow_attempts'))
     sql(function(foundation, 'touch_company_brain_updated_at'))
-    for name in ('upsert_company_brain_incident', 'guard_company_brain_incident_event_immutable'):
+    for name in ('upsert_company_brain_incident', 'guard_company_brain_incident_event_immutable', 'transition_company_brain_incident'):
         sql(function(incidents, name))
     sql(function(attempts, 'scan_company_brain_workflow_attempt_gaps'))
     sql(function(protection, 'preserve_company_brain_specific_workflow_cause'))
+    sql('''create table test_preview_delivery_queue(
+             id uuid default gen_random_uuid(), idempotency_key text,
+             metadata jsonb default '{}', status text, n8n_execution_id text,
+             request_id text, trello_card_id text, last_error_code text,
+             last_error_message text, attempts integer default 1,
+             max_attempts integer default 3, created_at timestamptz default now(),
+             updated_at timestamptz default now());''')
+    sql(function(attempts, 'reconcile_company_brain_workflow_attempt_from_queue'))
+    sql('''create trigger actual_queue_reconciler after insert or update on test_preview_delivery_queue
+             for each row execute function reconcile_company_brain_workflow_attempt_from_queue();''')
     sql('''create trigger preserve_cause before update on company_brain_operational_incidents
              for each row execute function preserve_company_brain_specific_workflow_cause();
            create trigger immutable_events before update or delete on company_brain_incident_events
@@ -72,6 +82,7 @@ try:
 
     if os.getenv('BASELINE') != '1':
         sql(MIGRATION.read_text())
+        assert sql("select md5(prosrc) from pg_proc where oid='scan_company_brain_workflow_attempt_gaps()'::regprocedure") == '90257d3d984f5351c8bb80e6efae0d4a'
     print(sql((ROOT / 'tests/sql/workflow-attempt-source.test.sql').read_text()), flush=True)
 
     if os.getenv('BASELINE') != '1':
@@ -84,12 +95,14 @@ try:
             assert 'violates foreign key constraint' in str(error), str(error)
         else:
             raise AssertionError('Rollback discarded a referenced source')
-        assert sql('select count(*) from company_brain_operational_incidents') == '2'
+        assert sql("select count(*) from company_brain_operational_incidents where incident_type='workflow_attempt_gap'") == '3'
+        assert sql("select md5(prosrc) from pg_proc where oid='scan_company_brain_workflow_attempt_gaps()'::regprocedure") == '90257d3d984f5351c8bb80e6efae0d4a'
         print('PASS duplicate apply is unchanged; referenced rollback refuses without data loss', flush=True)
 
         sql('truncate company_brain_operational_incidents cascade; truncate company_brain_workflow_attempts;')
         sql(ROLLBACK.read_text())
         assert sql("select count(*) from company_source_registry where source_key='workflow_attempt'") == '0'
+        assert sql("select md5(prosrc) from pg_proc where oid='scan_company_brain_workflow_attempt_gaps()'::regprocedure") == '586275f42f145687dc0d7df33c0736ee'
         sql(MIGRATION.read_text())
         print(sql((ROOT / 'tests/sql/workflow-attempt-source.test.sql').read_text()), flush=True)
         sql('truncate company_brain_operational_incidents cascade; truncate company_brain_workflow_attempts;')
@@ -100,6 +113,19 @@ try:
         sql(ROLLBACK.read_text())
         assert sql("select row_to_json(r) from company_source_registry r where source_key='workflow_attempt'") == existing
         print('PASS unused rollback/reapply and pre-existing source settings are preserved', flush=True)
+        sql("create or replace function scan_company_brain_workflow_attempt_gaps() returns table(stale_count integer) language plpgsql security definer set search_path=public as $$begin stale_count:=0;return next;end$$;")
+        drift = sql("select md5(prosrc) from pg_proc where oid='scan_company_brain_workflow_attempt_gaps()'::regprocedure")
+        for path in (MIGRATION, ROLLBACK):
+            try:
+                sql(path.read_text())
+            except RuntimeError as error:
+                assert 'workflow_attempt_scanner_definition_changed' in str(error), str(error)
+            else:
+                raise AssertionError('Unreviewed scanner drift was overwritten')
+            assert sql("select md5(prosrc) from pg_proc where oid='scan_company_brain_workflow_attempt_gaps()'::regprocedure") == drift
+            assert sql("select row_to_json(r) from company_source_registry r where source_key='workflow_attempt'") == existing
+        print('PASS migration and rollback refuse unknown function drift atomically', flush=True)
+        sql(function(attempts, 'scan_company_brain_workflow_attempt_gaps'))
     print(sql("select proname||':'||md5(prosrc) from pg_proc where proname in ('scan_company_brain_workflow_attempt_gaps','upsert_company_brain_incident','preserve_company_brain_specific_workflow_cause') order by proname"), flush=True)
 finally:
     subprocess.run(['docker', 'rm', '-f', CONTAINER], capture_output=True)
