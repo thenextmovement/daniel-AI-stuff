@@ -7,7 +7,7 @@ export const normalizePatches = [
   },
   {
     "find": "  const contentId = clean(file.contentId || file.contentID || file.cid || '', 500).replace(/^<|>$/g, '');\n  const explicitInline = file.isInline === true || file.inline === true || file.attachmentType === 'inline';",
-    "replace": "  // IMAP keeps CID/disposition outside n8n's filesystem-v2 binary descriptor.\n  const numericSize = [file.bytes, file.fileSize, file.size]\n    .find(value => value !== undefined && value !== null && value !== '' &&\n      Number.isSafeInteger(Number(value)) && Number(value) >= 0);\n  const sizeBytes = numericSize === undefined ? 0 : Number(numericSize);\n  const metadataMatches = asArray(email.attachmentsInfo).filter(entry =>\n    entry.filename === fileName && entry.contentType === mimeType &&\n    sizeBytes > 0 && Number(entry.size) === sizeBytes);\n  const metadata = metadataMatches.length === 1 ? metadataMatches[0] : {};\n  const downloadMatches = asArray(source.attachmentMetadata).filter(entry =>\n    entry.binaryFieldName === key && entry.filename === fileName && entry.contentType === mimeType);\n  const downloaded = downloadMatches.length === 1 ? downloadMatches[0] : {};\n  const contentId = clean(file.contentId || file.contentID || file.cid || metadata.contentId || '', 500).replace(/^<|>$/g, '');\n  const explicitInline = file.isInline === true || file.inline === true || file.attachmentType === 'inline' || downloaded.disposition === 'inline';"
+    "replace": "  // IMAP keeps CID/disposition outside n8n's filesystem-v2 binary descriptor.\n  const numericSize = [file.bytes, file.fileSize, file.size]\n    .find(value => value !== undefined && value !== null && value !== '' &&\n      Number.isSafeInteger(Number(value)) && Number(value) >= 0);\n  const sizeBytes = numericSize === undefined ? 0 : Number(numericSize);\n  const metadataMatches = asArray(email.attachmentsInfo).filter(entry =>\n    entry.filename === fileName && entry.contentType === mimeType &&\n    sizeBytes > 0 && Number(entry.size) === sizeBytes);\n  const metadata = metadataMatches.length === 1 ? metadataMatches[0] : {};\n  const downloadMatches = asArray(source.attachmentMetadata).filter(entry =>\n    entry.binaryFieldName === key && entry.filename === fileName && entry.contentType === mimeType);\n  const downloaded = downloadMatches.length === 1 ? downloadMatches[0] : {};\n  const contentId = clean(file.contentId || file.contentID || file.cid || metadata.contentId || '', 500).replace(/^<|>$/g, '');\n  const explicitInline = file.isInline === true || file.inline === true || file.attachmentType === 'inline';"
   },
   {
     "find": "  const cidPosition = cidNeedle ? htmlLower.indexOf(cidNeedle) : -1;\n  const cidReferenced = cidPosition >= 0;\n  const sizeBytes = Number(file.fileSize || file.size || 0);",
@@ -18,6 +18,12 @@ export const normalizePatches = [
     "replace": "    .map((pattern) => signatureSource.search(pattern))"
   }
 ];
+
+
+normalizePatches.push({
+  find: "  const tinyTrackingImage = mimeType.startsWith('image/') && sizeBytes > 0 && sizeBytes <= 2048;",
+  replace: "  const tinyTrackingImage = mimeType.startsWith('image/') && sizeBytes > 0 && sizeBytes <= 2048 &&\n    (explicitInline || cidReferenced) && /^(spacer|pixel|tracking)([-_0-9].*)?\\.(png|jpe?g|gif|webp)$/i.test(fileName);"
+});
 
 export const patch = {
   workflowId: "rCgjDFQeytL0n5Zl",

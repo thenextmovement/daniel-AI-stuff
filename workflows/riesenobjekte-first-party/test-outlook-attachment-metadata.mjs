@@ -62,3 +62,13 @@ test('the patch refuses a changed or already patched baseline',()=>{
  assert.throws(()=>applyNormalizePatch('changed workflow'),/baseline mismatch/);
  assert.throws(()=>applyNormalizePatch(applyNormalizePatch(baseline)),/baseline mismatch/);
 });
+
+test('ambiguous inline customer logo is retained without signature evidence',()=>{
+ const f=fixture([{name:'logo.png',bytes:10000,reference:false}], 'Please manufacture this logo.');
+ f.email.json.attachmentsInfo.push({...f.email.json.attachmentsInfo[0],contentId:'<other@example.org>'});
+ assert.equal(run([f.email],[f.attachment])[0].json.attachmentCount,1);
+});
+test('small real customer logo is retained despite numeric byte metadata',()=>{
+ const f=fixture([{name:'logo.png',bytes:1000,reference:false,disposition:'attachment'}], 'Please manufacture this logo.');
+ assert.equal(run([f.email],[f.attachment])[0].json.attachmentCount,1);
+});
