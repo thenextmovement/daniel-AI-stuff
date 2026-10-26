@@ -24,17 +24,33 @@ Both operations increment the case revision, retain original documents, append a
 and before/after audit evidence, and leave unrelated cases and all dunning holds alone.
 They create no replacement proforma and do not relax general matching or VAT guards.
 The cause is stale canonical billing data after a customer correction, not an unsafe
-identity check. Aligning that source lets the existing idempotent workers finish.
+identity check. Aligning that source permits invoice creation; external payment projections remain explicitly held until their independent safety checks are complete.
 
-**After commit**, normal document workers create/finalize the paid invoices, project
-payment into easybill, and the delivery worker emails each invoice to the listed recipient.
-That customer delivery must be included explicitly in approval. The invoices state that
-payment is received; the existing worker disables another payment link.
-No historical Manual-Paid recovery is included.
+**After commit**, the normal document worker creates/finalizes the invoices. Each exact
+origin invoice job receives `customerEmailSuppressed=true` within the same transaction,
+before workers can see it. The existing finalization trigger then queues no customer
+mail. No false SENT status is written. The user expressly prohibited customer messages.
+
+Each canonical easybill payment-projection key is inserted as honestly `BLOCKED` with
+a review reason. This prevents the ordinary worker from blindly retrying an effective
+POST after an ambiguous response. Invoice completion's ON CONFLICT preserves that hold.
+Do not release these jobs into the unchanged ordinary worker. Reconcile actual invoice
+and full payment history first; any later one-shot payment action needs its own reviewed
+scope and verified outcome. Do not impersonate collective payments or the partial-payment
+`manualPaidQontoProof` branch: neither applies to these single full payments.
+
+#4692's newly generated Shopify projection is also atomically BLOCKED. `orderMarkAsPaid`
+has no notification-suppression argument and can trigger store Flows/apps. It must not run
+until applicable subscribers have been proved unable to send customer email under this
+repair. #4796's already-completed Shopify status is preserved.
+
+No payment transfer, external payment registration, customer email, historical Manual-Paid
+recovery or archival is authorized by this candidate. The ledger records real bank receipts;
+external-completion flags remain false/pending until actual evidence exists.
 
 ## Preflight before execution
 
-1. Obtain approval of the exact commit and both cases, including the normal invoice emails.
+1. Obtain approval of the exact commit and both cases, including invoice creation with customer-email suppression and the explicit projection holds.
    No Coolify deployment or persistent database function/migration is needed.
 2. Re-read full live cases, jobs, documents and pending customer changes through Supabase MCP.
    Inspect the relevant active n8n workers and ensure they still match the reviewed paths:
@@ -74,15 +90,17 @@ viesName and viesAddress. Use the real VIES response, including its punctuation.
 
 ## Verification and archive gate
 
-- Let existing workers run; do not force leases, manually execute schedules, or retry
-  an uncertain external action. Read actual finalized invoices, amounts/tax/customer,
-  payment entries and projection results. Confirm one invoice, one settlement and the
-  intended unchanged delivery data.
-- Verify actual customer postbox/Sent evidence and visible email/PDF formatting.
-  A DONE job by itself is not proof of delivery.
+- Let only the existing invoice worker run; do not force leases or release projection holds.
+  Read actual finalized invoices, amounts/tax/customer and unchanged delivery data.
+  Verify the exact origin job suppression flag, no SEND_CUSTOMER_DOCUMENT job, no sent_at,
+  and no new provider postbox entry. Intentional non-delivery is the required result.
+- Read back both projection holds, zero attempts and unchanged external-completion flags.
+  Invoice creation is an intermediate state, not full financial closure. Actual easybill
+  payment history and Shopify no-email subscribers still need separate verification.
+  Keep the error mails visible during these holds.
 - Reconcile the specific #4796 Manual-Paid row and watchdog facts from real final documents.
   Do not declare all old Manual-Paid gateway alerts fixed by these separate cases.
-- After verified completion, resolve Company Brain incident 70d7f8ee-c565-4c69-ad52-09f355cdacd2 with transition_company_brain_incident and a note citing the actual payment, invoice and delivery evidence. This stops the separate daily unresolved-payment reminder; do not resolve it merely because the repair was queued.
+- After verified completion, resolve Company Brain incident 70d7f8ee-c565-4c69-ad52-09f355cdacd2 with transition_company_brain_incident and a note citing the actual payment and invoice evidence, plus the deliberate no-email decision. This stops the separate daily unresolved-payment reminder; do not resolve it merely because the repair was queued.
 - Only after these checks archive the #4692 alert and the #4796 reconciliation/watchdog
   notices, then read them back in the actual archive folder. Keep any unresolved mail visible.
 - The operation is idempotent by its audit event. On unexpected state, stop and inspect;
@@ -100,7 +118,7 @@ The original customer-mail bodies and live payloads are not committed.
 Run `python3 scripts/test_billing_source_alignment_db.py` on neontrip-dev.
 It creates a disposable PostgreSQL 17 container with no network or credentials,
 loads the existing billing migrations, and tests both outcomes, duplicate suppression,
-stale/ambiguous/locked states, bank/VIES evidence, preservation and rollback after writes.
+stale/ambiguous/locked states, bank/VIES evidence, preservation and rollback after writes. Twenty-two tests include actual billing_job_complete → document insertion → delivery trigger execution for both repaired cases, an unrelated positive mail-queue control, preserved payment holds, and refusal of inconsistent canonical DONE jobs.
 `BASELINE=1` demonstrates the original missing alignment.
 An additional isolated replay of the **current live** document-preparation node with both
 private case snapshots confirms the expected recipients, companies, delivery preservation,

@@ -67,9 +67,9 @@ try:
           +assert_sql("(select count(*)=2 from billing_payments) and (select count(*)=1 from processed_transactions where skip_reason='billing_v2_registered' and shopify_marked_paid=false and easybill_payment_created=false) and (select count(*)=1 from billing_jobs where job_type='CREATE_INVOICE') and (select count(*)=1 from billing_jobs where job_type='PROJECT_PAYMENT_SHOPIFY') and (select count(*)=0 from billing_jobs where job_type='CREATE_PROFORMA')","4692 queue/ledger mismatch"))
     check("4796 keeps original payment; corrected billing only; one invoice; no new proforma",
           call(B)+assert_sql("(select billing_address->>'street'='22 Montée du Grund' and tax_review_status='VERIFIED' and tax_exempt and vat_cents=0 and total_gross_cents=147900 and delivery_address->>'street'='DO NOT CHANGE B' from billing_cases where id='"+B+"')","4796 correction mismatch")
-          +assert_sql("(select count(*)=1 from billing_payments) and (select count(*)=1 from billing_jobs) and (select job_type='CREATE_INVOICE' from billing_jobs)","4796 duplicate payment or extra job"))
+          +assert_sql("(select count(*)=1 from billing_payments) and (select count(*)=2 from billing_jobs) and (select count(*)=1 from billing_jobs where job_type='CREATE_INVOICE')","4796 duplicate payment or extra job"))
     check("repeat repair has no financial or revision side effects",
-          call(A)+call(A,hash_value="stale-after-first-run")+assert_sql("(select current_revision=1 from billing_cases where id='"+A+"') and (select count(*)=2 from billing_jobs) and (select count(*)=2 from billing_payments)","replay changed effects"))
+          call(A)+call(A,hash_value="stale-after-first-run")+assert_sql("(select current_revision=1 from billing_cases where id='"+A+"') and (select count(*)=3 from billing_jobs) and (select count(*)=2 from billing_payments)","replay changed effects"))
     check("preserve unrelated case, delivery, original customer fallback and old proforma",
           "create temp table unrelated_before as select to_jsonb(c) as data from billing_cases c where id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';"
           +call(A)+call(B)+assert_sql("(select data=(select to_jsonb(c) from billing_cases c where id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') from unrelated_before) and (select customer->>'email'='old-a@example.test' and delivery_address->>'street'='DO NOT CHANGE A' from billing_cases where id='"+A+"') and not exists(select 1 from billing_case_versions where snapshot::text like '%secret-%')","unrelated state or credential copied"))
@@ -91,6 +91,29 @@ try:
       +"create trigger reject_final_audit before insert on billing_events for each row execute function pg_temp.fail_final_audit();"
       +"do $test$begin begin "+call(A)+" raise exception 'UNEXPECTED_SUCCESS'; exception when others then if position('INJECTED_AUDIT_FAILURE' in sqlerrm)=0 then raise; end if; end; end$test$;"
       +assert_sql("(select count(*)=1 from billing_payments) and (select count(*)=0 from billing_jobs) and (select current_revision=0 and paid_at is null from billing_cases where id='"+A+"') and (select count(*)=0 from billing_case_versions) and (select count(*)=0 from processed_transactions)","partial repair escaped rollback"))
+
+
+    for case in (A,B):
+        check(case+": invoice finalize keeps customer email suppressed and payment projection held",
+          call(case)
+          +"update billing_jobs set status='PROCESSING',attempt_count=1,lease_token='offline-test',lease_expires_at=now()+interval '1 minute' where billing_case_id='"+case+"' and job_type='CREATE_INVOICE';"
+          +"select billing_job_complete(id,'offline-test',true,jsonb_build_object('easybillDocumentId','offline-final-invoice','documentNumber',payload->>'documentNumber','sent',false)) from billing_jobs where billing_case_id='"+case+"' and job_type='CREATE_INVOICE';"
+          +assert_sql("(select count(*)=1 from billing_documents where billing_case_id='"+case+"' and document_type='INVOICE' and status='FINALIZED' and sent_at is null) and (select count(*)=0 from billing_jobs where job_type='SEND_CUSTOMER_DOCUMENT')","customer email queued or fake sent status")
+          +assert_sql("(select count(*)=1 from billing_jobs where billing_case_id='"+case+"' and job_type='PROJECT_PAYMENT_EASYBILL' and status='BLOCKED' and attempt_count=0 and lease_token is null and payload->>'reviewHold'='VERIFY_EXTERNAL_PAYMENT_HISTORY_BEFORE_ANY_POST')","easybill payment safety hold lost")
+          +assert_sql("(select bool_and(status='BLOCKED' and attempt_count=0) from billing_jobs where job_type in ('PROJECT_PAYMENT_EASYBILL','PROJECT_PAYMENT_SHOPIFY'))","automatic financial projection escaped hold"))
+
+    check("unrelated unsuppressed invoice still queues its customer delivery",
+          "update billing_cases set customer_email='control@example.test' where id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';"
+          +"insert into billing_jobs(billing_case_id,idempotency_key,job_type,status,lease_token,lease_expires_at,payload) values('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','offline-control-invoice','CREATE_INVOICE','PROCESSING','offline-control',now()+interval '1 minute','{\"documentNumber\":\"#NEONT9999\",\"portalUrl\":\"https://rechnung.neontrip.de/OFFLINE_TEST_TOKEN\"}');"
+          +"select billing_job_complete(id,'offline-control',true,'{\"easybillDocumentId\":\"offline-control-document\",\"sent\":false}') from billing_jobs where idempotency_key='offline-control-invoice';"
+          +assert_sql("(select count(*)=1 from billing_jobs where job_type='SEND_CUSTOMER_DOCUMENT' and payload->>'recipient'='control@example.test')","global mail behavior changed"))
+
+    rejects("inconsistent DONE canonical invoice refuses silent reuse",
+      call(A,extra="insert into billing_jobs(billing_case_id,idempotency_key,job_type,status) values('"+A+"','billing:"+A+":invoice','CREATE_INVOICE','DONE');"),
+      "ALIGNMENT_CANONICAL_JOB_EXISTS")
+    rejects("inconsistent DONE canonical payment projection refuses silent reuse",
+      call(A,extra="insert into billing_jobs(billing_case_id,idempotency_key,job_type,status) values('"+A+"','billing:"+A+":project-payment-easybill','PROJECT_PAYMENT_EASYBILL','DONE');"),
+      "ALIGNMENT_CANONICAL_JOB_EXISTS")
 
     print("PASS: offline PostgreSQL repair guards and side-effect checks",flush=True)
 finally:

@@ -19,6 +19,9 @@ declare
   required_financial_status text;
   checked_at timestamptz;
   snapshot jsonb;
+  affected integer;
+  invoice_job uuid;
+  projection_job uuid;
   actor constant text := 'Codex / approved billing-source-alignment 2026-10-26';
 begin
   if p_case_id='17ebf87b-f7c3-4ba3-9b14-bbf79f7b6588' then
@@ -55,6 +58,11 @@ begin
      or exists(select 1 from billing_jobs where billing_case_id=c.id and status<>'DONE'
           and not(job_type='RECONCILE' and status='PENDING' and payload->>'scope'='MANUAL_SHOPIFY_PAID')) then
     raise exception 'ALIGNMENT_JOBS_UNSAFE';
+  end if;
+  -- DONE jobs with absent external documents are unsafe too: never silently reuse a key.
+  if exists(select 1 from billing_jobs where idempotency_key in (
+      'billing:'||c.id||':invoice','billing:'||c.id||':project-payment-easybill')) then
+    raise exception 'ALIGNMENT_CANONICAL_JOB_EXISTS';
   end if;
   begin checked_at := (p_preflight->>'checkedAt')::timestamptz;
   exception when others then raise exception 'ALIGNMENT_PREFLIGHT'; end;
@@ -138,6 +146,16 @@ begin
   insert into billing_case_versions(billing_case_id,revision,snapshot_hash,snapshot,source,actor,reason)
     values(c.id,c.current_revision,encode(extensions.digest(snapshot::text,'sha256'),'hex'),snapshot,
       'OPS',actor,'Verified historical customer instruction; no new proforma');
+  -- Prevent ordinary payment POST retries before an external invoice even exists.
+  -- This is an honest hold, not a completed financial effect. The normal invoice
+  -- completion uses this same key with ON CONFLICT DO NOTHING.
+  insert into billing_jobs(billing_case_id,idempotency_key,job_type,status,payload,last_error)
+    values(c.id,'billing:'||c.id||':project-payment-easybill','PROJECT_PAYMENT_EASYBILL',
+      'BLOCKED',jsonb_build_object('repairEventKey',event_key,'providerTransactionId',provider_id,
+        'amountCents',expected_cents,'customerEmailSuppressed',true,
+        'reviewHold','VERIFY_EXTERNAL_PAYMENT_HISTORY_BEFORE_ANY_POST'),
+      'Repair safety hold: external invoice/payment history must be reconciled; do not release into ordinary retrying worker.');
+
   if expected_order_name='#NEONT4692' then
     payment_result := billing_payment_ingest(c.shopify_order_id,'QONTO',provider_id,expected_cents,'EUR',
       (bank->>'settled_at')::timestamptz,event_key||':payment',
@@ -148,6 +166,17 @@ begin
        or payment_result->'duplicate' is distinct from 'false'::jsonb then
       raise exception 'ALIGNMENT_PAYMENT_RESULT';
     end if;
+    update billing_jobs set status='BLOCKED',next_attempt_at=null,
+      last_error='Repair no-email hold: Shopify paid-trigger subscribers have not been proved mail-free.',
+      payload=payload||jsonb_build_object('repairEventKey',event_key,'customerEmailSuppressed',true,
+        'reviewHold','VERIFY_SHOPIFY_PAID_NOTIFICATION_EFFECTS')
+      where billing_case_id=c.id
+        and idempotency_key='payment:'||(payment_result->>'id')||':shopify'
+        and job_type='PROJECT_PAYMENT_SHOPIFY' and status='PENDING'
+        and attempt_count=0 and lease_token is null and lease_expires_at is null
+      returning id into projection_job;
+    get diagnostics affected = row_count;
+    if affected<>1 then raise exception 'ALIGNMENT_SHOPIFY_JOB_UNSAFE'; end if;
     -- Same early replay guard as the normal Qonto path: registered, not yet projected.
     -- The ledger and downstream invoice remain independently verifiable.
     insert into processed_transactions(transaction_id,neon_number,amount,
@@ -159,12 +188,27 @@ begin
       jsonb_build_object('reason','Paid Qonto ledger verified; customer billing correction agrees with fresh VIES'),
       actor,event_key||':invoice');
   end if;
+  -- Workers cannot see this new invoice until the containing transaction commits.
+  -- Existing document trigger reads this origin payload before queuing any email.
+  update billing_jobs set payload=payload||jsonb_build_object(
+      'customerEmailSuppressed',true,'customerEmailSuppressionReason',
+      'User instruction 2026-10-26: no customer email from this repair.',
+      'repairEventKey',event_key)
+    where billing_case_id=c.id and idempotency_key='billing:'||c.id||':invoice'
+      and job_type='CREATE_INVOICE' and status='PENDING' and attempt_count=0
+      and lease_token is null and lease_expires_at is null
+      and payload->>'documentNumber'=expected_order_name
+    returning id into invoice_job;
+  get diagnostics affected = row_count;
+  if affected<>1 then raise exception 'ALIGNMENT_INVOICE_JOB_UNSAFE'; end if;
   select to_jsonb(updated)-'portal_token_hash'-'created_at'-'updated_at' into after_state
     from billing_cases updated where id=c.id;
   insert into billing_events(billing_case_id,idempotency_key,event_type,source,actor,correlation_id,payload)
     values(c.id,event_key,'BILLING_SOURCE_ALIGNMENT','OPS',actor,event_key,
       jsonb_build_object('before',before_state,'after',after_state,'preflight',p_preflight,
-        'providerTransactionId',provider_id,'paymentResult',payment_result));
+        'providerTransactionId',provider_id,'paymentResult',payment_result,
+        'customerEmailSuppressed',true,'invoiceJobId',invoice_job,
+        'shopifyReviewJobId',projection_job,'easybillProjectionHeld',true));
   return jsonb_build_object('duplicate',false,'caseId',c.id,'status',after_state->>'status',
     'revision',c.current_revision,'invoiceRecipient',c.customer_email);
 end;
