@@ -7,16 +7,19 @@ declare
  c billing_cases; j billing_jobs; p billing_payments; d billing_documents;
  expected_job uuid; expected_payment uuid; qonto_id text; invoice_id text;
  proforma_id text; expected_cents bigint; order_id text; order_name text; paid_time timestamptz;
+ historical_mail_job uuid; historical_pf_document uuid; historical_mail_completed timestamptz;
  expected_shopify text; event_key text; stage1 text; checked timestamptz; bank jsonb;
 begin
  if p_case='17ebf87b-f7c3-4ba3-9b14-bbf79f7b6588' then
   expected_job:='66cdafb5-f754-486c-a7de-0119a4c63c06';expected_payment:='055b1062-e9fd-4d2a-9c97-147b3c5e1c54';
   qonto_id:='01a17742-cb98-7b8f-af8e-9743ed3ad972';invoice_id:='3717331959';proforma_id:='3675733235';
   expected_cents:=116382;order_id:='8513317896459';order_name:='#NEONT4692';paid_time:='2026-10-26T08:10:28.510Z';expected_shopify:='PENDING';
+  historical_mail_job:='89104f0c-670e-42e8-bed0-5e2b6efc29bd';historical_pf_document:='eeeee43c-23c4-4d01-9d93-1de4d980b812';historical_mail_completed:='2026-09-11T14:36:53.856259Z';
  elsif p_case='4e0eeb3f-7411-4751-a7ad-f68df8dd6ad7' then
   expected_job:='79b533c8-5f40-4b32-8375-5e2ea836ae74';expected_payment:='1af5d142-949b-49c4-a2e0-3cbce2fd0b4d';
   qonto_id:='01a16919-e2ff-780e-b230-1496816dc599';invoice_id:='3717333369';proforma_id:='3714029841';
   expected_cents:=147900;order_id:='8618528702731';order_name:='#NEONT4796';paid_time:='2026-10-23T14:11:06Z';expected_shopify:='PAID';
+  historical_mail_job:='c43b6a6e-a27e-4c8b-b61a-316f5a43b3f7';historical_pf_document:='cac021c9-f37d-4ca5-8fc0-13593f597aff';historical_mail_completed:='2026-10-22T09:24:53.685060Z';
  else raise exception 'FULL_QONTO_CASE'; end if;
  event_key:='repair:20261026:full-qonto-projection:'||p_case;
  stage1:='repair:20261026:billing-source-alignment:'||p_case;
@@ -45,7 +48,15 @@ begin
   or j.payload ?| array['markPaid','collectivePaymentId','manualPaidQontoProof','repairFullPayment']
  then raise exception 'FULL_QONTO_JOB'; end if;
  if exists(select 1 from billing_jobs where billing_case_id=p_case and status='PROCESSING')
-  or exists(select 1 from billing_jobs where billing_case_id=p_case and job_type='SEND_CUSTOMER_DOCUMENT' and status<>'BLOCKED')
+  -- Only the exact, unchanged historical proforma delivery is an allowed DONE
+  -- row. Unknown completed mail or any queued/leased mail remains a blocker.
+  or exists(select 1 from billing_jobs m where m.billing_case_id=p_case and m.job_type='SEND_CUSTOMER_DOCUMENT'
+   and m.status<>'BLOCKED' and (m.id=historical_mail_job and m.status='DONE' and m.attempt_count=1
+    and m.lease_token is null and m.lease_expires_at is null and m.next_attempt_at is null
+    and m.updated_at=historical_mail_completed
+    and m.payload->>'documentType'='PROFORMA'
+    and m.payload->>'billingDocumentId'=historical_pf_document::text
+    and m.payload->>'easybillDocumentId'=proforma_id) is not true)
   or exists(select 1 from billing_change_requests where billing_case_id=p_case and status in ('PENDING','APPROVED'))
  then raise exception 'FULL_QONTO_CONCURRENT_OR_MAIL'; end if;
  if not exists(select 1 from billing_jobs where billing_case_id=p_case and job_type='CREATE_INVOICE'

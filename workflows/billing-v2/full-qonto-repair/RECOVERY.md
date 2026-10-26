@@ -1,6 +1,21 @@
 # Full Qonto payment projection: 26 October 2026
 
-Prepared correction only. Apply solely after explicit approval of the exact commit.
+Apply solely after explicit approval of the exact commit.
+
+The original de76957f384f28b0adff1ef1b5ee65e2053d1954 workflow changes were
+approved and applied on 26 October 2026: payment version
+a463dca5-5221-481b-8d0e-008ee0eb8071 and alarm version
+cfc76d29-7264-4934-9f50-89295672b9ae. Both active and published definitions were
+read back exactly. Do not apply the workflow patches again.
+
+Admission has NOT run: the final database check found two old completed proforma
+mail jobs that the original guard would reject. The updated admission permits only
+those exact DONE jobs, with their original document binding, attempt count, cleared
+lease and historical completion timestamp. Unknown or queued mail still blocks.
+Regression fixtures now include both historical jobs and compare their complete
+rows before/after actual claim/completion. The old guard fails these fixtures.
+This admission correction requires approval of its new exact commit; the earlier
+approval does not authorize this amended SQL.
 Do not merge or push main: that would trigger an unrelated Ops deployment.
 Do not change Shopify payment status, send customer mail or replay historical Manual-Paid failures.
 
@@ -28,7 +43,7 @@ The #4796 Shopify projection remains DONE. Invoice jobs and documents remain unc
 
 - 33 pure and generated-workflow tests: `node --test --test-reporter=tap workflows/billing-v2/full-qonto-repair/payment-recovery.test.mjs`.
 - CI invokes those checks through `tests/quotes/full-qonto-repair.test.ts`.
-- 22 PostgreSQL checks in a disposable PostgreSQL 17 container without network:
+- 30 PostgreSQL checks in a disposable PostgreSQL 17 container without network:
   `LIVE_FUNCTIONS=/path/to/read-only-function-snapshot.sql python3 scripts/test_full_qonto_repair_db.py`.
   Capture the current definitions of billing_job_claim, billing_job_complete,
   billing_payment_ingest and resolve_recovered_billing_job_incidents using pg_get_functiondef.
@@ -40,7 +55,7 @@ The #4796 Shopify projection remains DONE. Invoice jobs and documents remain unc
   production and returned the expected relationship. Temporary probe was deleted.
 - MCP validateOnly accepts 48 payment-workflow operations and one alarm-route operation.
 
-## Apply after exact-SHA approval
+## Apply after exact-SHA approval (workflow steps already completed)
 
 1. Fetch workflow K9poQw3a1DOO16Vd and alarm workflow M4uG1HAtN9Zggxww through MCP.
    Compare payment nodes/connections/settings with baseline SHA256
@@ -50,7 +65,8 @@ The #4796 Shopify projection remains DONE. Invoice jobs and documents remain unc
    Review exactly the delta, validateOnly, then apply scoped MCP operations. If the
    known partial-API schema error occurs, re-read to prove no mutation and use full
    MCP only for the exact fresh candidate. Read both top-level and published versions.
-   The alarm change adds only this worker to the existing support@neontrip.de route;
+   For the already applied workflow versions above, verify exact equality and skip
+   reapplication. The alarm change adds only this worker to the existing support@neontrip.de route;
    preserve five-minute throttling. Do not generate a test alarm.
 3. Immediately before admission, read each original Shopify order directly, both
    easybill final invoices and proformas, all four document-payment histories, and
@@ -68,6 +84,11 @@ The #4796 Shopify projection remains DONE. Invoice jobs and documents remain unc
    Values must reflect actual reads, never assumed booleans. If either admission
    fails, roll back both. No schema migration is needed; the function is session-local.
    Capture before/after and the unique FULL_QONTO_PROJECTION_ADMITTED event.
+   The only exempt historical DONE mail jobs are 89104f0c-670e-42e8-bed0-5e2b6efc29bd
+   (#4692, completion 2026-09-11T14:36:53.856259Z) and
+   c43b6a6e-a27e-4c8b-b61a-316f5a43b3f7
+   (#4796, completion 2026-10-22T09:24:53.685060Z), bound to their exact proformas.
+   They are neither changed nor rerun.
 5. Allow the normal scheduled worker to claim. Do not trigger a manual execution.
    Before POST it re-reads documents, complete histories, webhook state and the fresh
    ledger/case/invoice. It allows only attempt 1 within five minutes of preflight.
