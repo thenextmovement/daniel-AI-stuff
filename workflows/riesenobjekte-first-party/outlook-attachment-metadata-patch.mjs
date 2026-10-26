@@ -34,6 +34,21 @@ export function applyNormalizePatch(code) {
   return code;
 }
 
+
+export const autoReplyPrefix = "const source = $('Normalize Oldest Outlook Inquiry').first().json || {};\n";
+export const autoReplyNoEmailGuard = "// User instruction 2026-10-26: repair these historical requests without customer email.\nconst repairNoEmailRequestIds = new Set([\n  '000ff1ce-9f42-48bc-8aa0-428d5d9d4288',\n  '000ff1ce-39ed-4e3b-8738-ede2243bede6'\n]);\nif (repairNoEmailRequestIds.has(source.submissionId) ||\n    [...repairNoEmailRequestIds].some(id =>\n      source.idempotencyKey === 'riesenobjekte-first-party:' + id)) {\n  // Zero output stops the existing wait/send/result path; never record a fake send.\n  return [];\n}\n";
+export function applyAutoReplyGuard(code) {
+  if (!code.startsWith(autoReplyPrefix) || code.includes('repairNoEmailRequestIds')) {
+    throw new Error('AutoReply baseline mismatch');
+  }
+  return autoReplyPrefix + autoReplyNoEmailGuard + code.slice(autoReplyPrefix.length);
+}
+patch.operations.push({
+  type: 'patchNodeField', nodeName: 'Build Normal AutoReply',
+  fieldPath: 'parameters.jsCode',
+  patches: [{ find: autoReplyPrefix, replace: autoReplyPrefix + autoReplyNoEmailGuard }]
+});
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.stdout.write(JSON.stringify(patch));
 }
