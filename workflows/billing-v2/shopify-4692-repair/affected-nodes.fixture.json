@@ -1,0 +1,263 @@
+{
+  "id": "K9poQw3a1DOO16Vd",
+  "versionId": "a463dca5-5221-481b-8d0e-008ee0eb8071",
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "availableInMCP": false,
+    "binaryMode": "separate"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-07/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'query BillingPaymentState($id: ID!) { order(id: $id) { id name canMarkAsPaid displayFinancialStatus cancelledAt totalPriceSet{shopMoney{amount currencyCode} } currentTotalPriceSet{shopMoney{amount currencyCode} } totalOutstandingSet{shopMoney{amount currencyCode} } } }', variables: { id: String($json.billingCase.shopify_order_id || '').startsWith('gid://shopify/Order/') ? String($json.billingCase.shopify_order_id) : 'gid://shopify/Order/' + String($json.billingCase.shopify_order_id || '').replace(/\\D/g, '') } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "shopify-query",
+      "name": "Shopify Read Payment State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        192,
+        128
+      ],
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fail=reason=>{throw new Error('COLLECTIVE_PAYMENT_'+reason);};\nconst norm=v=>String(v??'').toLowerCase().replace(/[^a-z0-9]/g,'');\nconst numericId=v=>String(v??'').replace(/^gid:\\/\\/shopify\\/Order\\//,'');\nconst money=m=>{if(!m||m.currencyCode!=='EUR'||!/^\\d+(?:\\.\\d{1,2})?$/.test(String(m.amount)))fail('MONEY');return Math.round(Number(m.amount)*100);};\nfunction shopifyDecision(ctx,body){\n const o=body.data?.order,id='gid://shopify/Order/'+numericId(ctx.billingCase.shopify_order_id), expected=Number(ctx.job.payload.amountCents);\n if(body.errors?.length||!o||o.id!==id||o.name!==ctx.billingCase.shopify_order_name||o.cancelledAt||expected!==Number(ctx.billingCase.total_gross_cents)||money(o.currentTotalPriceSet?.shopMoney)!==expected||money(o.totalPriceSet?.shopMoney)!==expected)fail('SHOPIFY_SNAPSHOT');\n const outstanding=money(o.totalOutstandingSet?.shopMoney);\n if(o.displayFinancialStatus==='PAID'&&outstanding===0)return {...ctx,alreadyDone:true,collectiveVerifiedPaid:true};\n if(o.displayFinancialStatus!=='PENDING'||outstanding!==expected||o.canMarkAsPaid!==true)fail('SHOPIFY_OUTSTANDING');\n return {...ctx,alreadyDone:false};\n}\nconst collectiveCtx=$('Normalize Projection Job').first().json;if(collectiveCtx.job.payload.collectivePaymentId)return [{json:shopifyDecision(collectiveCtx,$json.body??$json)}];\nconst ctx=$('Normalize Projection Job').first().json; const order=($json.body??$json).data?.order; if(!order) throw new Error('shopify_order_missing'); if(order.displayFinancialStatus==='PAID') return [{json:{...ctx,alreadyDone:true}}]; if(order.canMarkAsPaid!==true) throw new Error('shopify_order_cannot_mark_paid'); return [{json:{...ctx,alreadyDone:false}}];"
+      },
+      "id": "shopify-decision",
+      "name": "Decide Shopify Payment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        128
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.alreadyDone }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "shopify-needed",
+      "name": "Shopify Mutation Needed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        640,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-07/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'mutation BillingMarkPaid($input: OrderMarkAsPaidInput!) { orderMarkAsPaid(input: $input) { order { id displayFinancialStatus cancelledAt totalPriceSet { shopMoney { amount currencyCode } } currentTotalPriceSet { shopMoney { amount currencyCode } } totalOutstandingSet { shopMoney { amount currencyCode } } } userErrors { field message } } }', variables: { input: { id: String($json.billingCase.shopify_order_id || '').startsWith('gid://shopify/Order/') ? String($json.billingCase.shopify_order_id) : 'gid://shopify/Order/' + String($json.billingCase.shopify_order_id || '').replace(/\\D/g, '') } } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "shopify-paid",
+      "name": "Shopify Mark Order Paid",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        864,
+        48
+      ],
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "{\nconst REPAIR=\"20261026-full-qonto-no-email\";const CASES=[{\"caseId\":\"17ebf87b-f7c3-4ba3-9b14-bbf79f7b6588\",\"jobId\":\"66cdafb5-f754-486c-a7de-0119a4c63c06\",\"order\":\"#NEONT4692\",\"shopifyId\":\"8513317896459\",\"invoice\":\"3717331959\",\"proforma\":\"3675733235\",\"customer\":\"2680070576\",\"amount\":116382,\"paidAt\":\"2026-10-26T08:10:28.510Z\",\"paymentId\":\"055b1062-e9fd-4d2a-9c97-147b3c5e1c54\",\"qontoId\":\"01a17742-cb98-7b8f-af8e-9743ed3ad972\"},{\"caseId\":\"4e0eeb3f-7411-4751-a7ad-f68df8dd6ad7\",\"jobId\":\"79b533c8-5f40-4b32-8375-5e2ea836ae74\",\"order\":\"#NEONT4796\",\"shopifyId\":\"8618528702731\",\"invoice\":\"3717333369\",\"proforma\":\"3714029841\",\"customer\":\"2704850490\",\"amount\":147900,\"paidAt\":\"2026-10-23T14:11:06Z\",\"paymentId\":\"1af5d142-949b-49c4-a2e0-3cbce2fd0b4d\",\"qontoId\":\"01a16919-e2ff-780e-b230-1496816dc599\"}];\nfunction fail(reason) { throw new Error('FULL_QONTO_REPAIR_'+reason); }\nfunction body(response) {\n  if(response?.statusCode!==200 || response.body===null || typeof response.body!=='object') fail('READ_UNCONFIRMED');\n  return response.body;\n}\nfunction completeList(response) {\n  const b=body(response);\n  if(!Array.isArray(b.items)||Number(b.page)!==1||Number(b.pages)!==1||Number(b.total)!==b.items.length) fail('INCOMPLETE_HISTORY');\n  return b.items;\n}\nfunction scope(ctx) {\n  const j=ctx?.job,p=j?.payload,c=ctx?.billingCase;\n  const s=CASES.find(s=>s.caseId===c?.id && s.jobId===j?.id);\n  if(!s||j.job_type!=='PROJECT_PAYMENT_EASYBILL'||p?.repairFullPayment!==REPAIR||p.customerEmailSuppressed!==true||\n    p.markPaid||p.collectivePaymentId||p.collectiveAllocationId||p.manualPaidQontoProof||\n    p.documentId!==s.invoice||p.proformaId!==s.proforma||p.paymentId!==s.paymentId||p.providerTransactionId!==s.qontoId||\n    p.amountCents!==s.amount||p.paidAt!==s.paidAt||!Number.isInteger(j.attempt_count)||j.attempt_count<1||\n    c.shopify_order_name!==s.order||c.total_gross_cents!==s.amount||c.currency!=='EUR'||c.status!=='INVOICED'||\n    !['NOT_REQUIRED','VERIFIED'].includes(c.tax_review_status)||c.cancelled_at||c.refunded_at||!c.paid_at||\n    String(ctx.originalInvoice?.easybill_document_id)!==s.invoice||ctx.originalInvoice.status!=='FINALIZED'||ctx.originalInvoice.sent_at!==null) fail('SCOPE');\n  return s;\n}\nfunction document(response,s,proforma=false) {\n  const d=body(response);\n  if(String(d.id)!==(proforma?s.proforma:s.invoice)||d.type!==(proforma?'PROFORMA_INVOICE':'INVOICE')||\n    d.number!==(proforma?'PF-'+s.order.slice(1):s.order)||d.is_draft!==false||d.currency!=='EUR'||Number(d.amount)!==s.amount||\n    String(d.customer_id)!==s.customer||!Number.isSafeInteger(d.paid_amount)||d.cancel_id||d.cancelled_at||(!proforma&&d.last_postbox_id!==null)) fail('DOCUMENT');\n  return d;\n}\nfunction marker(s) { return 'Qonto-ID '+s.qontoId+'; NEONTRIP no-email repair 20261026'; }\nfunction exactPayment(row,s) {\n  if(!row?.id||String(row.document_id)!==s.invoice||Number(row.amount)!==s.amount||\n    String(row.payment_at).slice(0,10)!==s.paidAt.slice(0,10)||row.type!=='BANK_TRANSFER'||\n    row.provider!=='NEONTRIP Billing v2'||row.reference!==s.order||row.notice!==marker(s)||row.is_overdue_fee===true) fail('PAYMENT_RECEIPT');\n  return row.id;\n}\nfunction paidReceipt(invoiceResponse,paymentsResponse,s) {\n  const d=document(invoiceResponse,s),rows=completeList(paymentsResponse);\n  if(rows.length!==1||Number(d.paid_amount)!==s.amount||!d.paid_at) fail('PAYMENT_NOT_CONFIRMED');\n  return exactPayment(rows[0],s);\n}\nfunction decide(ctx,data) {\n  const s=scope(ctx),d=document(data.invoice,s),pf=document(data.proforma,s,true);\n  const rows=completeList(data.payments),pfRows=completeList(data.proformaPayments),hooks=completeList(data.hooks),ledger=body(data.ledger);\n  if(hooks.some(h=>h.is_active!==false)) fail('ACTIVE_OR_UNKNOWN_WEBHOOK');\n  if(pfRows.length||Number(pf.paid_amount)!==0||pf.paid_at) fail('PROFORMA_PAYMENT_CONFLICT');\n  if(!Array.isArray(ledger)||ledger.length!==1) fail('LEDGER');\n  const p=ledger[0];\n  if(p.id!==s.paymentId||p.provider!=='QONTO'||p.provider_transaction_id!==s.qontoId||p.amount_cents!==s.amount||\n    p.billing_case_id!==s.caseId||p.currency!=='EUR'||p.match_status!=='MATCHED'||Date.parse(p.booked_at)!==Date.parse(s.paidAt)||\n    !['PENDING','FAILED'].includes(p.easybill_projection_status)) fail('LEDGER');\n  const latest=p.billing_cases;\n  const invoices=latest?.billing_documents?.filter(d=>d.document_type==='INVOICE');\n  if(!invoices||invoices.length!==1) fail('CURRENT_CASE');\n  scope({...ctx,billingCase:latest,originalInvoice:invoices[0]});\n  if(rows.length) return {...ctx,alreadyDone:true,repairPaymentVerified:true,easybillPaymentId:paidReceipt(data.invoice,data.payments,s)};\n  if(Number(d.paid_amount)!==0||d.paid_at) fail('PAYMENT_CONFLICT');\n  const expires=Date.parse(ctx.job.payload.repairAdmissionValidUntil);\n  if(!Number.isFinite(expires)||expires<=Date.now())fail('ADMISSION_EXPIRED');\n  if(ctx.job.attempt_count!==1) fail('AMBIGUOUS_RETRY_NO_SECOND_POST');\n  return {...ctx,alreadyDone:false};\n}\nfunction confirm(ctx,postResponse,invoiceResponse,paymentsResponse) {\n  const s=scope(ctx);\n  if(postResponse?.statusCode!==201) fail('POST_UNCONFIRMED');\n  const created=exactPayment(postResponse.body,s),verified=paidReceipt(invoiceResponse,paymentsResponse,s);\n  if(String(created)!==String(verified)) fail('RECEIPT_CHANGED');\n  return {...ctx,alreadyDone:false,repairPaymentVerified:true,easybillPaymentId:verified};\n}\nconst repairCtx=$('Normalize Projection Job').first().json;\nif(repairCtx.job.payload.repairFullPayment){\n  const s=scope(repairCtx);\n  if($json.repairPaymentVerified!==true||!$json.easybillPaymentId)fail('UNVERIFIED_COMPLETION');\n  return [{json:{jobId:repairCtx.job.id,leaseToken:repairCtx.job.lease_token,success:true,result:{worker:'n8n-payment-projection-v2',projection:repairCtx.job.job_type,repairFullPayment:REPAIR,qontoId:s.qontoId,easybillPaymentId:$json.easybillPaymentId,reused:$json.alreadyDone===true,customerEmailSuppressed:true}}}];\n}\n}\n\nconst manualCtx=$('Normalize Projection Job').first().json;\nif(manualCtx.job.payload.manualPaidQontoProof){\n const p=manualCtx.job.payload, b=$json.body??$json;\n const reused=b.manualQontoVerifiedPaid===true&&b.alreadyDone===true;\n const marker='Qonto-ID '+p.manualPaidQontoProof.qontoId+'; automatisch über NEONTRIP Billing v2 abgeglichen';\n if(!reused&&(!b.id||String(b.document_id)!==String(p.documentId)||Number(b.amount)!==Number(p.amountCents)||\n    String(b.payment_at).slice(0,10)!==String(p.paidAt).slice(0,10)||b.notice!==marker))\n   throw new Error('MANUAL_QONTO_MUTATION_UNCONFIRMED');\n return [{json:{jobId:manualCtx.job.id,leaseToken:manualCtx.job.lease_token,success:true,\n   result:{worker:'n8n-payment-projection-v2',projection:manualCtx.job.job_type,qontoId:p.manualPaidQontoProof.qontoId,easybillPaymentId:reused?b.easybillPaymentId:b.id,reused}}}];\n}\nconst fail=reason=>{throw new Error('COLLECTIVE_PAYMENT_'+reason);};\nconst norm=v=>String(v??'').toLowerCase().replace(/[^a-z0-9]/g,'');\nconst numericId=v=>String(v??'').replace(/^gid:\\/\\/shopify\\/Order\\//,'');\nconst money=m=>{if(!m||m.currencyCode!=='EUR'||!/^\\d+(?:\\.\\d{1,2})?$/.test(String(m.amount)))fail('MONEY');return Math.round(Number(m.amount)*100);};\nfunction projectionSuccess(ctx,body){\n const p=ctx.job.payload;\n if(body.collectiveVerifiedPaid===true&&body.alreadyDone===true)return {jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:true,result:{worker:'n8n-payment-projection-v2',collectivePaymentId:p.collectivePaymentId,reused:true}};\n if(ctx.job.job_type==='PROJECT_PAYMENT_SHOPIFY'){\n  const result=body.data?.orderMarkAsPaid;\n  if(body.errors?.length||!result||result.userErrors?.length||result.order?.id!=='gid://shopify/Order/'+numericId(ctx.billingCase.shopify_order_id)||result.order.displayFinancialStatus!=='PAID'||result.order.cancelledAt||money(result.order.currentTotalPriceSet?.shopMoney)!==Number(p.amountCents)||money(result.order.totalPriceSet?.shopMoney)!==Number(p.amountCents)||money(result.order.totalOutstandingSet?.shopMoney)!==0)fail('SHOPIFY_MUTATION_UNCONFIRMED');\n } else {\n  if(!body.id||String(body.document_id)!==String(p.documentId)||Number(body.amount)!==Number(p.amountCents)||body.notice!=='Qonto allocation '+p.collectiveAllocationId)fail('EASYBILL_MUTATION_UNCONFIRMED');\n }\n return {jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:true,result:{worker:'n8n-payment-projection-v2',projection:ctx.job.job_type,collectivePaymentId:p.collectivePaymentId}};\n}\nconst collectiveCtx=$('Normalize Projection Job').first().json;if(collectiveCtx.job.payload.collectivePaymentId)return [{json:projectionSuccess(collectiveCtx,$json.body??$json)}];\nconst ctx=$('Normalize Projection Job').first().json; const body=$json.body??$json; const errors=body.data?.orderMarkAsPaid?.userErrors||[]; if(errors.length) throw new Error('shopify_mark_paid:'+errors.map(x=>x.message).join(';')); return [{json:{jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:true,result:{worker:'n8n-payment-projection-v2',projection:ctx.job.job_type}}}];"
+      },
+      "id": "projection-success",
+      "name": "Prepare Projection Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        -48
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx=$('Normalize Projection Job').first().json; return [{json:{jobId:ctx.job.id,leaseToken:ctx.job.lease_token,success:false,result:{worker:'n8n-payment-projection-v2'},error:String($json.error?.message||$json.message||'payment_projection_failed').slice(0,1800)}}];"
+      },
+      "id": "projection-failure",
+      "name": "Prepare Projection Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        304
+      ]
+    }
+  ],
+  "connections": {
+    "Shopify Read Payment State": {
+      "main": [
+        [
+          {
+            "node": "Decide Shopify Payment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide Shopify Payment": {
+      "main": [
+        [
+          {
+            "node": "Shopify Mutation Needed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify Mutation Needed": {
+      "main": [
+        [
+          {
+            "node": "Shopify Mark Order Paid",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify Mark Order Paid": {
+      "main": [
+        [
+          {
+            "node": "Prepare Projection Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Projection Success": {
+      "main": [
+        [
+          {
+            "node": "Complete Projection Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Projection Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Projection Failure": {
+      "main": [
+        [
+          {
+            "node": "Complete Projection Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
