@@ -1,0 +1,39 @@
+{
+  "id": "M4uG1HAtN9Zggxww",
+  "versionId": "90331088-65e5-443e-a79f-3d6da9cae498",
+  "activeVersionId": "90331088-65e5-443e-a79f-3d6da9cae498",
+  "active": true,
+  "nodes": [
+    {
+      "id": "send-prepared-error-email",
+      "name": "Send Prepared Alert Email",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": "={{ ['u48KZyTcU2J9pw2P', 'wqaTsVKuKqKnp2AG', 'cW08nxn9ANfGFEou', '6NZnfGpyfUVikqpf'].some(id => id === $json.source_workflow_id || ($json.metadata?.affected_workflow_ids || []).includes(id)) ? 'support@neontrip.de' : 'info@NeonTrip.de' }}",
+        "subject": "={{ $json.subject || 'N8N Fehler' }}",
+        "bodyContent": "={{ $json.body_html || '<h2>N8N Fehler</h2><pre>' + JSON.stringify($json, null, 2) + '</pre>' }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "6be6c87d-23c8-4b7a-a7e4-3e8a40b7ddbe",
+      "retryOnFail": false,
+      "maxTries": 1,
+      "waitBetweenTries": 0,
+      "onError": "continueRegularOutput"
+    }
+  ]
+}

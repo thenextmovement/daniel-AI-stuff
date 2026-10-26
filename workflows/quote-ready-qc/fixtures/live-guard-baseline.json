@@ -1,0 +1,1122 @@
+{
+  "id": "bvRcF5Xaj3eGY0J4",
+  "versionId": "22037c4c-045e-4643-ac00-cb00572ac45b",
+  "activeVersionId": "22037c4c-045e-4643-ac00-cb00572ac45b",
+  "active": true,
+  "nodes": [
+    {
+      "id": "trigger-v3",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "manual-v3",
+      "name": "Manual Test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        500
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "config-v3",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "get-cards-v3",
+      "name": "Get Cards",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "filter-v3",
+      "name": "Filter Unprocessed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "has-cards-v3",
+      "name": "Has Cards?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "no-cards-v3",
+      "name": "No Cards",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        500
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "extract-v3",
+      "name": "Extract Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "has-image-v3",
+      "name": "Has Image?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "fail-no-image-v3",
+      "name": "Fail No Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        500
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "download-v3",
+      "name": "Download Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "download-ok-v3",
+      "name": "Download OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "fail-download-v3",
+      "name": "Fail Download",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        500
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "vision-v3",
+      "name": "Analyze Vision",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "compare-v3",
+      "name": "Compare Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "check-result-v3",
+      "name": "Check Result",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "add-verified-v3",
+      "name": "Add Verified Label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        100
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "add-failed-v3",
+      "name": "Add Failed Label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "comment-verified-v3",
+      "name": "Comment Verified",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        250
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "comment-failed-v3",
+      "name": "Comment Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        550
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "prepare-extractor-data",
+      "name": "Prepare Extractor Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3100,
+        250
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "execute-extractor",
+      "name": "Execute Extractor",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3360,
+        250
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "config-preflight-v3",
+      "name": "Config Preflight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-read-audit",
+      "name": "Read Existing QC Repair Attempts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        20
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-needs-repair",
+      "name": "QC Needs Second Read?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2680,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-prepare-claim",
+      "name": "Prepare QC Repair Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2890,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-claim",
+      "name": "Claim One QC Repair",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3100,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-restore-claim",
+      "name": "Restore Claimed QC Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3310,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-has-pdf",
+      "name": "Has Supplier PDF?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3520,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-download-pdf",
+      "name": "Download QC Supplier PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3720,
+        650
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-extract-pdf",
+      "name": "Read QC Supplier PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        3930,
+        650
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-collect-source",
+      "name": "Collect QC Source Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4140,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-download-second",
+      "name": "Download QC Image Again",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4350,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-second-vision",
+      "name": "AI Read QC Again",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        4560,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-prepare-corrections",
+      "name": "Validate QC Correction Proposal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4770,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-read-before-write",
+      "name": "Read QC Card Before Correction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4980,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-guard-write",
+      "name": "Guard QC Correction Writes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5190,
+        800
+      ],
+      "parameters": {
+        "jsCode": "// Manual edits on the inquiry board own the entire card's AI field projection.\n// Read live Trello history immediately before writing; never infer ownership\n// from a nonempty value or member ID (the API uses the same member as the UI).\nfunction manualFieldAuthority(card) {\n  const board = '63d10c34105771f01ccf4296';\n  if (!card || !card.id || card.closed || card.idBoard !== board)\n    return {allowed:false, reason:'card_outside_active_inquiry_board'};\n  if (!Array.isArray(card.actions)) throw new Error('MANUAL_FIELD_HISTORY_UNAVAILABLE');\n  for (const action of card.actions) {\n    if (!action || action.type !== 'updateCustomFieldItem') continue;\n    if (action.data?.card?.id !== card.id) throw new Error('MANUAL_FIELD_HISTORY_CARD_MISMATCH');\n    if (action.data?.board?.id !== board) continue;\n    // Native Trello edits have no appCreator. Missing provenance also stops AI.\n    // Empty/cleared fields count too, and RETRY does not release manual ownership.\n    if (!action.appCreator?.id)\n      return {allowed:false, reason:'manual_custom_fields', actionId:action.id, date:action.date};\n  }\n  // Never assume old manual edits are absent when the history was truncated.\n  if (card.actions.length >= 1000) throw new Error('MANUAL_FIELD_HISTORY_TRUNCATED');\n  return {allowed:true, reason:'automated_fields_only'};\n}\n\n\nconst FIELD_MAP={\"price_1\":\"67ab3fba2e8c6d28a877db45\",\"size_1\":\"67989c3214f0ccb08ff6bea4\",\"price_2\":\"67ab3fc552ca87d0b4d96044\",\"size_2\":\"67989c83b14e7b89fb545dc4\",\"price_3\":\"67f4fa9720c565f324c945b8\",\"size_3\":\"67f4faad01083793715a3aac\",\"price_4\":\"67f4faf657f304d308f1435b\",\"size_4\":\"67f4fb02b7f3aaf40ae0636d\"};\nconst BOARD='63d10c34105771f01ccf4296',LIST='659ffc4e5f8bffd67fe38265';\nfunction fields(card){return Object.fromEntries(Object.entries(FIELD_MAP).map(([k,id])=>{const v=(card.customFieldItems||[]).find(f=>f.idCustomField===id)?.value;return [k,v?.text??v?.number??null]}));}\nfunction imageOf(card){return (card.attachments||[]).find(a=>[a.name,a.fileName].some(n=>String(n||'').toLowerCase()==='image.png'));}\nfunction pdfOf(card){const a=(card.attachments||[]).filter(a=>/\\.pdf$/i.test(a.fileName||a.name||'')&&!/invoice|rechnung|angebot|rfq|annex|receipt|agb/i.test(a.name||''));return a.length===1?a[0]:null;}\nfunction attachmentURL(card,a){return a?'https://api.trello.com/1/cards/'+card.id+'/attachments/'+a.id+'/download/'+encodeURIComponent(a.fileName||a.name):null;}\nfunction num(v){if(typeof v==='number')return Number.isFinite(v)?v:null;if(typeof v!=='string')return null;const s=v.trim().replace(',','.');if(!/^(?:EUR|USD|€|\\$)?\\s*\\d+(?:\\.\\d+)?\\s*(?:EUR|USD|€|\\$)?$/i.test(s))return null;return Number(s.replace(/[^\\d.]/g,''));}\nconst SIZE_TOLERANCE_CM=1;\nfunction hasValue(v){return v!==null&&v!==undefined&&String(v).trim()!=='';}\nfunction size(v){const m=String(v||'').match(/^\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:cm\\s*)?(?:[x×]\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:cm)?)?\\s*$/i);if(!m)return null;const w=Number(m[1].replace(',','.')),h=m[2]===undefined?null:Number(m[2].replace(',','.'));return w>0&&(h===null||h>0)?{w,h}:null;}\n// One dimension denotes the longest edge. Two dimensions allow rotated orientation.\n// Compare raw centimetres per edge; round only the stored output, never the tolerance.\nfunction sizeDelta(v,s){if(!s||s.w===null||s.w===undefined)return Infinity;if(s.h===null)return Math.abs(Math.max(v.width_cm,v.height_cm)-s.w);return Math.min(Math.max(Math.abs(v.width_cm-s.w),Math.abs(v.height_cm-s.h)),Math.max(Math.abs(v.width_cm-s.h),Math.abs(v.height_cm-s.w)));}\nfunction dimensionsAgree(a,b){return sizeDelta(a,{w:b.width_cm,h:b.height_cm})<=SIZE_TOLERANCE_CM+1e-9;}\nfunction roundedSourceSize(v,oneDimension=false){return (oneDimension?[Math.max(v.width_cm,v.height_cm)]:[v.width_cm,v.height_cm]).map(Math.round).join('x')+'cm';}\nfunction parseVision(v){if(v?.signs)return v;let x=v?.message?.content??v?.content??v?.text??v?.output??v?.data;if(Array.isArray(x))x=x.map(y=>y.text||'').join('');return JSON.parse(String(x||'').replace(/^\\s*\\x60\\x60\\x60(?:json)?/i,'').replace(/\\x60\\x60\\x60\\s*$/,'').trim());}\nfunction variants(v){if(!Array.isArray(v?.signs))throw new Error('Vision-Antwort enthaelt keine signs');const vs=v.signs.flatMap(s=>Array.isArray(s.variants)?s.variants:[]);if(!vs.length||vs.length>4)throw new Error('Keine eindeutig pruefbaren 1-4 Varianten');for(const s of vs){if(![s.width_cm,s.height_cm,s.total_price_usd].every(x=>typeof x==='number'&&Number.isFinite(x)&&x>0))throw new Error('Dimensionen oder Gesamtpreis nicht eindeutig lesbar');if(s.width_cm>3000||s.height_cm>3000||s.total_price_usd>100000)throw new Error('Werte ausserhalb des plausiblen Bereichs');}return vs;}\nfunction compare(extract,raw){let v,vs;const errors=[],warnings=[],matches=[];try{v=parseVision(raw);vs=variants(v);if(!['high','medium'].includes(v.confidence))throw new Error('Vision-Konfidenz zu niedrig');}catch(e){return {...extract,status:'FAILED',errors:['Vision unklar: '+e.message],warnings,matches,summary:'QC fehlgeschlagen - keine verlaessliche Vision-Antwort',visionData:null,signsFromImage:[]};}\n const cf=extract.customFields||{},sets=[];for(let j=1;j<=4;j++){if(hasValue(cf['size_'+j])||hasValue(cf['price_'+j])){const wh=size(cf['size_'+j]);sets.push({index:j,w:wh?.w??null,h:wh?.h??null,price:num(cf['price_'+j])});}}\n if(vs.length!==sets.length)errors.push('Anzahl Varianten: Bild='+vs.length+', Custom Fields='+sets.length);\n const used=new Set();const matched=[];\n for(let i=0;i<vs.length;i++){const a=vs[i];const ranked=sets.filter(s=>!used.has(s.index)).map(s=>({s,score:(s.price===null?999999:Math.abs(a.total_price_usd-s.price))*1000+(s.w===null?999999:sizeDelta(a,s))})).sort((a,b)=>a.score-b.score);const s=ranked[0]?.s;if(!s){errors.push('Variante '+(i+1)+': kein Custom-Field-Satz');continue;}used.add(s.index);matched.push({variant:i,field_index:s.index});\n  if(s.price===null)errors.push('price_'+s.index+' fehlt oder ist ungueltig');else{const d=Math.abs(a.total_price_usd-s.price);if(d>3&&d/s.price>0.05)errors.push('Variante '+(i+1)+' PREIS: Quelle='+a.total_price_usd+', CF='+s.price);else matches.push('Price_'+s.index+' stimmt innerhalb Toleranz');}\n  if(s.w===null)errors.push('size_'+s.index+' fehlt oder ist ungueltig');else{const d=sizeDelta(a,s);if(d>SIZE_TOLERANCE_CM+1e-9)errors.push('Variante '+(i+1)+' GROESSE: Quelle='+a.width_cm+'x'+a.height_cm+'cm, CF='+s.w+(s.h===null?'':'x'+s.h)+'cm');else matches.push('Size_'+s.index+' stimmt innerhalb Toleranz');}\n }\n return {...extract,status:errors.length?'FAILED':'VERIFIED',errors,warnings,matches,summary:errors.length?'QC fehlgeschlagen - '+errors.length+' Fehler':'QC bestanden - '+vs.length+' Variante(n)',visionData:v,visionConfidence:v.confidence,signsFromImage:vs.map(s=>({width:s.width_cm,height:s.height_cm,price:s.total_price_usd})),customFieldSets:sets,matchedSets:matched};\n}\nfunction sourceKey(card){const image=imageOf(card),pdf=pdfOf(card);return 'qc_auto_repair_v1:'+card.id+':'+(image?.id||'no-image')+':'+(pdf?.id||'no-pdf');}\n\nreturn $input.all().map((item,i)=>{const ctx=$('Validate QC Correction Proposal').itemMatching(i).json,c=item.json;if(c.id!==ctx.cardId||c.closed||c.idBoard!==BOARD||c.idList!==LIST)throw new Error('QC_CARD_MOVED_OR_MISMATCH: '+ctx.cardId);if(sourceKey(c)!==ctx.sourceKey)throw new Error('QC_SOURCE_CHANGED: '+ctx.cardId);const current=fields(c);let changes=ctx.correctionChanges||[];let blocked=ctx.correctionBlockedReason;const ownership=manualFieldAuthority(c);if(!ownership.allowed){changes=[];blocked='Manuell bearbeitete Karte: automatische Custom-Field-Korrektur gesperrt';}if(Object.keys(FIELD_MAP).some(k=>String(current[k]??'')!==String(ctx.customFields[k]??''))){changes=[];blocked='Custom Fields wurden zwischenzeitlich geaendert; frische Nachpruefung ohne Ueberschreiben';}for(const x of changes)if(FIELD_MAP[x.field]!==x.idCustomField||typeof x.value?.text!=='string')throw new Error('QC_INVALID_FIELD_PROPOSAL');// QC_FIELD_WRITES_DISABLED_20260925: QC reports discrepancies; it never overwrites card fields.\nchanges=[];blocked='Automatische Custom-Field-Korrektur deaktiviert. Bestehende Werte bleiben unveraendert; Abweichungen manuell pruefen.';\nreturn {json:{...ctx,correctionChanges:changes,correctionBlockedReason:blocked,hasCorrections:changes.length>0},pairedItem:{item:i}};});"
+      }
+    },
+    {
+      "id": "qc-has-changes",
+      "name": "Has Validated QC Corrections?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5400,
+        800
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.hasCorrections === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "qc-write-fields",
+      "name": "Write Confirmed QC Fields",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5610,
+        650
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-read-after-write",
+      "name": "Read QC Card After Correction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5820,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-prepare-recheck",
+      "name": "Prepare Independent QC Recheck",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6030,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-download-recheck",
+      "name": "Download Image For QC Recheck",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6240,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-recheck-vision",
+      "name": "Independent QC After Correction",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        6450,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-compare-recheck",
+      "name": "Compare Independent QC Recheck",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6660,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-audit-result",
+      "name": "Record QC Repair Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6870,
+        800
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://klibiejfisijpagzkxls.supabase.co/rest/v1/workflow_audit_log?id=eq.{{ $json.auditId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { status: $json.status === \"VERIFIED\" ? \"success\" : \"blocked\", error_message: $json.status === \"VERIFIED\" ? null : $json.errors.join(\"; \"), metadata: { source_key: $json.sourceKey, card_id: $json.cardId, image_attachment_id: $json.imageAttachmentId, pdf_attachment_id: $json.pdfAttachmentId, execution_id: $execution.id, initial_qc: $json.initialQC, before_fields: $json.auditClaim.metadata.before_fields, corrected_fields: $json.correctionChanges, after_fields: $json.customFields, correction_blocked_reason: $json.correctionBlockedReason, correction_vision: $json.correctionVision, final_vision: $json.visionData, final_status: $json.status, final_errors: $json.errors, writes_confirmed: $json.writesConfirmed, pdf_text: $json.pdfText } } }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fixture-credential",
+          "name": "fixture"
+        }
+      }
+    },
+    {
+      "id": "qc-restore-result",
+      "name": "Restore Recorded QC Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7080,
+        800
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "qc-clear-failed",
+      "name": "Clear Failed Label After Verified QC",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3100,
+        100
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Test": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Config Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Cards": {
+      "main": [
+        [
+          {
+            "node": "Read Existing QC Repair Attempts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Unprocessed": {
+      "main": [
+        [
+          {
+            "node": "Has Cards?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Cards?": {
+      "main": [
+        [
+          {
+            "node": "Extract Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Cards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Data": {
+      "main": [
+        [
+          {
+            "node": "Has Image?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Image?": {
+      "main": [
+        [
+          {
+            "node": "Download Image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fail No Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Image": {
+      "main": [
+        [
+          {
+            "node": "Download OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download OK?": {
+      "main": [
+        [
+          {
+            "node": "Analyze Vision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fail Download",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Vision": {
+      "main": [
+        [
+          {
+            "node": "Compare Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare Data": {
+      "main": [
+        [
+          {
+            "node": "QC Needs Second Read?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Result": {
+      "main": [
+        [
+          {
+            "node": "Add Verified Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Comment Verified",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add Failed Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Comment Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fail No Image": {
+      "main": [
+        [
+          {
+            "node": "Add Failed Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Comment Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fail Download": {
+      "main": [
+        [
+          {
+            "node": "Add Failed Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Comment Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comment Verified": {
+      "main": [
+        [
+          {
+            "node": "Prepare Extractor Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Extractor Data": {
+      "main": [
+        [
+          {
+            "node": "Execute Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comment Failed": {
+      "main": [
+        []
+      ]
+    },
+    "Config Preflight": {
+      "main": [
+        [
+          {
+            "node": "Get Cards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Existing QC Repair Attempts": {
+      "main": [
+        [
+          {
+            "node": "Filter Unprocessed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QC Needs Second Read?": {
+      "main": [
+        [
+          {
+            "node": "Prepare QC Repair Claim",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare QC Repair Claim": {
+      "main": [
+        [
+          {
+            "node": "Claim One QC Repair",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim One QC Repair": {
+      "main": [
+        [
+          {
+            "node": "Restore Claimed QC Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Claimed QC Context": {
+      "main": [
+        [
+          {
+            "node": "Has Supplier PDF?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Supplier PDF?": {
+      "main": [
+        [
+          {
+            "node": "Download QC Supplier PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Collect QC Source Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download QC Supplier PDF": {
+      "main": [
+        [
+          {
+            "node": "Read QC Supplier PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read QC Supplier PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Collect QC Source Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect QC Source Context": {
+      "main": [
+        [
+          {
+            "node": "Download QC Image Again",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download QC Image Again": {
+      "main": [
+        [
+          {
+            "node": "AI Read QC Again",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Read QC Again": {
+      "main": [
+        [
+          {
+            "node": "Validate QC Correction Proposal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate QC Correction Proposal": {
+      "main": [
+        [
+          {
+            "node": "Read QC Card Before Correction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read QC Card Before Correction": {
+      "main": [
+        [
+          {
+            "node": "Guard QC Correction Writes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard QC Correction Writes": {
+      "main": [
+        [
+          {
+            "node": "Has Validated QC Corrections?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Validated QC Corrections?": {
+      "main": [
+        [
+          {
+            "node": "Write Confirmed QC Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read QC Card After Correction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Confirmed QC Fields": {
+      "main": [
+        [
+          {
+            "node": "Read QC Card After Correction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read QC Card After Correction": {
+      "main": [
+        [
+          {
+            "node": "Prepare Independent QC Recheck",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Independent QC Recheck": {
+      "main": [
+        [
+          {
+            "node": "Download Image For QC Recheck",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Image For QC Recheck": {
+      "main": [
+        [
+          {
+            "node": "Independent QC After Correction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Independent QC After Correction": {
+      "main": [
+        [
+          {
+            "node": "Compare Independent QC Recheck",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare Independent QC Recheck": {
+      "main": [
+        [
+          {
+            "node": "Record QC Repair Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record QC Repair Result": {
+      "main": [
+        [
+          {
+            "node": "Restore Recorded QC Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Recorded QC Result": {
+      "main": [
+        [
+          {
+            "node": "Check Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Verified Label": {
+      "main": [
+        [
+          {
+            "node": "Clear Failed Label After Verified QC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 1800,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  }
+}
