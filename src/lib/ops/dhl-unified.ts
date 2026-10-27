@@ -95,7 +95,10 @@ export function planDhlChecks(cards:TrelloCardEvidence[],shipments:DhlShipmentLi
     if(card.boardId!==ARRIVAL_LABEL_DEFAULT_TRELLO_BOARD_ID) continue;
     const resolved=resolveShipmentTracking(card);
     if(resolved.reason) {
-      if(LEO_INTAKE_LISTS.has(card.listId||'')||card.listId===shipped||card.listId==='6347e0a2f062500084675062'||card.listId==='646b8c9613dc4e7000f6657e') issues.push({code:resolved.reason,trelloUrl:card.url});
+      // Historical problem cards are not active tracking work. Keep a real
+      // replacement/history failure visible without notifying the old backlog.
+      if(LEO_INTAKE_LISTS.has(card.listId||'')||card.listId===shipped
+        ||(card.listId==='6347e0a2f062500084675062'&&(card.replacementRound||card.trackingHistoryError))) issues.push({code:resolved.reason,trelloUrl:card.url});
       // A contradictory duplicate cannot be ignored when another card looks valid.
       for(const n of `${card.name} ${card.trackingField||''}`.match(/(?<!\d)\d{10}(?!\d)/g)||[]) blockedNumbers.add(n);
     }
@@ -106,7 +109,8 @@ export function planDhlChecks(cards:TrelloCardEvidence[],shipments:DhlShipmentLi
     if(matching.length!==1||blockedNumbers.has(trackingNumber)||!findTrelloCardForTracking(cards,trackingNumber).card) {issues.push({code:'duplicate_or_conflicting_card',trelloUrl:card.url});continue;}
     const existing=shipments.filter(s=>s.tracking_number===trackingNumber);
     if(existing.length>1||(existing.length===1&&existing[0].trello_card_id!==card.id)) {issues.push({code:'shipment_card_mismatch',trelloUrl:card.url});continue;}
-    if(!LEO_INTAKE_LISTS.has(card.listId||'')&&!(card.listId===shipped&&existing.length===1)&&!card.replacementRound) continue;
+    if(!LEO_INTAKE_LISTS.has(card.listId||'')&&!(card.listId===shipped&&existing.length===1)
+      &&!(card.listId==='6347e0a2f062500084675062'&&card.replacementRound)) continue;
     // Delivery alone cannot retire polling: pending label/extra-parcel dispatch
     // still requires fresh carrier evidence. Missing or ambiguous proof keeps polling.
     const shipment=existing[0],cases=labelCases.filter(c=>c.incoming_dhl_tracking_number===trackingNumber);

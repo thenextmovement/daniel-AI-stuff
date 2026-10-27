@@ -112,6 +112,19 @@ const deliveredShipment=()=>({id:'s1',tracking_number:number,trello_card_id:'car
 const completedCase=()=>({incoming_dhl_tracking_number:number,trello_card_id:'card1',status:'completed',manual_review_reason:null,
   delivery_note_required:false,delivery_note_status:'not_required',purchase_jobs:[{status:'completed'}],print_jobs:[{status:'printed'}]});
 
+test('historical multi-number problem cards stay silent without weakening active intake conflicts',()=>{
+  for(const list of ['6347e0a2f062500084675062','646b8c9613dc4e7000f6657e']) {
+    const historical={...card('history',list),name:'Old shipment 0012345678 / 1123456789'};
+    const result=planDhlChecks([historical],[]);
+    assert.deepEqual(result.issues,[]);
+    assert.equal(result.candidates.length,0);
+    // Historical evidence still blocks a duplicate in a currently active card.
+    assert.equal(planDhlChecks([historical,card()],[]).candidates.length,0);
+  }
+  const active={...card(),name:'Current shipment 0012345678 / 1123456789'};
+  assert.equal(planDhlChecks([active],[]).issues[0]?.code,'conflicting_tracking');
+});
+
 test('confirmed DHL deliveries stop polling only after matching label work is complete',()=>{
   const result=planDhlChecks([card()],[deliveredShipment()],[completedCase()]);
   assert.equal(result.candidates.length,0);assert.equal(result.completedCount,1);assert.deepEqual(result.issues,[]);
