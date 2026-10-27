@@ -8,6 +8,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts \
     && npm cache clean --force \
     && chown -R node:node /workspace
+COPY services/neontrip-mcp/package.json services/neontrip-mcp/package-lock.json ./services/neontrip-mcp/
+RUN npm --prefix services/neontrip-mcp ci --ignore-scripts \
+    && npm cache clean --force \
+    && chown -R node:node /workspace/services/neontrip-mcp
 COPY --chown=node:node . .
 USER node
-CMD ["npm", "run", "verify"]
+CMD ["sh", "-c", "npm run verify && npm --prefix services/neontrip-mcp run verify"]

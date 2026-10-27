@@ -28,3 +28,23 @@ Die Readiness-Route meldet erst Erfolg, wenn alle in `MCP_REQUIRED_SERVICES` gen
 ## Produktionsfreigabe
 
 Vor dem Aktivieren sind eine eigene Cloudflare-Access-Service-Identität für OPS, ein eigener Offers-API-Schlüssel, getrennte und ablaufende MCP-Tokens sowie Alarmierung auf fehlgeschlagene Healthchecks einzurichten. Die ChatGPT-Work-Automation verwendet ausschließlich die `billing_automation`-Identität. Für manuelle Codex-Aufgaben wird separat die `operator`-Identität verbunden.
+
+## Vollständiger Betreiberkatalog
+
+Die zusätzlichen Scopes ops:read/ops:write öffnen ops_describe_operation,
+ops_read und ops_write für die feste Routenliste. Vor jeder Aktion ist ihr
+Vertrag zu lesen; query/path/body entsprechen der kanonischen Ops-Route.
+GET company-brain/resolve ist wegen Persistenz und KI-Kosten eine Schreibaktion.
+Der Katalog dokumentiert jede Ops-Route, einschließlich Browser-/Worker-Protokollen,
+die keine Geschäftsaktionen sind. Quellhash-Tests erzwingen eine neue Prüfung
+bei Routen- oder Vertragsänderungen. Zur Aktualisierung nach npm ci im Repo:
+python3 services/neontrip-mcp/scripts/generate-ops-catalog.py und danach
+node services/neontrip-mcp/scripts/resolve-ops-contracts.cjs ausführen.
+
+Mit offers:full wird der native Offers-Katalog unter editor_ dynamisch eingebunden.
+Dafür muss derselbe persönliche Bearer-Digest in Offers einer bestehenden
+Mitarbeiteridentität zugeordnet sein; ADMIN-Aktionen benötigen dort ADMIN.
+Ein fehlender oder leerer nativer Katalog meldet fehlende Einsatzbereitschaft.
+Ops-Unterrollen (Company Brain, Telefonverwaltung) werden zusätzlich im Zielsystem
+geprüft. Ein Scope allein beweist keine vollständige produktive Berechtigung.
+Automationsidentitäten erhalten keine dieser zusätzlichen Betreiberrechte.

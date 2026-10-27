@@ -4,14 +4,15 @@ import {phoneManagementInput,type PhoneManagedStaff} from "./voice-phone-managem
 import {supabaseRpc,SupabaseRestError} from "@/lib/quotes/supabase-rest";
 import {QuoteValidationError} from "@/lib/quotes/validation";
 function denied():never{throw new QuoteValidationError("Dieses Telefonprofil darf das Telefonteam nicht verwalten.",["phone_management_forbidden"],403);}
-async function manager(){
+async function manager(serviceActor?:string){
  if(!isPhoneEnabled())denied();
+ if(serviceActor)return {p_actor_device_id:null,p_actor_service_id:serviceActor};
  const current=await currentPhoneDevice();
  if(!current?.staff.can_manage_phone)denied();
- return current;
+ return {p_actor_device_id:current.device.id,p_actor_service_id:null};
 }
 async function managementRpc<T>(args:Record<string,unknown>){
- try{return await supabaseRpc<T>("manage_voice_staff",args);}
+ try{return await supabaseRpc<T>("manage_voice_staff_as_actor",args);}
  catch(error){
   if(error instanceof SupabaseRestError){
    let detail:{code?:string;message?:string}={};
@@ -25,15 +26,15 @@ async function managementRpc<T>(args:Record<string,unknown>){
   throw error;
  }
 }
-export async function readPhoneManagement(){
- const current=await manager();
- return managementRpc<{staff:PhoneManagedStaff[]}>({p_actor_device_id:current.device.id,p_action:"list"});
+export async function readPhoneManagement(serviceActor?:string){
+ const current=await manager(serviceActor);
+ return managementRpc<{staff:PhoneManagedStaff[]}>({...current,p_action:"list"});
 }
-export async function changePhoneManagement(input:Record<string,unknown>){
- const current=await manager(),command=phoneManagementInput(input);
+export async function changePhoneManagement(input:Record<string,unknown>,serviceActor?:string){
+ const current=await manager(serviceActor),command=phoneManagementInput(input);
  const code=command.action==="issue_invite"?newPhoneCredential():null;
  const result=await managementRpc<{staffId:string;inviteId:string|null;expiresAt:string|null}>({
-  p_actor_device_id:current.device.id,p_action:command.action,p_staff_id:command.staffId,p_values:command.values||{},
+  ...current,p_action:command.action,p_staff_id:command.staffId,p_values:command.values||{},
   p_related_id:command.relatedId,p_revision:command.revision,p_token_hash:code?phoneCredentialHash(code,"invite"):null,
  });
  if(code&&(!result.inviteId||!result.expiresAt||result.staffId!==command.staffId))throw new Error("phone_invite_unconfirmed");

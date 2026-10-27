@@ -684,3 +684,17 @@ lückenloser Audiowechsel wird nicht behauptet. Bereits erfasste Lücken bleiben
 in der gemeinsamen Mitschrift sichtbar. Keine Produktionskonfiguration,
 Anmeldung, Zugangswerte oder Provider-Routen wurden für diese Entwicklung
 geändert; kein echter Anruf wurde ausgelöst.
+
+## MCP-Telefonverwaltung (27.10.2026)
+
+Die Migration 20261027010000 erlaubt zusätzlich eine explizite Zuordnung eines
+verifizierten Cloudflare-Service-Principals zu einem bestehenden persönlichen
+Telefonverwalter. Nur aktive, nicht abgelaufene Zuordnungen und aktive Profile
+mit can_manage_phone sind zulässig. Die Route liest den Principal ausschließlich
+aus dem verifizierten Access-JWT, nie aus dem MCP- oder Browser-Payload.
+Die Datenbank hält die Zuordnung während der Aktion stabil und prüft die Rolle
+unter denselben Profilsperren wie beim Gerätezugang. Die vorhandenen Revisionen,
+Selbstsperren und Einladungs-/Geräteprüfungen gelten weiter. Der Audit unterscheidet
+persönliches Gerät und Service-Principal; es wird kein Telefongerät vorgetäuscht.
+Die Migration allein erteilt keine Rechte. Produktive Zuordnung und Leseprüfung
+sind separate Freischaltungsschritte. Live-Telefonie bleibt an ein echtes Gerät gebunden.

@@ -1,5 +1,8 @@
 export const SCOPES = [
   "system:read",
+  "ops:read",
+  "ops:write",
+  "offers:full",
   "customers:read",
   "billing:read",
   "billing:change:accept",

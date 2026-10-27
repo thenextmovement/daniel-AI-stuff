@@ -47,7 +47,7 @@ export function createGatewayApp(options: {
     host: config.host,
     allowedHosts: config.allowedHosts,
     ...(config.allowedOrigins.length ? { allowedOrigins: config.allowedOrigins } : {}),
-    jsonLimit: "128kb",
+    jsonLimit: "28mb",
   });
   app.disable("x-powered-by");
   app.use((_request, response, next) => {
@@ -66,12 +66,30 @@ export function createGatewayApp(options: {
   const verifier = new HashedTokenVerifier(config.identities, config.publicUrl);
   const api = new NeontripApi(config, options.fetchImpl);
   const handler = createMcpHandler(
-    ({ authInfo }) => createNeontripMcpServer({
+    async ({ authInfo }) => {
+      let nativeOffersCatalog: Record<string, unknown>[] = [];
+      let nativeOffersError: string | undefined;
+      if (authInfo?.extra?.role === "operator" && authInfo.scopes.includes("offers:full")) {
+        try {
+          let cursor: string | undefined;
+          const cursors = new Set<string>();
+          do {
+            const catalog = await api.nativeOffers(authInfo.token, "tools/list", cursor ? {cursor} : {});
+            if (!Array.isArray(catalog.tools)) throw new Error("invalid_catalog");
+            nativeOffersCatalog.push(...catalog.tools);
+            cursor = typeof catalog.nextCursor === "string" ? catalog.nextCursor : undefined;
+            if (cursor && (cursors.has(cursor) || cursors.size >= 20)) throw new Error("invalid_catalog_pagination");
+            if (cursor) cursors.add(cursor);
+          } while (cursor);
+        } catch { nativeOffersCatalog = []; nativeOffersError = "Der persönliche native Angebotszugang ist nicht verfügbar; vollständige Angebotsfunktionen sind nicht einsatzbereit."; }
+      }
+      return createNeontripMcpServer({
       config,
       authInfo,
       api,
-      audit: options.audit || jsonAuditSink,
-    }),
+      audit: options.audit || jsonAuditSink, nativeOffersCatalog, nativeOffersError,
+    });
+    },
     {
       legacy: "stateless",
       responseMode: "json",

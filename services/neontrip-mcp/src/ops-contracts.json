@@ -1,0 +1,191 @@
+{
+  "voice_platform_post": {
+    "bodyShape": "{ action: <action name>, input: <action fields> }. actor is server supplied and must not be supplied by the client.",
+    "actionContracts": {
+      "create_consent": {
+        "required": [
+          "requestId",
+          "phone",
+          "purposes",
+          "consentWording",
+          "formVersion",
+          "source",
+          "sourceRef"
+        ],
+        "optional": [
+          "grantedAt"
+        ],
+        "notes": "Only actual consent evidence; never invent evidence."
+      },
+      "withdraw_consent": {
+        "required": [
+          "consentId"
+        ],
+        "notes": "consentId UUID"
+      },
+      "add_allowlist": {
+        "required": [
+          "phone",
+          "label"
+        ]
+      },
+      "create_campaign": {
+        "required": [
+          "mode",
+          "promptVersionId",
+          "name"
+        ],
+        "optional": [
+          "modelChannel",
+          "allowlistOnly",
+          "timezone",
+          "contactWindowStart",
+          "contactWindowEnd",
+          "allowedWeekdays",
+          "maxAttempts",
+          "retryDelayMinutes"
+        ]
+      },
+      "add_target": {
+        "required": [
+          "campaignId",
+          "consentId",
+          "requestId",
+          "phone",
+          "transcriptConsent"
+        ],
+        "optional": [
+          "contextRequestId",
+          "callBrief",
+          "offerId",
+          "contactName",
+          "companyName",
+          "nextAttemptAt"
+        ],
+        "notes": "transcriptConsent must be true and backed by actual consent"
+      },
+      "set_runtime_settings": {
+        "required": [
+          "globalEnabled",
+          "internalTestCallsEnabled",
+          "customerCallsEnabled",
+          "maxConcurrentCalls"
+        ],
+        "optional": [
+          "confirmation"
+        ],
+        "notes": "All booleans replace stored flags; omitted means false. Enabling customer calls requires explicit user authorization and confirmation KUNDENANRUFE FREIGEBEN."
+      },
+      "set_campaign_status": {
+        "required": [
+          "campaignId",
+          "status"
+        ],
+        "status": [
+          "draft",
+          "paused",
+          "active",
+          "completed",
+          "cancelled"
+        ]
+      },
+      "stop_attempt": {
+        "required": [
+          "attemptId"
+        ]
+      },
+      "handoff_attempt": {
+        "required": [
+          "attemptId"
+        ]
+      },
+      "resolve_provider_uncertainty": {
+        "required": [
+          "targetId",
+          "resolution",
+          "confirmation"
+        ],
+        "optional": [
+          "idempotencyKey"
+        ],
+        "notes": "confirmed_no_call requires actual provider verification and PROVIDER GEPRUEFT KEIN CALL. close_without_retry requires PROVIDER FALL SCHLIESSEN."
+      },
+      "set_model_enabled": {
+        "required": [
+          "modelReleaseId",
+          "enabled"
+        ]
+      },
+      "register_model": {
+        "required": [
+          "modelId"
+        ],
+        "optional": [
+          "apiVersion",
+          "voice",
+          "transport",
+          "releaseKey",
+          "releaseNotes"
+        ],
+        "notes": "modelId gpt-live-1 only; transport sip/webrtc/websocket."
+      },
+      "approve_prompt": {
+        "required": [
+          "promptVersionId"
+        ],
+        "optional": [
+          "idempotencyKey"
+        ]
+      },
+      "select_candidate": {
+        "required": [
+          "modelReleaseId"
+        ],
+        "optional": [
+          "idempotencyKey"
+        ]
+      },
+      "approve_model_sandbox": {
+        "required": [
+          "modelReleaseId",
+          "confirmation"
+        ],
+        "optional": [
+          "idempotencyKey"
+        ],
+        "notes": "Explicit authorization required; confirmation SANDBOX-MODELL FREIGEBEN."
+      },
+      "promote_model": {
+        "required": [
+          "modelReleaseId",
+          "confirmation"
+        ],
+        "optional": [
+          "idempotencyKey"
+        ],
+        "notes": "Explicit authorization required; confirmation PRODUKTIONSMODELL FREIGEBEN."
+      },
+      "rollback_model": {
+        "optional": [
+          "idempotencyKey"
+        ]
+      },
+      "record_evaluation": {
+        "required": [
+          "modelReleaseId",
+          "suiteVersion",
+          "scenarioCount",
+          "passedCount",
+          "averageScore",
+          "status"
+        ],
+        "optional": [
+          "safetyFailureCount",
+          "report",
+          "idempotencyKey"
+        ],
+        "notes": "Actual evaluation evidence only. scenarioCount integer >=50; passedCount integer 0..scenarioCount."
+      }
+    }
+  }
+}

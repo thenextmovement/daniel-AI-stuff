@@ -88,3 +88,22 @@ test("offer lists and delivery history preserve date bounds and pagination on au
   assert.equal((call.init?.headers as Record<string,string>).Authorization,"Bearer offers-secret");
  }
 });
+
+test("full offers federation uses the caller credential only on the fixed native MCP endpoint",async()=>{
+ const calls:Array<{url:string;headers:Record<string,string>;body:Record<string,unknown>}>=[];
+ const api=new NeontripApi(config(),async(url,init)=>{
+  calls.push({url:String(url),headers:init?.headers as Record<string,string>,body:JSON.parse(String(init?.body))});
+  return Response.json({jsonrpc:"2.0",id:1,result:{tools:[]}});
+ });
+ assert.equal(typeof (api as any).nativeOffers,"function");
+ const result=await (api as any).nativeOffers("caller-native-token","tools/list",{});
+ assert.deepEqual(result,{tools:[]});
+ assert.equal(calls[0]?.url,"https://offers.example.test/api/mcp");
+ assert.equal(calls[0]?.headers.Authorization,"Bearer caller-native-token");
+ assert.equal(calls[0]?.headers["CF-Access-Client-Secret"],undefined);
+});
+
+test("Ops business failures are failures even when HTTP status is 200",async()=>{
+ const api=new NeontripApi(config(),async()=>Response.json({ok:false,error:"version_conflict"}));
+ await assert.rejects(api.opsOperation("customer_records_patch",{},{},{requestId:"test"}),/version_conflict/);
+});

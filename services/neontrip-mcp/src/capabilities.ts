@@ -11,6 +11,9 @@ export type Capability = {
 };
 
 export const CAPABILITIES: Capability[] = [
+  {name:"ops_describe_operation",title:"OPS-Funktionsverzeichnis",scope:"ops:read",service:"customers",access:"read",destructive:false,sideEffects:[]},
+  {name:"ops_read",title:"Alle angebundenen OPS-Leseaktionen",scope:"ops:read",service:"customers",access:"read",destructive:false,sideEffects:[]},
+  {name:"ops_write",title:"Alle angebundenen OPS-Schreibaktionen",scope:"ops:write",service:"customers",access:"write",destructive:true,sideEffects:["Je nach Aktion Kundenkommunikation, Produktion oder kostenpflichtige Aufträge."]},
   { name: "customers_search", title: "Kunden finden", scope: "customers:read", service: "customers", access: "read", destructive: false, sideEffects: [] },
   { name: "customers_get_history", title: "Kundenkontext und Telefonhistorie lesen", scope: "customers:read", service: "customers", access: "read", destructive: false, sideEffects: [] },
   { name: "customers_get_transcript", title: "Telefontranskript mit Datum lesen", scope: "customers:read", service: "customers", access: "read", destructive: false, sideEffects: [] },
@@ -33,5 +36,5 @@ export const CAPABILITIES: Capability[] = [
 
 export function capabilitiesForScopes(scopes: readonly string[]) {
   const allowed = new Set(scopes);
-  return CAPABILITIES.filter((capability) => allowed.has(capability.scope));
+  return CAPABILITIES.filter((capability) => allowed.has(capability.scope) || (capability.name === "ops_describe_operation" && allowed.has("ops:write")));
 }

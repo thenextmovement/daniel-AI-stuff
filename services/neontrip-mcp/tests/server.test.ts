@@ -180,3 +180,72 @@ test("offer reader discovers and calls delivery history without granting write t
  assert.notEqual(offer.result?.isError,true);
  assert.equal(new URL(upstreamUrl).pathname,"/api/internal/offers/c123456789012345678901234");
 });
+
+test("full operator discovers Ops operations; limited automation never inherits them", async (context) => {
+ const cfg=config(); cfg.identities[0]!.role="operator";
+ cfg.identities[0]!.scopes=["system:read","ops:read","ops:write"] as typeof cfg.identities[0]["scopes"];
+ const calls:Array<{url:string;method:string;body:unknown}>=[];
+ cfg.ops={baseUrl:new URL("https://ops.example.test"),accessClientId:"id",accessClientSecret:"secret"};
+ const {app,close}=createGatewayApp({config:cfg,audit:()=>undefined,fetchImpl:async(url,init)=>{
+  calls.push({url:String(url),method:init?.method||"GET",body:typeof init?.body==="string"?JSON.parse(init.body):null});
+  return Response.json({ok:true,results:[]});
+ }});
+ const listener=app.listen(0,"127.0.0.1"); await new Promise<void>(r=>listener.once("listening",r));
+ context.after(async()=>{await close();await new Promise<void>(r=>listener.close(()=>r()));});
+ const endpoint="http://127.0.0.1:"+ (listener.address() as AddressInfo).port +"/mcp";
+ const call=async(method:string,params:Record<string,unknown>)=>parseMcpBody(await (await fetch(endpoint,{
+  method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json",accept:"application/json, text/event-stream"},
+  body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})
+ })).text()) as any;
+ const listed=await call("tools/list",{});
+ const names=listed.result.tools.map((t:{name:string})=>t.name);
+ assert.ok(names.includes("ops_read"));
+ assert.ok(names.includes("ops_write"));
+ assert.ok(names.includes("ops_describe_operation"));
+ const read=await call("tools/call",{name:"ops_read",arguments:{operation:"customer_records_get",query:{query:"NEON"}}});
+ assert.equal(read.result.isError,undefined);
+ assert.equal(calls[0]?.url,"https://ops.example.test/api/ops/customer-records?query=NEON");
+ const write=await call("tools/call",{name:"ops_write",arguments:{operation:"customer_records_patch",body:{requestId:"REQ-TEST",updates:{company:"Test"}},reason:"Explicit local test"}});
+ assert.equal(write.result.isError,undefined);
+ assert.equal(calls[1]?.method,"PATCH");
+ const blocked=await call("tools/call",{name:"ops_read",arguments:{operation:"customer_records_patch",body:{requestId:"REQ-TEST"}}});
+ assert.ok(blocked.error || blocked.result?.isError);
+ assert.equal(calls.length,2);
+ const resolve=await call("tools/call",{name:"ops_write",arguments:{operation:"company_brain_resolve_get",reason:"Explicit local test"}});
+ assert.equal(resolve.result.isError,undefined);
+ assert.equal(calls[2]?.method,"GET");
+ assert.equal(calls[2]?.body,null);
+ cfg.identities[0]!.role="billing_automation"; cfg.identities[0]!.scopes=["system:read"];
+ const limited=await call("tools/list",{});
+ assert.equal(limited.result.tools.some((t:{name:string})=>t.name.startsWith("ops_")),false);
+});
+
+test("full Offers catalog is discovered dynamically and preserves native errors and media", async (context) => {
+ const cfg=config(); cfg.identities[0]!.role="operator"; cfg.identities[0]!.scopes=["system:read","offers:full"];
+ cfg.offers={baseUrl:new URL("https://offers.example.test"),apiKey:"internal-key-not-for-native"};
+ let catalogAvailable=true;
+ const audited: unknown[]=[];
+ const {app,close}=createGatewayApp({config:cfg,audit:e=>audited.push(e),fetchImpl:async(_url,init)=>{
+  assert.equal(new Headers(init?.headers).get("authorization"),"Bearer "+token);
+  const req=JSON.parse(String(init?.body));
+  if(req.method==="tools/list" && !catalogAvailable)return Response.json({jsonrpc:"2.0",id:1,result:{tools:[]}});
+  if(req.method==="tools/list")return Response.json({jsonrpc:"2.0",id:1,result:{tools:[{name:"offers_media_get",description:"Get media",inputSchema:{type:"object",properties:{id:{type:"string"}},required:["id"],additionalProperties:false},annotations:{readOnlyHint:true}},{name:"offers_create",inputSchema:{type:"object",properties:{},additionalProperties:false},annotations:{readOnlyHint:false}}]}});
+  return Response.json({jsonrpc:"2.0",id:1,result:req.params.name==="offers_create"?{content:[{type:"text",text:"Version conflict"}],isError:true}:{content:[{type:"image",data:"AA==",mimeType:"image/png"}]}});
+ }});
+ const listener=app.listen(0,"127.0.0.1"); await new Promise<void>(r=>listener.once("listening",r));
+ context.after(async()=>{await close();await new Promise<void>(r=>listener.close(()=>r()));});
+ const endpoint="http://127.0.0.1:"+(listener.address() as AddressInfo).port+"/mcp";
+ const call=async(method:string,params:Record<string,unknown>)=>parseMcpBody(await(await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json",accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})})).text()) as any;
+ const list=await call("tools/list",{});
+ assert.ok(list.result.tools.some((t:any)=>t.name==="editor_offers_create"));
+ const media=await call("tools/call",{name:"editor_offers_media_get",arguments:{id:"test"}});
+ assert.deepEqual(media.result.content,[{type:"image",data:"AA==",mimeType:"image/png"}]);
+ const failed=await call("tools/call",{name:"editor_offers_create",arguments:{}});
+ assert.equal(failed.result.isError,true);
+ assert.ok(audited.some((e:any)=>e.capability==="editor_offers_create" && e.outcome!=="success"));
+ catalogAvailable=false;
+ const health=await call("tools/call",{name:"neontrip_health",arguments:{}});
+ assert.equal(health.result.structuredContent.data.ready,false);
+ const capabilities=await call("tools/call",{name:"neontrip_capabilities",arguments:{}});
+ assert.equal(capabilities.result.structuredContent.data.readiness.ready,false);
+});

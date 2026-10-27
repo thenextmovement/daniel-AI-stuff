@@ -1,9 +1,11 @@
+import { opsRequest } from "./ops-catalog.js";
 import type { GatewayConfig } from "./config.js";
 import { GatewayError } from "./errors.js";
 import type { JsonValue, ServiceName } from "./types.js";
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+  binary?: boolean;
   body?: JsonValue;
 };
 
@@ -23,6 +25,32 @@ function joinUrl(base: URL, path: string) {
 export class NeontripApi {
   constructor(private readonly config: GatewayConfig, private readonly fetchImpl: FetchLike = fetch) {}
 
+  async nativeOffers(token: string, method: "tools/list" | "tools/call", params: Record<string, unknown>) {
+    if (!this.config.offers) throw new GatewayError("offers_not_configured", "Angebotssoftware ist nicht verbunden.", 503);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Math.max(this.config.requestTimeoutMs, 30_000));
+    try {
+      const response = await this.fetchImpl(joinUrl(this.config.offers.baseUrl, "/api/mcp"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+        body: JSON.stringify({jsonrpc:"2.0",id:1,method,params}),
+        redirect:"error", signal:controller.signal,
+      });
+      if (!response.ok) throw new GatewayError("native_offers_denied", `Die Angebotssoftware hat den persönlichen MCP-Zugang abgelehnt (${response.status}).`,response.status);
+      if (!(response.headers.get("content-type") || "").includes("application/json")) throw new GatewayError("invalid_native_response","Ungültiges Antwortformat der Angebotssoftware.",502);
+      const maxBytes=32*1024*1024;
+      if (Number(response.headers.get("content-length"))>maxBytes) throw new GatewayError("native_response_too_large","Angebotsantwort ist zu groß.",502);
+      const bytes=new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength>maxBytes) throw new GatewayError("native_response_too_large","Angebotsantwort ist zu groß.",502);
+      const payload=JSON.parse(new TextDecoder().decode(bytes));
+      if (!payload || payload.jsonrpc!=="2.0" || payload.error || !payload.result || typeof payload.result!=="object") throw new GatewayError("native_offers_protocol_error","Die Angebotssoftware hat den MCP-Aufruf nicht bestätigt.",502);
+      return payload.result as Record<string,unknown>;
+    } catch(error) {
+      if(error instanceof GatewayError) throw error;
+      throw new GatewayError("native_offers_unavailable","Der persönliche Angebotszugang antwortet nicht gültig. Ausführung nicht bestätigt; Schreibaktionen nicht blind wiederholen.",503,true);
+    } finally { clearTimeout(timeout); }
+  }
+
   configured(service: ServiceName) {
     return service !== "offers" ? Boolean(this.config.ops) : Boolean(this.config.offers);
   }
@@ -40,6 +68,7 @@ export class NeontripApi {
       if (service !== "offers" && this.config.ops) {
         headers["CF-Access-Client-Id"] = this.config.ops.accessClientId;
         headers["CF-Access-Client-Secret"] = this.config.ops.accessClientSecret;
+        headers.Origin = this.config.ops.baseUrl.origin;
       }
       if (service === "offers" && this.config.offers) {
         headers.Authorization = `Bearer ${this.config.offers.apiKey}`;
@@ -53,6 +82,11 @@ export class NeontripApi {
         signal: controller.signal,
       });
       const mediaType = String(response.headers.get("content-type") || "").split(";", 1)[0]?.trim().toLowerCase();
+      if (options.binary && response.ok && ["application/pdf","image/jpeg","image/png","image/webp","image/avif"].includes(mediaType || "")) {
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.byteLength > 24*1024*1024) throw new GatewayError("asset_too_large","Datei ist zu groß.",502);
+        return { mimeType: mediaType, base64: Buffer.from(bytes).toString("base64") };
+      }
       if (mediaType !== "application/json" && !mediaType?.endsWith("+json")) {
         throw new GatewayError("invalid_upstream_content_type", "Das Zielsystem hat keine JSON-Antwort geliefert.", 502, true);
       }
@@ -87,6 +121,17 @@ export class NeontripApi {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  async opsOperation(id: string, pathParameters: Record<string,string>, query: Record<string,string|number|boolean>, body?: JsonValue) {
+    const {operation,path}=opsRequest(id,pathParameters,query);
+    const result=await this.request("customers",path,{method:operation.method as RequestOptions["method"],body:operation.method==="GET"?undefined:body,binary:true});
+    if (result && typeof result==="object" && !Array.isArray(result) && "ok" in result && result.ok===false) {
+      const candidate="error" in result && typeof result.error==="string" ? result.error : "";
+      const code=/^[A-Za-z0-9:_-]{1,100}$/.test(candidate)?candidate:"ops_action_failed";
+      throw new GatewayError(code,"OPS hat die Aktion nicht bestätigt: "+code,422,false);
+    }
+    return result;
   }
 
   searchCustomers(query: string) {
