@@ -137,19 +137,19 @@ test("actual content script permits only the proven primary, then exactly one ne
       return [];
     } },
   });
-  const send = (override: Record<string, unknown> = {}) => new Promise<any>((resolve) => handler({ target: "neontrip-easydpd-frame", action: "purchase_once", job, primaryLabelPath: primaryPath, dispatchNonce: "fixture", ...override }, {}, resolve));
-  assert.equal((await send({ job: { ...job, parcelKind: "main", parentPurchaseJobId: null, expectedPrimaryDpdTracking: null } })).ok, false);
+  const send = (override: Record<string, unknown> = {}) => new Promise<any>((resolve) => handler({ target: "neontrip-easydpd-frame", action: "purchase_once", job, primaryLabelPath: primaryPath, historyBaseline: { paths: [primaryPath], trackingNumbers: [primaryTracking] }, dispatchNonce: "fixture", ...override }, {}, resolve));
+  assert.equal((await send({ job: { ...job, parcelKind: "main", parentPurchaseJobId: null, expectedPrimaryDpdTracking: null }, historyBaseline: null })).result.clicked, false);
   assert.equal(clicks, 0);
   hrefs = [];
-  assert.equal((await send()).ok, false);
+  assert.equal((await send()).result.clicked, false);
   hrefs = [primaryUrl, `https://tracking.dpd.de/status/de_DE/parcel/${newTracking}`];
-  assert.equal((await send()).ok, false);
+  assert.equal((await send()).result.clicked, false);
   hrefs = [primaryUrl, newUrl, `https://tracking.dpd.de/status/de_DE/parcel/${primaryTracking}`];
-  assert.equal((await send()).ok, false);
+  assert.equal((await send()).result.clicked, false);
   hrefs = [primaryUrl, `https://tracking.dpd.de/status/de_DE/parcel/${primaryTracking}`];
-  assert.equal((await send({ primaryLabelPath: "/labels/wrong/download/" })).ok, false);
+  assert.equal((await send({ primaryLabelPath: "/labels/wrong/download/" })).result.clicked, false);
   assert.equal((await send()).ok, true);
-  assert.equal((await send()).ok, false);
+  assert.equal((await send()).result.clicked, false);
   assert.equal(clicks, 1);
 });
 

@@ -41,6 +41,11 @@ export function assessDhlRelease(evidence: DhlReleaseEvidence, now = Date.now())
   if (!arrivals.length) return denied('physical_germany_arrival_missing');
   if (!clearances.length) return denied('german_customs_release_missing');
   const clearedAt = Math.max(...clearances.map(event => event.time));
+  // An exact, newer German delivery is evidence that earlier transit/customs holds
+  // have ended. Same-time or newer warnings and unreviewed delivery details still block.
+  const deliveredAt = Math.max(-Infinity, ...events.filter(event =>
+    german(event) && /^(delivered|sendung zugestellt)[.]?$/.test(event.text.trim())
+  ).map(event => event.time));
   const holdText = /\[unreviewed carrier details\]|\b(hold|held|exception|delay|clearance|customs|zoll|return|returned|zuruck|zurück|verzogerung|verzögerung)\b/;
   // Only this exact generic update can be superseded by later physical processing.
   // Unknown customs text, additional instructions and real holds remain blocking.
@@ -49,6 +54,16 @@ export function assessDhlRelease(evidence: DhlReleaseEvidence, now = Date.now())
   const resolvedGenericUpdate = (event: typeof events[number]) =>
     german(event) && event.text.trim().replace(/\s+/g, ' ') === genericUpdate &&
     movements.some(movement => movement.time > event.time);
-  if (events.some(event => event.time >= clearedAt && !complete(event) && holdText.test(event.text) && !resolvedGenericUpdate(event))) return denied('later_carrier_hold');
+  // A routine transit scan with opaque supplementary text is resolved by a
+  // strictly later clean German physical scan. Real hold/customs/action text is not.
+  const routineTransit = /^(?:arrived at (?:a )?dhl (?:sort|delivery) facility|processed at|shipment has departed from a dhl facility)(?: [a-z .-]+)?$/;
+  const resolvedTransitSupplement = (event: typeof events[number]) => {
+    const plain = event.text.replace('[unreviewed carrier details]', '').trim();
+    return hasSupplement(event) && german(event) && routineTransit.test(plain)
+      && !/\b(hold|held|customs|clearance|zoll|exception|delay|contact|required|return|returned)\b/.test(plain)
+      && events.some(next => next.time > event.time && german(next) && !holdText.test(next.text)
+        && (routineTransit.test(next.text.trim()) || /^((?:shipment is )?out with courier for delivery|delivered|sendung zugestellt)[.]?$/.test(next.text.trim())));
+  };
+  if (events.some(event => event.time >= clearedAt && event.time >= deliveredAt && !complete(event) && holdText.test(event.text) && !resolvedGenericUpdate(event) && !resolvedTransitSupplement(event))) return denied('later_carrier_hold');
   return { allowed: true, reason: 'germany_arrived_customs_released' };
 }

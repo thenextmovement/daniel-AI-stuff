@@ -8,7 +8,7 @@ Diese Bridge nutzt ausschließlich einen bereits geöffneten, angemeldeten easyD
 - Die Erweiterung besitzt nur Rechte für die feste NEONTRIP-Shopify-/easyDPD-Route, Downloads, den fest gepinnten Native Host, Alarme und lokalen Status.
 - Der Native Host liest Tokens ausschließlich aus dem macOS-Schlüsselbund.
 - Vor jedem Dispatch werden Shopify-Auftrags-ID, Bestellname, Produkt, `Einzeln auf A6`, 500 g und maximal 15,00 EUR geprüft.
-- Jeder vorhandene easyDPD-History-/Tracking-Eintrag stoppt den Kauf dauerhaft als `existing_label`.
+- Hauptsendungen werden pro eingehender DHL-Sendung gegen Doppelkäufe geschützt. Alte easyDPD-Labels derselben Bestellung bilden eine vor dem Kauf unveränderliche History-Baseline; danach darf nur das eindeutig neue Label hochgeladen werden. Unvollständige oder zwischenzeitlich geänderte History bleibt gesperrt. Die bestehende Hauptlabel-Bindung für Acryl-Zusatzpakete bleibt erhalten.
 - `dispatching` wird vor genau einem `Create label`-Klick in Postgres gespeichert.
 - Jede Ungewissheit nach `dispatching` führt zu manueller Prüfung; es gibt keinen automatischen zweiten Kauf.
 - Erst ein eindeutig zum Tab gehörender abgeschlossener PDF-Download wird an die bestehende PDF-/A6-Druck-/Outlook-Archivkette übergeben.

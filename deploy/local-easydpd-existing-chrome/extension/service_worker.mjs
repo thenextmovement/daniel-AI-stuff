@@ -350,7 +350,7 @@ function waitForPostDispatchPageError(tabId, frameId, job, baselineAlertTexts, s
   });
 }
 
-async function recoverPostDispatchDownload(tabId, job, settleDelayMs = 0, primaryLabelPath = null) {
+async function recoverPostDispatchDownload(tabId, job, settleDelayMs = 0, primaryLabelPath = null, historyBaseline = null) {
   if (settleDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
   await reloadAndWaitForTabComplete(tabId, job.orderUrl);
   const frameId = await easyDpdFrameId(tabId);
@@ -359,7 +359,7 @@ async function recoverPostDispatchDownload(tabId, job, settleDelayMs = 0, primar
   let recoveredUrl = null;
   do {
     observed = await frameMessageWhenReady(tabId, frameId, { action: "inspect_history", job });
-    recoveredUrl = postDispatchDownloadUrl(observed, job, primaryLabelPath);
+    recoveredUrl = postDispatchDownloadUrl(observed, job, primaryLabelPath, historyBaseline);
     if (recoveredUrl) break;
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   } while (Date.now() < deadline);
@@ -384,6 +384,7 @@ async function updateJob(nativeSession, job, result, extra = {}) {
 async function processJob(nativeSession, tab, job) {
   validateBridgeJob(job);
   let dispatchStarted = false;
+  let purchaseRejected = false;
   let serverCompleted = false;
   let downloadController = null;
   let downloadPromise = null;
@@ -392,10 +393,11 @@ async function processJob(nativeSession, tab, job) {
   let postDispatchReconciliationAttempted = false;
   let artifactUploadStarted = false;
   let primaryLabelPath = null;
+  let historyBaseline = null;
   try {
     await waitForTabComplete(tab.id, job.orderUrl);
     const { frameId, prepared } = await validateAndPrepareFrame(tab.id, job);
-    if (prepared.existingLabel?.found && !prepared.primaryLabelVerified) {
+    if (job.parcelKind === "acrylic_table_device" && prepared.existingLabel?.found && !prepared.primaryLabelVerified) {
       const trackingNumbers = prepared.existingLabel.trackingNumbers || [];
       await updateJob(nativeSession, job, "existing_label", {
         existingDpdTracking: trackingNumbers.length === 1 ? trackingNumbers[0] : null,
@@ -407,9 +409,12 @@ async function processJob(nativeSession, tab, job) {
     }
     if (!prepared.ready) throw new Error("EasyDPD-Auftrag ist nicht kaufbereit.");
     primaryLabelPath = prepared.primaryLabelPath || null;
+    historyBaseline = prepared.historyBaseline;
+    if (!historyBaseline) throw new Error("EasyDPD-History-Baseline fehlt.");
     await updateJob(nativeSession, job, "validated");
     const rechecked = await frameMessage(tab.id, frameId, { action: "validate_and_prepare", job });
-    if (!rechecked.ready || (rechecked.existingLabel?.found && !rechecked.primaryLabelVerified)
+    if (!rechecked.ready || (job.parcelKind === "acrylic_table_device" && !rechecked.primaryLabelVerified)
+      || JSON.stringify(rechecked.historyBaseline) !== JSON.stringify(historyBaseline)
       || (rechecked.primaryLabelPath || null) !== primaryLabelPath) throw new Error("EasyDPD-Zustand änderte sich vor der Kaufgrenze.");
     await updateJob(nativeSession, job, "dispatching");
     dispatchStarted = true;
@@ -418,7 +423,11 @@ async function processJob(nativeSession, tab, job) {
     const startedAt = Date.now();
     downloadController = new AbortController();
     downloadPromise = waitForDownloadedPdf(tab.id, startedAt, job.orderName, downloadController.signal);
-    const clickResult = await frameMessage(tab.id, frameId, { action: "purchase_once", job, dispatchNonce, primaryLabelPath });
+    const clickResult = await frameMessage(tab.id, frameId, { action: "purchase_once", job, dispatchNonce, primaryLabelPath, historyBaseline });
+    if (clickResult.clicked === false) {
+      purchaseRejected = true;
+      throw new Error(clickResult.error || "EasyDPD-Kaufklick wurde vor dem Dispatch abgelehnt.");
+    }
     if (clickResult.clicked !== true) throw new Error("EasyDPD-Kaufklick wurde nicht eindeutig bestätigt.");
     pageErrorController = new AbortController();
     pageErrorPromise = waitForPostDispatchPageError(
@@ -441,13 +450,19 @@ async function processJob(nativeSession, tab, job) {
         error: String(error?.message || error).slice(0, 500),
       });
       try {
-        download = await recoverPostDispatchDownload(tab.id, job, 0, primaryLabelPath);
+        download = await recoverPostDispatchDownload(tab.id, job, 0, primaryLabelPath, historyBaseline);
       } catch (recoveryError) {
         throw new Error(`${String(error?.message || error)} Post-Dispatch-Abgleich: ${String(recoveryError?.message || recoveryError)}`);
       }
     } finally {
       pageErrorController.abort();
       await pageErrorPromise.catch(() => undefined);
+    }
+    if (historyBaseline.paths.length && !postDispatchReconciliationAttempted) {
+      // A same-order download is not enough when old labels exist. Resolve the
+      // one new history entry so an old label can never reach the print queue.
+      postDispatchReconciliationAttempted = true;
+      download = await recoverPostDispatchDownload(tab.id, job, 0, primaryLabelPath, historyBaseline);
     }
     artifactUploadStarted = true;
     const uploaded = await nativeSession.send({ type: "upload_artifact", job, filePath: download.filename });
@@ -464,10 +479,10 @@ async function processJob(nativeSession, tab, job) {
     await downloadPromise?.catch(() => undefined);
     await pageErrorPromise?.catch(() => undefined);
     let finalError = error;
-    if (dispatchStarted && !serverCompleted && !postDispatchReconciliationAttempted && !artifactUploadStarted) {
+    if (dispatchStarted && !purchaseRejected && !serverCompleted && !postDispatchReconciliationAttempted && !artifactUploadStarted) {
       postDispatchReconciliationAttempted = true;
       try {
-        const download = await recoverPostDispatchDownload(tab.id, job, 5_000, primaryLabelPath);
+        const download = await recoverPostDispatchDownload(tab.id, job, 5_000, primaryLabelPath, historyBaseline);
         artifactUploadStarted = true;
         const uploaded = await nativeSession.send({ type: "upload_artifact", job, filePath: download.filename });
         serverCompleted = true;

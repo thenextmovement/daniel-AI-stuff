@@ -144,9 +144,18 @@
       && /^\d{14}$/.test(String(job.expectedPrimaryDpdTracking || ""))
       && evidence.labelCount === 1 && evidence.trackingNumbers.length === 1
       && evidence.trackingNumbers[0] === job.expectedPrimaryDpdTracking;
-    if ((evidence.found && !primaryLabelVerified) || (job.parcelKind === "acrylic_table_device" && !primaryLabelVerified)) {
+    if (job.parcelKind === "acrylic_table_device" && !primaryLabelVerified) {
       return { ready: false, existingLabel: safeExistingLabelEvidence(evidence) };
     }
+    // Existing labels belong to the order, not necessarily to this shipment.
+    // Pin the complete visible history before the one permitted purchase.
+    if (evidence.labelCount !== evidence.trackingNumbers.length || evidence.labelCount > 99) {
+      throw new Error("EasyDPD-History ist unvollstaendig; Sendungslabel nicht sicher abgrenzbar.");
+    }
+    const historyBaseline = {
+      paths: evidence.downloadUrls.map(url => new URL(url).pathname).sort(),
+      trackingNumbers: [...evidence.trackingNumbers].sort(),
+    };
     const changed = [
       selectLabel(product, job.productLabel),
       selectLabel(format, job.labelFormat),
@@ -163,6 +172,7 @@
       ready: true,
       changed,
       primaryLabelVerified,
+      historyBaseline,
       primaryLabelPath: primaryLabelVerified ? new URL(evidence.downloadUrl).pathname : null,
       existingLabel: safeExistingLabelEvidence(evidence),
       observed: { orderName: normalized(orderLink(job).textContent), product: currentLabel(product), format: currentLabel(format), weightGrams: Number(weight.value) },
@@ -210,20 +220,31 @@
     throw lastError || new Error("EasyDPD-History wurde nicht rechtzeitig geladen.");
   }
 
-  function purchaseOnce(job, dispatchNonce, primaryLabelPath) {
-    const prepared = validateAndPrepare(job);
-    if (!prepared.ready || (prepared.existingLabel.found && !prepared.primaryLabelVerified)) throw new Error("Vor dem Kauf wurde ein vorhandenes EasyDPD-Label erkannt.");
-    if (job.parcelKind === "acrylic_table_device" && (!primaryLabelPath || prepared.primaryLabelPath !== primaryLabelPath)) {
-      throw new Error("Hauptlabel-Baseline hat sich vor dem Zusatzkauf geaendert.");
+  function purchaseOnce(job, dispatchNonce, primaryLabelPath, historyBaseline) {
+    let clickAttempted = false;
+    try {
+      const prepared = validateAndPrepare(job);
+      if (!prepared.ready || (job.parcelKind === "acrylic_table_device" && !prepared.primaryLabelVerified)) throw new Error("Vor dem Kauf wurde ein vorhandenes EasyDPD-Label erkannt.");
+      if (job.parcelKind === "acrylic_table_device" && (!primaryLabelPath || prepared.primaryLabelPath !== primaryLabelPath)) {
+        throw new Error("Hauptlabel-Baseline hat sich vor dem Zusatzkauf geaendert.");
+      }
+      if (!historyBaseline || JSON.stringify(prepared.historyBaseline) !== JSON.stringify(historyBaseline)) {
+        throw new Error("EasyDPD-History hat sich vor dem Kauf geaendert; kein Klick.");
+      }
+      if (prepared.changed) throw new Error("EasyDPD-Felder waren an der Kaufgrenze noch nicht stabil; kein Klick.");
+      const purchaseKey = `${PURCHASE_KEY_PREFIX}${job.id}`;
+      const existing = sessionStorage.getItem(purchaseKey);
+      if (existing) throw new Error("Dieser EasyDPD-Tab hat bereits einen Kauf-Dispatch erhalten; kein zweiter Klick.");
+      const baselineAlertTexts = currentAlertTexts();
+      sessionStorage.setItem(purchaseKey, JSON.stringify({ jobId: job.id, dispatchNonce, at: new Date().toISOString() }));
+      const button = createButton();
+      clickAttempted = true;
+      button.click();
+      return { clicked: true, baselineAlertTexts };
+    } catch (error) {
+      if (clickAttempted) throw error;
+      return { clicked: false, error: String(error?.message || error).slice(0, 500) };
     }
-    if (prepared.changed) throw new Error("EasyDPD-Felder waren an der Kaufgrenze noch nicht stabil; kein Klick.");
-    const purchaseKey = `${PURCHASE_KEY_PREFIX}${job.id}`;
-    const existing = sessionStorage.getItem(purchaseKey);
-    if (existing) throw new Error("Dieser EasyDPD-Tab hat bereits einen Kauf-Dispatch erhalten; kein zweiter Klick.");
-    const baselineAlertTexts = currentAlertTexts();
-    sessionStorage.setItem(purchaseKey, JSON.stringify({ jobId: job.id, dispatchNonce, at: new Date().toISOString() }));
-    createButton().click();
-    return { clicked: true, baselineAlertTexts };
   }
 
   function inspectPostDispatch(job, baselineAlertTexts) {
@@ -252,7 +273,7 @@
       return true;
     }
     try {
-      if (message.action === "purchase_once") sendResponse({ ok: true, result: purchaseOnce(message.job, message.dispatchNonce, message.primaryLabelPath) });
+      if (message.action === "purchase_once") sendResponse({ ok: true, result: purchaseOnce(message.job, message.dispatchNonce, message.primaryLabelPath, message.historyBaseline) });
       else if (message.action === "inspect_post_dispatch") sendResponse({ ok: true, result: inspectPostDispatch(message.job, message.baselineAlertTexts) });
       else sendResponse({ ok: false, error: "Unbekannte EasyDPD-Bridge-Aktion." });
     } catch (error) {

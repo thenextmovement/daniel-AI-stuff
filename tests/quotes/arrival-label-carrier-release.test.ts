@@ -55,7 +55,6 @@ test('generic update without subsequent qualifying German movement remains block
     event('Processed at LEIPZIG', '2026-10-07T11:00:00Z'),
     event('Processed at HONG KONG', '2026-10-07T11:30:00Z', 'HK'),
     event('Arrived at DHL Sort Facility', '2026-10-07T11:30:00Z'),
-    event('Delivered', '2026-10-07T11:30:00Z'),
     event('Out with courier for delivery', '2026-10-07T11:30:00Z'),
   ]) assert.equal(assess([arrived, cleared, update, movement]).allowed, false);
 });
@@ -183,4 +182,49 @@ test('only the first package own carrier evidence can release a multi-package ca
   const released = await integration({multi:true});
   assert.deepEqual(released.arrivals.map(a=>a.trackingNumber),['0012345678']);
   assert.equal((await integration({multi:true,released:false})).arrivals.length,0);
+});
+
+
+test('confirmed German delivery resolves older holds and supplemental details after customs release', () => {
+  const delivered = event('Delivered', '2026-10-07T12:00:00Z', 'DE');
+  for (const text of ['Shipment has departed from a DHL facility LEIPZIG - GERMANY [Unreviewed carrier details]', genericCustomsUpdate, 'Shipment on hold']) {
+    const old = event(text, '2026-10-07T11:00:00Z', 'DE');
+    assert.equal(assess([arrived, cleared, old, delivered]).allowed, true);
+    assert.equal(assess([delivered, old, cleared, arrived]).allowed, true);
+  }
+});
+test('delivery does not bypass missing clearance, foreign delivery, stale data or newer unresolved evidence', () => {
+  const delivered = event('Delivered', '2026-10-07T12:00:00Z', 'DE');
+  const old = event('Shipment on hold', '2026-10-07T11:00:00Z', 'DE');
+  assert.equal(assess([arrived, old, delivered]).allowed, false);
+  assert.equal(assess([arrived, cleared, old, {...delivered, event_location:'BE'}]).allowed, false);
+  assert.equal(assess([arrived, cleared, old, delivered], '2026-10-05T12:00:00Z').allowed, false);
+  for (const time of ['2026-10-07T12:00:00Z', '2026-10-07T12:30:00Z']) {
+    assert.equal(assess([arrived, cleared, old, delivered, event('Returned to shipper', time)]).allowed, false);
+    assert.equal(assess([arrived, cleared, old, delivered, event('Delivered [Unreviewed carrier details]', time)]).allowed, false);
+  }
+  for (const text of ['Delivered to customs', 'Not delivered', 'Partial delivery', 'Delivered [Unreviewed carrier details]']) {
+    assert.equal(assess([arrived, cleared, old, {...delivered, carrier_status_text:text}]).allowed, false);
+  }
+});
+
+
+test('ordinary supplemental transit details resolve on a later clean German physical scan', () => {
+  const old = event('Shipment has departed from a DHL facility LEIPZIG - GERMANY [Unreviewed carrier details]', '2026-10-07T11:00:00Z', 'DE');
+  const next = event('Arrived at DHL Delivery Facility RATINGEN - GERMANY', '2026-10-07T11:30:00Z', 'DE');
+  assert.equal(assess([arrived, cleared, old, next]).allowed, true);
+  assert.equal(assess([next, old, cleared, arrived]).allowed, true);
+  for (const plain of ['Arrived at DHL Sort Facility', 'Processed at']) {
+    assert.equal(assess([arrived, cleared, {...old, carrier_status_text:plain+' [Unreviewed carrier details]'}, next]).allowed, true);
+    assert.equal(assess([arrived, cleared, old, {...next, carrier_status_text:plain}]).allowed, true);
+  }
+  assert.equal(assess([arrived, cleared, old, {...next, carrier_status_text:'Out with courier for delivery'}]).allowed, true);
+  assert.equal(assess([arrived, cleared, old, {...next, carrier_status_text:'Not delivered'}]).allowed, false);
+
+  for (const text of ['Shipment on hold [Unreviewed carrier details]', genericCustomsUpdate + ' [Unreviewed carrier details]', 'Shipment has departed from a DHL facility - contact DHL [Unreviewed carrier details]']) {
+    assert.equal(assess([arrived, cleared, {...old, carrier_status_text:text}, next]).allowed, false);
+  }
+  assert.equal(assess([arrived, cleared, old, {...next, event_time:old.event_time}]).allowed, false);
+  assert.equal(assess([arrived, cleared, old, {...next, event_location:'BE'}]).allowed, false);
+  assert.equal(assess([arrived, cleared, old, {...next, carrier_status_text:next.carrier_status_text+' [Unreviewed carrier details]'}]).allowed, false);
 });

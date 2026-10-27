@@ -164,11 +164,13 @@ export function createCupsPrinter(input: {
   const runner = input.runner || runBoundedProcess;
   return {
     async selfTest() {
-      const [printer, options] = await Promise.all([
+      const [printer, options, ipp] = await Promise.all([
         runner("lpstat", ["-p", cupsPrinter]),
         runner("lpoptions", ["-p", cupsPrinter, "-l"]),
+        runner("ipptool", ["-t", "-v", `ipp://localhost/printers/${cupsPrinter}`,
+          "/usr/share/cups/ipptool/get-printer-attributes.test"]),
       ]);
-      if (printer.exitCode !== 0 || options.exitCode !== 0) throw new Error("CUPS oder der konfigurierte Drucker ist nicht bereit.");
+      if (printer.exitCode !== 0 || options.exitCode !== 0 || ipp.exitCode !== 0) throw new Error("CUPS oder der konfigurierte Drucker ist nicht bereit.");
       if (!cupsSupportsMedia(options.stdout, media)) throw new Error("Der konfigurierte CUPS-Drucker bietet das freigegebene Medium nicht an.");
     },
     async submit(pdfPath: string) {
@@ -177,9 +179,28 @@ export function createCupsPrinter(input: {
       return parseCupsJobId(`${result.stdout}\n${result.stderr}`);
     },
     async isCompleted(cupsJobId: string) {
-      const result = await runner("lpstat", ["-W", "completed", "-o", cupsPrinter]);
+      const prefix = `${cupsPrinter}-`;
+      const id = cupsJobId.startsWith(prefix) ? cupsJobId.slice(prefix.length) : "";
+      if (!/^[1-9][0-9]{0,9}$/.test(id)) throw new PrintInputError("CUPS-Job-ID passt nicht zur konfigurierten Queue.");
+      // `lpstat -W completed` also lists canceled/aborted jobs. Read this exact
+      // job's IPP receipt instead; missing/ambiguous evidence never confirms output.
+      const result = await runner("ipptool", ["-t", "-v", `ipp://localhost/jobs/${id}`,
+        "/usr/share/cups/ipptool/get-job-attributes.test"]);
       if (result.exitCode !== 0) return false;
-      return result.stdout.split(/\r?\n/).some((line) => line.trim().startsWith(`${cupsJobId} `) || line.trim() === cupsJobId);
+      const attribute = (name: string) => {
+        const lines = result.stdout.split(/\r?\n/).map(line => line.trim())
+          .filter(line => line.startsWith(`${name} = `));
+        return lines.length === 1 ? lines[0].slice(name.length + 3) : null;
+      };
+      const reasons = attribute("job-state-reasons (keyword)") || attribute("job-state-reasons (1setOf keyword)");
+      const sheets = attribute("job-media-sheets-completed (integer)");
+      return attribute("status-code") === "successful-ok (successful-ok)"
+        && attribute("job-id (integer)") === id
+        && [`ipp://localhost/printers/${cupsPrinter}`, `ipp://localhost:631/printers/${cupsPrinter}`]
+          .includes(attribute("job-printer-uri (uri)") || "")
+        && attribute("job-state (enum)") === "completed"
+        && !!reasons && !/error|warn|cancel|abort|fail/i.test(reasons)
+        && !!sheets && /^[1-9][0-9]*$/.test(sheets);
     },
   };
 }

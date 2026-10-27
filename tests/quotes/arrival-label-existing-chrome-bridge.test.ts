@@ -356,7 +356,7 @@ test("service worker creates a fresh background tab, recovers from live history 
   const dispatch = service.indexOf('updateJob(nativeSession, job, "dispatching")');
   const purchase = service.indexOf('action: "purchase_once"');
   assert.ok(dispatch >= 0 && purchase > dispatch);
-  assert.equal(content.match(/createButton\(\)[.]click\(\)/g)?.length, 1);
+  assert.equal(content.match(/button[.]click\(\)/g)?.length, 1);
   assert.match(content, /sessionStorage[.]setItem\(purchaseKey/);
   assert.match(content, /collectExistingLabelEvidence/);
   assert.match(content, /inspectHistoryWhenReady/);
@@ -515,4 +515,93 @@ test("confirmed-empty EasyDPD recovery is one-time, audited and rejects downstre
   assert.match(sql, /revoke execute[\s\S]+from public, anon, authenticated[\s\S]+grant execute[\s\S]+to service_role/i);
   assert.match(rollback, /drop function if exists public[.]arrival_labels_requeue_browser_purchase_after_confirmed_no_label/i);
   assert.match(sqlTest, /v_job[.]status <> 'queued'[\s\S]+v_job[.]attempts <> 0[\s\S]+v_event_count <> 1/i);
+});
+
+test("a new incoming shipment downloads only the new label beyond its order history", () => {
+  const oldUrl = "https://easydpd.247apps.de/labels/10/download/old.pdf";
+  const newUrl = "https://easydpd.247apps.de/labels/11/download/new.pdf";
+  const oldTrack = "01470000000001";
+  const newTrack = "01470000000002";
+  const baseline = { paths: [new URL(oldUrl).pathname], trackingNumbers: [oldTrack] };
+  const old = { found: true, labelCount: 1, downloadUrl: oldUrl, downloadUrls: [oldUrl], trackingNumbers: [oldTrack] };
+  assert.equal(postDispatchDownloadUrl(old, job(), null, baseline), null);
+  const next = { found: true, labelCount: 2, downloadUrl: null, downloadUrls: [oldUrl, newUrl], trackingNumbers: [oldTrack, newTrack] };
+  assert.equal(postDispatchDownloadUrl(next, job(), null, baseline), newUrl);
+  assert.throws(() => postDispatchDownloadUrl({ ...next, downloadUrls: [newUrl] }, job(), null, baseline), /History/);
+  assert.throws(() => postDispatchDownloadUrl({ ...next, trackingNumbers: [oldTrack, newTrack, "01470000000003"] }, job(), null, baseline), /eindeutig/);
+});
+
+test("content permits an old order label but pins history and never clicks the same shipment twice", async () => {
+  const source = await readFile("deploy/local-easydpd-existing-chrome/extension/content_script.js", "utf8");
+  const oldUrl = "https://easydpd.247apps.de/labels/10/download/old.pdf";
+  const anchors = [
+    { href: "https://admin.shopify.com/store/galaxybuzzdk/orders/1234567890", textContent: "#NEONT4535" },
+    { href: oldUrl, textContent: "" },
+    { href: "https://tracking.dpd.de/status/de_DE/parcel/01470000000001", textContent: "" },
+  ];
+  function select(labels: string[], value: string) {
+    const options = labels.map(textContent => ({ textContent, value: textContent }));
+    return { options, value, selectedOptions: options.filter(o => o.value === value) };
+  }
+  const product = select(["B2C", "B2C Predict", "DPD Express 8:30", "DPD Express 12:00", "DPD Express 18:00"], "B2C");
+  const format = select(["4 Labels auf A4", "Einzeln auf A6"], "Einzeln auf A6");
+  const weight = { value: "500", getAttribute: () => "Total package weight g" };
+  let clicks = 0;
+  const button = { textContent: "Create label", disabled: false, getAttribute: () => null, click: () => { clicks++; } };
+  const storage = new Map();
+  let listener: any;
+  runInNewContext(source, {
+    URL, setTimeout: (fn: () => void) => setTimeout(fn, 0),
+    location: { origin: "https://easydpd.247apps.de" },
+    sessionStorage: { getItem: (key: string) => storage.get(key), setItem: (key: string, value: string) => storage.set(key, value) },
+    document: { querySelectorAll: (selector: string) => {
+      if (selector === "a[href]") return anchors;
+      if (selector === "select") return [product, format];
+      if (selector === "button") return [button];
+      if (selector.startsWith("input")) return [weight];
+      if (selector === '[role="alert"]') return [];
+      throw new Error(selector);
+    } },
+    chrome: { runtime: { onMessage: { addListener: (fn: any) => { listener = fn; } } } },
+  });
+  const send = (action: string, extra: Record<string, unknown> = {}): Promise<any> => new Promise(resolve => listener({
+    target: "neontrip-easydpd-frame", action, job: job(), ...extra,
+  }, {}, resolve));
+  const prepared = await send("validate_and_prepare");
+  assert.equal(prepared.ok, true);
+  assert.equal(prepared.result.ready, true);
+  const historyBaseline = prepared.result.historyBaseline;
+  assert.deepEqual(JSON.parse(JSON.stringify(historyBaseline)), { paths: [new URL(oldUrl).pathname], trackingNumbers: ["01470000000001"] });
+  anchors.push({ href: "https://easydpd.247apps.de/labels/11/download/other.pdf", textContent: "" });
+  assert.equal((await send("purchase_once", { dispatchNonce: "test", historyBaseline })).result.clicked, false);
+  assert.equal(clicks, 0);
+  anchors.pop();
+  assert.equal((await send("purchase_once", { dispatchNonce: "test", historyBaseline })).ok, true);
+  assert.equal(clicks, 1);
+  assert.equal((await send("purchase_once", { dispatchNonce: "test", historyBaseline })).result.clicked, false);
+  assert.equal(clicks, 1);
+});
+
+test("a definite no-click rejection never recovers a concurrently added external label", async () => {
+  const service = await readFile("deploy/local-easydpd-existing-chrome/extension/service_worker.mjs", "utf8");
+  const start = service.indexOf("async function processJob(");
+  const end = service.indexOf("\nasync function runCycle(", start);
+  const prepared = { ready: true, existingLabel: { found: true }, historyBaseline: { paths: ["/labels/10/download/old.pdf"], trackingNumbers: ["01470000000001"] } };
+  let recovered = 0;
+  let uploaded = 0;
+  const context: any = {
+    AbortController, crypto: { randomUUID: () => "fixture" }, validateBridgeJob,
+    waitForTabComplete: async () => {},
+    validateAndPrepareFrame: async () => ({ frameId: 1, prepared }),
+    updateJob: async () => {}, record: async () => {},
+    frameMessage: async (_tab: number, _frame: number, message: any) => message.action === "validate_and_prepare" ? prepared : { clicked: false, error: "History changed; no click" },
+    waitForDownloadedPdf: (_tab: number, _started: number, _order: string, signal: AbortSignal) => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    }),
+    recoverPostDispatchDownload: async () => { recovered++; return { filename: "/tmp/external.pdf" }; },
+  };
+  runInNewContext(service.slice(start, end) + "\nglobalThis.runProcess = processJob;", context);
+  await assert.rejects(context.runProcess({ send: async () => { uploaded++; return {}; } }, { id: 1 }, job()), /History changed|Kaufklick/);
+  assert.equal(recovered, 0);
+  assert.equal(uploaded, 0);
 });

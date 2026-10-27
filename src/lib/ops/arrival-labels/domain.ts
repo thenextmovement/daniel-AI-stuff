@@ -119,6 +119,7 @@ export type ShopifyOrderEvidence = {
 
 export type ExistingDpdEvidence = {
   trackingNumber: string;
+  incomingDhlTrackingNumber?: string;
   labelPdfUrl?: string | null;
   source: "shopify" | "database" | "easydpd";
 };
@@ -806,22 +807,10 @@ export function resolveShopifyOrder(input: {
   return { order: null, error: `${matches.length} Shopify-Bestellungen passen zum Kundennamen.` };
 }
 
-export function existingDpdFromOrder(order: ShopifyOrderEvidence, databaseEvidence: ExistingDpdEvidence[] = []) {
-  const shopify = order.fulfillments
-    .filter((fulfillment) => fulfillment.trackingNumber)
-    .map((fulfillment) => ({
-      trackingNumber: fulfillment.trackingNumber as string,
-      source: "shopify" as const,
-      fulfillmentId: fulfillment.id,
-    }));
-  const combined = [
-    ...shopify,
-    ...databaseEvidence.map((entry) => ({ trackingNumber: entry.trackingNumber, source: entry.source, fulfillmentId: null })),
-  ];
-  const dpd = combined.find((entry) => /dpd/i.test(
-    order.fulfillments.find((fulfillment) => fulfillment.id === entry.fulfillmentId)?.trackingCompany || entry.source,
-  ));
-  return dpd || combined[0] || null;
+// An order can have replacements or later shipments. Only an explicit link to
+// this incoming shipment proves its outgoing label already exists.
+export function existingDpdForShipment(incomingDhlTrackingNumber: string, evidence: ExistingDpdEvidence[] = []) {
+  return evidence.find(entry => entry.incomingDhlTrackingNumber === incomingDhlTrackingNumber) || null;
 }
 
 export function selectDpdProduct(
@@ -947,7 +936,7 @@ export function decideArrivalCase(input: {
     };
   }
 
-  const existing = existingDpdFromOrder(orderMatch.order, input.existingDpdEvidence);
+  const existing = existingDpdForShipment(input.arrival.trackingNumber, input.existingDpdEvidence);
   const gate = assessShopifyAutomationGate(orderMatch.order);
   const destination = assessDestinationGate(orderMatch.order, input.productConfig);
   const note = relevantOrderNote(orderMatch.order.note);

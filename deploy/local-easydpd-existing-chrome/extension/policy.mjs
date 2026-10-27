@@ -70,9 +70,27 @@ export function validateParcelBinding(job) {
 }
 
 // A post-dispatch recovery may download only the newly created label, never its primary.
-/** @param {string | null} [primaryLabelPath] */
-export function postDispatchDownloadUrl(observed, job, primaryLabelPath = null) {
+/**
+ * @param {string | null} [primaryLabelPath]
+ * @param {{paths: string[], trackingNumbers: string[]} | null} [historyBaseline]
+ */
+export function postDispatchDownloadUrl(observed, job, primaryLabelPath = null, historyBaseline = null) {
   if (job.parcelKind !== "acrylic_table_device") {
+    if (historyBaseline?.paths.length) {
+      if (!observed?.found) return null;
+      const urls = (observed.downloadUrls || []).map(validateEasyDpdLabelDownloadUrl);
+      const paths = urls.map(url => new URL(url).pathname);
+      const tracks = observed.trackingNumbers || [];
+      if (!historyBaseline.paths.every(path => paths.includes(path))
+        || !historyBaseline.trackingNumbers.every(number => tracks.includes(number))) {
+        throw new Error("EasyDPD-History hat alte Label-Belege verloren; kein Download.");
+      }
+      const fresh = urls.filter(url => !historyBaseline.paths.includes(new URL(url).pathname));
+      const freshTracks = tracks.filter(number => !historyBaseline.trackingNumbers.includes(number));
+      if (!fresh.length && !freshTracks.length) return null;
+      if (fresh.length !== 1 || freshTracks.length !== 1) throw new Error("Neues Sendungslabel ist nicht eindeutig; kein Download.");
+      return fresh[0];
+    }
     if (!observed?.found) return null;
     if (observed.labelCount !== 1 || observed.trackingNumbers?.length > 1 || typeof observed.downloadUrl !== "string") {
       throw new Error("EasyDPD-History ist nach dem Dispatch nicht eindeutig einem Label-Download zuzuordnen.");

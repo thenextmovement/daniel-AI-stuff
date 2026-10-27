@@ -5,7 +5,7 @@ Run this worker on one always-on machine inside the NEONTRIP office WLAN. It mak
 ## Prerequisites
 
 - Node.js version compatible with the Ops repository
-- CUPS client commands `lp` and `lpstat`
+- CUPS client commands `lp`, `lpstat`, `lpoptions` and `ipptool`, with `get-printer-attributes.test` and `get-job-attributes.test` under `/usr/share/cups/ipptool` (Ubuntu: `cups-ipp-utils`). The no-page self-test checks this before any job is claimed.
 - one configured A6-capable label queue and, for EU delivery notes, a separate A4 office-printer queue
 - a dedicated unprivileged OS user such as `neontrip-print`
 - the reviewed Ops commit checked out below `/opt/neontrip-ops/current`
@@ -74,7 +74,7 @@ Isolated database regression test (never run the fixture against production): lo
 
 ## Exactly-once boundary
 
-The worker downloads and verifies the audited PDF before entering `dispatching`. It then records `dispatching` durably before calling CUPS. A crash or uncertain state after that point is routed to manual review and is never automatically printed again. `printed` is recorded only when CUPS lists the exact job ID as completed.
+The worker downloads and verifies the audited PDF before entering `dispatching`. It then records `dispatching` durably before calling CUPS. A crash or uncertain state after that point is routed to manual review and is never automatically printed again. `printed` is recorded only when an IPP query confirms the exact job and queue, state `completed`, no error/warning reason, and at least one completed sheet. A completed-list entry alone is insufficient: that list can include aborted/canceled jobs. This is a CUPS receipt, not a visual confirmation of paper output; a missing physical label remains an incident even if CUPS reports success.
 
 ## Rollback
 

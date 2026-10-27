@@ -537,7 +537,7 @@ test("an Eilauftrag order plans the approved DPD Express 12 product", () => {
   assert.equal(decision.selectedDpdProduct, "DPD_EXPRESS_12_TEST");
 });
 
-test("reference order with existing DPD fulfillment can never plan a second label", () => {
+test("an older order fulfillment does not block a different incoming DHL shipment", () => {
   const reference: ShopifyOrderEvidence = {
     ...standardOrder,
     id: "gid://shopify/Order/4498",
@@ -557,9 +557,9 @@ test("reference order with existing DPD fulfillment can never plan a second labe
     shopifyOrders: [reference],
     productConfig: config,
   });
-  assert.equal(decision.status, "existing_label");
-  assert.equal(decision.existingDpdTracking, "01476817678011");
-  assert.equal(decision.selectedDpdProduct, null);
+  assert.equal(decision.status, "label_planned");
+  assert.equal(decision.existingDpdTracking, null);
+  assert.equal(decision.selectedDpdProduct, "DPD_CLASSIC_TEST");
 });
 
 test("non-standard Shopify notes and missing product mapping fail to manual review", () => {
@@ -823,7 +823,7 @@ test("pickup wording blocks label purchase and print even when a DPD label alrea
   const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [order], productConfig: config });
   assert.equal(decision.status, "manual_review");
   assert.equal(decision.selectedDpdProduct, null);
-  assert.equal(decision.existingDpdTracking, "01476817678011");
+  assert.equal(decision.existingDpdTracking, null);
   assert.ok(decision.reasons.includes("pickup_instruction"));
 });
 
@@ -868,7 +868,7 @@ test("missing Shopify destination country fails closed before any existing-label
   const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [order], productConfig: config });
   assert.equal(decision.status, "manual_review");
   assert.equal(decision.destinationClass, "unknown");
-  assert.equal(decision.existingDpdTracking, "01476817678011");
+  assert.equal(decision.existingDpdTracking, null);
   assert.ok(decision.reasons.includes("destination_country_missing"));
 });
 
@@ -1176,5 +1176,17 @@ test("local print API uses a separate 32-character bearer secret", () => {
   } finally {
     if (previous === undefined) delete process.env.ARRIVAL_LABEL_PRINT_API_TOKEN;
     else process.env.ARRIVAL_LABEL_PRINT_API_TOKEN = previous;
+  }
+});
+
+
+test("existing database labels block only the exact incoming shipment", () => {
+  for (const incomingDhlTrackingNumber of [undefined, "9999999999", "1234567890"]) {
+    const decision = decideArrivalCase({
+      arrival: arrival(), trelloCards: [card()], shopifyOrders: [standardOrder], productConfig: config,
+      existingDpdEvidence: [{ trackingNumber: "01470000000001", source: "database", incomingDhlTrackingNumber }],
+    });
+    assert.equal(decision.status, incomingDhlTrackingNumber === "1234567890" ? "existing_label" : "label_planned");
+    assert.equal(decision.existingDpdTracking, incomingDhlTrackingNumber === "1234567890" ? "01470000000001" : null);
   }
 });
