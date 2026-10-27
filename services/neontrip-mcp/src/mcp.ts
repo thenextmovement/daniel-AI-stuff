@@ -81,6 +81,15 @@ const offerPatchSchema = z.object({
 }).strict().refine((value) => Object.keys(value).length > 0, "Mindestens ein Angebotsfeld ist erforderlich.");
 
 function toolResult(envelope: ToolEnvelope): CallToolResult {
+  const asset=envelope.ok && isRecord(envelope.data) ? envelope.data : null;
+  if(asset && typeof asset.base64==="string" && typeof asset.mimeType==="string"
+    && ["application/pdf","image/jpeg","image/png","image/webp","image/avif"].includes(asset.mimeType)){
+    const metadata={...envelope,data:{mimeType:asset.mimeType,assetIncluded:true}};
+    const media=asset.mimeType.startsWith("image/")
+      ? {type:"image" as const,mimeType:asset.mimeType,data:asset.base64}
+      : {type:"resource" as const,resource:{uri:"neontrip-ops://asset/"+envelope.meta.correlationId+"/document.pdf",mimeType:asset.mimeType,blob:asset.base64}};
+    return {content:[{type:"text",text:JSON.stringify(metadata)},media],structuredContent:metadata};
+  }
   return {
     content: [{ type: "text" as const, text: JSON.stringify(envelope) }],
     structuredContent: envelope as unknown as Record<string, unknown>,

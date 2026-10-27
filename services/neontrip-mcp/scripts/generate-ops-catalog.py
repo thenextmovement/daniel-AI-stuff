@@ -28,6 +28,7 @@ for p in sorted((root/'src/app/api/ops').rglob('route.ts')):
  query=sorted(set(re.findall(r'(?:searchParams|params)\.get\("([^"]+)"\)',s)))
  fields=sorted(set(re.findall(r'\b(?:body|input|b)\.(\w+)',s)))
  actions=sorted(set(re.findall(r'\b(?:body|input|b)\.(?:action|actionKey)\s*===?\s*"([^"]+)"',s)))
+ actions=sorted(set(actions+re.findall(r'\b(?:action|actionKey)\s*===?\s*"([^"]+)"',s)))
  # Explicit request interfaces are documentation, not the validation authority.
  types=re.findall(r'type\s+(?:\w*(?:Body|Input))\s*=\s*\{[\s\S]*?\n\};',s)
  row={'source':str(p.relative_to(root)),'sha256':hashlib.sha256(s.encode()).hexdigest(),'methods':methods}

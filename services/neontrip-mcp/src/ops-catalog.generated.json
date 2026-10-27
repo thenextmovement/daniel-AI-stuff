@@ -78,7 +78,19 @@
         "urgent",
         "workflowId"
       ],
-      "actionValues": [],
+      "actionValues": [
+        "correct_customer_email",
+        "create_internal_task",
+        "guarded_offer_resend",
+        "initial_delivery_complete",
+        "open_problem_case",
+        "post_trello_status_comment",
+        "prepare_email_correction",
+        "prepare_offer_retry",
+        "repair_trello_projection",
+        "retry_media_pipeline",
+        "save_case_note"
+      ],
       "requestTypes": [
         "type CompanyBrainActionInput = {\n  actionKey?: CompanyBrainActionKey;\n  requestId?: string;\n  problemType?: CompanyBrainProblemType | null;\n  specialCaseKind?: CustomerSpecialCaseKind | null;\n  title?: string | null;\n  description?: string | null;\n  note?: string | null;\n  operatorName?: string | null;\n  assigneeLabel?: string | null;\n  dueAt?: string | null;\n  urgent?: boolean | null;\n  confirmed?: boolean;\n  confirmationText?: string | null;\n  offerId?: string | null;\n  offerNumber?: string | null;\n  recipientEmail?: string | null;\n  trelloCardId?: string | null;\n  subject?: string | null;\n  message?: string | null;\n  idempotencyKey?: string | null;\n  newCustomerEmail?: string | null;\n  trelloCommentText?: string | null;\n  approvalRunId?: string | null;\n  approvalNote?: string | null;\n  failureAuditId?: string | null;\n  failureIssueKey?: string | null;\n  failureOccurredAt?: string | null;\n};"
       ],
@@ -294,6 +306,16 @@
             "args: { [x: string]: unknown; }"
           ],
           "source": "src/lib/quotes/supabase-rest.ts"
+        },
+        {
+          "name": "CompanyBrainActionKey",
+          "type": "\"open_problem_case\" | \"create_internal_task\" | \"save_case_note\" | \"prepare_email_correction\" | \"correct_customer_email\" | \"post_trello_status_comment\" | \"repair_trello_projection\" | \"prepare_offer_retry\" | \"retry_media_pipeline\" | \"guarded_offer_resend\"",
+          "source": "src/app/api/ops/company-brain/actions/route.ts"
+        },
+        {
+          "name": "CompanyBrainActionInput",
+          "type": "{ actionKey?: CompanyBrainActionKey; requestId?: string; problemType?: CompanyBrainProblemType | null; specialCaseKind?: CustomerSpecialCaseKind | null; title?: string | null; description?: string | null; note?: string | null; operatorName?: string | null; assigneeLabel?: string | null; dueAt?: string | null; urgent?: boolean | null; confirmed?: boolean; confirmationText?: string | null; offerId?: string | null; offerNumber?: string | null; recipientEmail?: string | null; trelloCardId?: string | null; subject?: string | null; message?: string | null; idempotencyKey?: string | null; newCustomerEmail?: string | null; trelloCommentText?: string | null; approvalRunId?: string | null; approvalNote?: string | null; failureAuditId?: string | null; failureIssueKey?: string | null; failureOccurredAt?: string | null; }",
+          "source": "src/app/api/ops/company-brain/actions/route.ts"
         }
       ],
       "inputTypes": [
@@ -391,8 +413,19 @@
           "name": "QueryValue",
           "type": "type QueryValue = string | number | boolean | null;",
           "source": "src/lib/quotes/supabase-rest.ts"
+        },
+        {
+          "name": "CompanyBrainActionKey",
+          "type": "type CompanyBrainActionKey =\n  | \"open_problem_case\"\n  | \"create_internal_task\"\n  | \"save_case_note\"\n  | \"prepare_email_correction\"\n  | \"correct_customer_email\"\n  | \"post_trello_status_comment\"\n  | \"repair_trello_projection\"\n  | \"prepare_offer_retry\"\n  | \"retry_media_pipeline\"\n  | \"guarded_offer_resend\";",
+          "source": "src/app/api/ops/company-brain/actions/route.ts"
+        },
+        {
+          "name": "CompanyBrainProblemType",
+          "type": "export type CompanyBrainProblemType =\n  | \"color_dispute\"\n  | \"damaged_sign\"\n  | \"offer_not_sent\"\n  | \"customer_waiting\"\n  | \"design_unclear\"\n  | \"delivery_problem\"\n  | \"payment_order_unclear\"\n  | \"automation_failed\"\n  | \"other\";",
+          "source": "src/lib/ops/company-brain.ts"
         }
-      ]
+      ],
+      "confirmationRequirements": "confirmed=true and confirmationText='Freigabe' only after explicit user authorization for the concrete action. Governance may return a pending approval run rather than execution; inspect the returned status and use approvalRunId/approvalNote after the required review. operatorName is derived from the authenticated actor."
     },
     {
       "id": "company_brain_decisions_decisionId_outcomes_get",
@@ -1284,6 +1317,11 @@
           "name": "CompanyBrainAliasRepairInput",
           "type": "export type CompanyBrainAliasRepairInput = {\n  aliasId?: string | null;\n  aliasTrelloCardId?: string | null;\n  aliasTrelloCardUrl?: string | null;\n  requestId?: string | null;\n  canonicalTrelloCardId?: string | null;\n  operatorName?: string | null;\n  note?: string | null;\n};",
           "source": "src/lib/ops/company-brain-alias-repair.ts"
+        },
+        {
+          "name": "AliasRepairPostBody",
+          "type": "CompanyBrainAliasRepairInput & { confirmed?: boolean; confirmationText?: string | null; }",
+          "source": "src/app/api/ops/company-brain/trello-aliases/route.ts"
         }
       ],
       "inputTypes": [
@@ -1330,6 +1368,11 @@
           "name": "CompanyBrainAliasRepairInput",
           "type": "export type CompanyBrainAliasRepairInput = {\n  aliasId?: string | null;\n  aliasTrelloCardId?: string | null;\n  aliasTrelloCardUrl?: string | null;\n  requestId?: string | null;\n  canonicalTrelloCardId?: string | null;\n  operatorName?: string | null;\n  note?: string | null;\n};",
           "source": "src/lib/ops/company-brain-alias-repair.ts"
+        },
+        {
+          "name": "AliasRepairPostBody",
+          "type": "CompanyBrainAliasRepairInput & { confirmed?: boolean; confirmationText?: string | null; }",
+          "source": "src/app/api/ops/company-brain/trello-aliases/route.ts"
         }
       ],
       "inputTypes": [
@@ -1338,7 +1381,8 @@
           "type": "export type CompanyBrainAliasRepairInput = {\n  aliasId?: string | null;\n  aliasTrelloCardId?: string | null;\n  aliasTrelloCardUrl?: string | null;\n  requestId?: string | null;\n  canonicalTrelloCardId?: string | null;\n  operatorName?: string | null;\n  note?: string | null;\n};",
           "source": "src/lib/ops/company-brain-alias-repair.ts"
         }
-      ]
+      ],
+      "confirmationRequirements": "confirmed=true and confirmationText='Freigabe' only after explicit approval for the proposed alias repair."
     },
     {
       "id": "copilot_chat_post",
@@ -2411,7 +2455,13 @@
         "incidentId",
         "shipmentId"
       ],
-      "actionValues": [],
+      "actionValues": [
+        "acknowledge",
+        "create_task",
+        "ignore",
+        "mark_out_for_delivery",
+        "resolve"
+      ],
       "requestTypes": [],
       "source": "src/app/api/ops/customer-records/inbound-shipping/route.ts",
       "readOnly": false,
@@ -3256,7 +3306,21 @@
         "trelloCardUrl",
         "trelloImport"
       ],
-      "actionValues": [],
+      "actionValues": [
+        "apply_offer_size_ladder_to_offer",
+        "apply_trello_estimate_to_offer",
+        "create_from_anchor",
+        "create_from_training_item",
+        "ensure_manual_release_size_ladder",
+        "estimate_from_trello",
+        "generate_offer_size_ladder",
+        "generate_offer_size_ladder_from_trello",
+        "import_trello_training_candidates",
+        "list_offer_size_ladder_drafts",
+        "prepare_quote_ready_size_ladder",
+        "review",
+        "review_training_item_anchor"
+      ],
       "requestTypes": [],
       "source": "src/app/api/ops/customer-records/price-predictions/route.ts",
       "readOnly": false,
@@ -4069,7 +4133,19 @@
         "shipment",
         "shipmentId"
       ],
-      "actionValues": [],
+      "actionValues": [
+        "acknowledge",
+        "claim_notifications",
+        "create_task",
+        "enqueue_notifications",
+        "evaluate_shipment",
+        "ignore",
+        "mark_notification_failed",
+        "mark_notification_sent",
+        "record_event",
+        "resolve",
+        "upsert_shipment"
+      ],
       "requestTypes": [],
       "source": "src/app/api/ops/customer-records/shipping/route.ts",
       "readOnly": false,
@@ -5130,6 +5206,11 @@
             "process: \"insolvency\" | \"nomination\""
           ],
           "source": "src/lib/ops/dunning-court-application.ts"
+        },
+        {
+          "name": "ActionBody",
+          "type": "{ action: \"nominate_court\" | \"record_phone_call\" | \"check_court_insolvency\" | \"preview_next_stage\" | \"send_next_stage\" | \"preview_court_application\" | \"prepare_court_application\" | \"pause_dunning\" | \"resume_dunning\"; confirmation?: string; expectedStage?: number; expectedSnapshotHash?: string; expectedPauseSnapshotHash?: string; idempotencyKey?: string; note?: string; reason?: string; pauseMode?: DunningPauseMode; pauseUntil?: string | null; }",
+          "source": "src/app/api/ops/dunning/[orderKey]/actions/route.ts"
         }
       ],
       "inputTypes": [
@@ -5243,7 +5324,8 @@
           "type": "export type DunningCourtApplicationPreview = {\n  orderNumber: string;\n  debtorLabel: string;\n  invoiceNumber: string;\n  invoiceDate: string;\n  amountCents: number;\n  currency: string;\n  profileVerifiedAt: string;\n  sourceUrl: string;\n  internalRecipient: string | null;\n  officialPortal: typeof OFFICIAL_MAHNANTRAG_URL;\n  confirmationPhrase: string;\n  blockers: string[];\n  warnings: string[];\n  allowed: boolean;\n  snapshotHash: string;\n  snapshot: Record<string, unknown>;\n};",
           "source": "src/lib/ops/dunning-court-application.ts"
         }
-      ]
+      ],
+      "confirmationRequirements": "For every irreversible action first load its preview; use the returned exact confirmationPhrase, snapshot hash, expected stage and stable idempotency key only after the user's concrete approval. Enqueue uses 'VORMERKEN '+the actual orderNumber. Never infer successful payment or court submission."
     },
     {
       "id": "dunning_orderKey_court_profile_post",
@@ -5308,6 +5390,11 @@
           "name": "DunningCourtRepresentative",
           "type": "export type DunningCourtRepresentative = {\n  function:\n    | \"Geschäftsführende Gesellschafterin\"\n    | \"Geschäftsführender Gesellschafter\"\n    | \"Geschäftsführer\"\n    | \"Geschäftsführerin\"\n    | \"Managing Director\";\n  name: string;\n};",
           "source": "src/lib/ops/dunning-court.ts"
+        },
+        {
+          "name": "ProfileBody",
+          "type": "{ action: \"verify_profile\"; legalName: string; legalForm: string; street: string; postalCode: string; city: string; representatives: DunningCourtRepresentative[]; registerCourt: string; registerType: \"HRB\" | \"HRA\" | \"GnR\" | \"PR\" | \"VR\"; registerNumber: string; sourceUrl: string; communicationReviewed: true; }",
+          "source": "src/app/api/ops/dunning/[orderKey]/court-profile/route.ts"
         }
       ],
       "inputTypes": [
@@ -5704,7 +5791,18 @@
         "requestId",
         "worker"
       ],
-      "actionValues": [],
+      "actionValues": [
+        "alert_outcome",
+        "claim_delivery",
+        "claim_failure_alert",
+        "delivery_draft_created",
+        "delivery_outcome",
+        "ingest_reply",
+        "queue_deliveries",
+        "reserve_reply",
+        "select_organization",
+        "upsert_request"
+      ],
       "requestTypes": [],
       "source": "src/app/api/ops/eu-supplier-quotes/route.ts",
       "readOnly": false,
@@ -6136,6 +6234,11 @@
           "name": "SupplierSaleUrgencyFilter",
           "type": "export type SupplierSaleUrgencyFilter = \"all\" | \"rush\" | \"standard\";",
           "source": "src/lib/ops/supplier-sales.ts"
+        },
+        {
+          "name": "SupplierSalesPostBody",
+          "type": "{ action?: \"upsert_sale\" | \"assign_supplier\" | \"acknowledge_post_order_change\" | \"update_payment_decision\" | \"request_payment_reminder\" | \"send_order_confirmation_email\" | \"retry_shopify_tag\" | \"retry_trello_projection\" | \"set_trello_card\" | \"upload_approved_design\" | \"mark_in_production\" | \"apply_no_payment_reminder_tag\" | \"create_deadline_tasks\" | \"cleanup_supplier_assignment_tasks\" | \"sync_completed_offers\" | \"sync_shopify_supplier_tags\" | \"diagnose_sales_flow\"; payload?: unknown; sale?: unknown; order?: unknown; saleId?: string | null; supplier?: SupplierSaleSupplier | null; requestedDeliveryDate?: string | null; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean | null; assignmentNote?: string | null; trelloCard?: string | null; reviewNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; paymentDueAt?: string | null; requestedBy?: string | null; recipientEmail?: string | null; paymentLink?: string | null; message?: string | null; operatorName?: string | null; assigneeLabel?: string | null; agentToken?: string | null; idempotencyKey?: string | null; limit?: number | string | null; }",
+          "source": "src/app/api/ops/supplier-sales/route.ts"
         }
       ],
       "inputTypes": [
@@ -6265,7 +6368,25 @@
         "supplier",
         "trelloCard"
       ],
-      "actionValues": [],
+      "actionValues": [
+        "acknowledge_post_order_change",
+        "apply_no_payment_reminder_tag",
+        "assign_supplier",
+        "cleanup_supplier_assignment_tasks",
+        "create_deadline_tasks",
+        "diagnose_sales_flow",
+        "mark_in_production",
+        "request_payment_reminder",
+        "retry_shopify_tag",
+        "retry_trello_projection",
+        "send_order_confirmation_email",
+        "set_trello_card",
+        "sync_completed_offers",
+        "sync_shopify_supplier_tags",
+        "update_payment_decision",
+        "upload_approved_design",
+        "upsert_sale"
+      ],
       "requestTypes": [
         "type SupplierSalesPostBody = {\n  action?:\n    | \"upsert_sale\"\n    | \"assign_supplier\"\n    | \"acknowledge_post_order_change\"\n    | \"update_payment_decision\"\n    | \"request_payment_reminder\"\n    | \"send_order_confirmation_email\"\n    | \"retry_shopify_tag\"\n    | \"retry_trello_projection\"\n    | \"set_trello_card\"\n    | \"upload_approved_design\"\n    | \"mark_in_production\"\n    | \"apply_no_payment_reminder_tag\"\n    | \"create_deadline_tasks\"\n    | \"cleanup_supplier_assignment_tasks\"\n    | \"sync_completed_offers\"\n    | \"sync_shopify_supplier_tags\"\n    | \"diagnose_sales_flow\";\n  payload?: unknown;\n  sale?: unknown;\n  order?: unknown;\n  saleId?: string | null;\n  supplier?: SupplierSaleSupplier | null;\n  requestedDeliveryDate?: string | null;\n  specialSupplierName?: string | null;\n  shopifySupplierTagConfirmed?: boolean | null;\n  assignmentNote?: string | null;\n  trelloCard?: string | null;\n  reviewNote?: string | null;\n  paymentDecisionStatus?: SupplierSalePaymentDecision | null;\n  paymentDueAt?: string | null;\n  requestedBy?: string | null;\n  recipientEmail?: string | null;\n  paymentLink?: string | null;\n  message?: string | null;\n  operatorName?: string | null;\n  assigneeLabel?: string | null;\n  agentToken?: string | null;\n  idempotencyKey?: string | null;\n  limit?: number | string | null;\n};"
       ],
@@ -6455,6 +6576,11 @@
           "name": "SupplierSaleUrgencyFilter",
           "type": "export type SupplierSaleUrgencyFilter = \"all\" | \"rush\" | \"standard\";",
           "source": "src/lib/ops/supplier-sales.ts"
+        },
+        {
+          "name": "SupplierSalesPostBody",
+          "type": "{ action?: \"upsert_sale\" | \"assign_supplier\" | \"acknowledge_post_order_change\" | \"update_payment_decision\" | \"request_payment_reminder\" | \"send_order_confirmation_email\" | \"retry_shopify_tag\" | \"retry_trello_projection\" | \"set_trello_card\" | \"upload_approved_design\" | \"mark_in_production\" | \"apply_no_payment_reminder_tag\" | \"create_deadline_tasks\" | \"cleanup_supplier_assignment_tasks\" | \"sync_completed_offers\" | \"sync_shopify_supplier_tags\" | \"diagnose_sales_flow\"; payload?: unknown; sale?: unknown; order?: unknown; saleId?: string | null; supplier?: SupplierSaleSupplier | null; requestedDeliveryDate?: string | null; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean | null; assignmentNote?: string | null; trelloCard?: string | null; reviewNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; paymentDueAt?: string | null; requestedBy?: string | null; recipientEmail?: string | null; paymentLink?: string | null; message?: string | null; operatorName?: string | null; assigneeLabel?: string | null; agentToken?: string | null; idempotencyKey?: string | null; limit?: number | string | null; }",
+          "source": "src/app/api/ops/supplier-sales/route.ts"
         }
       ],
       "inputTypes": [
@@ -8768,6 +8894,10 @@
     {
       "source": "src/lib/quotes/validation.ts",
       "sha256": "8e590f2d006b78c03cd9460594a91906a3fc268814ae1ca49e5ebdf26a269909"
+    },
+    {
+      "source": "src/app/api/ops/company-brain/actions/route.ts",
+      "sha256": "e1cac80c59d908f270699bbd5126ee72577f2f074df2220e654f67a3e7d84112"
     },
     {
       "source": "src/lib/ops/company-brain-foundation.ts",

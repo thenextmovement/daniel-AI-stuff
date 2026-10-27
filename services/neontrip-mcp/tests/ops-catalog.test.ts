@@ -21,6 +21,8 @@ test("Ops target cannot be changed with paths, unknown query keys or arbitrary o
 
 test("Ops catalog preserves side effects and documents imported task inputs",()=>{
  assert.equal(OPS_OPERATIONS.find(x=>x.id==="company_brain_resolve_get")?.readOnly,false);
+ assert.ok(JSON.stringify(OPS_OPERATIONS.find(x=>x.id==="company_brain_actions_post")).includes("guarded_offer_resend"));
+ assert.ok(JSON.stringify(OPS_OPERATIONS.find(x=>x.id==="supplier_sales_post")).includes("send_order_confirmation_email"));
  assert.ok(JSON.stringify(OPS_OPERATIONS.find(x=>x.id==="tasks_post")?.inputContracts).includes("title?"));
  assert.equal(OPS_OPERATIONS.some(x=>x.id==="customer_records_offers_offerId_admin_get"),false);
  assert.equal(OPS_COVERAGE.find(x=>x.source.endsWith("voice-phone/team/route.ts"))?.coverage,"ops_catalog");

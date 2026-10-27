@@ -18,7 +18,7 @@ for(const row of catalog.coverage){
    if(sym?.flags&ts.SymbolFlags.Alias)sym=checker.getAliasedSymbol(sym);
    for(const decl of sym?.declarations||[]){
     const sourcePath=decl.getSourceFile().fileName;
-    if(!sourcePath.startsWith(root+"/src/lib/")||!(ts.isTypeAliasDeclaration(decl)||ts.isInterfaceDeclaration(decl)))continue;
+    if((!sourcePath.startsWith(root+"/src/lib/") && sourcePath!==source.fileName)||!(ts.isTypeAliasDeclaration(decl)||ts.isInterfaceDeclaration(decl)))continue;
     const key=sourcePath+":"+decl.pos;
     if(visitedTypes.has(key))continue;
     if(visitedTypes.size>=120)throw new Error("Input contract needs explicit review: "+row.source);
@@ -33,6 +33,10 @@ for(const row of catalog.coverage){
   ts.forEachChild(node,child=>referencedTypes(child,depth+1));
  }
  for(const stmt of source.statements){
+  if((ts.isTypeAliasDeclaration(stmt)||ts.isInterfaceDeclaration(stmt)) && /(?:Input|Body|ActionKey)$/.test(stmt.name.text)){
+   contracts.push({name:stmt.name.text,type:checker.typeToString(checker.getTypeAtLocation(stmt),stmt,ts.TypeFormatFlags.NoTruncation|ts.TypeFormatFlags.InTypeAlias),source:row.source});
+   referencedTypes(stmt);
+  }
   if(!ts.isImportDeclaration(stmt)||!stmt.importClause?.namedBindings||!ts.isNamedImports(stmt.importClause.namedBindings))continue;
   for(const binding of stmt.importClause.namedBindings.elements){
    let symbol=checker.getSymbolAtLocation(binding.name);

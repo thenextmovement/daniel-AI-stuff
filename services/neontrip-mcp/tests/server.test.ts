@@ -189,6 +189,7 @@ test("full operator discovers Ops operations; limited automation never inherits 
  const {app,close}=createGatewayApp({config:cfg,audit:()=>undefined,fetchImpl:async(url,init)=>{
   if(String(url).endsWith("/tasks"))throw new DOMException("Uncertain test result","AbortError");
   calls.push({url:String(url),method:init?.method||"GET",body:typeof init?.body==="string"?JSON.parse(init.body):null});
+  if(String(url).includes("action=snapshot_pdf"))return new Response("%PDF-local-test",{headers:{"content-type":"application/pdf"}});
   return Response.json({ok:true,results:[]});
  }});
  const listener=app.listen(0,"127.0.0.1"); await new Promise<void>(r=>listener.once("listening",r));
@@ -221,6 +222,11 @@ test("full operator discovers Ops operations; limited automation never inherits 
  assert.equal(uncertain.result.structuredContent.error.code,"upstream_timeout");
  assert.equal(uncertain.result.structuredContent.error.retryable,false);
  assert.equal(uncertain.result.structuredContent.error.requiresHumanReview,true);
+ const pdf=await call("tools/call",{name:"ops_read",arguments:{operation:"supplier_sales_get",query:{action:"snapshot_pdf"}}});
+ assert.equal(pdf.result.isError,undefined);
+ assert.equal(pdf.result.content[1].resource.mimeType,"application/pdf");
+ assert.equal(Buffer.from(pdf.result.content[1].resource.blob,"base64").toString(),"%PDF-local-test");
+ assert.equal(pdf.result.structuredContent.data.base64,undefined);
  cfg.identities[0]!.role="billing_automation"; cfg.identities[0]!.scopes=["system:read"];
  const limited=await call("tools/list",{});
  assert.equal(limited.result.tools.some((t:{name:string})=>t.name.startsWith("ops_")),false);

@@ -187,5 +187,14 @@
         "notes": "Actual evaluation evidence only. scenarioCount integer >=50; passedCount integer 0..scenarioCount."
       }
     }
+  },
+  "company_brain_actions_post": {
+    "confirmationRequirements": "confirmed=true and confirmationText='Freigabe' only after explicit user authorization for the concrete action. Governance may return a pending approval run rather than execution; inspect the returned status and use approvalRunId/approvalNote after the required review. operatorName is derived from the authenticated actor."
+  },
+  "company_brain_trello_aliases_post": {
+    "confirmationRequirements": "confirmed=true and confirmationText='Freigabe' only after explicit approval for the proposed alias repair."
+  },
+  "dunning_orderKey_actions_post": {
+    "confirmationRequirements": "For every irreversible action first load its preview; use the returned exact confirmationPhrase, snapshot hash, expected stage and stable idempotency key only after the user's concrete approval. Enqueue uses 'VORMERKEN '+the actual orderNumber. Never infer successful payment or court submission."
   }
 }
