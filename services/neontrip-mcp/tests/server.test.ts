@@ -187,6 +187,7 @@ test("full operator discovers Ops operations; limited automation never inherits 
  const calls:Array<{url:string;method:string;body:unknown}>=[];
  cfg.ops={baseUrl:new URL("https://ops.example.test"),accessClientId:"id",accessClientSecret:"secret"};
  const {app,close}=createGatewayApp({config:cfg,audit:()=>undefined,fetchImpl:async(url,init)=>{
+  if(String(url).endsWith("/tasks"))throw new DOMException("Uncertain test result","AbortError");
   calls.push({url:String(url),method:init?.method||"GET",body:typeof init?.body==="string"?JSON.parse(init.body):null});
   return Response.json({ok:true,results:[]});
  }});
@@ -215,6 +216,11 @@ test("full operator discovers Ops operations; limited automation never inherits 
  assert.equal(resolve.result.isError,undefined);
  assert.equal(calls[2]?.method,"GET");
  assert.equal(calls[2]?.body,null);
+ const uncertain=await call("tools/call",{name:"ops_write",arguments:{operation:"tasks_post",body:{action:"create"},reason:"Explicit local test"}});
+ assert.equal(uncertain.result.isError,true);
+ assert.equal(uncertain.result.structuredContent.error.code,"upstream_timeout");
+ assert.equal(uncertain.result.structuredContent.error.retryable,false);
+ assert.equal(uncertain.result.structuredContent.error.requiresHumanReview,true);
  cfg.identities[0]!.role="billing_automation"; cfg.identities[0]!.scopes=["system:read"];
  const limited=await call("tools/list",{});
  assert.equal(limited.result.tools.some((t:{name:string})=>t.name.startsWith("ops_")),false);

@@ -190,7 +190,7 @@ export function createNeontripMcpServer(input: {
           error: {
             code: failure.code,
             message: failure.message,
-            retryable: failure.retryable,
+            retryable: options.name === "ops_write" ? false : failure.retryable,
             requiresHumanReview: failure.requiresHumanReview,
           },
           meta: { capability: options.name, correlationId },

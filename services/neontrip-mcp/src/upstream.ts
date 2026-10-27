@@ -6,6 +6,7 @@ import type { JsonValue, ServiceName } from "./types.js";
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   binary?: boolean;
+  timeoutMs?: number;
   body?: JsonValue;
 };
 
@@ -28,7 +29,7 @@ export class NeontripApi {
   async nativeOffers(token: string, method: "tools/list" | "tools/call", params: Record<string, unknown>) {
     if (!this.config.offers) throw new GatewayError("offers_not_configured", "Angebotssoftware ist nicht verbunden.", 503);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Math.max(this.config.requestTimeoutMs, 30_000));
+    const timeout = setTimeout(() => controller.abort(), method === "tools/call" ? 600_000 : Math.max(this.config.requestTimeoutMs, 30_000));
     try {
       const response = await this.fetchImpl(joinUrl(this.config.offers.baseUrl, "/api/mcp"), {
         method: "POST",
@@ -62,7 +63,7 @@ export class NeontripApi {
     }
     const url = joinUrl(target.baseUrl, path);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.config.requestTimeoutMs);
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? this.config.requestTimeoutMs);
     try {
       const headers: Record<string, string> = { Accept: "application/json" };
       if (service !== "offers" && this.config.ops) {
@@ -125,7 +126,7 @@ export class NeontripApi {
 
   async opsOperation(id: string, pathParameters: Record<string,string>, query: Record<string,string|number|boolean>, body?: JsonValue) {
     const {operation,path}=opsRequest(id,pathParameters,query);
-    const result=await this.request("customers",path,{method:operation.method as RequestOptions["method"],body:operation.method==="GET"?undefined:body,binary:true});
+    const result=await this.request("customers",path,{method:operation.method as RequestOptions["method"],body:operation.method==="GET"?undefined:body,binary:true,timeoutMs:operation.readOnly?30_000:210_000});
     if (result && typeof result==="object" && !Array.isArray(result) && "ok" in result && result.ok===false) {
       const candidate="error" in result && typeof result.error==="string" ? result.error : "";
       const code=/^[A-Za-z0-9:_-]{1,100}$/.test(candidate)?candidate:"ops_action_failed";
