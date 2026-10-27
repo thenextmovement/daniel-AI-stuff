@@ -57,7 +57,7 @@ export async function main(args=process.argv.slice(2)) {
         const original=plan.candidates.find(c=>c.trackingNumber===payload.trackingNumber);
         if(!current||current.card.id!==original?.card.id) throw new Error('leo_trello_changed');
         const c=current.card;
-        await supabaseRpc('inbound_record_dhl_unified_response',{p_payload:{...payload,trelloBoardId:c.boardId,trelloCardId:c.id,trelloCardName:c.name,trelloCardUrl:c.url,trelloListId:c.listId,trelloListName:c.listName}});
+        await supabaseRpc('inbound_record_dhl_unified_response',{p_payload:{...payload,trelloBoardId:c.boardId,trelloCardId:c.id,trelloCardName:c.name,trelloCardUrl:c.url,trelloListId:c.listId,trelloListName:c.listName,replacementRound:c.replacementRound||null}});
       },
     },mode==='sync');
     const report={mode,at:new Date().toISOString(),completedCount:plan.completedCount,...result,issues:[...plan.issues,...result.issues]};

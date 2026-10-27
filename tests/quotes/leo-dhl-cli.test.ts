@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { main } from '../../scripts/run_leo_dhl_tracking';
 
-async function scenario(mode:string,options:{lock?:boolean;changeCard?:boolean;invalidState?:boolean;completed?:boolean;pendingExtra?:boolean;caseSecondPage?:boolean}={}) {
+async function scenario(mode:string,options:{lock?:boolean;changeCard?:boolean;invalidState?:boolean;completed?:boolean;pendingExtra?:boolean;caseSecondPage?:boolean;replacement?:boolean}={}) {
   const dir=await mkdtemp(path.join(tmpdir(),'leo-dhl-test-'));
   const keys=['LEO_DHL_STATE_DIR','LEO_DHL_SYNC_ENABLED','DHL_API_KEY','TRELLO_API_KEY','TRELLO_TOKEN','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','ARRIVAL_LABEL_TRELLO_BOARD_ID'] as const;
   const old=Object.fromEntries(keys.map(k=>[k,process.env[k]]));const fetchOriginal=globalThis.fetch;
@@ -15,7 +15,12 @@ async function scenario(mode:string,options:{lock?:boolean;changeCard?:boolean;i
   globalThis.fetch=async(input,init)=>{
     const u=new URL(String(input));calls.push(u.hostname+u.pathname);
     if(u.hostname==='api.trello.com') {
-      if(u.pathname.endsWith('/cards')) {cardReads++;return Response.json([{id:'111111111111111111111111',name:'#NEONT123',url:'https://trello.com/c/abcd1234',idBoard:'62bae9b97705e7419ed64593',idList:'69ff17bfab2afaaf96f7033a',closed:false,customFieldItems:[{idCustomField:'tracking',value:{text:options.changeCard&&cardReads>1?'DHL 9912345678':'DHL 0012345678'}}]}]);}
+      if(u.pathname.endsWith('/cards')) {cardReads++;return Response.json([{id:'111111111111111111111111',name:'#NEONT123',url:'https://trello.com/c/abcd1234',idBoard:'62bae9b97705e7419ed64593',idList:options.replacement?'6347e0a2f062500084675062':'69ff17bfab2afaaf96f7033a',closed:false,customFieldItems:[{idCustomField:'tracking',value:{text:options.changeCard&&cardReads>1?'DHL 9912345678':options.replacement?'DHL 1123456789 / 0012345678':'DHL 0012345678'}}]}]);}
+      if(u.pathname.endsWith('/actions')) return Response.json([
+        {id:'333333333333333333333333',date:'2026-10-06T10:00:00Z',type:'updateCustomFieldItem',data:{card:{id:'111111111111111111111111'},customField:{id:'tracking'},old:{value:{text:'1123456789'}},customFieldItem:{value:{text:'1123456789 / 0012345678'}}}},
+        {id:'222222222222222222222222',date:'2026-10-05T10:00:00Z',type:'updateCard',data:{card:{id:'111111111111111111111111'},listAfter:{id:'646c788ae63245624b6d6a7a'}}},
+        {id:'444444444444444444444444',date:'2026-10-04T10:00:00Z',type:'updateCustomFieldItem',data:{card:{id:'111111111111111111111111'},customField:{id:'tracking'},old:{value:{text:''}},customFieldItem:{value:{text:'1123456789'}}}},
+      ]);
       if(u.pathname.endsWith('/lists')) return Response.json([{id:'69ff17bfab2afaaf96f7033a',name:'Prepare Shipping'}]);
       if(u.pathname.endsWith('/customFields')) return Response.json([{id:'tracking',name:'Tracking number'}]);
     }
@@ -53,6 +58,14 @@ test('CLI check records private quota state without business writes',async()=>{
 });
 test('CLI sync rechecks Trello and supplies exact identity to transactional ingest',async()=>{
   const r=await scenario('sync');assert.ok('synced' in r.result);assert.equal(r.result.synced,1);assert.equal(r.rpc.length,1);assert.equal((r.rpc[0] as any).p_payload.trelloCardId,'111111111111111111111111');
+});
+test('CLI sends freshly rechecked replacement evidence to the real ingestion boundary',async()=>{
+  const r=await scenario('sync',{replacement:true});
+  assert.ok('synced' in r.result);assert.equal(r.result.synced,1);
+  const p=(r.rpc[0] as any).p_payload;
+  assert.equal(p.trelloListId,'6347e0a2f062500084675062');
+  assert.deepEqual(p.replacementRound,{previousTrackingNumbers:['1123456789'],trackingNumbers:['0012345678'],
+    previousArrivedAt:'2026-10-05T10:00:00Z',arrivalActionId:'222222222222222222222222',addedAt:'2026-10-06T10:00:00Z',trackingActionId:'333333333333333333333333'});
 });
 test('CLI blocks changed Trello identity before any business write',async()=>{
   const r=await scenario('sync',{changeCard:true});assert.equal(r.rpc.length,0);assert.equal(r.state.attempts[0].status,'record_uncertain');
