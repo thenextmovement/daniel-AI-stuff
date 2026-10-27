@@ -1,0 +1,106 @@
+{
+  "observedAt": "2026-10-27T12:33:31Z",
+  "source": {
+    "id": "rBggMnVkWwiVXXXO",
+    "versionId": "da579466-67d3-4ac9-bba9-ef20fa9740a9",
+    "activeVersionId": "da579466-67d3-4ac9-bba9-ef20fa9740a9",
+    "active": true,
+    "settings": {
+      "executionOrder": "v1",
+      "timezone": "Europe/Berlin",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "saveManualExecutions": true,
+      "saveExecutionProgress": true,
+      "executionTimeout": 240
+    }
+  },
+  "formatter": {
+    "id": "ArT3LN25Mb1PAuBE",
+    "versionId": "df91ad93-d311-4959-a156-3fcb793699fe",
+    "activeVersionId": "df91ad93-d311-4959-a156-3fcb793699fe",
+    "active": true,
+    "settings": {
+      "executionOrder": "v1",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "none",
+      "callerPolicy": "workflowsFromSameOwner",
+      "availableInMCP": false
+    }
+  },
+  "gate": {
+    "id": "fhmCa5a1OS9H8ERh",
+    "versionId": "4902418b-677a-4dac-835c-3a4be2b3842b",
+    "activeVersionId": "4902418b-677a-4dac-835c-3a4be2b3842b",
+    "active": true,
+    "settings": {
+      "executionOrder": "v1",
+      "timezone": "Europe/Berlin",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "saveManualExecutions": true,
+      "binaryMode": "separate"
+    }
+  },
+  "formatterNode": {
+    "id": "format-error",
+    "parameters": {
+      "mode": "runOnceForAllItems",
+      "jsCode": "\nconst errorData = $('Error Trigger').first().json;\nconst config = $('Config').first().json;\n\nconst workflowName = (errorData.workflow && errorData.workflow.name) || 'Unknown Workflow';\nconst workflowId = (errorData.workflow && errorData.workflow.id) || '';\nconst errorMessage = (errorData.execution && errorData.execution.error && errorData.execution.error.message) || 'Unknown error';\nconst lastNode = (errorData.execution && errorData.execution.lastNodeExecuted) || 'Unknown node';\nconst executionUrl = (errorData.execution && errorData.execution.url) || ('https://fuajob.online/workflow/' + workflowId);\nconst executionId = (errorData.execution && errorData.execution.id) || '';\nconst timestamp = new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });\n\n// Intelligent solution suggestion based on error pattern\nlet solution = '1. Execution-Log in n8n öffnen und Details prüfen';\nconst lower = errorMessage.toLowerCase();\nif (/invalid_grant|refresh token|expired|revoked|unauthorized|authorization grant/.test(lower)) {\n  solution = '1. n8n → Credentials öffnen\\n2. Betroffene Credential reconnecten / neu autorisieren\\n3. Anschließend Workflow erneut triggern';\n} else if (/forbidden|permission_denied|storage quota/.test(lower)) {\n  solution = '1. Service-Account-Berechtigungen prüfen (Drive-Folder mit Service-Account-Email sharen)\\n2. Falls Service-Account-Quota: zurück auf OAuth oder Workspace nutzen';\n} else if (/429|rate limit|quota exceeded/.test(lower)) {\n  solution = '1. Rate-Limit der API erreicht — kurz abwarten\\n2. Falls häufiger: Workflow-Frequenz reduzieren oder API-Quota erhöhen';\n} else if (/timeout|etimedout|econnrefused|enotfound/.test(lower)) {\n  solution = '1. Netzwerk / Ziel-API erreichbar? Manueller Test der URL\\n2. Falls Ziel down: warten und Workflow später re-triggern';\n} else if (/cannot read|undefined|null|typeerror|referenceerror/.test(lower)) {\n  solution = '1. Code-Node debuggen — sieht nach Daten-Shape-Problem aus\\n2. Upstream-Node-Output checken: hat das erwartete Feld geheißen wie erwartet?';\n}\n\nconst erklaerung = 'Der Workflow ist im Node „' + lastNode + '\" mit einem Fehler abgebrochen.';\n\nconst emailSubject = 'RH Fehler im Workflow (' + workflowName + ')';\nconst emailBody = [\n  '<div style=\"font-family:-apple-system,Arial,sans-serif;color:#222;line-height:1.5;\">',\n  '<h2 style=\"margin:0 0 16px;color:#c0392b\">⚠ ' + workflowName + ' — Fehler</h2>',\n  '<table style=\"border-collapse:collapse;width:100%;margin-bottom:16px;\">',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;width:160px;vertical-align:top\">Einfache Erläuterung</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;\">' + erklaerung + '</td></tr>',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;vertical-align:top\">Grund</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;\"><code style=\"background:#fff5f5;padding:2px 4px;border-radius:3px;\">' + errorMessage + '</code></td></tr>',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;vertical-align:top\">Lösung</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;white-space:pre-line;\">' + solution + '</td></tr>',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;vertical-align:top\">Link zum Workflow</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;\"><a href=\"' + executionUrl + '\">' + executionUrl + '</a></td></tr>',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;vertical-align:top\">Zeit</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;\">' + timestamp + '</td></tr>',\n  '<tr><td style=\"padding:8px 12px;background:#f6f8fa;border:1px solid #e1e4e8;font-weight:600;vertical-align:top\">Execution ID</td>',\n  '<td style=\"padding:8px 12px;border:1px solid #e1e4e8;\">' + executionId + '</td></tr>',\n  '</table>',\n  '<p style=\"color:#666;font-size:12px;margin-top:24px;\">Automatischer Alert von n8n. Reply-to support@neontrip.de</p>',\n  '</div>'\n].join('');\n\nfunction mirrorFailureAlert(errorData) {\n const names={FyZCGkPNoA6EQI3N:\"Bankspiegel\",m6VJ0hvDT7I40xy0:\"Shopify-Abgleich\"};\n const workflowId=String(errorData.workflow?.id||\"\");\n if(!names[workflowId])return null;\n const executionId=/^[A-Za-z0-9_-]+$/.test(String(errorData.execution?.id||\"\"))?String(errorData.execution.id):\"\";\n const test=errorData.execution?.error?.message===\"OPS_MIRROR_ALERT_PATH_TEST\";\n const url=\"https://fuajob.online/workflow/\"+workflowId+(executionId?\"/executions/\"+executionId:\"\");\n return {emailRecipient:\"support@neontrip.de\",\n   emailSubject:(test?\"[Test erfolgreich ausgeloest] \":\"\")+names[workflowId]+\" – Aktualisierung nicht bestätigt\",\n   emailBody:(test?\"<p>Kontrollierter Alarmtest. Kein echter Ausfall und keine Kundenaktion.</p>\":\"<p>Der \"+names[workflowId]+\" konnte nicht vollständig aktualisiert werden. Die OPS-Gesamtsummen sind bis zum bestätigten Abgleich vorläufig.</p>\")+\"<p>Betroffenen Lauf <a href=\\\"\"+url+\"\\\">in n8n prüfen</a>, Ursache beheben und den vollständigen Abgleich wiederholen. Keine Mahnung aus einem unbestätigten Datenstand ableiten.</p>\",\n   workflowName:names[workflowId],workflowId,errorMessage:test?\"OPS_MIRROR_ALERT_PATH_TEST\":\"OPS_SOURCE_MIRROR_FAILED\",lastNode:\"\",executionUrl:url,executionId,timestamp:new Date().toISOString()\n };\n}\n\nconst mirrorAlert=mirrorFailureAlert(errorData);if(mirrorAlert)return [{json:mirrorAlert}];\n\nconst dunningWorkflowIds = new Set(['sEP7CFh1qr6EpO0V','HzMgctp78bcMq44A','oA57luKTeHEE06uN']);\nif (dunningWorkflowIds.has(workflowId)) {\n  const safeId = /^[A-Za-z0-9_-]+$/.test(String(executionId)) ? String(executionId) : '';\n  const safeUrl = 'https://fuajob.online/workflow/' + workflowId + (safeId ? '/executions/' + safeId : '');\n  return [{json: {\n    emailRecipient: 'support@neontrip.de',\n    emailSubject: 'Mahnlauf nicht bestätigt: ' + workflowId,\n    emailBody: '<p>Der Mahnprozess <strong>' + workflowId + '</strong> ist fehlgeschlagen. Der aktuelle Prüflauf oder Versand ist nicht bestätigt.</p><p>Bitte <a href=\"' + safeUrl + '\">die Ausführung prüfen</a>, Ursache beheben und vor einer Wiederholung den tatsächlichen Versand in Outlook und OPS abgleichen. Nicht ungeprüft erneut senden.</p>',\n    workflowName, workflowId, errorMessage: 'DUNNING_EXECUTION_FAILED', lastNode: '', executionUrl: safeUrl, executionId: safeId, timestamp\n  }}];\n}\n\nreturn [{ json: {\n  emailRecipient: config.emailRecipient,\n  emailSubject,\n  emailBody,\n  workflowName, errorMessage, lastNode, executionUrl, executionId, timestamp\n}}];\n"
+    }
+  },
+  "whatsappNode": {
+    "id": "send-whatsapp",
+    "disabled": true
+  },
+  "emailNode": {
+    "id": "send-email",
+    "parameters": {
+      "resource": "message",
+      "operation": "send",
+      "toRecipients": "={{ $json.emailRecipient }}",
+      "subject": "={{ $json.emailSubject }}",
+      "bodyContent": "={{ $json.emailBody }}",
+      "additionalFields": {
+        "bodyContentType": "HTML"
+      }
+    }
+  },
+  "gateNode": {
+    "id": "global-five-minute-gate",
+    "parameters": {
+      "jsCode": "// Internal notification gate: new problems remain visible, repetitions are bundled.\n// No customer recipient, business operation or payment state is changed here.\nconst text = value => String(value ?? '').trim();\nconst escapeHtml = value => text(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\nconst now = Date.now();\nconst day = 24 * 60 * 60 * 1000;\nconst state = $getWorkflowStaticData('global');\nconst gate = state.internalErrorMailGateV2 ||= { issues: {}, invalidCount: 0 };\nconst allowed = new Set(['info@neontrip.de', 'support@neontrip.de', 'rh@neontrip.de']);\nconst outputs = [];\nfunction stable(value) {\n  return text(value)\n    .replace(/https?:\\/\\/[^\\s<>\"']+/g, '[link]')\n    .replace(/\\b\\d{4}-\\d{2}-\\d{2}T[\\d:.]+Z\\b/g, '[time]')\n    .replace(/\\b\\d{1,2}\\.\\d{1,2}\\.\\d{4}(?:,?\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)?/g, '[date]')\n    .replace(/\\b(?:execution|request)[-_ ]?id\\s*[:=]\\s*[^\\s<,;]+/gi, '[execution]')\n    .replace(/\\s+/g, ' ').trim();\n}\nfunction hash(value) {\n  let a = 2166136261, b = 5381;\n  for (let i = 0; i < value.length; i++) { a = Math.imul(a ^ value.charCodeAt(i), 16777619); b = Math.imul(b, 33) ^ value.charCodeAt(i); }\n  return (a >>> 0).toString(16) + ':' + (b >>> 0).toString(16);\n}\nfor (const [key, issue] of Object.entries(gate.issues)) {\n  if (!issue || now - Number(issue.lastSeenAt || 0) > 7 * day) delete gate.issues[key];\n}\nfor (const item of $input.all()) {\n  const input = item?.json || {};\n  if (input.sendAlert === false || input.dryRun === true) continue;\n  const subject = text(input.subject || input.emailSubject).replace(/[\\r\\n]+/g, ' ').slice(0, 300);\n  const body = text(input.body_html || input.emailBody).slice(0, 50000);\n  // Never turn malformed/empty notification inputs into another notification loop.\n  if (!subject || !body || !body.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim()) {\n    gate.invalidCount++; gate.lastInvalidAt = now; continue;\n  }\n  const recipientRaw = text(input.emailRecipient || input.recipient || input.toRecipients || 'info@neontrip.de');\n  const recipients = [...new Set(recipientRaw.split(/[;,]/).map(v => v.trim().toLowerCase()).filter(Boolean))].sort();\n  if (!recipients.length || recipients.some(v => !allowed.has(v))) throw new Error('internal_error_mail_recipient_not_allowed');\n  const metadata = input.metadata || {};\n  const workflowName = text(input.source_workflow_name || input.workflowName);\n  const errorMessage = text(metadata.error_message || input.errorMessage);\n  const description = text(metadata.error_description || input.errorDescription);\n  const node = text(metadata.failed_node || input.lastNode || input.failedNode);\n  // Prefer structured error data. Different error descriptions and severity escalations\n  // must remain separate even when the upstream fingerprint was coarsely normalized.\n  const bodyForKey = body\n    .replace(/<tr\\b[^>]*>[\\s\\S]*?<\\/tr>/gi, row => /Execution ID|Execution Link|Zeit<|Unterdrückt seit letzter Meldung/i.test(row) ? '' : row)\n    .replace(/<hr>[\\s\\S]*?Gebündelt:[\\s\\S]*$/i, '')\n    .replace(/<[^>]*>/g, ' ');\n  const detail = errorMessage ? [node, stable(errorMessage), stable(description)].join('|') : stable(bodyForKey);\n  const key = hash([recipients.join(','), subject, workflowName, detail, text(input.severity_hint || input.severity)].join('|'));\n  let issue = gate.issues[key];\n  if (!issue) issue = { lastApprovedAt: 0, lastSeenAt: now, suppressed: 0 };\n  issue.lastSeenAt = now;\n  if (issue.lastApprovedAt && now - issue.lastApprovedAt < day) {\n    issue.suppressed++; gate.issues[key] = issue; continue;\n  }\n  const suppressed = Number(issue.suppressed || 0);\n  const isTest = /(?:^|[\\s|\\[—-])(?:TEMP|TEST|PREFLIGHT|SMOKE|BACKUP)(?:$|[\\s|\\]—-])/i.test(workflowName || subject);\n  const summary = '<hr><p style=\"font-family:Arial,sans-serif;color:#666;font-size:12px\">'\n    + (suppressed ? '<strong>Gebündelt:</strong> ' + suppressed + ' weitere identische Meldung(en) seit der letzten Freigabe. ' : '')\n    + 'Identische Meldungen werden für 24 Stunden gebündelt. Neue Fehler, betroffene Vorgänge oder eine höhere Einstufung werden separat gemeldet. Details bleiben in den n8n-Ausführungen erhalten.</p>';\n  const legacy = state.internalErrorMailGate;\n  const legacySummary = legacy?.suppressed > 0\n    ? '<p><strong>Vorherige Sammelmeldungen:</strong> ' + Number(legacy.suppressed) + '</p><ul>'\n      + (legacy.suppressedSubjects || []).map(s => '<li>' + escapeHtml(s) + '</li>').join('') + '</ul>' : '';\n  if (legacy?.suppressed > 0) { legacy.suppressed = 0; legacy.suppressedSubjects = []; }\n  issue.lastApprovedAt = now; issue.suppressed = 0; gate.issues[key] = issue;\n  const finalSubject = isTest && !/^\\[TEST\\]/.test(subject) ? '[TEST] ' + subject : subject;\n  const normalizedBody = body + summary + legacySummary;\n  outputs.push({ json: { ...input, gateApproved: true, emailRecipient: recipients.join(','), emailSubject: finalSubject,\n    emailBody: normalizedBody, subject: finalSubject, body_html: normalizedBody,\n    gateSuppressedSinceLastSend: suppressed, gateDedupeWindowMinutes: 1440, gateVersion: 2 } });\n}\n// Bound static state; eviction may cause an extra notification, never suppress a new one.\nconst keys = Object.keys(gate.issues);\nif (keys.length > 2000) {\n  keys.sort((a,b) => gate.issues[a].lastSeenAt - gate.issues[b].lastSeenAt);\n  for (const key of keys.slice(0, keys.length - 2000)) delete gate.issues[key];\n}\nreturn outputs;\n"
+    }
+  },
+  "throttleNode": {
+    "id": "five-minute-internal-mail-throttle",
+    "parameters": {
+      "source": "database",
+      "workflowId": {
+        "__rl": true,
+        "value": "fhmCa5a1OS9H8ERh",
+        "mode": "list",
+        "cachedResultName": "NEONTRIP Internal Error Mail Gate v1"
+      },
+      "mode": "once",
+      "options": {
+        "waitForSubWorkflow": true
+      }
+    }
+  },
+  "shadowPrepareSource": "\nconst input = $input.first().json || {};\nconst executionUrl = String(input.executionUrl || \"\").slice(0, 1000);\nconst workflowIdFromUrl = (executionUrl.match(/\\/workflow\\/([^/]+)(?:\\/executions\\/|$)/) || [])[1] || \"\";\nreturn [{\n  json: {\n    alert_type: \"error\",\n    severity_hint: \"warning\",\n    source_workflow_id: String(input.workflowId || workflowIdFromUrl).slice(0, 200),\n    source_workflow_name: String(input.workflowName || \"Unknown Workflow\").slice(0, 300),\n    subject: String(input.emailSubject || (\"N8N Fehler: \" + (input.workflowName || \"Unknown Workflow\"))).slice(0, 500),\n    metadata: {\n      execution_id: String(input.executionId || \"\").slice(0, 200),\n      execution_url: executionUrl,\n      error_message: String(input.errorMessage || \"Unknown error\").slice(0, 2000),\n      last_node: String(input.lastNode || \"unknown\").slice(0, 300),\n    },\n  },\n}];\n",
+  "sourceNodeNames": [
+    "Every 5 Minutes",
+    "Shopify Recent Orders",
+    "Extract Configurator Items",
+    "Check Existing Card",
+    "Allow Unique Item",
+    "Render 2D PNG",
+    "Store PNG",
+    "Create Trello Card",
+    "Attach PNG Preview",
+    "Render Outlined SVG",
+    "Attach Outlined SVG",
+    "Return Result"
+  ]
+}
