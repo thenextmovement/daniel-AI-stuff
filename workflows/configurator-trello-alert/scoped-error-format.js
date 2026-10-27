@@ -24,7 +24,7 @@ if (errorData.workflow?.id === 'rBggMnVkWwiVXXXO') {
     : /eai_again|enotfound|econnrefused|econnreset/i.test(message) ? 'CONNECTION_FAILED'
     : 'EXECUTION_FAILED';
   const errorMessage = 'CONFIGURATOR_ASSET_' + errorClass;
-  const emailSubject = 'NEONTRIP: Konfigurator-Assets nicht vollständig erstellt';
+  const emailSubject = 'N8N Fehler: NEONTRIP Konfigurator-Assets nicht vollständig erstellt';
   const emailBody = '<p>Die automatische Übernahme von Konfigurator-Bestellungen nach Trello '
     + 'konnte nicht vollständig bestätigt werden.</p>'
     + '<p>Betroffener Schritt: <strong>' + lastNode + '</strong>. Fehlerklasse: '

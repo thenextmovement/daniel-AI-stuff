@@ -9,6 +9,8 @@ The two runtime deltas are:
 
 Existing foreign-source formatting remains byte-for-byte in the formatter suffix. Config/default recipients are not changed; the new branch explicitly selects support@neontrip.de. The hyphenated domain is not used.
 
+The fixed subject `N8N Fehler: NEONTRIP Konfigurator-Assets nicht vollständig erstellt` matches the observed Outlook server rule's subject condition for `06_n8n_fehler-meldungen` and none of its subject exclusions. The rule also requires a configured sender; its configuration is not changed here. Tests cover the subject after the existing gate, not end-to-end folder delivery. Confirm the actual destination from a natural future alert; do not send a test alarm.
+
 ## Dependencies and boundaries
 
 - Source baseline: da579466-67d3-4ac9-bba9-ef20fa9740a9, active/published,12nodes.

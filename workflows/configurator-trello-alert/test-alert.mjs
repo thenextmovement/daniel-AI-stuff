@@ -54,6 +54,16 @@ test('scoped alert is support-only with fixed identity and a locally constructed
   for(const text of ['evil.invalid','untrusted-source-name','secret-sentinel','private-sentinel','stack-sentinel','rh@'])
     assert.equal(JSON.stringify(out).includes(text),false);
 });
+test('fixed subject matches the existing Outlook error-folder subject rule without exclusions',()=>{
+  const alert=format(sample());
+  // Observed server rule routes N8N Fehler subjects from its configured senders.
+  // This verifies the subject contract, not sender identity or mailbox delivery.
+  assert.match(alert.emailSubject,/n8n fehler/i);
+  assert.equal(alert.emailSubject,'N8N Fehler: NEONTRIP Konfigurator-Assets nicht vollständig erstellt');
+  assert.doesNotMatch(alert.emailSubject,/Zahlung|Zuordnung|zugeordnet|Druckkontrolle|G Ads|GAds|Health Check|Healthcheck|RIESENOBJEKTE|Crafted/i);
+  const gated=run(baseline.gateNode.parameters.jsCode,alert)[0].json;
+  assert.equal(gated.emailSubject,alert.emailSubject);
+});
 test('HTML, unknown error objects, node names and invalid IDs never enter output',()=>{
   const input=sample();
   input.execution={id:'"><script>id-sentinel</script>',url:'javascript:evil',lastNodeExecuted:'<img src=x onerror=evil>',
