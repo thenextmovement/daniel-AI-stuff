@@ -1,5 +1,15 @@
 # Sales-Vergabe Verification
 
+## 2026-10-27: Montagehinweis ohne Wandmontageset
+
+- `[lokal verifiziert; nicht veröffentlicht]` Basis `812710018b100d902c65af2ca9f2337c571e4035`, Aufgabenworktree `neontrip-ops-montage-hinweis-20261027-100541`.
+- **Ziel:** In der vorhandenen Kundenauswahl steht bei Leuchtschild-Positionen ohne Wandmontageset ein gelber Rückfragehinweis zu Montage und Bohrungen. Gewählte Abhängesets ergänzen die Frage nach ausschließlich oberen Bohrungen. Ausgewählte Wandmontagesets unterdrücken den Hinweis; explizites Nein, leere Auswahlmerkmale und Mengen von null gelten nicht als Auswahl. Klebesets zählen nicht als Wandmontageset. Reine Abhängeset-Bestellungen werden als Zubehör erkannt und lösen den Schildhinweis nicht aus.
+- **Nachbar:** Bestehende Vergabe-, Zahlungs-, Mengen- und Supplier-Auswahl bleiben bedienbar. Der Hinweis enthält keine automatische Bohrungsvorgabe, Sperre oder Bestätigung. Beschreibungen, die Zubehör lediglich erwähnen, sind kein Auswahlbeleg. Der bestehende Produktionsmarker U+2757 wird nur in der gerenderten Kundenauswahl entfernt, nicht in Quelldaten oder Supplier-Texten.
+- **Wirkung und Dateien:** Ausschließlich abgeleitete Anzeige in `page-client.tsx` und `supplier-sales-display.ts`, fokussierte Tests, vorhandener UI-Smoke und dieses Handoff-Paket. Keine API-, Schema-, Workflow- oder Integrationsänderung; keine Speicherung, Kundenmail oder echte Vergabe. Offers liefert im bestehenden `selectedLineItems`-Pfad ausschließlich tatsächlich gewählte Positionen.
+- **Prüfungen:** 108 fokussierte Tests bestanden; `npm run test:quotes` unter produktionsgleichem Node 22: 1.583 bestanden, 2 bestehende Skips, 0 Fehler. TypeScript und Produktionsbuild erfolgreich. Der erste Suite-Lauf unter lokalem Node 24 scheiterte ausschließlich am bestehenden QC-Test, der TAP-Ausgabe statt Node-24-Spec-Ausgabe erwartet; mit Node 22 ohne Codeänderung grün.
+- **Browser:** Vorhandener Playwright-Smoke vollständig grün, lokal mit gemockten Ops-Antworten. Hinweis mit/ohne Wandmontageset, Abhängeset-Zusatz, reine Zubehörbestellung und unveränderte Vergabe geprüft. 390 und 1.440 px ohne horizontalen Überlauf, keine Browserfehler; Screenshots visuell geprüft. Die reine Anzeige sendet keinen POST; sämtliche Schreibaktionen des bestehenden Smoke-Tests werden lokal abgefangen.
+- **Offen:** Exakte Commit-Freigabe, Veröffentlichung und anschließender produktiver Sichtnachweis. Lokale Screenshots und Mock-Tests belegen keinen Live-Stand.
+
 ## 2026-09-21: KEY KUNDE nach Teil-Erstattungen
 
 - Ausgangsbasis und laufender Ops-Container: `82f04aa56398ba666ed415f13814eaaa66c4a495`, frisch gelesen. Request-Segmenter `ELpwCfdWOCRZ22gy`, aktive Version `a36ef95d-e30c-4783-9435-35c4d8f46287`, besitzt bereits den bestehenden Titel-Sync; dieser Workflow wurde nicht umgebaut.

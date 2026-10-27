@@ -1,3 +1,5 @@
+import type { SupplierSaleItem } from "./supplier-sales";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BERLIN_TIME_ZONE = "Europe/Berlin";
 
@@ -6,6 +8,49 @@ type CalendarDate = {
   month: number;
   day: number;
 };
+
+function mountingKey(value: string) {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+}
+
+function mountingOption(value: string): "wall" | "hanging" | null {
+  const key = mountingKey(value);
+  if (/^(wandmontage|wallmount)/.test(key)) return "wall";
+  if (/^(drahtseil|deckenabhang|deckenabhaeng|abhangeset|abhaengeset|hangeset|haengeset|hangingset|hangingkit)/.test(key)) return "hanging";
+  return null;
+}
+
+function mountingDeselected(value: string) {
+  return /^(nein|no|false|0|none|nichtgewahlt|nichtgewaehlt|nichtausgewahlt|nichtausgewaehlt|notselected)$|^(ohne|kein)/.test(mountingKey(value));
+}
+
+/** Read the purchased options only; descriptions may merely advertise available accessories. */
+export function supplierSaleMountingSelection(items: Pick<SupplierSaleItem, "title" | "variantTitle" | "selectionDetails" | "quantity">[]) {
+  const selected = { wall: false, hanging: false };
+  for (const item of items) {
+    if (item.quantity <= 0) continue;
+    const details = item.selectionDetails.map((detail) => {
+      const [label, ...rest] = detail.split(":");
+      return { label, value: rest.join(":").trim() };
+    });
+    const titleOption = mountingOption(item.title);
+    if (titleOption && !mountingDeselected(item.variantTitle || "") && !details.some(({ label, value }) => (
+      mountingOption(label) === titleOption && mountingDeselected(value)
+    ))) {
+      selected[titleOption] = true;
+    }
+    for (const { label, value } of details) {
+      if (!value || mountingDeselected(value)) continue;
+      const option = mountingOption(label);
+      if (option) selected[option] = true;
+      if (/^(montage|mounting|installation)$/.test(mountingKey(label))) {
+        const mounting = mountingOption(value);
+        if (mounting) selected[mounting] = true;
+      }
+    }
+  }
+  return selected;
+}
 
 function calendarDateFromTimestamp(value: string | number | Date): CalendarDate | null {
   const date = value instanceof Date ? value : new Date(value);

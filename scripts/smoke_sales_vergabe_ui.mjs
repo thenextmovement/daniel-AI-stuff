@@ -111,6 +111,7 @@ function sale(overrides = {}) {
 }
 
 const paidSale = sale({ id: "sale-paid", offerNumber: "NT-PAID", customerName: "Bezahlter Kunde" });
+paidSale.items.push({ ...paidSale.items[0], id: "paid-wall-mount", title: "Wandmontage-Set", productType: "Zusatzoptionen", selectionDetails: [] });
 const configuratorSale = sale({
   id: "sale-configurator",
   offerNumber: "NT-CONFIGURATOR",
@@ -132,7 +133,7 @@ const configuratorSale = sale({
       title: "Neon Schriftzug Konfigurator",
       sku: "Default_cpc_QA",
       quantity: 2,
-      selectionDetails: ["Product Type: LED Neon Flex", "Color: Warm white", "Use: Indoor"],
+      selectionDetails: ["Product Type: LED Neon Flex", "Color: Warm white", "Use: Indoor", "Wall mount: NO", "Hanging set: YES ❗"],
     },
   ],
 });
@@ -220,6 +221,10 @@ const institutionChange = sale({ ...institutionSale, id: "sale-institution-chang
 const institutionPaid = sale({ id: "sale-institution-paid", publicInstitution: institutionMarker });
 const institutionAssigned = sale({ ...institutionSale, id: "sale-institution-assigned", shopifyOrderName: "#QA-sale-institution-assigned", assignedSupplier: "quentin", assignmentStatus: "assigned" });
 board.items.push(institutionSale, institutionCandidate, institutionChange, institutionPaid, institutionAssigned);
+board.items.push(sale({
+  id: "sale-accessories-only",
+  items: [{ ...sale().items[0], id: "accessory-hanging", title: "Drahtseil-Abhängeset", productType: null, selectionDetails: [] }],
+}));
 board.counts.total = board.items.length;
 
 const taskPayload = {
@@ -483,6 +488,25 @@ async function main() {
   assert(await specialCard.count() === 1, "special sale card fehlt");
   assert(await openReviewCard.count() === 1, "open-review sale card fehlt");
   assert(await openReviewCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Vergeben darf bei offenem 24h-Fenster nicht disabled sein");
+  const mountingNotice = (card) => card.getByRole("note", { name: "Montage und Bohrungen mit dem Kunden klären" });
+  const hangingNotice = mountingNotice(configuratorCard);
+  assert(await hangingNotice.isVisible(), "Montagehinweis fehlt ohne gewähltes Wandmontageset");
+  assert(await hangingNotice.getByText(/ausschließlich Bohrungen am oberen Rand/).isVisible(), "Rückfrage zum Abhängeset fehlt");
+  assert(await mountingNotice(paidCard).count() === 0, "Montagehinweis erscheint trotz Wandmontageset");
+  assert(await mountingNotice(openReviewCard).isVisible(), "Allgemeiner Montagehinweis ohne Montageset fehlt");
+  assert(await mountingNotice(openReviewCard).getByText(/Drahtseil-Abhängeset ausgewählt/).count() === 0, "Abhängeset wird ohne Auswahl unterstellt");
+  assert(await mountingNotice(page.locator("article").filter({ hasText: "#QA-sale-accessories-only" })).count() === 0, "Reine Zubehörbestellung zeigt Leuchtschildhinweis");
+  assert(posts.length === 0, "Montagehinweis löst beim Anzeigen einen Schreibzugriff aus");
+  assert(!(await configuratorCard.innerText()).includes("❗"), "Produktionsmarker wird als Emoji in der Kundenauswahl angezeigt");
+  for (const [label, width] of [["mobile", 390], ["desktop", 1440]]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert(await hangingNotice.isVisible(), `Montagehinweis fehlt auf ${label}`);
+    assert(!await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), `Montagehinweis läuft auf ${label} horizontal über`);
+    if (process.env.SALES_VERGABE_UI_MOUNTING_SCREENSHOT) {
+      await hangingNotice.screenshot({ path: `${process.env.SALES_VERGABE_UI_MOUNTING_SCREENSHOT}-${label}.png` });
+    }
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "quentin", "Konfigurator-Sale startet nicht mit Quentin");
   assert(await configuratorCard.getByText("Standard: Quentin").isVisible(), "Quentin-Standard fehlt");
   assert(await configuratorCard.getByText("Kommt in Frage für SAID").isVisible(), "Bedingter SAID-Hinweis fehlt");

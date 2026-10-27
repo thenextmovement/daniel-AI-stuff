@@ -35,7 +35,7 @@ import {
   type SupplierSalePaymentDecision,
 } from "@/lib/ops/supplier-sales";
 import { defaultSupplierSelection, shouldSuggestSaeid, type SupplierSelection } from "@/lib/ops/supplier-selection";
-import { deliveryCountdownLabel, orderAgeLabel } from "@/lib/ops/supplier-sales-display";
+import { deliveryCountdownLabel, orderAgeLabel, supplierSaleMountingSelection } from "@/lib/ops/supplier-sales-display";
 import { OpsLoginCard } from "../ops-login-card";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
@@ -577,13 +577,13 @@ function itemKind(item: SupplierSale["items"][number]) {
     .join(" ")
     .toLowerCase();
   if (/(liefer|versand|delivery|termin)/.test(text)) return "delivery";
-  if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|netzteil|kabel|fernbedienung|garantie|kleber|adhesive|hanging set|power plug|radseil|deckenabh)/.test(text)) return "addon";
+  if (/(zusatz|extra|addon|option|dimmer|rgb|wandmontage|wall[ _-]?mount|netzteil|kabel|fernbedienung|garantie|kleber|adhesive|hanging[ _-]?(set|kit)|h[äa]ngeset|haengeset|abh[äa]ngeset|abhaengeset|power plug|drahtseil|radseil|deckenabh)/.test(text)) return "addon";
   return "product";
 }
 
 function splitSelectionDetail(detail: string) {
   const [label, ...rest] = detail.split(":");
-  const value = rest.join(":").trim();
+  const value = rest.join(":").replace(/\s*\u2757/gu, "").trim();
   return { label: label.trim(), value };
 }
 
@@ -679,10 +679,24 @@ function SnapshotSelection({ sale }: { sale: SupplierSale }) {
   const productItems = sale.items.filter((item) => itemKind(item) === "product");
   const addonItems = sale.items.filter((item) => itemKind(item) === "addon");
   const deliveryItems = sale.items.filter((item) => itemKind(item) === "delivery");
+  const mounting = supplierSaleMountingSelection(sale.items);
+  const clarifyMounting = productItems.some((item) => item.quantity > 0) && !mounting.wall;
   if (!productItems.length && !addonItems.length && !deliveryItems.length) return null;
   return (
     <div className="mt-3 border-t border-stone-100 pt-3">
       <p className="text-xs font-semibold uppercase text-stone-500">Kundenauswahl</p>
+      {clarifyMounting ? (
+        <div role="note" aria-label="Montage und Bohrungen mit dem Kunden klären" className="mt-2 flex items-start gap-2 rounded-[0.5rem] border border-amber-300 bg-amber-50 p-3 text-amber-950">
+          <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+          <div className="min-w-0 text-xs leading-5">
+            <p className="font-bold">Montage und Bohrungen mit dem Kunden klären</p>
+            <p className="mt-1">Es wurde kein Wandmontageset ausgewählt. Bitte nachfragen, ob das beabsichtigt ist und ob bzw. an welchen Stellen Bohrungen am Schild gewünscht sind.</p>
+            {mounting.hanging ? (
+              <p className="mt-2"><span className="font-semibold">Drahtseil-Abhängeset ausgewählt:</span> Bitte bestätigen lassen, ob ausschließlich Bohrungen am oberen Rand gewünscht sind.</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <div className="mt-2">
         <SnapshotSelectionGroup
           title="Leuchtschilder"
