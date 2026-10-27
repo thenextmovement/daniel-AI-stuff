@@ -13,6 +13,9 @@ import {
   orderNameFromTrelloCard,
 } from "./domain";
 
+import { deriveReplacementRound, type ShipmentAction } from "./shipment-round";
+import { resolveCardDhlTracking } from "./tracking";
+
 type JsonRecord = Record<string, unknown>;
 type OutlookGraphMessage = {
   id?: string;
@@ -281,7 +284,7 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
       if (trackingFields.length !== 1) throw new ArrivalIntegrationError("Tracking field missing or ambiguous", "tracking_field_ambiguous");
       const trackingFieldId = trackingFields[0].id;
       const listNames = new Map(lists.filter((list) => list.id && list.name).map((list) => [list.id as string, list.name as string]));
-      return cards
+      const evidence: TrelloCardEvidence[] = cards
         .filter((card) => !card.closed && card.id && card.name && card.url)
         .map((card) => ({
           id: card.id as string,
@@ -294,6 +297,31 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
           dateLastActivity: card.dateLastActivity || null,
           trackingField: (card.customFieldItems || []).filter(item => item.idCustomField === trackingFieldId).map(item => item.value?.text ?? item.value?.number ?? "").join(" / ") || null,
         }));
+      for (const card of evidence) {
+        if (resolveCardDhlTracking(card.name, card.trackingField).trackingNumbers.length < 2) continue;
+        try {
+          const actions: ShipmentAction[] = [];
+          const seen = new Set<string>();
+          let before: string | null = null;
+          do {
+            const url = new URL(`https://api.trello.com/1/cards/${card.id}/actions`);
+            url.searchParams.set("key", apiKey); url.searchParams.set("token", token);
+            url.searchParams.set("filter", "updateCard:idList,updateCustomFieldItem");
+            url.searchParams.set("limit", "1000");
+            if (before) url.searchParams.set("before", before);
+            const response = await fetchWithRetry(url.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_shipment_history" });
+            const page = await response.json() as ShipmentAction[];
+            if (!Array.isArray(page) || page.some(a => !a.id || !a.data || seen.has(a.id))) throw new Error("Invalid shipment history page");
+            for (const action of page) { seen.add(action.id); actions.push(action); }
+            before = page.length === 1000 ? page[page.length - 1].id : null;
+          } while (before);
+          card.replacementRound = deriveReplacementRound(card, actions, trackingFieldId);
+        } catch {
+          // Fail only this card closed. The DHL planner reports its unavailable history.
+          card.trackingHistoryError = true;
+        }
+      }
+      return evidence;
     },
   };
 }

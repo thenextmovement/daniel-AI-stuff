@@ -11,7 +11,7 @@ const WORKER = "test-worker-01";
 const TOKEN = "test-only-dispatch-token-32-characters-long";
 const keys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ARRIVAL_LABEL_PRINT_API_TOKEN", "ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN", "SHOPIFY_SHOP_DOMAIN", "SHOPIFY_ADMIN_API_ACCESS_TOKEN", "SHOPIFY_ADMIN_API_VERSION"] as const;
 
-async function scenario(kind: "print" | "browser", options: { country?: string | null; note?: string | null; pickup?: boolean; missingOrder?: boolean; malformed?: boolean; wrongOwner?: boolean; holdFails?: boolean; result?: string; parcelKind?: string; shopDomain?: string; held?: boolean; auditedHold?: boolean } = {}) {
+async function scenario(kind: "print" | "browser", options: { country?: string | null; note?: string | null; pickup?: boolean; missingOrder?: boolean; malformed?: boolean; wrongOwner?: boolean; holdFails?: boolean; result?: string; parcelKind?: string; shopDomain?: string; held?: boolean; auditedHold?: boolean; replacement?: boolean } = {}) {
   const previous = keys.map(key => process.env[key]);
   const beforeFetch = globalThis.fetch;
   Object.assign(process.env, { SUPABASE_URL: "https://database.example.invalid", SUPABASE_SERVICE_ROLE_KEY: "test-only", ARRIVAL_LABEL_PRINT_API_TOKEN: TOKEN, ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN: TOKEN, SHOPIFY_SHOP_DOMAIN: options.shopDomain || "galaxybuzzdk.myshopify.com", SHOPIFY_ADMIN_API_ACCESS_TOKEN: "test-only", SHOPIFY_ADMIN_API_VERSION: "2026-07" });
@@ -25,7 +25,8 @@ async function scenario(kind: "print" | "browser", options: { country?: string |
       return Response.json(options.wrongOwner ? [] : [{ id: ID, case_id: CASE, status: options.held ? "manual_review" : kind === "browser" ? "validated" : "claimed", shopify_order_id: GID, lease_owner: WORKER, lease_expires_at: new Date(Date.now() + 60_000).toISOString(), parcel_kind: options.parcelKind || "main" }]);
     }
     if (url.pathname.endsWith("arrival_label_events")) return Response.json(options.auditedHold ? [{ event_key: `shopify-dispatch-hold:${kind}:${ID}` }] : []);
-    if (url.pathname.endsWith("arrival_label_cases")) return Response.json([{ id: CASE, shopify_order_id: GID }]);
+    if (url.pathname.endsWith("arrival_label_first_parcels")) return Response.json(options.replacement?[{previous_tracking_numbers:["0012345678"]}]:[]);
+    if (url.pathname.endsWith("arrival_label_cases")) return Response.json([{ id: CASE, shopify_order_id: GID, source_snapshot:{} }]);
     if (url.pathname.endsWith("graphql.json")) {
       const body = JSON.parse(String(init?.body));
       assert.equal(body.variables.id, GID);
@@ -117,3 +118,12 @@ for (const kind of ["print", "browser"] as const) {
     assert.ok(result.calls.some(path => path.includes("rpc/arrival_labels_update_")));
   });
 }
+
+for (const kind of ["print", "browser"] as const) test(`${kind}: disabling general carrier release or losing the case snapshot cannot bypass the permanent replacement pin`,async()=>{
+  const prior=process.env.ARRIVAL_LABEL_CARRIER_RELEASE_ENABLED; process.env.ARRIVAL_LABEL_CARRIER_RELEASE_ENABLED='false';
+  try {
+    const result=await scenario(kind,{replacement:true});
+    assert.equal(result.response.status,500);
+    assert.equal(result.calls.some(path=>path.includes('rpc/arrival_labels_update_')),false);
+  } finally {if(prior===undefined)delete process.env.ARRIVAL_LABEL_CARRIER_RELEASE_ENABLED;else process.env.ARRIVAL_LABEL_CARRIER_RELEASE_ENABLED=prior;}
+});

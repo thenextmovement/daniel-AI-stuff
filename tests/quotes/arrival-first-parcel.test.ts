@@ -41,3 +41,13 @@ test('historical purchase evidence and missing persistence both prevent dispatch
     await assert.rejects(prepareFirstParcelSelection(card,numbers[0]), /gespeichert/);
   });
 });
+
+test('replacement single parcel uses its own permanent selection and leaves old rounds intact', async () => {
+  const round={previousTrackingNumbers:[numbers[0]],trackingNumbers:[numbers[1]],previousArrivedAt:'2026-10-05T10:00:00Z',arrivalActionId:'a',addedAt:'2026-10-23T10:00:00Z',trackingActionId:'b'};
+  const replacement={...card,trackingField:numbers.slice(0,2).join('|'),replacementRound:round};
+  await fixture([{trello_card_id:card.id,tracking_numbers:[numbers[0]],previous_tracking_numbers:[],blocked_reason:null},
+    {trello_card_id:card.id,tracking_numbers:[numbers[1]],previous_tracking_numbers:[numbers[0]],blocked_reason:null}],async()=>{
+    await assertFirstParcelDispatch(replacement,numbers[1]);
+    await assert.rejects(assertFirstParcelDispatch(replacement,numbers[0]),/Dispatch|geaendert/);
+  });
+});

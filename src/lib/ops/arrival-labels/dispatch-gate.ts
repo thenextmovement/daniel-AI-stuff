@@ -22,7 +22,12 @@ export async function assertArrivalDispatchAllowed(kind: "browser" | "print", jo
       { select: "shopify_order_id", id: `eq.${job.case_id}`, limit: 1 });
     orderId = cases[0]?.shopify_order_id;
   }
-  if (carrierReleaseEnabled()) await assertCarrierReleaseForCase(job.case_id);
+  // The permanent pin survives case snapshot refreshes and changes to the field.
+  // Turning off general carrier discovery cannot bypass a queued replacement's gate.
+  const selections = carrierReleaseEnabled() ? [] : await supabaseRequest<{previous_tracking_numbers:string[]}[]>('arrival_label_first_parcels',undefined,{
+    select:'previous_tracking_numbers',purchase_case_id:`eq.${job.case_id}`,limit:2,
+  });
+  if (carrierReleaseEnabled() || selections.some(s=>s.previous_tracking_numbers.length>0)) await assertCarrierReleaseForCase(job.case_id);
   const order = await fetchShopifyDispatchEvidence(orderId || "");
   const gate = assessShopifyAutomationGate(order);
   // Recheck the current destination even for a previously prepared/queued job.

@@ -1,4 +1,5 @@
-import { cardDhlNumbers, resolveCardDhlTracking } from "./tracking";
+import { cardDhlNumbers } from "./tracking";
+import { resolveShipmentTracking, type ReplacementRound } from "./shipment-round";
 import { createHash } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 
@@ -51,6 +52,8 @@ export type DhlArrival = {
 };
 
 export type TrelloCardEvidence = {
+  replacementRound?: ReplacementRound | null;
+  trackingHistoryError?: boolean;
   trackingField?: string | null;
   id: string;
   name: string;
@@ -543,7 +546,7 @@ function dateTextMatches(text: string, localDate: string) {
 
 export function findTrelloCardForTracking(cards: TrelloCardEvidence[], trackingNumber: string) {
   const matches = cards.filter((card) => cardDhlNumbers(card.name, card.trackingField).includes(trackingNumber));
-  if (matches.length === 1 && resolveCardDhlTracking(matches[0].name, matches[0].trackingField).trackingNumber !== trackingNumber) {
+  if (matches.length === 1 && resolveShipmentTracking(matches[0]).trackingNumber !== trackingNumber) {
     return { card: null, error: "Nur die erste DHL-Nummer im Trackingfeld darf automatisch bearbeitet werden." };
   }
   if (matches.length === 1) return { card: matches[0], error: null as string | null };
@@ -566,7 +569,9 @@ export function isDimmerSpecialCase(card: TrelloCardEvidence) {
 export function assessTrelloAutomationGate(card: TrelloCardEvidence): TrelloAutomationGate {
   const listName = normalizeHumanText(card.listName);
   const manualList = /^(?:problems? with signs?|problem mit(?: dem)? schild|schildprobleme?|manual review|manuelle? prufung|sonderfalle?)$/.test(listName);
-  if (!manualList) return { blocked: false, reasonCode: null, reason: null };
+  const replacement = card.listId === "6347e0a2f062500084675062" && card.replacementRound
+    && resolveShipmentTracking(card).trackingNumber;
+  if (!manualList || replacement) return { blocked: false, reasonCode: null, reason: null };
   const safeListName = String(card.listName || "manuelle Trello-Liste")
     .replace(/[\u0000-\u001f\u007f]+/g, " ")
     .replace(/\s+/g, " ")

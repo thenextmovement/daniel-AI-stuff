@@ -693,6 +693,7 @@ export async function upsertArrivalCase(input: {
       manual_review_reason: parcelHold || input.decision.manualReviewReason,
       source_snapshot: {
         arrivalSources: input.arrival.sourceKinds,
+        replacementRound: card?.replacementRound || null,
         trelloTrigger: input.arrival.trelloTrigger,
         reasons: input.decision.reasons,
         shopifyAdminUrl: order?.adminUrl || null,

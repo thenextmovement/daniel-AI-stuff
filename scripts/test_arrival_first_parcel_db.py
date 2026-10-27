@@ -46,6 +46,30 @@ class FirstParcelTests(unittest.TestCase):
     def setUp(self):
         sql('truncate arrival_label_first_parcels, arrival_label_runs cascade;')
         sql("insert into arrival_label_runs(correlation_id,mode,trigger_type,local_date,status) values (gen_random_uuid()::text,'execute','manual_cli',current_date,'running');")
+    def test_replacement_round_after_previous_purchase_is_separate(self):
+        pin(); first=case(); enqueue(first)
+        new="array['3345678901','4456789012']"
+        sql(f"select tracking_numbers from arrival_labels_pin_first_parcel('{CARD}',{new},{NUMBERS});")
+        second=case('3345678901'); job=enqueue(second)
+        self.assertEqual(enqueue(second),job)
+        self.assertEqual(sql('select count(*) from arrival_label_first_parcels'),'2')
+        self.assertEqual(sql('select count(*) from arrival_label_browser_purchase_jobs'),'2')
+        with self.assertRaisesRegex(RuntimeError,'pinned first parcel'): enqueue(case('4456789012'))
+    def test_replacement_single_does_not_inherit_old_overlay_or_purchase_hold(self):
+        pin(); enqueue(case())
+        sql(f"select tracking_numbers from arrival_labels_pin_first_parcel('{CARD}',array['3345678901'],{NUMBERS});")
+        cid=case('3345678901')
+        # No acrylic product in this replacement fixture.
+        sql(f"update arrival_label_cases set source_snapshot='{{}}'::jsonb where id='{cid}';")
+        job=enqueue(cid); original,annotated,preview=artifacts(cid,'678901')
+        sql(f"update arrival_label_browser_purchase_jobs set status='purchased',lease_owner='fixture-worker' where id='{job}';")
+        self.assertEqual(sql(f"select id from arrival_labels_register_browser_artifacts('{job}','fixture-worker','01476817678011',repeat('a',64),'{original}','{annotated}','{preview}');"),job)
+    def test_replacement_cannot_overlap_or_hide_an_existing_round(self):
+        pin()
+        with self.assertRaisesRegex(RuntimeError,'previous|overlap'):
+            sql(f"select * from arrival_labels_pin_first_parcel('{CARD}',array['3345678901'],array['0012345678']);")
+        self.assertEqual(pin("array['3345678901','4456789012']"),'{0012345678,1123456789,2234567890}')
+        with self.assertRaisesRegex(RuntimeError,'pinned first parcel'): enqueue(case('3345678901'))
     def test_one_job_replay_and_acrylic_manual(self):
         pin(); cid=case(); first=enqueue(cid)
         self.assertEqual(enqueue(cid),first)
@@ -69,7 +93,7 @@ class FirstParcelTests(unittest.TestCase):
         pin()
         for query in ["delete from arrival_label_first_parcels", "update arrival_label_first_parcels set tracking_numbers=array['1123456789','0012345678']"]:
             with self.assertRaisesRegex(RuntimeError,'permanent|immutable'): sql(query)
-        self.assertEqual(sql("select has_function_privilege('anon','arrival_labels_pin_first_parcel(text,text[])','execute');"),'f')
+        self.assertEqual(sql("select has_function_privilege('anon','arrival_labels_pin_first_parcel(text,text[],text[])','execute');"),'f')
         self.assertEqual(sql("select has_table_privilege('authenticated','arrival_label_first_parcels','select');"),'f')
     def test_exact_overlay_required_by_artifact_registration(self):
         pin(); cid=case(); job=enqueue(cid); original,annotated,preview=artifacts(cid,'345678')
@@ -104,8 +128,18 @@ def main():
         sql('create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);')
         names=['20260720094159_create_arrival_label_automation.sql','20260720184500_archive_dhl_outlook_after_label_print.sql','20260721170915_create_arrival_label_browser_purchase_queue.sql',
           '20260723103508_finalize_dhl_delivery_to_trello_sign_arrived.sql','20260729182845_arrival_label_trello_sign_shipped_trigger.sql',
-          '20260924111338_arrival_acrylic_second_parcel.sql','20261007124100_arrival_acrylic_tracking_overlay.sql','20261019160000_arrival_first_parcel.sql']
-        for name in names: sql((ROOT/'supabase/migrations'/name).read_text())
+          '20260924111338_arrival_acrylic_second_parcel.sql','20261007124100_arrival_acrylic_tracking_overlay.sql','20261019160000_arrival_first_parcel.sql','20261027160000_arrival_replacement_rounds.sql']
+        for name in names:
+            if name == '20261027160000_arrival_replacement_rounds.sql':
+                pin()
+                before=sql('select row_to_json(p)::text from arrival_label_first_parcels p;')
+                import json
+                previous=json.loads(before)
+                sql((ROOT/'supabase/migrations'/name).read_text())
+                migrated=json.loads(sql('select row_to_json(p)::text from arrival_label_first_parcels p;'))
+                assert all(migrated[k]==v for k,v in previous.items()), 'Migration changed an existing pin'
+                assert sql('select count(*) from arrival_label_browser_purchase_jobs') == '0'
+            else: sql((ROOT/'supabase/migrations'/name).read_text())
         sql("""update arrival_label_browser_worker_settings set worker_enabled=true,live_purchase_enabled=true,
           approved_products='{"standard":{"label":"B2C","maxPurchaseCents":1000}}',approved_by='isolated test',approved_at=now();""")
         result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(FirstParcelTests))
