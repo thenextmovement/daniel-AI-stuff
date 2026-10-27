@@ -1,0 +1,16 @@
+{
+  "workflowId": "6NZnfGpyfUVikqpf",
+  "node": "Complete Manual Paid Reconciliation",
+  "changes": {
+    "retryOnFail": true,
+    "maxTries": 2,
+    "waitBetweenTries": 5000,
+    "parameters.options.timeout": 30000
+  },
+  "preserved": {
+    "onError": "continueErrorOutput",
+    "confirmationNode": "Confirm Persisted Paid Completion",
+    "leaseAndGenerationChecks": true
+  },
+  "reason": "Bounded retry of an atomic, lease-checked completion after transient 502. No retry of payment booking or customer email."
+}
