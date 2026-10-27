@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir, userInfo } from "node:os";
+import path from "node:path";
 
 export type PrintJobResult = "dispatching" | "submitted" | "printed" | "retryable_error" | "uncertain";
 
@@ -184,8 +187,10 @@ export function createCupsPrinter(input: {
       if (!/^[1-9][0-9]{0,9}$/.test(id)) throw new PrintInputError("CUPS-Job-ID passt nicht zur konfigurierten Queue.");
       // `lpstat -W completed` also lists canceled/aborted jobs. Read this exact
       // job's IPP receipt instead; missing/ambiguous evidence never confirms output.
-      const result = await runner("ipptool", ["-t", "-v", `ipp://localhost/jobs/${id}`,
-        "/usr/share/cups/ipptool/get-job-attributes.test"]);
+      const result = cupsPrinter === "Brother_QL_1110NWB"
+        ? await readBrotherJob(runner, `ipp://localhost/jobs/${id}`)
+        : await runner("ipptool", ["-t", "-v", `ipp://localhost/jobs/${id}`,
+          "/usr/share/cups/ipptool/get-job-attributes.test"]);
       if (result.exitCode !== 0) return false;
       const attribute = (name: string) => {
         const lines = result.stdout.split(/\r?\n/).map(line => line.trim())
@@ -194,13 +199,93 @@ export function createCupsPrinter(input: {
       };
       const reasons = attribute("job-state-reasons (keyword)") || attribute("job-state-reasons (1setOf keyword)");
       const sheets = attribute("job-media-sheets-completed (integer)");
-      return attribute("status-code") === "successful-ok (successful-ok)"
+      const localCompleted = attribute("status-code") === "successful-ok (successful-ok)"
         && attribute("job-id (integer)") === id
         && [`ipp://localhost/printers/${cupsPrinter}`, `ipp://localhost:631/printers/${cupsPrinter}`]
           .includes(attribute("job-printer-uri (uri)") || "")
         && attribute("job-state (enum)") === "completed"
         && !!reasons && !/error|warn|cancel|abort|fail/i.test(reasons)
         && !!sheets && /^[1-9][0-9]*$/.test(sheets);
+      if (!localCompleted || cupsPrinter !== "Brother_QL_1110NWB") return localCompleted;
+      // CUPS can exit successfully when the device has forgotten the job. Its
+      // local PAGE accounting is therefore insufficient for this label printer.
+      return hasBrotherDeviceReceipt(runner, cupsPrinter, attribute("job-name (nameWithoutLanguage)"));
     },
   };
+}
+
+
+async function hasBrotherDeviceReceipt(runner: ProcessRunner, cupsPrinter: string, jobName: string | null) {
+  if (!jobName) return false;
+  const value = (text: string, name: string) => {
+    const responseStart = text.indexOf("status-code =");
+    if (responseStart >= 0) text = text.slice(responseStart);
+    const matches = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.startsWith(`${name} = `));
+    return matches.length === 1 ? matches[0].slice(name.length + 3) : null;
+  };
+  const successful = (result: Awaited<ReturnType<ProcessRunner>>) => result.stdout.length < 16_000
+    && [0, 1].includes(result.exitCode)
+    && ["successful-ok (successful-ok)", "successful-ok-ignored-or-substituted-attributes (successful-ok-ignored-or-substituted-attributes)"]
+      .includes(value(result.stdout, "status-code") || "");
+  try {
+    const configured = await runner("lpstat", ["-v", cupsPrinter]);
+    if (configured.exitCode !== 0) return false;
+    const uris = configured.stdout.match(/ipps?:\/\/[^\s]+/g);
+    if (uris?.length !== 1) return false;
+    const device = new URL(uris[0]);
+    if (device.username || device.password || device.search || device.hash) return false;
+    const history = await runner("ipptool", ["-T", "10", "-t", "-v", device.href,
+      "/usr/share/cups/ipptool/get-completed-jobs.test"]);
+    if (!successful(history)) return false;
+    const jobs = history.stdout.split(/(?=^\s*job-id \(integer\) = )/m).slice(1);
+    const matching = jobs.filter(job => value(job, "job-name (nameWithoutLanguage)") === jobName);
+    if (matching.length !== 1) return false;
+    const id = value(matching[0], "job-id (integer)");
+    const uri = value(matching[0], "job-uri (uri)");
+    if (!id || !/^[1-9][0-9]*$/.test(id) || !uri) return false;
+    const jobUri = new URL(uri);
+    if (jobUri.protocol !== device.protocol || jobUri.hostname !== device.hostname
+      || (jobUri.port || "631") !== (device.port || "631")
+      || jobUri.username || jobUri.password || jobUri.search || jobUri.hash
+      || jobUri.pathname !== `${device.pathname.replace(/\/$/, "")}/job-${id}`) return false;
+    const receipt = await readBrotherJob(runner, device.href, id);
+    if (!successful(receipt)) return false;
+    const pages = value(receipt.stdout, "job-impressions-completed (integer)");
+    const confirmed = value(receipt.stdout, "job-id (integer)") === id
+      && value(receipt.stdout, "job-uri (uri)") === uri
+      && value(receipt.stdout, "job-name (nameWithoutLanguage)") === jobName
+      && value(receipt.stdout, "job-state (enum)") === "completed"
+      && value(receipt.stdout, "job-state-reasons (keyword)") === "job-completed-successfully"
+      && !!pages && /^[1-9][0-9]*$/.test(pages);
+    if (confirmed) process.stdout.write(`device_print_receipt ${JSON.stringify({ printer: cupsPrinter, deviceJobId: id, jobName, impressions: Number(pages), state: "completed" })}\n`);
+    return confirmed;
+  } catch {
+    // Missing device evidence stays pending; never re-submit from confirmation.
+    return false;
+  }
+}
+
+
+async function readBrotherJob(runner: ProcessRunner, uri: string, deviceJobId?: string) {
+  const directory = await mkdtemp(path.join(tmpdir(), "neontrip-print-receipt-"));
+  try {
+    const testPath = path.join(directory, "device-job.test");
+    // CUPS hides the job name unless its owner is supplied. Brother expects
+    // job-id on the printer endpoint instead of a POST to its returned job URI.
+    await writeFile(testPath, `{
+OPERATION Get-Job-Attributes
+GROUP operation-attributes-tag
+ATTR charset attributes-charset utf-8
+ATTR language attributes-natural-language en
+ATTR uri ${deviceJobId ? "printer-uri" : "job-uri"} $uri
+ATTR name requesting-user-name $owner
+${deviceJobId ? "ATTR integer job-id $jobid" : ""}
+STATUS successful-ok
+STATUS successful-ok-ignored-or-substituted-attributes
+}`, { mode: 0o600 });
+    return await runner("ipptool", ["-T", "10", "-t", "-v", "-d", `owner=${userInfo().username}`,
+      ...(deviceJobId ? ["-d", `jobid=${deviceJobId}`] : []), uri, testPath]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }

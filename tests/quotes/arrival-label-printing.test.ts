@@ -176,3 +176,37 @@ test("readiness fails before any submission when the IPP receipt tool is unavail
   await assert.rejects(printer.selfTest(), /nicht bereit/);
   assert.equal(calls.includes("lp"), false);
 });
+
+test("Brother requires a unique direct device completion receipt, never local accounting alone", async () => {
+  const uri = "ipp://192.168.0.122:631/ipp/print/job-3596";
+  const name = "71caadce-1f6c-45d6-bc1e-bf6d47f59d85.pdf";
+  const local = ippReceipt("completed", { "job-printer-uri (uri)": "ipp://localhost/printers/Brother_QL_1110NWB", "job-name (nameWithoutLanguage)": name });
+  const device = `job-id (integer) = 3596\nrequesting-user-name (nameWithoutLanguage) = leo-print\n` + ippReceipt("completed", { "job-id (integer)": "3596", "job-uri (uri)": uri, "job-name (nameWithoutLanguage)": name, "job-state-reasons (keyword)": "job-completed-successfully", "job-impressions-completed (integer)": "1" });
+  const header = "status-code = successful-ok-ignored-or-substituted-attributes (successful-ok-ignored-or-substituted-attributes)\n";
+  const block = `job-id (integer) = 3596\njob-uri (uri) = ${uri}\njob-name (nameWithoutLanguage) = ${name}\n`;
+  for (const [label, history, receipt, expected] of [
+    ["missing device history", header, device, false],
+    ["truncated device history", header + block + "x".repeat(16_000), device, false],
+    ["device transport error", header + block, device.replace("status-code = successful-ok (successful-ok)", "status-code = server-error-internal-error (No request sent.)"), false],
+    ["positive device receipt", header + block, device, true],
+    ["ambiguous repeated name", header + block + block, device, false],
+    ["foreign document", header + block.replace(name, "other.pdf"), device, false],
+    ["device still processing", header + block, device.replace("= completed", "= processing"), false],
+    ["no device page", header + block, device.replace("job-impressions-completed (integer) = 1", "job-impressions-completed (integer) = 0"), false],
+    ["device warnings", header + block, device.replace("job-completed-successfully", "job-completed-with-warnings"), false],
+    ["foreign device URI", header + block.replace("192.168.0.122", "192.168.0.123"), device, false],
+    ["mismatched direct receipt", header + block, device.replace(name, "other.pdf"), false],
+  ] as Array<[string, string, string, boolean]>) {
+    const calls: string[] = [];
+    const runner: ProcessRunner = async (command, args) => {
+      calls.push(command);
+      if (command === "lpstat") return { exitCode: 0, stdout: "device for Brother_QL_1110NWB: ipp://192.168.0.122/ipp/print", stderr: "" };
+      if (args.includes("ipp://localhost/jobs/42")) return { exitCode: 0, stdout: local, stderr: "" };
+      if (args.some(a => a.endsWith("get-completed-jobs.test"))) return { exitCode: 1, stdout: history, stderr: "" };
+      return { exitCode: 0, stdout: receipt, stderr: "" };
+    };
+    const printer = createCupsPrinter({ cupsPrinter: "Brother_QL_1110NWB", media: "4x6", runner });
+    assert.equal(await printer.isCompleted("Brother_QL_1110NWB-42"), expected, label);
+    assert.equal(calls.includes("lp"), false, "confirmation never reprints");
+  }
+});
