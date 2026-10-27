@@ -123,6 +123,18 @@ export class NeontripApi {
     return this.request("offers", `/api/internal/offers/search?${params.toString()}`);
   }
 
+  listOffers(input: Record<string, string | number | undefined>) {
+    const params = new URLSearchParams();
+    for (const [key,value] of Object.entries(input)) if (value !== undefined) params.set(key,String(value));
+    return this.request("offers", `/api/internal/offers/list?${params.toString()}`);
+  }
+
+  listOfferDeliveries(input: Record<string, string | number | undefined>) {
+    const params = new URLSearchParams();
+    for (const [key,value] of Object.entries(input)) if (value !== undefined) params.set(key,String(value));
+    return this.request("offers", `/api/internal/offers/deliveries?${params.toString()}`);
+  }
+
   getOffer(offerId: string) {
     return this.request("offers", `/api/internal/offers/${encodeURIComponent(offerId)}`);
   }

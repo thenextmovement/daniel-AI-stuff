@@ -69,3 +69,22 @@ test("customer history reads use fixed OPS origin, encoded binding and no mutati
  assert.equal(calls[2].url.searchParams.get("offset"),"20");
  assert.equal(calls[3].url.searchParams.get("offset"),"100");
 });
+
+test("offer lists and delivery history preserve date bounds and pagination on authenticated fixed paths", async () => {
+ const calls: Array<{url: URL; init?: RequestInit}> = [];
+ const api = new NeontripApi(config(), async (url,init) => {
+  calls.push({url:new URL(String(url)),init}); return Response.json({ok:true,offers:[]});
+ });
+ await api.listOffers({limit:2,offset:4,sortBy:"sentAt",sortOrder:"desc"});
+ await api.listOfferDeliveries({limit:1,sentFrom:"2026-10-27T00:00:00+01:00",sentTo:"2026-10-28T00:00:00+01:00",status:"SENT",channel:"EMAIL"});
+ assert.equal(calls[0]?.url.pathname,"/api/internal/offers/list");
+ assert.equal(calls[0]?.url.searchParams.get("offset"),"4");
+ assert.equal(calls[1]?.url.pathname,"/api/internal/offers/deliveries");
+ assert.equal(calls[1]?.url.searchParams.get("sentFrom"),"2026-10-27T00:00:00+01:00");
+ assert.equal(calls[1]?.url.searchParams.has("cursor"),false);
+ for(const call of calls) {
+  assert.equal(call.url.origin,"https://offers.example.test");
+  assert.equal(call.init?.method,"GET");
+  assert.equal((call.init?.headers as Record<string,string>).Authorization,"Bearer offers-secret");
+ }
+});

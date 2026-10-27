@@ -19,6 +19,8 @@ import type { Identity, JsonValue, Scope, ToolEnvelope } from "./types.js";
 import { NeontripApi } from "./upstream.js";
 
 const uuid = z.string().uuid();
+// Prisma uses CUID v1 for Offer, OfferItem and OfferImage; retain UUID clients.
+const offerEntityId = z.union([z.string().regex(/^c[a-z0-9]{24}$/), uuid]);
 const idempotencyKey = z.string().trim().min(8).max(200).regex(/^[A-Za-z0-9:_\-.]+$/);
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/i);
 const safeText = (max: number) => z.string().trim().max(max).refine((value) => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(value), "Kontrollzeichen sind nicht erlaubt.");
@@ -53,7 +55,7 @@ const offerPatchSchema = z.object({
     projectTitle: safeText(500).nullable().optional(),
   }).strict().optional(),
   items: z.array(z.object({
-    id: uuid,
+    id: offerEntityId,
     section: safeText(200).nullable().optional(),
     title: safeText(500).optional(),
     description: safeText(5_000).nullable().optional(),
@@ -69,7 +71,7 @@ const offerPatchSchema = z.object({
     sortOrder: z.number().int().min(-100_000).max(100_000).optional(),
   }).strict()).max(500).optional(),
   images: z.array(z.object({
-    id: uuid,
+    id: offerEntityId,
     sourceUrl: z.string().url().max(2_048).optional(),
     title: safeText(500).nullable().optional(),
     enabled: z.boolean().optional(),
@@ -372,6 +374,29 @@ export function createNeontripMcpServer(input: {
     },
   });
 
+  const listPaging = {
+    limit: z.number().int().min(1).max(50).default(20),
+    offset: z.number().int().min(0).max(100000).default(0),
+    cursor: safeText(128).min(1).optional(),
+    sentFrom: z.string().datetime({offset:true}).optional(),
+    sentTo: z.string().datetime({offset:true}).optional(),
+    sortOrder: z.enum(["asc","desc"]).default("desc"),
+  };
+  register({
+    name: "offers_list", title: "Angebote auflisten und filtern",
+    description: "Listet Angebote ohne Pflichtsuchbegriff, mit Status, Zeitraum, Sortierung und Pagination. sentAt ist der ERSTVERSAND. Für heute zuletzt verschickt oder erneuten Versand offers_list_deliveries verwenden. Datumsgrenzen mit Zeitzone; Untergrenze inklusive, Obergrenze exklusiv.",
+    scope: "offers:read", readOnly:true, destructive:false,
+    schema:z.object({...listPaging, status:z.enum(["DRAFT","SENT","VIEWED","ACCEPTED","COMPLETED","EXPIRED","LOST","DOWNLOADED"]).optional(), query:safeText(240).min(1).optional(), sortBy:z.enum(["createdAt","updatedAt","sentAt"]).default("createdAt"), createdFrom:z.string().datetime({offset:true}).optional(), createdTo:z.string().datetime({offset:true}).optional()}).strict(),
+    run: args => input.api.listOffers(args),
+  });
+  register({
+    name: "offers_list_deliveries", title: "Tatsächliche Angebotsversendungen auflisten",
+    description: "Für zuletzt/heute versendete Angebote: liest kanonische Versandversuche inklusive erneuter Versendungen, standardmäßig nur bestätigte SENT-E-Mails, neuester sentAt zuerst. FAILED/UNKNOWN sind kein Versandnachweis. sentFrom inklusive und sentTo exklusiv mit Zeitzonenoffset setzen; heute in Europe/Berlin bestimmen. hasMore/nextCursor beachten. Beträge gegebenenfalls mit offers_get zur Angebots-ID lesen.",
+    scope:"offers:read",readOnly:true,destructive:false,
+    schema:z.object({...listPaging,offerId:offerEntityId.optional(),status:z.enum(["SENT","QUEUED","FAILED","BLOCKED","UNKNOWN"]).default("SENT"),channel:z.enum(["EMAIL","WHATSAPP"]).default("EMAIL"),sortBy:z.enum(["sentAt","createdAt"]).default("sentAt")}).strict(),
+    run:args => input.api.listOfferDeliveries(args),
+  });
+
   register({
     name: "offers_search", title: "Angebote suchen",
     description: "Sucht Angebote über die interne, authentifizierte Angebots-API.", scope: "offers:read",
@@ -383,12 +408,12 @@ export function createNeontripMcpServer(input: {
   register({
     name: "offers_get", title: "Angebot lesen",
     description: "Liest ein Angebot über seine unveränderliche ID.", scope: "offers:read",
-    schema: z.object({ offerId: uuid }).strict(), readOnly: true, destructive: false,
+    schema: z.object({ offerId: offerEntityId }).strict(), readOnly: true, destructive: false,
     run: ({ offerId }) => input.api.getOffer(offerId),
   });
 
   const offerUpdateInput = z.object({
-    offerId: uuid,
+    offerId: offerEntityId,
     expectedUpdatedAt: z.string().datetime({ offset: true }),
     reason: safeText(500).min(3),
     revisionReason: safeText(500).optional(),
@@ -422,7 +447,7 @@ export function createNeontripMcpServer(input: {
     name: "offers_send", title: "Angebot versenden",
     description: "Versendet ein Angebot nach unmittelbarer Versionsprüfung und mit Idempotenzschlüssel.", scope: "offers:send",
     schema: z.object({
-      offerId: uuid,
+      offerId: offerEntityId,
       expectedUpdatedAt: z.string().datetime({ offset: true }),
       recipientEmail: z.string().trim().email().max(254),
       cc: z.array(z.string().trim().email().max(254)).max(20).default([]),

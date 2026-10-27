@@ -22,6 +22,8 @@ export const CAPABILITIES: Capability[] = [
   { name: "billing_accept_change_request", title: "Rechnungsänderung annehmen", scope: "billing:change:accept", service: "billing", access: "write", destructive: true, sideEffects: ["Ändert Rechnungsdaten.", "Der bestehende OPS-Ablauf kann eine Kundenbenachrichtigung einreihen."] },
   { name: "billing_reject_change_request", title: "Rechnungsänderung ablehnen", scope: "billing:change:reject", service: "billing", access: "write", destructive: true, sideEffects: ["Lehnt den Vorgang endgültig ab.", "Der bestehende OPS-Ablauf kann eine Kundenbenachrichtigung einreihen."] },
   { name: "billing_apply_action", title: "Rechnungs-OPS-Aktion ausführen", scope: "billing:actions", service: "billing", access: "write", destructive: true, sideEffects: ["Kann Dokumente erstellen oder Zahlungs- und Lieferstatus ändern."] },
+  { name: "offers_list", title: "Angebote auflisten und filtern", scope: "offers:read", service: "offers", access: "read", destructive: false, sideEffects: [] },
+  { name: "offers_list_deliveries", title: "Bestätigte Versandhistorie lesen", scope: "offers:read", service: "offers", access: "read", destructive: false, sideEffects: [] },
   { name: "offers_search", title: "Angebote suchen", scope: "offers:read", service: "offers", access: "read", destructive: false, sideEffects: [] },
   { name: "offers_get", title: "Angebot lesen", scope: "offers:read", service: "offers", access: "read", destructive: false, sideEffects: [] },
   { name: "offers_preview_update", title: "Angebotsänderung simulieren", scope: "offers:read", service: "offers", access: "read", destructive: false, sideEffects: [] },
