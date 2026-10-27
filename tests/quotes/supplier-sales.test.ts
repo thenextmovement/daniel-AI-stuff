@@ -4696,7 +4696,10 @@ test("supplier order confirmation email sends generated PDF through configured w
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
       eventCount += 1;
-      return Response.json({});
+      assert.equal(url.searchParams.get("on_conflict"), "idempotency_key");
+      assert.equal(url.searchParams.get("select"), "id");
+      assert.equal(new Headers(init?.headers).get("Prefer"), "resolution=ignore-duplicates,return=representation");
+      return Response.json([{ id: "new-audit-event" }]);
     }
     if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
       const patch = JSON.parse(String(init?.body || "{}"));
@@ -4722,7 +4725,11 @@ test("supplier order confirmation email sends generated PDF through configured w
   assert.equal(orderConfirmationEmailMeta?.provider_message_id, "outlook-message-1");
 });
 
-test("supplier order confirmation email duplicate reservation does not resend webhook", async () => {
+for (const reservation of [
+  { name: "duplicate", body: [], status: 201 },
+  { name: "unknown insert result", body: {}, status: 201 },
+  { name: "database failure", body: { code: "23514" }, status: 400 },
+]) test(`supplier order confirmation email ${reservation.name} does not resend webhook`, async () => {
   const row = saleRow({
     id: "sale-order-confirmation-duplicate",
     document_reference: "A-N-15336-ABCDEF",
@@ -4758,7 +4765,8 @@ test("supplier order confirmation email duplicate reservation does not resend we
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "POST") {
       reservationCount += 1;
-      return Response.json({ message: "duplicate" }, { status: 409 });
+      assert.equal(url.searchParams.get("on_conflict"), "idempotency_key");
+      return Response.json(reservation.body, { status: reservation.status });
     }
     if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") {
       patchCount += 1;

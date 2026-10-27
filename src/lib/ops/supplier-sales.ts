@@ -3146,7 +3146,7 @@ async function insertEvent(input: {
   payload?: JsonRecord;
 }) {
   try {
-    await supabaseRequest("supplier_sale_events", {
+    const inserted = await supabaseRequest<Array<{ id: string }>>("supplier_sale_events", {
       method: "POST",
       body: JSON.stringify({
         sale_id: input.saleId || null,
@@ -3155,11 +3155,13 @@ async function insertEvent(input: {
         idempotency_key: input.idempotencyKey,
         payload: input.payload || {},
       }),
-      headers: { Prefer: "return=minimal" },
-    });
-    return true;
+      headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+    }, { on_conflict: "idempotency_key", select: "id" });
+    // An ignored duplicate is not a new reservation. Email/task callers rely
+    // on false here to prevent repeating external side effects.
+    return Array.isArray(inserted) && inserted.length === 1;
   } catch {
-    // Event idempotency collisions are expected during webhook retries.
+    // A failed/unknown insert must never authorize a reserved side effect.
     return false;
   }
 }

@@ -54,7 +54,7 @@
 
 - `[verifiziert]` `supplier_sales`: kanonischer Vergabestatus, Kunden-/Offer-/Shopify-Referenzen, Zahlung, Deadline, Snapshot, Supplier und Projektionszustände.
 - `[verifiziert]` `supplier_sale_items`: normalisierte Positionen und Bild-/Produktmerkmale pro Sale.
-- `[verifiziert]` `supplier_sale_events`: idempotente Audit-Ereignisse. Der aktuelle Check-Constraint ist gegenüber dem Code veraltet; siehe [KNOWN-ISSUES.md](./KNOWN-ISSUES.md).
+- `[verifiziert, 2026-10-27]` `supplier_sale_events`: idempotente Audit-Ereignisse. Der produktive Check-Constraint umfasst jetzt alle 17 im Vertrag verwendeten Typen; die Writer-Optimierung ist lokal geprüft, ihre Veröffentlichung offen. Siehe [KNOWN-ISSUES.md](./KNOWN-ISSUES.md).
 - `[verifiziert]` `supplier_assignment_attempts`: idempotente Vergabeversuche mit Side-Effect-Resultaten.
 - `[verifiziert]` `supplier_payment_reminders`: tägliche/idempotente Reservierung und Ergebnis einer Zahlungserinnerung.
 - `[verifiziert]` Alle fünf Tabellen haben RLS; die Basismigration vergibt Zugriff an `service_role`.

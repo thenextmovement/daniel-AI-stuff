@@ -8,14 +8,14 @@
 - Begrenzte Migration mit isolierten PostgreSQL-Tests vorbereitet; noch nicht veröffentlicht. Bereits versandte Dokumente und Bestandsdaten werden nicht automatisch korrigiert.
 - Ursache, Ziel/Nachbar/Wirkung, Rücknahme und offene Versandgrenze: [Reparaturstand](./BILLING-PAID-PROFORMA-REPAIR-20261007.md).
 
-### Event-Constraint ist gegenüber dem Code veraltet
+### Event-Constraint repariert; Writer-Veröffentlichung offen (2026-10-27)
 
 - `[verifiziert]` `supabase/migrations/20260609102438_create_supplier_sales_ops.sql` erlaubt in `supplier_sale_events.event_type` nur zehn ursprüngliche Werte.
 - `[verifiziert]` `src/lib/ops/supplier-sales.ts` schreibt zusätzlich mindestens `source_trello_order_title_synced`, `source_trello_order_title_sync_failed`, `post_order_change_acknowledged` und `shopify_tag_retry`.
-- `[verifiziert]` Keine spätere Repository-Migration erweitert diesen Constraint.
+- `[historisch, vor 2026-10-27]` Bis zur Incident-Reparatur erweiterte keine spätere Repository-Migration diesen Constraint.
 - `[aus Git/Code abgeleitet]` `insertEvent` behandelt Insert-Fehler defensiv, wodurch die fachliche Hauptaktion erfolgreich erscheinen kann, obwohl das Audit-Ereignis fehlt.
-- `[offen]` Das produktive Schema könnte manuell abweichen; das wurde wegen der No-Mutation-/No-Secret-Grenze nicht live geprüft.
-- `[offen]` Nächster Schritt: additive Migration mit allen tatsächlich verwendeten Event-Typen und fokussierter Migration-/Rollback-Prüfung erstellen.
+- `[live verifiziert, 2026-10-27]` Die additive Migration `20261027123707_repair_supabase_incident_queries_events.sql` erweitert den produktiven Constraint um die sieben im aktiven Code verwendeten Typen. RLS und vorhandene Audit-Ereignisse bleiben erhalten.
+- `[lokal geprüft; Veröffentlichung offen]` Der Writer ignoriert Idempotenzkollisionen ohne Überschreiben. Nur eine neu eingefügte Zeile reserviert einen Side Effect; Dubletten und unklare Ergebnisse bleiben gesperrt. Belege und Rollback: [Incident-Reparatur](../../operations/supabase-incident-repair-20261027.md).
 
 ### Gewünschter automatischer 5-Minuten-Bezahllink-Versand fehlt
 
