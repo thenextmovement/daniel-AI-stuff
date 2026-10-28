@@ -10,7 +10,7 @@ test("management KPIs follow every page before applying combined filters, even w
   process.env.SUPABASE_SERVICE_ROLE_KEY = "test-only";
   const offsets: number[] = [];
   const rows = Array.from({ length: 5103 }, (_, index) => ({
-    id: `row-${index}`, request_id: `REQ-${index}`, country: index < 5100 ? "AT" : "DE",
+    id: `row-${index}`, request_id: `REQ-${index}`, country: index < 5100 ? "AT" : "Deutschland",
     utm_source: "google", created_at: index == 5100 ? "2026-09-01T10:00:00Z" : "2026-10-28T10:00:00Z", status: "new",
   }));
   globalThis.fetch = async (input) => {
@@ -18,7 +18,7 @@ test("management KPIs follow every page before applying combined filters, even w
     if (url.pathname.endsWith("/master_orders")) {
       if (Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
       return Response.json([
-        { id: "order-de", request_id: "REQ-5100", created_at: "2026-10-28T12:00:00Z", order_value: 100 },
+        { id: "order-de", request_id: "row-5100", created_at: "2026-10-28T12:00:00Z", order_value: 100 },
         { id: "order-at", request_id: "REQ-1", created_at: "2026-10-28T12:00:00Z", order_value: 200 },
       ]);
     }

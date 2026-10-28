@@ -1,3 +1,4 @@
+import { countryCode } from "@/lib/ops/billing/domain";
 import { Temporal } from "@js-temporal/polyfill";
 import { supabaseRequest, SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import {
@@ -367,21 +368,21 @@ function filterRequestRows(rows: MasterRequestRow[], input: ManagementKpiInput, 
   const query = normalized(input.query) || null;
   const source = normalized(input.source) || null;
   const segment = normalized(input.segment) || null;
-  const country = normalized(input.country) || null;
+  const country = countryCode(input.country) || normalized(input.country) || null;
   const customerType = normalized(input.customerType) || null;
 
   return rows.filter((row) => {
     if (restrictDate && !dateInRange(row.created_at, from, to)) return false;
     if (source && ![row.utm_source, row.utm_medium, row.utm_campaign, row.landing_page_url, row.referrer].some((entry) => normalized(entry).includes(source))) return false;
     if (segment && ![row.segment, row.s_kategorie].some((entry) => normalized(entry).includes(segment))) return false;
-    if (country && normalized(row.country) !== country) return false;
+    if (country && (countryCode(row.country) || normalized(row.country)) !== country) return false;
     if (customerType && normalized(row.customer_type) !== customerType) return false;
-    return matchesNeedle([row.request_id, row.status, row.deal_status, row.segment, row.s_kategorie, row.utm_source, row.utm_campaign], query);
+    return matchesNeedle([row.id, row.request_id, row.status, row.deal_status, row.segment, row.s_kategorie, row.utm_source, row.utm_campaign], query);
   });
 }
 
 function requestIdSet(rows: MasterRequestRow[]) {
-  return new Set(rows.map((row) => cleanText(row.request_id)).filter((value): value is string => Boolean(value)));
+  return new Set(rows.flatMap((row) => [cleanText(row.id), cleanText(row.request_id)]).filter((value): value is string => Boolean(value)));
 }
 
 function hasRequestDimensions(input: ManagementKpiInput) {
