@@ -31,7 +31,7 @@ test("request pages filter canonical customers and status in SQL before the limi
     assert.match(url.searchParams.get("select") || "", /customer:master_customers!requests_customer_id_fkey!inner/);
     assert.equal(url.searchParams.get("organization.slug"), "eq.neontrip");
     assert.equal(url.searchParams.get("customer_id"), `eq.${customerId}`);
-    assert.equal(url.searchParams.get("status"), 'eq."pending"');
+    assert.equal(url.searchParams.get("status"), "eq.pending");
     assert.match(url.searchParams.get("customer.or") || "", /billing_email\.eq/);
     assert.equal(url.searchParams.get("offset"), "10");
     assert.equal(url.searchParams.get("limit"), "3");
@@ -68,7 +68,7 @@ for (const [source, table, binding] of [
   test(`${source} reaches older history with schema-correct binding and no raw fields`, async () => {
     await withDatabase((url) => {
       if (url.pathname.endsWith("/master_requests")) {
-        assert.equal(url.searchParams.get("request_id"), `eq."${requestId}"`);
+        assert.equal(url.searchParams.get("request_id"), `eq.${requestId}`);
         assert.match(url.searchParams.get("select") || "", /requests_customer_id_fkey/);
         return [request];
       }
@@ -206,5 +206,70 @@ test("order history preserves older business addresses while dropping unexpected
 test("conflicting explicit request and query IDs reject before any database read", async () => {
   await withDatabase(() => { assert.fail("conflicting request IDs must not reach DB"); }, async () => {
     await assert.rejects(() => records.listCustomerRecordRequests({ requestId: "request-A", query: "request:request-B" }), (error: unknown) => Boolean(error && typeof error === "object" && "status" in error && error.status === 422));
+  });
+});
+
+// The live PostgREST equality filter treats everything after `eq.` as the value.
+// Quotes needed inside OR/IN expressions are not wrappers for a direct filter.
+function matchesDirectEquality(url: URL, field: string, value: string) {
+  const filter = url.searchParams.get(field);
+  return filter === null || (filter.startsWith("eq.") && filter.slice(3) === value);
+}
+
+test("a request ID returned by the directory resolves all twenty history sources", async () => {
+  await withDatabase((url) => {
+    if (url.pathname.endsWith("/master_requests")) {
+      if (Number(url.searchParams.get("offset") || 0) > 0) return [];
+      return matchesDirectEquality(url, "request_id", requestId) ? [request] : [];
+    }
+    return [];
+  }, async () => {
+    const directory = await records.listCustomerRecordRequests({ limit: 1 });
+    assert.equal((directory.requests[0] as Record<string, unknown>).request_id, requestId);
+    for (const source of records.customerRecordHistorySources) {
+      const history = await records.listCustomerRecordHistory({ requestId: String((directory.requests[0] as Record<string, unknown>).request_id), source, limit: 1 });
+      assert.equal(history.available, true, source);
+    }
+  });
+});
+
+for (const filter of [{ requestId }, { query: `request:${requestId}` }, { status: "pending" }]) {
+  test(`request directory direct equality filter matches its unquoted literal: ${Object.keys(filter)[0]}`, async () => {
+    await withDatabase((url) => {
+      if (Number(url.searchParams.get("offset") || 0) > 0) return [];
+      return matchesDirectEquality(url, "request_id", requestId) && matchesDirectEquality(url, "status", "pending") ? [{ ...request, status: "pending" }] : [];
+    }, async () => {
+      const result = await records.listCustomerRecordRequests({ ...filter, limit: 1 });
+      assert.equal(result.requests.length, 1);
+      assert.equal((result.requests[0] as Record<string, unknown>).request_id, requestId);
+    });
+  });
+}
+
+for (const source of ["offers", "calls", "followups", "plans", "audits"] as const) {
+  test(`${source} direct history binding reaches the matching record`, async () => {
+    await withDatabase((url) => {
+      if (url.pathname.endsWith("/master_requests")) return matchesDirectEquality(url, "request_id", requestId) ? [request] : [];
+      if (Number(url.searchParams.get("offset") || 0) > 0) return [];
+      const field = source === "audits" ? "document_id" : "request_id";
+      return matchesDirectEquality(url, field, requestId) ? [{ id: "matching-history" }] : [];
+    }, async () => {
+      const result = await records.listCustomerRecordHistory({ requestId, source, limit: 1 });
+      assert.deepEqual(result.records.map((row) => row.id), ["matching-history"]);
+    });
+  });
+}
+
+test("direct request literals retain reserved characters without adding query parameters", async () => {
+  const literal = 'form-42,"(x)\\&status=blocked';
+  await withDatabase((url) => {
+    assert.equal(url.searchParams.get("status"), "eq.pending");
+    assert.equal(url.searchParams.getAll("status").length, 1);
+    assert.equal(url.searchParams.get("request_id"), `eq.${literal}`);
+    if (Number(url.searchParams.get("offset") || 0) > 0) return [];
+    return [{ ...request, request_id: literal }];
+  }, async () => {
+    const result = await records.listCustomerRecordRequests({ requestId: literal, status: "pending", limit: 1 });
+    assert.equal((result.requests[0] as Record<string, unknown>).request_id, literal);
   });
 });

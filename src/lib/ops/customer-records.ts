@@ -5111,6 +5111,8 @@ type CustomerReadQuery = Record<string, string | number>;
 type CustomerReadRow = Record<string, unknown>;
 type CustomerReadPage = { limit?: number | null; offset?: number | null };
 
+// Quote values inside OR/IN/array expressions only. Direct eq filters use the
+// original literal; URLSearchParams handles URL encoding without adding quotes.
 function customerReadValue(value: string) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
@@ -5157,15 +5159,15 @@ export async function listCustomerRecordRequests(input: CustomerReadPage & { cus
   const filters: CustomerReadQuery = {};
   let customerInner = false;
   if (customerId) filters.customer_id = `eq.${customerId}`;
-  if (requestId) filters.request_id = `eq.${customerReadValue(requestId)}`;
-  if (status && status !== "all") filters.status = `eq.${customerReadValue(status)}`;
+  if (requestId) filters.request_id = `eq.${requestId}`;
+  if (status && status !== "all") filters.status = `eq.${status}`;
   if (query) {
     if (/^[a-z_]+:/i.test(query) && !/^(request:|deal:|ac:|trello:|https?:\/\/trello\.com\/c\/)/i.test(query)) throw new QuoteValidationError("Unbekannter query-Praefix.", ["invalid_query"], 422);
     const mode = /^request:/i.test(query) ? "request_id" : resolveCustomerSearchMode(query);
     if (mode === "request_id") {
       const queryRequestId = query.replace(/^request:/i, "").trim();
       if (!queryRequestId || (requestId && requestId !== queryRequestId)) throw new QuoteValidationError("Widerspruechliche requestId und query.", ["conflicting_request_filter"], 422);
-      filters.request_id = `eq.${customerReadValue(queryRequestId)}`;
+      filters.request_id = `eq.${queryRequestId}`;
     }
     else if (mode === "deal") {
       const deal = query.replace(/^(deal:|ac:)/i, "").trim();
@@ -5201,7 +5203,7 @@ export async function listCustomerRecordHistory(input: CustomerReadPage & { requ
   const signal = AbortSignal.timeout(25_000);
   const requestRows = await supabaseRequest<Array<{ id: string; request_id: string; customer_id: string | null; ac_deal_id: number | null; trello_card_id: string | null; customer: MasterCustomerRow | null }>>("master_requests", { signal }, {
     select: `id,request_id,customer_id,ac_deal_id,trello_card_id,customer:master_customers!requests_customer_id_fkey(${CUSTOMER_REQUEST_CUSTOMER_SELECT}),organization:crm_organizations!master_requests_organization_id_fkey!inner(slug)`,
-    request_id: `eq.${customerReadValue(requestId)}`, "organization.slug": "eq.neontrip", order: "id.asc", limit: 2,
+    request_id: `eq.${requestId}`, "organization.slug": "eq.neontrip", order: "id.asc", limit: 2,
   });
   if (!requestRows.length) throw new QuoteValidationError("Vorgang nicht gefunden.", ["request_not_found"], 404);
   if (requestRows.length > 1) throw new QuoteValidationError("Vorgang nicht eindeutig.", ["ambiguous_request"], 409);
@@ -5218,12 +5220,12 @@ export async function listCustomerRecordHistory(input: CustomerReadPage & { requ
   const setOr = (clauses: string[]) => { if (clauses.length) filters.or = `(${clauses.join(",")})`; else filters.id = "is.null"; };
   let bindingScope = "request_and_customer_contacts";
   switch (input.source) {
-    case "offers": filters.request_id = `eq.${customerReadValue(requestId)}`; break;
+    case "offers": filters.request_id = `eq.${requestId}`; break;
     case "orders": case "communications": setOr([eq("request_id", request.id), eq("customer_id", customer.id)]); break;
     case "sales": setOr([eq("request_id", request.id), ...emailClauses("customer_email")]); break;
     case "quotes": setOr(quoteClauses); break;
-    case "calls": case "followups": case "plans": filters.request_id = `eq.${customerReadValue(requestId)}`; break;
-    case "audits": filters.document_id = `eq.${customerReadValue(requestId)}`; break;
+    case "calls": case "followups": case "plans": filters.request_id = `eq.${requestId}`; break;
+    case "audits": filters.document_id = `eq.${requestId}`; break;
     case "voice_calls": setOr([eq("request_id", request.id), eq("customer_id", customer.id), ...phones.map((phone) => eq("caller_phone", phone))]); break;
     case "documents": setOr([eq("customer_id", customer.id), ...emailClauses("customer_email")]); break;
     case "quote_emails": setOr([eq("request_id", requestId), ...emailClauses("recipient_email"), ...(request.trello_card_id ? [eq("card_id", request.trello_card_id)] : []), ...(request.ac_deal_id !== null ? [eq("deal_id", String(request.ac_deal_id))] : [])]); break;
