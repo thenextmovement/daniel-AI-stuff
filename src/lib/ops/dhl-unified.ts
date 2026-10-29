@@ -13,7 +13,7 @@ export type DhlShipmentLink = {id:string;tracking_number:string;trello_card_id:s
 export type DhlLabelCompletion = {incoming_dhl_tracking_number:string;trello_card_id:string|null;status:string;
   manual_review_reason:string|null;delivery_note_required:boolean;delivery_note_status:string;
   purchase_jobs?:{status:string}[];print_jobs?:{status:string}[]};
-export type DhlCandidate = {trackingNumber:string;shipmentId:string|null;card:TrelloCardEvidence};
+export type DhlCandidate = {trackingNumber:string;shipmentId:string|null;card:TrelloCardEvidence;terminalOnly?:boolean};
 export type DhlIssue = {code:string;trelloUrl:string};
 // Only unambiguous local time zones used on the known inbound route. Unknown/multi-zone
 // countries need a timestamp with an explicit offset; never infer time from the server.
@@ -118,7 +118,9 @@ export function planDhlChecks(cards:TrelloCardEvidence[],shipments:DhlShipmentLi
     if(matching.length!==1||blockedNumbers.has(trackingNumber)||!findTrelloCardForTracking(cards,trackingNumber).card) {issues.push({code:'duplicate_or_conflicting_card',trelloUrl:card.url});continue;}
     const existing=shipments.filter(s=>s.tracking_number===trackingNumber);
     if(existing.length>1||(existing.length===1&&existing[0].trello_card_id!==card.id)) {issues.push({code:'shipment_card_mismatch',trelloUrl:card.url});continue;}
-    if(!LEO_INTAKE_LISTS.has(card.listId||'')&&!(card.listId===shipped&&existing.length===1)
+    const terminalOnly=card.listId==='646c788ae63245624b6d6a7a'&&existing.length===1
+      &&existing[0].tracking_provider==='dhl-unified'&&!['delivered','closed'].includes(existing[0].status||'');
+    if(!terminalOnly&&!LEO_INTAKE_LISTS.has(card.listId||'')&&!(card.listId===shipped&&existing.length===1)
       &&!(card.listId==='6347e0a2f062500084675062'&&card.replacementRound)) continue;
     // Delivery alone cannot retire polling: pending label/extra-parcel dispatch
     // still requires fresh carrier evidence. Missing or ambiguous proof keeps polling.
@@ -136,7 +138,7 @@ export function planDhlChecks(cards:TrelloCardEvidence[],shipments:DhlShipmentLi
       &&completed.print_jobs.every(j=>['printed','cancelled'].includes(j.status))) {
       completedCount++;continue;
     }
-    candidates.push({trackingNumber,shipmentId:shipment?.id||null,card});
+    candidates.push({trackingNumber,shipmentId:shipment?.id||null,card,...(terminalOnly?{terminalOnly:true}:{})});
   }
   return {candidates,completedCount,issues};
 }

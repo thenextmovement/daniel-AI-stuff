@@ -50,7 +50,7 @@ export async function main(args=process.argv.slice(2)) {
       now:Date.now,sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms)),save,
       fetch:number=>fetchDhlUnified(number,process.env.DHL_API_KEY!),
       record:async(value)=>{
-        const payload=value as {trackingNumber:string};
+        const payload=value as {trackingNumber:string;trackingError?:string};
         // Recheck all current card identities immediately before a persisted carrier result.
         let freshCards;
         try {freshCards=await createTrelloClient({retryJsonBody:true}).listQuentinCards();}
@@ -61,8 +61,14 @@ export async function main(args=process.argv.slice(2)) {
         const fresh=planDhlChecks(freshCards,shipments);
         const current=fresh.candidates.find(c=>c.trackingNumber===payload.trackingNumber);
         const original=plan.candidates.find(c=>c.trackingNumber===payload.trackingNumber);
-        if(!current||current.card.id!==original?.card.id) throw new DhlPrewriteError('replacement_tracking_changed','identity_changed');
+        if(!current||current.card.id!==original?.card.id||Boolean(current.terminalOnly)!==Boolean(original?.terminalOnly)) throw new DhlPrewriteError('replacement_tracking_changed','identity_changed');
         const c=current.card;
+        if(current.terminalOnly) {
+          // No carrier-release freshness, events, arrival signals or notification outbox.
+          if(payload.trackingError) return false;
+          const result=await supabaseRpc<{updated:boolean}>('inbound_reconcile_dhl_terminal',{p_payload:{...payload,trelloBoardId:c.boardId,trelloCardId:c.id,trelloListId:c.listId}});
+          return result.updated;
+        }
         await supabaseRpc('inbound_record_dhl_unified_response',{p_payload:{...payload,trelloBoardId:c.boardId,trelloCardId:c.id,trelloCardName:c.name,trelloCardUrl:c.url,trelloListId:c.listId,trelloListName:c.listName,replacementRound:c.replacementRound||null}});
       },
     },mode==='sync');

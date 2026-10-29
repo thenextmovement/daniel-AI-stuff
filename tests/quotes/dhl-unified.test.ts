@@ -195,3 +195,15 @@ test('multi-package polling selects the first field number and rejects secondary
   const other={...card('card2'),name:'#NEONT124',trackingField:'DHL 3345678901, DHL 0012345678'};
   assert.ok(!planDhlChecks([multi,other],[]).candidates.some(c=>c.trackingNumber==='0012345678'));
 });
+
+test('Sign Arrived reconciles only existing nonterminal DHL mirrors, without new intake',()=>{
+ const c=card('card1','646c788ae63245624b6d6a7a');
+ const link={id:'shipment1',tracking_number:number,trello_card_id:c.id,status:'in_transit',tracking_provider:'dhl-unified'};
+ assert.equal(planDhlChecks([c],[link]).candidates[0]?.terminalOnly,true);
+ for(const change of [{status:'delivered'},{status:'closed'},{tracking_provider:'17track'},{trello_card_id:'other'}]) {
+  assert.equal(planDhlChecks([c],[{...link,...change}]).candidates.length,0);
+ }
+ assert.equal(planDhlChecks([c],[]).candidates.length,0);
+ assert.equal(planDhlChecks([c,card('duplicate',c.listId)],[link]).candidates.length,0);
+ assert.equal(planDhlChecks([{...c,listId:'manual-list'}],[link]).candidates.length,0);
+});

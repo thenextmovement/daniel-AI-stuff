@@ -189,3 +189,13 @@ test('submitted RPC HTTP status is retained without its private body',async()=>{
   assert.equal(h.state.attempts[0].recordError,'http_502');assert.equal(h.state.attempts[0].status,'record_uncertain');
   assert.doesNotMatch(JSON.stringify(h.state),/private/);
 });
+
+test('terminal-only nonterminal read counts checked, preserves slot dedup and later polling',async()=>{
+ const h=harness();const ports={...h.ports,record:async()=>false};
+ const r=await runDhlPollBatch([{...candidate(),terminalOnly:true}],h.state,ports,true);
+ assert.equal(r.checked,1);assert.equal(r.synced,0);assert.equal(h.state.attempts[0].status,'checked');
+ await runDhlPollBatch([{...candidate(),terminalOnly:true}],h.state,ports,true);assert.equal(h.calls.length,1);
+ const later={...ports,now:()=>at+10*3600_000};
+ const next=await runDhlPollBatch([{...candidate(),terminalOnly:true}],h.state,later,true);
+ assert.equal(next.attempted,1);assert.equal(next.synced,0);
+});

@@ -18,7 +18,7 @@ function recordFailure(attempt:PollAttempt,error:unknown):string {
   return error instanceof DhlPrewriteError?error.code:'dhl_record_uncertain';
 }
 export type PollState={attempts:PollAttempt[]};
-type Ports={now:()=>number;sleep:(ms:number)=>Promise<void>;save:(state:PollState)=>Promise<void>;fetch:(tracking:string)=>Promise<unknown>;record:(payload:unknown)=>Promise<void>};
+type Ports={now:()=>number;sleep:(ms:number)=>Promise<void>;save:(state:PollState)=>Promise<void>;fetch:(tracking:string)=>Promise<unknown>;record:(payload:unknown)=>Promise<void|boolean>};
 
 // Single designated worker; caller must hold the exclusive filesystem lock throughout.
 // Reserve quota before HTTP and do not retry uncertain writes. The 225 rolling-day cap
@@ -77,7 +77,7 @@ export async function runDhlPollBatch(candidates:DhlCandidate[],state:PollState,
       continue;
     }
     if(sync) {
-      try {await ports.record({...payload as object,shipmentId:candidate.shipmentId,trelloCardId:candidate.card.id});synced++;attempt.status='synced';}
+      try {const recorded=await ports.record({...payload as object,shipmentId:candidate.shipmentId,trelloCardId:candidate.card.id});if(recorded===false) attempt.status='checked';else {synced++;attempt.status='synced';}}
       catch(error) {attempt.code=recordFailure(attempt,error);issues.push({code:attempt.code,trelloUrl:candidate.card.url});await ports.save(state);if(!(error instanceof DhlPrewriteError)||error.scope==='board') break;continue;}
     } else attempt.status='checked';
     await ports.save(state);

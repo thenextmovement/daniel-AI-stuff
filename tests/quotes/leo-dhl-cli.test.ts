@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { main } from '../../scripts/run_leo_dhl_tracking';
 
-async function scenario(mode:string,options:{lock?:boolean;changeCard?:boolean;invalidState?:boolean;completed?:boolean;pendingExtra?:boolean;caseSecondPage?:boolean;replacement?:boolean;historyFailures?:number;rpcFailure?:boolean;historyHttp?:number}={}) {
+async function scenario(mode:string,options:{lock?:boolean;changeCard?:boolean;invalidState?:boolean;completed?:boolean;pendingExtra?:boolean;caseSecondPage?:boolean;replacement?:boolean;historyFailures?:number;rpcFailure?:boolean;historyHttp?:number;terminal?:boolean;changeMode?:boolean}={}) {
   const dir=await mkdtemp(path.join(tmpdir(),'leo-dhl-test-'));
   const keys=['LEO_DHL_STATE_DIR','LEO_DHL_SYNC_ENABLED','DHL_API_KEY','TRELLO_API_KEY','TRELLO_TOKEN','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','ARRIVAL_LABEL_TRELLO_BOARD_ID'] as const;
   const old=Object.fromEntries(keys.map(k=>[k,process.env[k]]));const fetchOriginal=globalThis.fetch;
@@ -15,7 +15,7 @@ async function scenario(mode:string,options:{lock?:boolean;changeCard?:boolean;i
   globalThis.fetch=async(input,init)=>{
     const u=new URL(String(input));calls.push(u.hostname+u.pathname);
     if(u.hostname==='api.trello.com') {
-      if(u.pathname.endsWith('/cards')) {cardReads++;return Response.json([{id:'111111111111111111111111',name:'#NEONT123',url:'https://trello.com/c/abcd1234',idBoard:'62bae9b97705e7419ed64593',idList:options.replacement?'6347e0a2f062500084675062':'69ff17bfab2afaaf96f7033a',closed:false,customFieldItems:[{idCustomField:'tracking',value:{text:options.changeCard&&cardReads>1?'DHL 9912345678':options.replacement?'DHL 1123456789 / 0012345678':'DHL 0012345678'}}]}]);}
+      if(u.pathname.endsWith('/cards')) {cardReads++;return Response.json([{id:'111111111111111111111111',name:'#NEONT123',url:'https://trello.com/c/abcd1234',idBoard:'62bae9b97705e7419ed64593',idList:(options.terminal!==Boolean(options.changeMode&&cardReads>1))&&Boolean(options.terminal||options.changeMode)?'646c788ae63245624b6d6a7a':options.replacement?'6347e0a2f062500084675062':'69ff17bfab2afaaf96f7033a',closed:false,customFieldItems:[{idCustomField:'tracking',value:{text:options.changeCard&&cardReads>1?'DHL 9912345678':options.replacement?'DHL 1123456789 / 0012345678':'DHL 0012345678'}}]}]);}
       if(u.pathname.endsWith('/actions')) {
         if(cardReads>1&&options.historyHttp) return new Response('',{status:options.historyHttp});
         if(cardReads>1&&historyFailures++<(options.historyFailures||0)) return {ok:true,json:async()=>{throw new DOMException('private-token','TimeoutError');}} as unknown as Response;
@@ -28,7 +28,7 @@ async function scenario(mode:string,options:{lock?:boolean;changeCard?:boolean;i
       if(u.pathname.endsWith('/customFields')) return Response.json([{id:'tracking',name:'Tracking number'}]);
     }
     if(u.hostname==='db.example.invalid') {
-      if(u.pathname.endsWith('/inbound_shipments')) return Response.json(options.completed?[{
+      if(u.pathname.endsWith('/inbound_shipments')) return Response.json(options.terminal||options.changeMode?[{id:'shipment',tracking_number:'0012345678',trello_card_id:'111111111111111111111111',status:'in_transit',tracking_provider:'dhl-unified'}]:options.completed?[{
         id:'shipment',tracking_number:'0012345678',trello_card_id:'111111111111111111111111',
         status:'delivered',status_reason:null,delivered_at:'2026-10-06T07:00:00Z',last_checked_at:'2026-10-06T08:00:00Z',
         tracking_provider:'dhl-unified',response_provider:'dhl-unified',response_id:'0012345678',response_service:'express',
@@ -41,6 +41,7 @@ async function scenario(mode:string,options:{lock?:boolean;changeCard?:boolean;i
           purchase_jobs:[{status:'completed'}],print_jobs:[{status:'printed'},...(options.pendingExtra?[{status:'queued'}]:[])],
         }]:[]);
       }
+      if(u.pathname.endsWith('/inbound_reconcile_dhl_terminal')) {rpc.push(JSON.parse(String(init?.body)));return Response.json({updated:false});}
       if(u.pathname.endsWith('/inbound_record_dhl_unified_response')) {rpc.push(JSON.parse(String(init?.body)));if(options.rpcFailure)throw new TypeError('private-token');return Response.json({});}
     }
     if(u.hostname==='api-eu.dhl.com') return Response.json({shipments:[{id:'0012345678',service:'express',events:[{timestamp:'2026-10-07T07:00:00Z',description:'Shipment information received',statusCode:'pre-transit',location:{address:{countryCode:'CN',addressLocality:'SHENZHEN'}}}]}]});
@@ -116,4 +117,18 @@ for(const status of [401,403,429]) test(`CLI history HTTP ${status} is a board p
   assert.equal(r.state.attempts[0].recordError,`http_${status}`);
   assert.equal(r.state.attempts[0].recordPhase,'prewrite');
   assert.equal(r.calls.filter(c=>c.endsWith('/actions')).length,status===429?4:2);
+});
+
+test('terminal mirror mode uses only narrow RPC and counts nonterminal response as checked',async()=>{
+ const r=await scenario('sync',{terminal:true});assert.equal(r.rpc.length,1);
+ assert.ok(r.calls.some(c=>c.endsWith('/inbound_reconcile_dhl_terminal')));
+ assert.equal(r.calls.some(c=>c.endsWith('/inbound_record_dhl_unified_response')),false);
+ assert.equal(r.state.attempts[0].status,'checked');
+});
+test('list changes cannot cross the terminal-only versus general ingest boundary',async()=>{
+ for(const terminal of [true,false]) {
+  const r=await scenario('sync',{terminal,changeMode:true});
+  assert.equal(r.rpc.length,0);assert.equal(r.state.attempts[0].status,'failed');
+  assert.equal(r.state.attempts[0].recordPhase,'prewrite');
+ }
 });
