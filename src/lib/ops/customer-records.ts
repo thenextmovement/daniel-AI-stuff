@@ -22,6 +22,7 @@ import {
   canAutoUpdateTrelloDescription,
   type MockupContextInput,
 } from "@/lib/ops/mockup-context";
+import { normalizeOpsListPage } from "@/lib/ops/list-pagination";
 import { taskTitle, upsertSalesTask } from "@/lib/ops/sales-task-engine";
 
 type MasterCustomerRow = {
@@ -5077,6 +5078,194 @@ async function applyCustomerMutation(
   }
 
   return changedTables;
+}
+
+// Full read alternatives to the deliberately bounded customer console previews.
+const CUSTOMER_REQUEST_PAGE_SELECT = "id,request_id,customer_id,ac_deal_id,ac_deal_stage,trello_card_id,trello_card_url,title,description,segment,status,estimated_value,final_value,created_at,updated_at,size,color,application,delivery_time,customer_type,country,deal_status";
+const CUSTOMER_REQUEST_CUSTOMER_SELECT = MASTER_CUSTOMER_SELECT;
+const CUSTOMER_HISTORY_SOURCES = {
+  offers: ["v_offer_history", "id,request_id,customer_id,source,offer_status,total_value,currency,created_at,sent_at,viewed_at,accepted_at", "created_at.desc.nullslast,id.asc,source.asc"],
+  orders: ["master_orders", "id,customer_id,request_id,shopify_order_id,shopify_order_number,status,fulfillment_status,order_value,currency,shipped_at,delivered_at,tracking_number,carrier,created_at,shopify_created_at,shipping_address,billing_address", "created_at.desc.nullslast,id.asc"],
+  email_orders: ["master_orders", "id,customer_id,request_id,shopify_order_number,order_value,currency,status,fulfillment_status,tracking_number,carrier,created_at", "created_at.desc.nullslast,id.asc"],
+  sales: ["crm_sales", "id,request_id,quote_id,shopify_order_id,shopify_order_number,shopify_order_name,status,financial_status,fulfillment_status,customer_name,customer_email,customer_company,customer_phone,tracking_number,tracking_url,tracking_company,total_price,currency,note,tags,delivery_method,delivery_min_days,delivery_max_days,estimated_delivery_date,shopify_created_at,created_at,updated_at,easybill_sync_status,easybill_invoice_number", "created_at.desc.nullslast,id.asc"],
+  quotes: ["crm_quotes", "id,customer_id,request_id,quote_number,status,valid_until,notes_internal,notes_customer,sent_at,viewed_at,accepted_at,rejected_at,created_at,updated_at,total_gross,customer_live_total,last_customer_event_type,last_customer_event_at,project_number,contact_email,contact_phone,shopify_sync_status,easybill_sync_status,easybill_invoice_number", "created_at.desc.nullslast,id.asc"],
+  email_quotes: ["crm_quotes", "id,customer_id,request_id,quote_number,status,total_gross,created_at,sent_at,viewed_at,accepted_at", "created_at.desc.nullslast,id.asc"],
+  calls: ["call_logs", "id,request_id,called_at,caller,source,outcome,sentiment,summary,next_action_date,confidence,created_at", "called_at.desc.nullslast,id.asc"],
+  voice_calls: ["voice_agent_calls", "id,request_id,customer_id,created_at,direction,caller_phone,caller_name,duration_seconds,recording_url,summary,detected_intent,callback_needed,escalated,transfer_summary,company_name,human_transfer_completed", "created_at.desc.nullslast,id.asc"],
+  followups: ["followup_queue", "id,request_id,customer_email,customer_name,customer_company,followup_type,followup_number,email_subject,reply_subject,status,scheduled_for,sent_at,reply_detected_at,created_at,updated_at,mockup_url,mockup_url_2,mockup_url_3", "created_at.desc.nullslast,id.asc"],
+  plans: ["lead_followup_plans", "id,request_id,customer_email,contactability_status,call_after,planning_reason,created_at,updated_at", "created_at.desc.nullslast,id.asc"],
+  documents: ["document_journey", "id,customer_id,customer_email,current_status,document_name,total_value,sent_at,first_viewed_at,completed_at,reminder_1_sent,reminder_2_sent,reminder_3_sent,reply_detected_at,reply_classification,created_at,updated_at", "created_at.desc.nullslast,id.asc"],
+  communications: ["master_communications", "id,customer_id,request_id,type,direction,subject,content,status,created_at", "created_at.desc.nullslast,id.asc"],
+  quote_emails: ["quote_email_log", "id,request_id,card_id,deal_id,recipient_email,recipient_name,subject,status,sent_at,created_at,card_url", "created_at.desc.nullslast,id.asc"],
+  outlook: ["customer_email_messages", "id,message_id,internet_message_id,conversation_id,mailbox,direction,from_email,from_name,to_emails,cc_emails,matched_email,linked_request_id,linked_customer_id,subject,body_preview,received_at,sent_at,message_created_at,created_at,updated_at", "updated_at.desc.nullslast,id.asc"],
+  outlook_organization: ["customer_email_messages", "id,message_id,internet_message_id,conversation_id,mailbox,direction,from_email,from_name,to_emails,cc_emails,matched_email,linked_request_id,linked_customer_id,subject,body_preview,received_at,sent_at,message_created_at,created_at,updated_at", "updated_at.desc.nullslast,id.asc"],
+  inbound_emails: ["email_agent_log", "id,request_id,from_email,from_name,subject,body_preview,category,draft_created,created_at", "created_at.desc.nullslast,id.asc"],
+  audits: ["workflow_audit_log", "id,document_id,workflow_name,action,status,created_at,summary:metadata->>summary,note_text:metadata->>note_text,note_kind:metadata->>note_kind,actor_label:metadata->>actor_label,assignee_label:metadata->>assignee_label,reason:metadata->>reason,subject:metadata->>subject,reply_preview:metadata->>reply_preview,direction:metadata->>direction,classification:metadata->>classification,outcome:metadata->>outcome", "created_at.desc.nullslast,id.asc"],
+  quote_versions: ["crm_quote_versions", "id,quote_id,version_number,change_type,description,label,is_locked,created_at,total_gross:totals->>total_gross,legacy_total_gross:totals->>totalGross,legacy_total:totals->>total", "created_at.desc.nullslast,id.asc"],
+  quote_version_images: ["crm_quote_version_images", "id,version_id,item_index,image_index,original_url,copied_url,versioned_url,copy_status,created_at", "created_at.desc.nullslast,id.asc"],
+  related_customers: ["master_customers", MASTER_CUSTOMER_SELECT, "updated_at.desc.nullslast,id.asc"],
+} as const;
+export type CustomerRecordHistorySource = keyof typeof CUSTOMER_HISTORY_SOURCES;
+export const customerRecordHistorySources = Object.keys(CUSTOMER_HISTORY_SOURCES) as CustomerRecordHistorySource[];
+type CustomerReadQuery = Record<string, string | number>;
+type CustomerReadRow = Record<string, unknown>;
+type CustomerReadPage = { limit?: number | null; offset?: number | null };
+
+function customerReadValue(value: string) {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+function customerReadText(value: string | undefined, field: string, max = 200) {
+  const normalized = String(value || "").trim();
+  if (normalized.length > max || /[\x00-\x1f]/.test(normalized)) throw new QuoteValidationError(`Ungueltiger ${field}.`, [`invalid_${field}`], 422);
+  return normalized;
+}
+function customerReadProjection(row: CustomerReadRow, select: string): CustomerReadRow {
+  return Object.fromEntries(select.split(",").map((field) => field.split(":")[0]).filter((key) => key in row).map((key) => {
+    const value = row[key];
+    if (["shipping_address", "billing_address"].includes(key) && value && typeof value === "object" && !Array.isArray(value)) {
+      return [key, customerReadProjection(value as CustomerReadRow, "name,first_name,last_name,company,address1,address2,street,street2,city,province,province_code,country,country_code,zip,postal_code,phone")];
+    }
+    return [key, value];
+  }));
+}
+// Fill through shorter provider pages; a short batch alone is not proof of EOF.
+async function customerReadPage(table: string, query: CustomerReadQuery, page: { limit: number; offset: number }, signal: AbortSignal) {
+  const rows: CustomerReadRow[] = [];
+  const seen = new Set<string>();
+  while (rows.length < page.limit + 1) {
+    signal.throwIfAborted();
+    const batch = await supabaseRequest<CustomerReadRow[]>(table, { signal }, { ...query, limit: page.limit + 1 - rows.length, offset: page.offset + rows.length });
+    if (!batch.length) break;
+    for (const row of batch) {
+      const key = `${String(row.id)}:${String(row.source || "")}`;
+      if (seen.has(key)) throw new QuoteValidationError("Daten waehrend der Abfrage veraendert; Seite erneut laden.", ["unstable_page"], 409);
+      seen.add(key);
+      rows.push(row);
+    }
+  }
+  signal.throwIfAborted();
+  return { rows: rows.slice(0, page.limit), pagination: { ...page, nextOffset: rows.length > page.limit ? page.offset + page.limit : null } };
+}
+
+export async function listCustomerRecordRequests(input: CustomerReadPage & { customerId?: string; requestId?: string; query?: string; status?: string } = {}) {
+  const page = normalizeOpsListPage(input, 50, 100);
+  const customerId = customerReadText(input.customerId, "customerId");
+  if (customerId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(customerId)) throw new QuoteValidationError("Ungueltige customerId.", ["invalid_customerId"], 422);
+  const requestId = customerReadText(input.requestId, "requestId");
+  const query = customerReadText(input.query, "query");
+  const status = customerReadText(input.status, "status", 80);
+  const filters: CustomerReadQuery = {};
+  let customerInner = false;
+  if (customerId) filters.customer_id = `eq.${customerId}`;
+  if (requestId) filters.request_id = `eq.${customerReadValue(requestId)}`;
+  if (status && status !== "all") filters.status = `eq.${customerReadValue(status)}`;
+  if (query) {
+    if (/^[a-z_]+:/i.test(query) && !/^(request:|deal:|ac:|trello:|https?:\/\/trello\.com\/c\/)/i.test(query)) throw new QuoteValidationError("Unbekannter query-Praefix.", ["invalid_query"], 422);
+    const mode = /^request:/i.test(query) ? "request_id" : resolveCustomerSearchMode(query);
+    if (mode === "request_id") {
+      const queryRequestId = query.replace(/^request:/i, "").trim();
+      if (!queryRequestId || (requestId && requestId !== queryRequestId)) throw new QuoteValidationError("Widerspruechliche requestId und query.", ["conflicting_request_filter"], 422);
+      filters.request_id = `eq.${customerReadValue(queryRequestId)}`;
+    }
+    else if (mode === "deal") {
+      const deal = query.replace(/^(deal:|ac:)/i, "").trim();
+      if (!/^\d+$/.test(deal)) throw new QuoteValidationError("Ungueltiger query-Deal.", ["invalid_query"], 422);
+      filters.ac_deal_id = `eq.${deal}`;
+    } else if (mode === "trello") {
+      const card = parseTrelloCardIdentifier(query) || query.replace(/^trello:/i, "").trim();
+      if (!/^[a-z0-9]+$/i.test(card)) throw new QuoteValidationError("Ungueltige query-Trello-Karte.", ["invalid_query"], 422);
+      filters.or = `(trello_card_id.eq.${customerReadValue(card)},trello_card_url.ilike.${customerReadValue(`*${card}*`)})`;
+    } else {
+      customerInner = true;
+      const fuzzy = customerReadValue(`*${query.replace(/[%*_]/g, " ")}*`);
+      const clauses = mode === "email"
+        ? ["email", "billing_email", "original_email"].map((field) => `${field}.eq.${customerReadValue(normalizeEmail(query))}`).concat(`cc_emails.cs.{${customerReadValue(normalizeEmail(query))}}`)
+        : mode === "phone"
+          ? ["phone", "original_phone"].flatMap((field) => [`${field}.ilike.${fuzzy}`, `${field}.ilike.${customerReadValue(`*${normalizePhoneSearch(query)}*`)}`])
+          : ["name", "first_name", "last_name", "company", "company_name"].map((field) => `${field}.ilike.${fuzzy}`);
+      filters["customer.or"] = `(${clauses.join(",")})`;
+    }
+  }
+  const result = await customerReadPage("master_requests", {
+    select: `${CUSTOMER_REQUEST_PAGE_SELECT},customer:master_customers!requests_customer_id_fkey${customerInner ? "!inner" : ""}(${CUSTOMER_REQUEST_CUSTOMER_SELECT}),organization:crm_organizations!master_requests_organization_id_fkey!inner(slug)`,
+    "organization.slug": "eq.neontrip", ...filters, order: "updated_at.desc.nullslast,id.asc",
+  }, page, AbortSignal.timeout(25_000));
+  return { requests: result.rows.map((row) => ({ ...customerReadProjection(row, CUSTOMER_REQUEST_PAGE_SELECT), customer: row.customer && typeof row.customer === "object" ? customerReadProjection(row.customer as CustomerReadRow, CUSTOMER_REQUEST_CUSTOMER_SELECT) : null })), pagination: result.pagination };
+}
+
+export async function listCustomerRecordHistory(input: CustomerReadPage & { requestId: string; source: CustomerRecordHistorySource }) {
+  const page = normalizeOpsListPage(input, 50, 100);
+  const requestId = customerReadText(input.requestId, "requestId");
+  if (!requestId) throw new QuoteValidationError("requestId erforderlich.", ["missing_requestId"], 422);
+  if (!Object.hasOwn(CUSTOMER_HISTORY_SOURCES, input.source)) throw new QuoteValidationError("Unbekannte source.", ["invalid_source"], 422);
+  const signal = AbortSignal.timeout(25_000);
+  const requestRows = await supabaseRequest<Array<{ id: string; request_id: string; customer_id: string | null; ac_deal_id: number | null; trello_card_id: string | null; customer: MasterCustomerRow | null }>>("master_requests", { signal }, {
+    select: `id,request_id,customer_id,ac_deal_id,trello_card_id,customer:master_customers!requests_customer_id_fkey(${CUSTOMER_REQUEST_CUSTOMER_SELECT}),organization:crm_organizations!master_requests_organization_id_fkey!inner(slug)`,
+    request_id: `eq.${customerReadValue(requestId)}`, "organization.slug": "eq.neontrip", order: "id.asc", limit: 2,
+  });
+  if (!requestRows.length) throw new QuoteValidationError("Vorgang nicht gefunden.", ["request_not_found"], 404);
+  if (requestRows.length > 1) throw new QuoteValidationError("Vorgang nicht eindeutig.", ["ambiguous_request"], 409);
+  const request = requestRows[0];
+  const customer = request.customer;
+  if (!customer || !request.customer_id || customer.id !== request.customer_id) throw new QuoteValidationError("Vorgang ohne eindeutige Kundenbindung.", ["customer_binding_missing"], 409);
+  const emails = emailCandidates(customer);
+  const phones = uniqueValues([customer.phone, customer.original_phone]);
+  const eq = (field: string, value: string) => `${field}.eq.${customerReadValue(value)}`;
+  const emailClauses = (field: string) => emails.map((email) => eq(field, email));
+  const quoteClauses = [eq("request_id", request.id), eq("customer_id", customer.id), ...emailClauses("contact_email"), ...phones.map((phone) => eq("contact_phone", phone))];
+  const [table, projection, order] = CUSTOMER_HISTORY_SOURCES[input.source];
+  const filters: CustomerReadQuery = { select: projection, order };
+  const setOr = (clauses: string[]) => { if (clauses.length) filters.or = `(${clauses.join(",")})`; else filters.id = "is.null"; };
+  let bindingScope = "request_and_customer_contacts";
+  switch (input.source) {
+    case "offers": filters.request_id = `eq.${customerReadValue(requestId)}`; break;
+    case "orders": case "communications": setOr([eq("request_id", request.id), eq("customer_id", customer.id)]); break;
+    case "sales": setOr([eq("request_id", request.id), ...emailClauses("customer_email")]); break;
+    case "quotes": setOr(quoteClauses); break;
+    case "calls": case "followups": case "plans": filters.request_id = `eq.${customerReadValue(requestId)}`; break;
+    case "audits": filters.document_id = `eq.${customerReadValue(requestId)}`; break;
+    case "voice_calls": setOr([eq("request_id", request.id), eq("customer_id", customer.id), ...phones.map((phone) => eq("caller_phone", phone))]); break;
+    case "documents": setOr([eq("customer_id", customer.id), ...emailClauses("customer_email")]); break;
+    case "quote_emails": setOr([eq("request_id", requestId), ...emailClauses("recipient_email"), ...(request.trello_card_id ? [eq("card_id", request.trello_card_id)] : []), ...(request.ac_deal_id !== null ? [eq("deal_id", String(request.ac_deal_id))] : [])]); break;
+    case "inbound_emails": setOr([eq("request_id", requestId), ...emailClauses("from_email")]); break;
+    case "outlook": setOr([eq("linked_request_id", request.id), eq("linked_customer_id", customer.id), ...emailClauses("matched_email"), ...emailClauses("from_email"), ...emails.flatMap((email) => ["to_emails", "cc_emails"].map((field) => `${field}.cs.{${customerReadValue(email)}}`))]); break;
+    case "outlook_organization": bindingScope = "organization_domain"; setOr(customerOrganizationEmailDomains(emails).flatMap((domain) => ["matched_email", "from_email"].map((field) => `${field}.ilike.${customerReadValue(`*@${domain}`)}`))); break;
+    case "related_customers": filters.id = `neq.${customer.id}`; setOr([...emailClauses("email"), ...emailClauses("billing_email"), ...emailClauses("original_email"), ...emails.map((email) => `cc_emails.cs.{${customerReadValue(email)}}`), ...phones.flatMap((phone) => [eq("phone", phone), eq("original_phone", phone)])]); break;
+    case "email_orders": case "email_quotes": {
+      const fk = input.source === "email_orders" ? "orders_customer_id_fkey" : "crm_quotes_customer_id_fkey";
+      filters.select += `,customer:master_customers!${fk}!inner(email)`;
+      if (emails.length) filters["customer.email"] = `in.(${emails.map(customerReadValue).join(",")})`;
+      else filters.id = "is.null";
+      break;
+    }
+    case "quote_versions": case "quote_version_images": {
+      const quoteJoin = "quote:crm_quotes!crm_quote_versions_quote_id_fkey!inner(id,organization:crm_organizations!crm_quotes_organization_id_fkey!inner(slug))";
+      const prefix = input.source === "quote_versions" ? "quote" : "version.quote";
+      filters.select += input.source === "quote_versions" ? `,${quoteJoin}` : `,version:crm_quote_versions!crm_quote_version_images_version_id_fkey!inner(${quoteJoin})`;
+      filters[`${prefix}.or`] = `(${quoteClauses.join(",")})`;
+      filters[`${prefix}.organization.slug`] = "eq.neontrip";
+      break;
+    }
+  }
+  if (table === "crm_sales" || table === "crm_quotes") {
+    filters.select += `,organization:crm_organizations!${table}_organization_id_fkey!inner(slug)`;
+    filters["organization.slug"] = "eq.neontrip";
+  }
+  if (["offers", "calls", "followups", "plans", "audits"].includes(input.source)) bindingScope = "request";
+  if (["email_orders", "email_quotes"].includes(input.source)) bindingScope = "customer_email";
+  const base = { requestId, customerId: customer.id, source: input.source, bindingScope };
+  try {
+    const result = await customerReadPage(table, filters, page, signal);
+    return { ...base, available: true, unavailableReason: null, records: result.rows.map((row) => customerReadProjection(row, projection)), pagination: result.pagination };
+  } catch (error) {
+    let code = "";
+    if (error instanceof SupabaseRestError && typeof error.details === "string") {
+      try { code = String(JSON.parse(error.details).code || ""); } catch { /* Not a schema response. */ }
+    }
+    if (["42P01", "42703", "PGRST200", "PGRST204", "PGRST205"].includes(code)) return { ...base, available: false, unavailableReason: "schema_unavailable", records: [], pagination: { ...page, nextOffset: null } };
+    if (error instanceof SupabaseRestError) throw new SupabaseRestError("Kundenhistorie konnte nicht geladen werden.", error.status);
+    throw error;
+  }
 }
 
 export async function searchCustomerRecords(query: string) {

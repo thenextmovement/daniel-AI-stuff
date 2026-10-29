@@ -30,6 +30,7 @@ export type GatewayConfig = {
   maxResponseBytes: number;
   requestsPerMinute: number;
   allowDecisionCustomerEmail: boolean;
+  releaseCommit?: string;
   ops?: { baseUrl: URL; accessClientId: string; accessClientSecret: string };
   offers?: { baseUrl: URL; apiKey: string };
 };
@@ -68,7 +69,6 @@ function parseIdentities(value: string | undefined): Identity[] {
   const seenClients = new Set<string>();
   const seenHashes = new Set<string>();
   for (const identity of identities) {
-    if (identity.expiresAt <= now) throw new Error(`MCP-Identität ${identity.clientId} ist abgelaufen.`);
     if (seenClients.has(identity.clientId) || seenHashes.has(identity.tokenSha256)) {
       throw new Error("MCP-Identitäten müssen eindeutige Client-IDs und Token-Hashes haben.");
     }
@@ -77,6 +77,11 @@ function parseIdentities(value: string | undefined): Identity[] {
     if (identity.role === "billing_automation" && identity.scopes.some((scope) => !automationScopes.has(scope))) {
       throw new Error(`Automations-Identität ${identity.clientId} hat unzulässige Rechte.`);
     }
+  }
+  // Expiration is enforced per request; a retired account must not prevent
+  // other accounts from starting after a deployment or restart.
+  if (!identities.some(identity => identity.expiresAt > now)) {
+    throw new Error("Alle MCP-Identitäten sind abgelaufen.");
   }
   return identities;
 }
@@ -101,6 +106,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     maxResponseBytes: z.coerce.number().int().min(10_000).max(5_000_000).catch(1_500_000).parse(env.MCP_MAX_RESPONSE_BYTES),
     requestsPerMinute: z.coerce.number().int().min(10).max(10_000).catch(240).parse(env.MCP_REQUESTS_PER_MINUTE),
     allowDecisionCustomerEmail: env.MCP_ALLOW_BILLING_DECISION_CUSTOMER_EMAIL === "true",
+    releaseCommit: env.SOURCE_COMMIT ? z.string().regex(/^[a-f0-9]{40}$/).parse(env.SOURCE_COMMIT) : undefined,
     ...(opsBaseUrl && env.OPS_ACCESS_CLIENT_ID && env.OPS_ACCESS_CLIENT_SECRET
       ? { ops: { baseUrl: opsBaseUrl, accessClientId: env.OPS_ACCESS_CLIENT_ID, accessClientSecret: env.OPS_ACCESS_CLIENT_SECRET } }
       : {}),

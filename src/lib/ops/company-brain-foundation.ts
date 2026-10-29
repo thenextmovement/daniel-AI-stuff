@@ -1,3 +1,4 @@
+import { normalizeOpsListPage, type OpsListPageOptions } from "@/lib/ops/list-pagination";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -629,22 +630,26 @@ export async function resolveCompanyEntityAlias(input: { sourceKey?: unknown; al
   } : null;
 }
 
-export async function listCompanyDecisions(statusInput?: unknown) {
+export async function listCompanyDecisions(statusInput?: unknown, options: OpsListPageOptions = {}) {
+  const page = normalizeOpsListPage(options, 200, 200);
   const statusText = cleanText(statusInput, 30);
-  const status = statusText ? statusText as CompanyDecisionStatus : null;
+  const status = statusText && statusText !== "all" ? statusText as CompanyDecisionStatus : null;
   if (status && !DECISION_STATUSES.has(status)) {
     throw new QuoteValidationError("Decision-Status ist ungueltig.", ["invalid_decision_status"], 422);
   }
   const rows = await supabaseRequest<DecisionRow[]>("company_decisions", undefined, {
     select: DECISION_SELECT,
     ...(status ? { status: `eq.${status}` } : {}),
-    order: "updated_at.desc",
-    limit: 200,
+    order: "updated_at.desc,id.asc",
+    ...page,
   });
   return rows.map(mapDecision);
 }
 
-export async function listCompanyDecisionOutcomes(decisionIdInput: unknown) {
+export async function listCompanyDecisionOutcomes(decisionIdInput: unknown, options: OpsListPageOptions & { status?: string | null } = {}) {
+  const page = normalizeOpsListPage(options, 100, 100);
+  const status = options.status && options.status !== "all" ? options.status : null;
+  if (status && !["pending", "met", "missed", "inconclusive", "cancelled"].includes(status)) throw new QuoteValidationError("Outcome-Status ist ungueltig.", ["invalid_status"], 422);
   const decisionId = requireUuid(decisionIdInput, "Decision ID");
   const rows = await supabaseRequest<DecisionOutcomeRow[]>("company_decision_outcomes", undefined, {
     select: [
@@ -653,8 +658,9 @@ export async function listCompanyDecisionOutcomes(decisionIdInput: unknown) {
       "evidence_refs", "recorded_by", "created_at", "updated_at",
     ].join(","),
     decision_id: `eq.${decisionId}`,
-    order: "evaluation_end.desc,created_at.desc",
-    limit: 100,
+    order: "evaluation_end.desc,created_at.desc,id.asc",
+    ...(status ? { evaluation_status: `eq.${status}` } : {}),
+    ...page,
   });
   return rows.map(mapDecisionOutcome);
 }

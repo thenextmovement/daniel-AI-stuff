@@ -1,3 +1,4 @@
+import { normalizeOpsListPage, type OpsListPageOptions } from "@/lib/ops/list-pagination";
 import { createHash } from "node:crypto";
 import { createCanvas } from "@napi-rs/canvas";
 import { attachmentName, isValidMockupAttachment } from "@/lib/quotes/mockups";
@@ -159,6 +160,8 @@ export type DesignJobSummary = {
   createdAt: string;
   updatedAt: string;
   assets?: DesignAssetSummary[];
+  assetsPreview?: boolean;
+  assetsPagination?: { limit: number; offset: number; nextOffset: number | null };
 };
 
 export type DesignTrelloAttachResult = {
@@ -2047,14 +2050,15 @@ export async function prepareDesignRemovalPlan(input: {
 export async function listDesignJobs(input: {
   status?: string | null;
   limit?: number | null;
+  offset?: number | null;
   trelloCardId?: string | null;
 } = {}): Promise<DesignJobSummary[]> {
   const status = trimNullable(input.status);
-  const limit = Math.max(1, Math.min(Number(input.limit || 20), 50));
+  const page = normalizeOpsListPage(input, 20, 50);
   const query: Record<string, string | number | boolean | null> = {
     select: DESIGN_JOB_SELECT,
-    order: "updated_at.desc",
-    limit,
+    order: "updated_at.desc,id.asc",
+    ...page,
   };
   if (status && status !== "all") query.status = `eq.${status}`;
   const trelloCardId = trimNullable(input.trelloCardId);
@@ -2074,28 +2078,39 @@ export async function listDesignJobs(input: {
       if (assets.length < 20) assets.push(mapDesignAssetSummary(asset));
       assetsByJob.set(asset.job_id, assets);
     }
-    for (const summary of summaries) summary.assets = assetsByJob.get(summary.id) || [];
+    for (const summary of summaries) {
+      summary.assets = assetsByJob.get(summary.id) || [];
+      summary.assetsPreview = true;
+    }
   }
   return summaries;
 }
 
-export async function readDesignJob(jobId: string): Promise<DesignJobSummary> {
+export async function readDesignJob(jobId: string, assetPage: OpsListPageOptions = {}): Promise<DesignJobSummary> {
   const job = await getDesignJob(jobId);
   const summary = mapDesignJobSummary(job);
-  summary.assets = await listDesignAssetsForJob(job.id);
+  const page = await listDesignAssetPage(job.id, assetPage);
+  summary.assets = page.assets;
+  summary.assetsPagination = page.pagination;
   return summary;
+}
+
+async function listDesignAssetPage(jobId: string, input: OpsListPageOptions = {}) {
+  const page = normalizeOpsListPage(input, 20, 100);
+  const rows = await supabaseRequest<DesignAssetRow[]>("design_assets", undefined, {
+    select: DESIGN_ASSET_SELECT,
+    job_id: `eq.${jobId}`,
+    order: "created_at.desc,id.asc",
+    limit: page.limit + 1,
+    offset: page.offset,
+  });
+  return { assets: rows.slice(0, page.limit).map(mapDesignAssetSummary), pagination: { ...page, nextOffset: rows.length > page.limit ? page.offset + page.limit : null } };
 }
 
 export async function listDesignAssetsForJob(jobId: string): Promise<DesignAssetSummary[]> {
   const normalizedJobId = trimNullable(jobId);
   if (!normalizedJobId) return [];
-  const rows = await supabaseRequest<DesignAssetRow[]>("design_assets", undefined, {
-    select: DESIGN_ASSET_SELECT,
-    job_id: `eq.${normalizedJobId}`,
-    order: "created_at.desc",
-    limit: 20,
-  });
-  return rows.map(mapDesignAssetSummary);
+  return (await listDesignAssetPage(normalizedJobId)).assets;
 }
 
 async function getDesignAsset(assetId: string) {

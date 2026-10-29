@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     const status = request.nextUrl.searchParams.get("status");
     const limit = Number(request.nextUrl.searchParams.get("limit") || 20);
     const trelloCardId = request.nextUrl.searchParams.get("trelloCardId");
-    const jobs = await listDesignJobs({ status, limit, trelloCardId });
+    const jobs = await listDesignJobs({ status, limit, trelloCardId, offset: Number(request.nextUrl.searchParams.get("offset") || 0) });
     return NextResponse.json({ ok: true, jobs });
   } catch (error) {
     if (

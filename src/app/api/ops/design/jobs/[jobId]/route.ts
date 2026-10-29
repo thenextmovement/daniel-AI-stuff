@@ -37,7 +37,7 @@ export async function GET(
 
   try {
     const { jobId } = await params;
-    return NextResponse.json({ ok: true, job: await readDesignJob(jobId) });
+    return NextResponse.json({ ok: true, job: await readDesignJob(jobId, { limit: Number(request.nextUrl.searchParams.get("assetLimit") || 20), offset: Number(request.nextUrl.searchParams.get("assetOffset") || 0) }) });
   } catch (error) {
     return failureResponse(error);
   }

@@ -258,6 +258,7 @@ export async function GET(request: NextRequest) {
       urgency: (params.get("urgency") || "all") as SupplierSaleUrgencyFilter,
       query: params.get("q"),
       limit: Number(params.get("limit") || 50),
+      offset: Number(params.get("offset") || 0),
     });
     return NextResponse.json({ ok: true, board });
   } catch (error) {

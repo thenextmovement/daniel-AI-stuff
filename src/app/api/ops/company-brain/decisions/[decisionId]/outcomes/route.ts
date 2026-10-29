@@ -9,7 +9,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ dec
   if (!auth.ok) return auth.response;
   try {
     const { decisionId } = await context.params;
-    return companyBrainJson({ ok: true, outcomes: await listCompanyDecisionOutcomes(decisionId) });
+    return companyBrainJson({ ok: true, outcomes: await listCompanyDecisionOutcomes(decisionId, { limit: Number(request.nextUrl.searchParams.get("limit") || 100), offset: Number(request.nextUrl.searchParams.get("offset") || 0), status: request.nextUrl.searchParams.get("status") }) });
   } catch (error) {
     return companyBrainApiFailure(error, "decision-outcomes-list");
   }

@@ -103,11 +103,12 @@ export function attachReviewFingerprints(detail: unknown) {
 }
 
 export function asJsonValue(value: unknown): JsonValue {
+  if (value === undefined) return null;
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (Array.isArray(value)) return value.map(asJsonValue);
   if (isRecord(value)) {
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, asJsonValue(entry)]));
+    return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined).map(([key, entry]) => [key, asJsonValue(entry)]));
   }
   return String(value);
 }

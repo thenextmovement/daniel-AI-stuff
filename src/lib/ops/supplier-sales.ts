@@ -1,3 +1,4 @@
+import { normalizeOpsListPage } from "@/lib/ops/list-pagination";
 import { createHash } from "node:crypto";
 import { createOpsInternalTask, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
 import {
@@ -380,6 +381,7 @@ export type SupplierSaleBoard = {
     syncIssues: number;
   };
   diagnostics: SupplierSalesDiagnostics;
+  pagination?: { limit: number; offset: number; total: number; nextOffset: number | null; countsScope: "non_completed_matching_filters"; priorPaidHistory: "best_effort" };
 };
 
 export type SupplierSalesDiagnosticStatus = "ok" | "warning" | "missing";
@@ -2601,7 +2603,13 @@ function markPriorPaidCustomers(saleRows: SupplierSaleRow[], paidHistoryRows: Su
   });
 }
 
-async function fetchPriorPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
+function assertSupplierPaidHistoryBudget(rows: number, signal: AbortSignal) {
+  signal.throwIfAborted();
+  if (rows > 100000) throw new QuoteValidationError("Zahlungshistorie konnte nicht vollstaendig gelesen werden.", ["sales_history_incomplete"], 422);
+}
+
+async function fetchPriorPaidCustomerHistory(saleRows: SupplierSaleRow[], signal: AbortSignal) {
+  signal.throwIfAborted();
   const { emails, domains, names } = priorPaidLookupKeys(saleRows);
   if (!emails.length && !domains.length && !names.length) return [];
   const select = [
@@ -2623,39 +2631,49 @@ async function fetchPriorPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
     "offer_snapshot",
   ].join(",");
   const rows: SupplierSaleRow[] = [];
+  let fetchedRows = 0;
 
-  const exactEmailRows = await Promise.all(batchesOf(emails, 75).map((batch) =>
-    supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+  for (const batch of batchesOf(emails, 75)) {
+    signal.throwIfAborted();
+    const emailRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", { signal }, {
       select,
       customer_email: priorPaidInList(batch),
       or: "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)",
       order: "created_at.desc,updated_at.desc",
       limit: Math.min(Math.max(batch.length * 20, 100), 1500),
-    }),
-  ));
-  rows.push(...exactEmailRows.flat());
+    });
+    fetchedRows += emailRows.length;
+    assertSupplierPaidHistoryBudget(fetchedRows, signal);
+    rows.push(...emailRows);
+  }
 
   for (const batch of batchesOf(domains, 50)) {
+    signal.throwIfAborted();
     const or = ilikeAnyFilter("customer_email", batch, (domain) => `*${priorPaidFilterValue(`@${domain}`)}`);
     if (!or) continue;
-    const domainRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+    const domainRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", { signal }, {
       select,
       or,
       order: "created_at.desc,updated_at.desc",
       limit: Math.min(Math.max(batch.length * 30, 100), 1500),
     });
+    fetchedRows += domainRows.length;
+    assertSupplierPaidHistoryBudget(fetchedRows, signal);
     rows.push(...domainRows.filter(hasPaidCustomerSignal));
   }
 
   for (const batch of batchesOf(names, 50)) {
+    signal.throwIfAborted();
     const or = exactIlikeAnyFilter("customer_name", batch);
     if (!or) continue;
-    const nameRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, {
+    const nameRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", { signal }, {
       select,
       or,
       order: "created_at.desc,updated_at.desc",
       limit: Math.min(Math.max(batch.length * 20, 100), 1500),
     });
+    fetchedRows += nameRows.length;
+    assertSupplierPaidHistoryBudget(fetchedRows, signal);
     rows.push(...nameRows.filter(hasPaidCustomerSignal));
   }
 
@@ -2690,10 +2708,12 @@ function exactIlikeAnyFilter(column: string, values: string[]) {
   return ilikeAnyFilter(column, values, priorPaidFilterValue);
 }
 
-async function safePriorPaidHistoryRequest<T>(source: string, request: () => Promise<T[]>) {
+async function safePriorPaidHistoryRequest<T>(source: string, request: () => Promise<T[]>, signal: AbortSignal) {
+  signal.throwIfAborted();
   try {
     return await request();
   } catch (error) {
+    signal.throwIfAborted();
     console.warn("[supplier-sales] prior paid customer history source unavailable", {
       source,
       error: compactErrorMessage(error, "Historische Zahlungsquelle konnte nicht gelesen werden."),
@@ -2702,20 +2722,24 @@ async function safePriorPaidHistoryRequest<T>(source: string, request: () => Pro
   }
 }
 
-async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleRow[]) {
+async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleRow[], signal: AbortSignal) {
+  signal.throwIfAborted();
   const { emails, domains, names } = priorPaidLookupKeys(saleRows);
   if (!emails.length && !domains.length && !names.length) return [];
   const historyRows: SupplierSaleRow[] = [];
+  let fetchedRows = 0;
   const orderSelect = "email,order_number,total_price,financial_status,created_at";
   const crmSelect = "id,shopify_order_id,shopify_order_number,shopify_order_name,financial_status,customer_name,customer_email,total_price,shopify_created_at,created_at";
 
   for (const batch of batchesOf(emails, 75)) {
-    const rows = await safePriorPaidHistoryRequest("v_orders_by_email:exact_email", () => supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", undefined, {
+    const rows = await safePriorPaidHistoryRequest("v_orders_by_email:exact_email", () => supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", { signal }, {
       select: orderSelect,
       email: priorPaidInList(batch),
       order: "created_at.desc",
       limit: Math.min(Math.max(batch.length * 10, 100), 1000),
-    }));
+    }), signal);
+    fetchedRows += rows.length;
+    assertSupplierPaidHistoryBudget(fetchedRows, signal);
     for (const row of rows) {
       const history = paidHistoryRow({
         id: `v_orders_by_email:${row.order_number || row.email || hashPayload(row)}`,
@@ -2733,12 +2757,14 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   for (const batch of batchesOf(domains, 50)) {
     const or = ilikeAnyFilter("email", batch, (domain) => `*${priorPaidFilterValue(`@${domain}`)}`);
     if (!or) continue;
-    const rows = await safePriorPaidHistoryRequest("v_orders_by_email:company_domain", () => supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", undefined, {
+    const rows = await safePriorPaidHistoryRequest("v_orders_by_email:company_domain", () => supabaseRequest<ShopifyOrderMatchRow[]>("v_orders_by_email", { signal }, {
       select: orderSelect,
       or,
       order: "created_at.desc",
       limit: Math.min(Math.max(batch.length * 20, 100), 1000),
-    }));
+    }), signal);
+    fetchedRows += rows.length;
+    assertSupplierPaidHistoryBudget(fetchedRows, signal);
     for (const row of rows) {
       const history = paidHistoryRow({
         id: `v_orders_by_email:${row.order_number || row.email || hashPayload(row)}`,
@@ -2754,12 +2780,14 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   }
 
   for (const batch of batchesOf(emails, 75)) {
-    const rows = await safePriorPaidHistoryRequest("crm_sales:exact_email", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
+    const rows = await safePriorPaidHistoryRequest("crm_sales:exact_email", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", { signal }, {
       select: crmSelect,
       customer_email: priorPaidInList(batch),
       order: "shopify_created_at.desc,created_at.desc",
       limit: Math.min(Math.max(batch.length * 10, 100), 1000),
-    }));
+    }), signal);
+    fetchedRows += rows.length;
+    assertSupplierPaidHistoryBudget(fetchedRows, signal);
     for (const row of rows) {
       const history = paidHistoryRow({
         id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
@@ -2778,12 +2806,14 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   for (const batch of batchesOf(domains, 50)) {
     const or = ilikeAnyFilter("customer_email", batch, (domain) => `*${priorPaidFilterValue(`@${domain}`)}`);
     if (!or) continue;
-    const rows = await safePriorPaidHistoryRequest("crm_sales:company_domain", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
+    const rows = await safePriorPaidHistoryRequest("crm_sales:company_domain", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", { signal }, {
       select: crmSelect,
       or,
       order: "shopify_created_at.desc,created_at.desc",
       limit: Math.min(Math.max(batch.length * 20, 100), 1000),
-    }));
+    }), signal);
+    fetchedRows += rows.length;
+    assertSupplierPaidHistoryBudget(fetchedRows, signal);
     for (const row of rows) {
       const history = paidHistoryRow({
         id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
@@ -2802,12 +2832,14 @@ async function fetchShopifyProjectionPaidCustomerHistory(saleRows: SupplierSaleR
   for (const batch of batchesOf(names, 50)) {
     const or = exactIlikeAnyFilter("customer_name", batch);
     if (!or) continue;
-    const rows = await safePriorPaidHistoryRequest("crm_sales:customer_name", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", undefined, {
+    const rows = await safePriorPaidHistoryRequest("crm_sales:customer_name", () => supabaseRequest<ShopifyOrderMatchRow[]>("crm_sales", { signal }, {
       select: crmSelect,
       or,
       order: "shopify_created_at.desc,created_at.desc",
       limit: Math.min(Math.max(batch.length * 10, 100), 1000),
-    }));
+    }), signal);
+    fetchedRows += rows.length;
+    assertSupplierPaidHistoryBudget(fetchedRows, signal);
     for (const row of rows) {
       const history = paidHistoryRow({
         id: `crm_sales:${row.shopify_order_id || row.shopify_order_name || row.shopify_order_number || hashPayload(row)}`,
@@ -2860,6 +2892,22 @@ function buildSupplierSaleCountsFromRows(saleRows: SupplierSaleRow[], now = new 
   };
 }
 
+function compareSupplierSaleRows(left: SupplierSaleRow, right: SupplierSaleRow, sortMode: "newest" | "deadline") {
+  if (sortMode === "deadline") {
+    const rank = assignmentPriority(left) - assignmentPriority(right);
+    if (rank !== 0) return rank;
+    const leftDue = left.supplier_due_date ? new Date(left.supplier_due_date).getTime() : Number.POSITIVE_INFINITY;
+    const rightDue = right.supplier_due_date ? new Date(right.supplier_due_date).getTime() : Number.POSITIVE_INFINITY;
+    if (leftDue !== rightDue) return leftDue - rightDue;
+  } else {
+    const rank = openAssignmentPriority(left) - openAssignmentPriority(right);
+    if (rank !== 0) return rank;
+  }
+  const recency = saleRecencyMs(right) - saleRecencyMs(left);
+  if (recency !== 0) return recency;
+  return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime() || left.id.localeCompare(right.id);
+}
+
 export function buildSupplierSaleBoardFromRows(
   saleRows: SupplierSaleRow[],
   itemRows: SupplierSaleItemRow[],
@@ -2887,23 +2935,7 @@ export function buildSupplierSaleBoardFromRows(
 
   const rowsById = new Map(saleRows.map((row) => [row.id, row]));
   const items = saleRows.map((row) => mapSale(row, itemsBySale.get(row.id) || [], latestEventBySale.get(row.id) || null));
-  items.sort((left, right) => {
-    const leftRow = rowsById.get(left.id) || rowFromSale(left);
-    const rightRow = rowsById.get(right.id) || rowFromSale(right);
-    if (sortMode === "deadline") {
-      const rank = assignmentPriority(leftRow) - assignmentPriority(rightRow);
-      if (rank !== 0) return rank;
-      const leftDue = left.supplierDueDate ? new Date(left.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
-      const rightDue = right.supplierDueDate ? new Date(right.supplierDueDate).getTime() : Number.POSITIVE_INFINITY;
-      if (leftDue !== rightDue) return leftDue - rightDue;
-    } else {
-      const priorityRank = openAssignmentPriority(leftRow) - openAssignmentPriority(rightRow);
-      if (priorityRank !== 0) return priorityRank;
-    }
-    const recency = saleRecencyMs(rightRow) - saleRecencyMs(leftRow);
-    if (recency !== 0) return recency;
-    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-  });
+  items.sort((left, right) => compareSupplierSaleRows(rowsById.get(left.id) || rowFromSale(left), rowsById.get(right.id) || rowFromSale(right), sortMode));
 
   return {
     items,
@@ -4606,6 +4638,25 @@ export async function runSupplierSalesLiveCheck(options?: { limit?: number }): P
   };
 }
 
+// The visibility/rush rules use JSON signals, so every SQL-matching row must be
+// inspected before applying the client page or publishing board counts.
+async function fetchSupplierBoardRows<T extends { id: string }>(table: "supplier_sales" | "supplier_sale_items" | "supplier_sale_events", query: Record<string, string | number | boolean | null>, signal: AbortSignal) {
+  const result: T[] = [];
+  const seen = new Set<string>();
+  for (let offset = 0; offset < 100000; ) {
+    signal.throwIfAborted();
+    const rows = await supabaseRequest<T[]>(table, { signal }, { ...query, limit: 500, offset });
+    if (!rows.length) return result;
+    for (const row of rows) {
+      if (seen.has(row.id)) throw new QuoteValidationError("Sales-Daten haben sich waehrend des Lesens geaendert. Bitte neu laden.", ["sales_list_changed"], 409);
+      seen.add(row.id);
+    }
+    result.push(...rows);
+    offset += rows.length;
+  }
+  throw new QuoteValidationError("Sales-Liste konnte nicht vollstaendig gelesen werden.", ["sales_list_incomplete"], 422);
+}
+
 export async function listSupplierSalesBoard(options?: {
   scope?: "active" | "ready" | "payment" | "assigned" | "deadline" | "sync" | "all";
   supplier?: SupplierSaleSupplier | SupplierSaleRecommendation | "all" | null;
@@ -4613,19 +4664,27 @@ export async function listSupplierSalesBoard(options?: {
   urgency?: SupplierSaleUrgencyFilter | null;
   query?: string | null;
   limit?: number;
+  offset?: number;
 }): Promise<SupplierSaleBoard> {
   const scope = options?.scope || "active";
-  const requestedLimit = Math.min(Math.max(Number(options?.limit || 50), 1), 500);
-  const needsPostFilter = ["active", "ready", "payment", "deadline", "sync"].includes(scope);
-  const fetchLimit = needsPostFilter ? Math.min(Math.max(requestedLimit * 4, 100), 500) : requestedLimit;
+  const { limit: requestedLimit, offset } = normalizeOpsListPage(options || {}, 50, 500);
+  const supplier = options?.supplier;
+  if (supplier && supplier !== "all" && !(SUPPLIER_RECOMMENDATIONS as readonly string[]).includes(supplier)) throw new QuoteValidationError("Supplier-Filter ist ungueltig.", ["invalid_supplier"], 422);
+  const search = nullableText(options?.query, 160)?.toLowerCase();
+  const filters: string[] = [];
+  if (supplier && supplier !== "all") filters.push(`or(assigned_supplier.eq.${supplier},recommended_supplier.eq.${supplier})`);
+  // A literal alphanumeric token is a safe SQL prefilter even when q contains PostgREST
+  // operators or wildcard characters. The complete literal substring check remains below.
+  const searchToken = search?.match(/[\p{L}\p{N}]+/gu)?.sort((a, b) => b.length - a.length)[0];
+  if (searchToken) filters.push(`or(${["customer_name", "customer_email", "shopify_order_name", "offer_number", "document_reference", "request_id", "product_summary"].map((field) => `${field}.ilike.${JSON.stringify(`%${searchToken}%`)}`).join(",")})`);
   const now = new Date();
   const dueSoonLimit = new Date(now);
   dueSoonLimit.setUTCDate(dueSoonLimit.getUTCDate() + 7);
   const dueSoon = dueSoonLimit.toISOString().slice(0, 10);
   const query: Record<string, string | number | boolean | null> = {
     select: "*",
-    order: scope === "deadline" ? "supplier_due_date.asc.nullslast,updated_at.desc" : "updated_at.desc,created_at.desc",
-    limit: fetchLimit,
+    order: scope === "deadline" ? "supplier_due_date.asc.nullslast,updated_at.desc,id.asc" : "updated_at.desc,created_at.desc,id.asc",
+    ...(filters.length ? { and: `(${filters.join(",")})` } : {}),
   };
   if (scope === "ready") query.assignment_status = "eq.ready_to_assign";
   else if (scope === "payment") query.assignment_status = "eq.payment_open";
@@ -4666,19 +4725,21 @@ export async function listSupplierSalesBoard(options?: {
       "shopify_order_name",
       "offer_number",
       "document_reference",
+      "request_id",
       "created_at",
       "updated_at",
     ].join(","),
     assignment_status: "not.in.(completed,canceled)",
-    order: "created_at.desc,updated_at.desc",
-    limit: 2000,
+    order: "created_at.desc,updated_at.desc,id.asc",
+    ...(filters.length ? { and: `(${filters.join(",")})` } : {}),
   };
   if (payment && payment !== "all") {
     statsQuery.shopify_payment_status = payment === "unpaid" ? "not.eq.paid" : `eq.${payment}`;
   }
 
-  let statsRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, statsQuery);
-  let saleRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", undefined, query);
+  const signal = AbortSignal.timeout(25000);
+  let statsRows = await fetchSupplierBoardRows<SupplierSaleRow>("supplier_sales", statsQuery, signal);
+  let saleRows = await fetchSupplierBoardRows<SupplierSaleRow>("supplier_sales", query, signal);
   statsRows = statsRows.filter((row) => !isNonProductionShopifyRow(row));
   saleRows = saleRows.filter((row) => !isNonProductionShopifyRow(row));
   if (scope === "active") {
@@ -4713,12 +4774,10 @@ export async function listSupplierSalesBoard(options?: {
       return Boolean(dueDate && dueDate <= dueSoon && !["completed", "canceled"].includes(row.assignment_status));
     });
   }
-  const supplier = options?.supplier;
   if (supplier && supplier !== "all") {
     saleRows = saleRows.filter((row) => row.assigned_supplier === supplier || row.recommended_supplier === supplier);
     statsRows = statsRows.filter((row) => row.assigned_supplier === supplier || row.recommended_supplier === supplier);
   }
-  const search = nullableText(options?.query, 160)?.toLowerCase();
   if (search) {
     const matchesSearch = (row: SupplierSaleRow) => [
       row.customer_name,
@@ -4739,13 +4798,17 @@ export async function listSupplierSalesBoard(options?: {
     statsRows = statsRows.filter(matchesUrgency);
   }
   const [supplierPaidHistoryRows, shopifyPaidHistoryRows] = await Promise.all([
-    fetchPriorPaidCustomerHistory(saleRows),
-    fetchShopifyProjectionPaidCustomerHistory(saleRows),
+    fetchPriorPaidCustomerHistory([...statsRows, ...saleRows], signal),
+    fetchShopifyProjectionPaidCustomerHistory([...statsRows, ...saleRows], signal),
   ]);
+  signal.throwIfAborted();
   const priorPaidHistoryRows = [...supplierPaidHistoryRows, ...shopifyPaidHistoryRows];
   statsRows = markPriorPaidCustomers(statsRows, priorPaidHistoryRows);
   saleRows = markPriorPaidCustomers(saleRows, priorPaidHistoryRows);
-  saleRows = saleRows.slice(0, requestedLimit);
+  saleRows.sort((left, right) => compareSupplierSaleRows(left, right, scope === "deadline" ? "deadline" : "newest"));
+  const total = saleRows.length;
+  saleRows = saleRows.slice(offset, offset + requestedLimit);
+  const pagination: NonNullable<SupplierSaleBoard["pagination"]> = { limit: requestedLimit, offset, total, nextOffset: offset + saleRows.length < total ? offset + saleRows.length : null, countsScope: "non_completed_matching_filters", priorPaidHistory: "best_effort" };
   const unresolvedRequestIds = [...new Set(saleRows
     .filter((row) => !trelloCardIdFromValue(row.trello_card_id))
     .map((row) => nullableText(row.request_id, 160))
@@ -4764,23 +4827,21 @@ export async function listSupplierSalesBoard(options?: {
     saleRows = enrichSupplierSalesFromQuentinBoard(saleRows, quentinCards);
   }
   const counts = buildSupplierSaleCountsFromRows(statsRows, now);
-  if (!saleRows.length) return buildSupplierSaleBoardFromRows([], [], [], now, scope === "deadline" ? "deadline" : "newest", counts);
+  if (!saleRows.length) return { ...buildSupplierSaleBoardFromRows([], [], [], now, scope === "deadline" ? "deadline" : "newest", counts), pagination };
   const saleIds = saleRows.map((row) => row.id);
   const [itemRows, eventRows] = await Promise.all([
-    supabaseRequest<SupplierSaleItemRow[]>("supplier_sale_items", undefined, {
+    fetchSupplierBoardRows<SupplierSaleItemRow>("supplier_sale_items", {
       select: "*",
       sale_id: inList(saleIds),
-      order: "created_at.asc",
-      limit: 1000,
-    }),
-    supabaseRequest<SupplierSaleEventRow[]>("supplier_sale_events", undefined, {
+      order: "created_at.asc,id.asc",
+    }, signal),
+    fetchSupplierBoardRows<SupplierSaleEventRow>("supplier_sale_events", {
       select: "*",
       sale_id: inList(saleIds),
-      order: "created_at.desc",
-      limit: 1000,
-    }),
+      order: "created_at.desc,id.asc",
+    }, signal),
   ]);
-  return buildSupplierSaleBoardFromRows(saleRows, itemRows, eventRows, now, scope === "deadline" ? "deadline" : "newest", counts);
+  return { ...buildSupplierSaleBoardFromRows(saleRows, itemRows, eventRows, now, scope === "deadline" ? "deadline" : "newest", counts), pagination };
 }
 
 function supplierLabel(supplier: SupplierSaleSupplier, specialSupplierName?: string | null) {

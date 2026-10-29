@@ -21,6 +21,7 @@ export const CAPABILITIES: Capability[] = [
   { name: "neontrip_health", title: "NEONTRIP-Verbindungen prüfen", scope: "system:read", service: "system", access: "read", destructive: false, sideEffects: [] },
   { name: "billing_list_cases", title: "Rechnungsvorgänge suchen", scope: "billing:read", service: "billing", access: "read", destructive: false, sideEffects: [] },
   { name: "billing_get_case", title: "Rechnungsvorgang lesen", scope: "billing:read", service: "billing", access: "read", destructive: false, sideEffects: [] },
+  { name: "billing_list_case_records", title: "Vollständige Rechnungshistorien lesen", scope: "billing:read", service: "billing", access: "read", destructive: false, sideEffects: [] },
   { name: "billing_save_change_draft", title: "Rechnungsänderung als Entwurf speichern", scope: "billing:change:draft", service: "billing", access: "write", destructive: false, sideEffects: ["Ändert den internen Prüfvorschlag, aber entscheidet den Vorgang nicht."] },
   { name: "billing_accept_change_request", title: "Rechnungsänderung annehmen", scope: "billing:change:accept", service: "billing", access: "write", destructive: true, sideEffects: ["Ändert Rechnungsdaten.", "Der bestehende OPS-Ablauf kann eine Kundenbenachrichtigung einreihen."] },
   { name: "billing_reject_change_request", title: "Rechnungsänderung ablehnen", scope: "billing:change:reject", service: "billing", access: "write", destructive: true, sideEffects: ["Lehnt den Vorgang endgültig ab.", "Der bestehende OPS-Ablauf kann eine Kundenbenachrichtigung einreihen."] },

@@ -23,11 +23,13 @@ type MasterRequestAliasRow = {
   trello_card_id?: string | null;
   trello_card_url?: string | null;
   title?: string | null;
-  email?: string | null;
-  company?: string | null;
-  company_name?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
+  customer?: {
+    email?: string | null;
+    company?: string | null;
+    company_name?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+  } | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -137,9 +139,9 @@ function issueLabel(issue: CompanyBrainAliasRepairIssue) {
 
 function candidateTitle(row: MasterRequestAliasRow) {
   const title = cleanText(row.title, 180);
-  const company = cleanText(row.company || row.company_name, 120);
-  const name = cleanText([row.first_name, row.last_name].filter(Boolean).join(" "), 120);
-  return title || company || name || cleanText(row.email, 160) || null;
+  const company = cleanText(row.customer?.company || row.customer?.company_name, 120);
+  const name = cleanText([row.customer?.first_name, row.customer?.last_name].filter(Boolean).join(" "), 120);
+  return title || company || name || cleanText(row.customer?.email, 160) || null;
 }
 
 function confidenceFor(row: MasterRequestAliasRow, alias: TrelloCardAliasRow, requestIds: string[]) {
@@ -216,7 +218,7 @@ async function fetchCandidateRows(requestIds: string[], trelloValues: string[]) 
   ]);
   if (!filters.length) return [];
   return supabaseRequest<MasterRequestAliasRow[]>("master_requests", undefined, {
-    select: "id,request_id,trello_card_id,trello_card_url,title,email,company,company_name,first_name,last_name,created_at,updated_at",
+    select: "id,request_id,trello_card_id,trello_card_url,title,created_at,updated_at,customer:master_customers!requests_customer_id_fkey(email,company,company_name,first_name,last_name)",
     or: `(${filters.join(",")})`,
     order: "updated_at.desc",
     limit: 200,
@@ -229,7 +231,7 @@ async function fetchMasterRequestForRepair(requestId: string) {
     postgrestEq("request_id", requestId),
   ]);
   const rows = await supabaseRequest<MasterRequestAliasRow[]>("master_requests", undefined, {
-    select: "id,request_id,trello_card_id,trello_card_url,title,email,company,company_name,first_name,last_name,created_at,updated_at",
+    select: "id,request_id,trello_card_id,trello_card_url,title,created_at,updated_at,customer:master_customers!requests_customer_id_fkey(email,company,company_name,first_name,last_name)",
     or: `(${filters.join(",")})`,
     order: "updated_at.desc",
     limit: 1,

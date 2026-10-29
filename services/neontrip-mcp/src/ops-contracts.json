@@ -196,5 +196,383 @@
   },
   "dunning_orderKey_actions_post": {
     "confirmationRequirements": "For every irreversible action first load its preview; use the returned exact confirmationPhrase, snapshot hash, expected stage and stable idempotency key only after the user's concrete approval. Enqueue uses 'VORMERKEN '+the actual orderNumber. Never infer successful payment or court submission."
+  },
+  "voice_phone_team_post": {
+    "bodyShape": "{ action, staffId, values?, revision?, relatedId? }. Values are a full profile for create/update. This manages staff profiles, invitations and enrolled devices; it does not impersonate a phone or register audio.",
+    "bodyFields": [
+      "action",
+      "staffId",
+      "values",
+      "revision",
+      "relatedId"
+    ],
+    "actionValues": [
+      "create",
+      "update",
+      "issue_invite",
+      "revoke_invite",
+      "revoke_device"
+    ],
+    "actionContracts": {
+      "create": {
+        "required": [
+          "staffId",
+          "values"
+        ],
+        "notes": "staffId is a new UUID; values.displayName string 2..100, values.enabled boolean, optional values.accessEmail email or null and values.extension 1..6 digits or null. No other values fields allowed."
+      },
+      "update": {
+        "required": [
+          "staffId",
+          "values",
+          "revision"
+        ],
+        "notes": "Use the existing staff UUID and integer revision >=1 returned by voice_phone_team_get. Same complete values as create; omission clears optional email/extension. Stale revision, duplicate email/extension, and manager self-lockout are rejected."
+      },
+      "issue_invite": {
+        "required": [
+          "staffId"
+        ],
+        "notes": "Returns a one-time enrollment code. Treat it as a secret; do not place it in logs or general reports. Real browser enrollment remains in the Phone UI."
+      },
+      "revoke_invite": {
+        "required": [
+          "staffId",
+          "relatedId"
+        ],
+        "notes": "relatedId is the invite UUID returned by voice_phone_team_get."
+      },
+      "revoke_device": {
+        "required": [
+          "staffId",
+          "relatedId"
+        ],
+        "notes": "relatedId is the device UUID returned by voice_phone_team_get. Revokes that personal device."
+      }
+    },
+    "authorization": "VOICE_PHONE_ENABLED plus an explicitly active, unexpired voice_management_service_actors mapping for the verified Cloudflare principal to an enabled voice_staff row with can_manage_phone=true. No role escalation or implicit grant. Roles/access policy themselves are provisioned outside this staff API.",
+    "contractSources": [
+      "src/lib/ops/voice-phone-management-contract.ts",
+      "supabase/migrations/20261027010000_voice_management_service_actors.sql"
+    ]
+  },
+  "voice_phone_team_get": {
+    "authorization": "VOICE_PHONE_ENABLED plus an explicitly active, unexpired voice_management_service_actors mapping for the verified Cloudflare principal to an enabled voice_staff row with can_manage_phone=true. No role escalation or implicit grant. Roles/access policy themselves are provisioned outside this staff API.",
+    "responseNotes": "Managed staff, revision, invites and devices. Use this read before any update/revoke. Does not expose invitation token hashes or personal device cookies."
+  },
+  "company_brain_decisions_post": {
+    "bodyShape": "Decision draft object; createdBy is supplied from the authenticated actor, not the client.",
+    "bodyFields": [
+      "decisionKey",
+      "decisionType",
+      "title",
+      "scopeType",
+      "scopeKey",
+      "ownerTeam",
+      "objective",
+      "problemStatement",
+      "context",
+      "constraints",
+      "options",
+      "chosenOption",
+      "rationale",
+      "assumptions",
+      "expectedOutcomes",
+      "risks",
+      "guardrails",
+      "consequences",
+      "rollbackPlan",
+      "reviewAt",
+      "validFrom",
+      "validUntil"
+    ],
+    "required": [
+      "decisionKey",
+      "title",
+      "scopeType",
+      "scopeKey",
+      "ownerTeam",
+      "objective",
+      "problemStatement",
+      "context",
+      "options",
+      "reviewAt"
+    ],
+    "inputConstraints": {
+      "decisionKey": "lowercase key matching [a-z0-9][a-z0-9_.-]{2,119}",
+      "decisionType": [
+        "decision",
+        "policy",
+        "architecture",
+        "incident_resolution",
+        "experiment"
+      ],
+      "scopeType": [
+        "global",
+        "team",
+        "process",
+        "entity",
+        "workflow",
+        "metric"
+      ],
+      "title": "3..240 chars",
+      "scopeKey": "1..200 chars",
+      "ownerTeam": "1..120 chars",
+      "objective": "10..4000 chars",
+      "problemStatement": "10..4000 chars",
+      "context": "10..12000 chars",
+      "options": "array with 1..12 entries",
+      "reviewAt": "timestamp strictly in the future",
+      "validUntil": "if both provided, later than validFrom",
+      "constraints, assumptions, expectedOutcomes, risks, guardrails, consequences": "optional arrays",
+      "chosenOption": "optional <=500 chars",
+      "rationale, rollbackPlan": "optional <=8000 chars"
+    },
+    "authorization": "Identified Company Brain actor with operator role."
+  },
+  "company_brain_decisions_decisionId_review_post": {
+    "bodyShape": "{ action, note?, correlationId? }. decisionId is the path parameter; actor is supplied by the server.",
+    "bodyFields": [
+      "action",
+      "note",
+      "correlationId"
+    ],
+    "actionValues": [
+      "submit",
+      "approve",
+      "request_changes"
+    ],
+    "actionContracts": {
+      "submit": {
+        "required": [],
+        "optional": [
+          "note",
+          "correlationId"
+        ],
+        "authorization": "operator"
+      },
+      "approve": {
+        "required": [],
+        "optional": [
+          "note",
+          "correlationId"
+        ],
+        "authorization": "approver"
+      },
+      "request_changes": {
+        "required": [
+          "note"
+        ],
+        "optional": [
+          "correlationId"
+        ],
+        "authorization": "operator"
+      }
+    },
+    "inputConstraints": {
+      "note": "up to 4000 chars; required and nonempty for request_changes",
+      "correlationId": "2..300 chars; defaults to decision:<decisionId>:<action>"
+    },
+    "authorization": "Identified Company Brain actor; canonical database review and approval rules still apply."
+  },
+  "company_brain_decisions_decisionId_outcomes_post": {
+    "bodyShape": "Outcome object; decisionId is the path parameter and recordedBy is supplied by the server.",
+    "bodyFields": [
+      "outcomeKey",
+      "metricKey",
+      "baselineValue",
+      "targetValue",
+      "actualValue",
+      "unit",
+      "evaluationStatus",
+      "evaluationStart",
+      "evaluationEnd",
+      "observedAt",
+      "finding",
+      "lessonsLearned",
+      "evidenceRefs"
+    ],
+    "required": [
+      "outcomeKey",
+      "evaluationEnd"
+    ],
+    "inputConstraints": {
+      "outcomeKey": "1..120 chars",
+      "metricKey": "optional <=120 chars",
+      "baselineValue, targetValue, actualValue": "optional finite numbers",
+      "unit": "optional <=80 chars",
+      "evaluationStatus": [
+        "pending",
+        "met",
+        "missed",
+        "inconclusive",
+        "cancelled"
+      ],
+      "evaluationEnd": "required timestamp",
+      "evaluationStart, observedAt": "optional timestamps",
+      "finding": "up to 8000 chars",
+      "lessonsLearned": "optional <=8000 chars",
+      "evidenceRefs": "optional array",
+      "nonPendingOutcome": "Every evaluationStatus other than pending requires observedAt and a nonempty finding. Only real observations and evidence."
+    },
+    "authorization": "Identified Company Brain actor; recordedBy is not client controlled."
+  },
+  "eu_supplier_quotes_post": {
+    "bodyShape": "{ action: \"select_organization\", requestId, organizationId, operatorName, note? }",
+    "actionValues": [
+      "select_organization"
+    ],
+    "bodyFields": [
+      "action",
+      "requestId",
+      "organizationId",
+      "operatorName",
+      "note"
+    ],
+    "actionContracts": {
+      "select_organization": {
+        "required": [
+          "requestId",
+          "organizationId",
+          "operatorName"
+        ],
+        "optional": [
+          "note"
+        ],
+        "notes": "Selects an existing verified/needs_review supplier offer for the request. Does not send an email; note is limited to 1000 chars."
+      }
+    },
+    "excludedActions": {
+      "upsert_request": "Signed automation/worker protocol requires x-neontrip-signature and x-neontrip-timestamp. Not available through operator MCP. Never fabricate provider results, deliveries or alerts.",
+      "queue_deliveries": "Signed automation/worker protocol requires x-neontrip-signature and x-neontrip-timestamp. Not available through operator MCP. Never fabricate provider results, deliveries or alerts.",
+      "claim_delivery": "Signed automation/worker protocol requires x-neontrip-signature and x-neontrip-timestamp. Not available through operator MCP. Never fabricate provider results, deliveries or alerts.",
+      "delivery_draft_created": "Signed automation/worker protocol requires x-neontrip-signature and x-neontrip-timestamp. Not available through operator MCP. Never fabricate provider results, deliveries or alerts.",
+      "delivery_outcome": "Signed automation/worker protocol requires x-neontrip-signature and x-neontrip-timestamp. Not available through operator MCP. Never fabricate provider results, deliveries or alerts.",
+      "reserve_reply": "Signed automation/worker protocol requires x-neontrip-signature and x-neontrip-timestamp. Not available through operator MCP. Never fabricate provider results, deliveries or alerts.",
+      "ingest_reply": "Signed automation/worker protocol requires x-neontrip-signature and x-neontrip-timestamp. Not available through operator MCP. Never fabricate provider results, deliveries or alerts.",
+      "claim_failure_alert": "Signed automation/worker protocol requires x-neontrip-signature and x-neontrip-timestamp. Not available through operator MCP. Never fabricate provider results, deliveries or alerts.",
+      "alert_outcome": "Signed automation/worker protocol requires x-neontrip-signature and x-neontrip-timestamp. Not available through operator MCP. Never fabricate provider results, deliveries or alerts."
+    }
+  },
+  "supplier_sales_get": {
+    "resultLimits": {
+      "defaultLimit": 50,
+      "maxLimit": 500,
+      "pagination": "offset (non-negative integer), limit (positive integer); for plain arrays continue offset += returned length until an empty page; no transactional snapshot across requests",
+      "notes": "scope defaults active. q/supplier prefilter the SQL query; complete literal q, urgency and active visibility apply before globally sorted pagination. board.pagination.total/nextOffset describe the chosen scope. board.counts cover all non-completed rows matching q/supplier/payment/urgency, independently of scope; priorPaidCustomerOpen is best-effort historical enrichment. Source and item/event scans use pages of 500 up to 100000 rows, 25s budget and fail closed on incomplete/changed reads. Response size/timeout limits still apply; reduce limit for large item payloads."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
+  },
+  "tasks_get": {
+    "resultLimits": {
+      "defaultLimit": 80,
+      "maxLimit": 150,
+      "pagination": "offset (non-negative integer), limit (positive integer); for plain arrays continue offset += returned length until an empty page; no transactional snapshot across requests",
+      "notes": "status open/in_progress/waiting/done/archived/all overrides includeDone. Without status, includeDone=1 includes completed; defaults retain the working queue. assignee, requestId and sourceRef filters available. summary describes only the returned page, not all tasks. Legacy status filtering scans until requested page or EOF, bounded to 100000 source rows and 25s; failure is explicit."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
+  },
+  "customer_records_get": {
+    "resultLimits": {
+      "defaultLimit": 50,
+      "maxLimit": 100,
+      "pagination": "mode=requests or mode=history; offset/limit; pagination.nextOffset=null marks EOF; bounded 25s read and explicit errors, no transactional snapshot",
+      "notes": "Default search (10), inbox (6) and workboard (4 per section) remain bounded UI previews and declare preview.complete=false. mode=requests enumerates every NEONTRIP master_request via canonical customer FK, with customerId/requestId/query/status filters before paging; query supports name/company, email, phone, request:<external ID>, deal:/ac:, trello: or a Trello URL. mode=history requires external requestId and source: offers/orders/email_orders/sales/quotes/email_quotes/calls/voice_calls/followups/plans/documents/communications/quote_emails/outlook/outlook_organization/inbound_emails/audits/quote_versions/quote_version_images/related_customers. Histories bind to request/customer/contact matches (bindingScope stated), use fixed safe field projections and deterministic order; outlook_organization is the explicitly separate corporate-domain match. available=false/schema_unavailable is an unavailable source, never proof of no history. No arbitrary tables, raw metadata, tokens or provider errors. Use canonical offers tools for offer links/details. Unknown modes/keys/sources reject 422. Reduce limit on gateway payload limits."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
+  },
+  "company_brain_decisions_get": {
+    "resultLimits": {
+      "defaultLimit": 200,
+      "maxLimit": 200,
+      "pagination": "offset (non-negative integer), limit (positive integer); for plain arrays continue offset += returned length until an empty page; no transactional snapshot across requests",
+      "notes": "status draft/review/approved/superseded/reversed/expired/all. Stable updated_at DESC,id ASC. No separate decision GET-by-ID."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
+  },
+  "company_brain_decisions_decisionId_outcomes_get": {
+    "resultLimits": {
+      "defaultLimit": 100,
+      "maxLimit": 100,
+      "pagination": "offset (non-negative integer), limit (positive integer); for plain arrays continue offset += returned length until an empty page; no transactional snapshot across requests",
+      "notes": "status pending/met/missed/inconclusive/cancelled/all. Stable evaluation_end DESC,created_at DESC,id ASC within decisionId."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
+  },
+  "voice_copilot_candidates_get": {
+    "resultLimits": {
+      "defaultLimit": 100,
+      "maxLimit": 100,
+      "pagination": "offset (non-negative integer), limit (positive integer); for plain arrays continue offset += returned length until an empty page; no transactional snapshot across requests",
+      "notes": "status pending/approved/rejected/merged/all; default pending preserves review queue. Stable created_at DESC,id ASC."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
+  },
+  "voice_copilot_knowledge_get": {
+    "resultLimits": {
+      "defaultLimit": 100,
+      "maxLimit": 100,
+      "pagination": "offset (non-negative integer), limit (positive integer); for plain arrays continue offset += returned length until an empty page; no transactional snapshot across requests",
+      "notes": "status draft/review/approved/retired/all; default all. Stable updated_at DESC,id ASC."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
+  },
+  "voice_platform_get": {
+    "resultLimits": {
+      "defaultLimit": "50 for models/evaluations/prompts/campaigns; 100 for other collections",
+      "maxLimit": 200,
+      "pagination": "collection=<allowlisted name>, limit/offset; pagination.hasMore/nextOffset; no transactional snapshot",
+      "notes": "No query preserves the bounded dashboard (50/100 per collection). Complete alternatives: models(lifecycle,evalStatus,enabled), evaluations(modelReleaseId,status), prompts(mode,status), campaigns(mode,status,promptVersionId), targets(campaignId,requestId,offerId,consentId,status), attempts(targetId,modelReleaseId,promptVersionId,status), outcomes(attemptId,outcomeCode), allowlist(phone,enabled), consents(requestId,phone,status). Every collection also accepts id. Filters are exact and applied before paging. Unknown collection/filter and filters without collection reject 422. Disabled feature/missing schema report enabled/storageReady flags; not an empty complete archive. Rows use existing staff projections; no runtime worker action or consent mutation."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
+  },
+  "eu_supplier_quotes_get": {
+    "resultLimits": {
+      "defaultLimit": 100,
+      "maxLimit": 100,
+      "pagination": "offset (non-negative integer), limit (positive integer); for plain arrays continue offset += returned length until an empty page; no transactional snapshot across requests",
+      "notes": "status collecting/ready/selected/ordered/cancelled/needs_review/all. Stable created_at DESC,id ASC. Deliveries/replies/offers are restricted to this request page and fully paginated up to 100000 rows per child table with 25s budget; repeated rows/incomplete scans fail explicitly."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
+  },
+  "design_jobs_get": {
+    "resultLimits": {
+      "defaultLimit": 20,
+      "maxLimit": 50,
+      "pagination": "offset (non-negative integer), limit (positive integer); for plain arrays continue offset += returned length until an empty page; no transactional snapshot across requests",
+      "notes": "Filter by status and trelloCardId. Stable updated_at DESC,id ASC. assetsPreview=true: embedded list assets are previews (max200 globally,max20 per job); enumerate every asset through design_jobs_jobId_get with assetOffset/assetLimit."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
+  },
+  "design_jobs_jobId_get": {
+    "resultLimits": {
+      "defaultAssetLimit": 20,
+      "maxAssetLimit": 100,
+      "pagination": "assetOffset/assetLimit; job.assetsPagination.nextOffset; null marks the end",
+      "notes": "Full asset enumeration is available through this detail route; list summary assets are previews. Stable created_at DESC,id ASC. Restart a sweep after concurrent edits."
+    },
+    "contractSources": [
+      "src/lib/ops/list-pagination.ts"
+    ]
   }
 }

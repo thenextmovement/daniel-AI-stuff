@@ -1,3 +1,4 @@
+import { normalizeOpsListPage } from "@/lib/ops/list-pagination";
 import { randomUUID } from "node:crypto";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
@@ -78,6 +79,8 @@ export type OpsInternalTaskActor = {
 
 export type OpsInternalTaskListOptions = {
   includeDone?: boolean;
+  status?: OpsInternalTaskStatus | "all" | null;
+  offset?: number;
   assigneeLabel?: string | null;
   requestId?: string | null;
   sourceRef?: string | null;
@@ -418,20 +421,38 @@ function buildFallbackPatchPayload(input: OpsInternalTaskInput, actor?: OpsInter
 }
 
 async function listFallbackTasks(options: OpsInternalTaskListOptions = {}) {
-  const limit = Math.min(Math.max(Number(options.limit || 80), 1), 150);
+  const { limit, offset } = normalizeOpsListPage(options, 80, 150);
+  const status = options.status;
+  if (status && status !== "all" && !TASK_STATUSES.includes(status)) throw new QuoteValidationError("Aufgabenstatus ist ungueltig.", ["invalid_status"], 422);
   const query: Record<string, string | number | boolean | null> = {
     select: SALES_TASKS_SELECT,
     source: "eq.ops_internal",
-    order: "due_at.asc.nullslast,updated_at.desc",
+    order: "due_at.asc.nullslast,updated_at.desc,id.asc",
     limit,
+    offset,
   };
-  if (!options.includeDone) {
+  if (!status && !options.includeDone) {
     query.status = "in.(open,waiting,blocked)";
   }
   if (options.assigneeLabel) query.assignee_label = `eq.${options.assigneeLabel}`;
   if (options.requestId) query.request_id = `eq.${options.requestId}`;
   if (options.sourceRef) query.source_ref = `eq.${options.sourceRef}`;
 
+  if (status && status !== "all") {
+    // Legacy rows may encode in_progress only in payload.ops_status. Filter the mapped
+    // status before applying the requested page so those rows cannot disappear.
+    const matches: OpsInternalTask[] = [];
+    const signal = AbortSignal.timeout(25000);
+    for (let sourceOffset = 0; sourceOffset < 100000; ) {
+      signal.throwIfAborted();
+      const rows = await supabaseRequest<SalesTaskFallbackRow[]>(SALES_TASKS_TABLE, { signal }, { ...query, limit: 150, offset: sourceOffset });
+      if (!rows.length) return matches.slice(offset, offset + limit);
+      matches.push(...rows.map(mapFallbackTask).filter((task) => task.status === status));
+      if (matches.length >= offset + limit) return matches.slice(offset, offset + limit);
+      sourceOffset += rows.length;
+    }
+    throw new QuoteValidationError("Aufgabenliste konnte nicht vollstaendig gelesen werden.", ["task_list_incomplete"], 422);
+  }
   const rows = await supabaseRequest<SalesTaskFallbackRow[]>(SALES_TASKS_TABLE, undefined, query);
   return rows.map(mapFallbackTask);
 }
@@ -495,13 +516,17 @@ async function updateFallbackTask(taskId: string, input: OpsInternalTaskInput, a
 export async function listOpsInternalTasks(options: OpsInternalTaskListOptions = {}) {
   if (!useDedicatedTaskTable()) return listFallbackTasks(options);
 
-  const limit = Math.min(Math.max(Number(options.limit || 80), 1), 150);
+  const { limit, offset } = normalizeOpsListPage(options, 80, 150);
+  const status = options.status;
+  if (status && status !== "all" && !TASK_STATUSES.includes(status)) throw new QuoteValidationError("Aufgabenstatus ist ungueltig.", ["invalid_status"], 422);
   const query: Record<string, string | number | boolean | null> = {
     select: TASK_SELECT,
-    order: "due_at.asc.nullslast,updated_at.desc",
+    order: "due_at.asc.nullslast,updated_at.desc,id.asc",
     limit,
+    offset,
   };
-  if (!options.includeDone) {
+  if (status && status !== "all") query.status = `eq.${status}`;
+  else if (!status && !options.includeDone) {
     query.status = "in.(open,in_progress,waiting)";
   }
   if (options.assigneeLabel) query.assignee_label = `eq.${options.assigneeLabel}`;

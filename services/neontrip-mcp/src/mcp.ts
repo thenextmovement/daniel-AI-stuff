@@ -1,5 +1,6 @@
+import { notifyWriteFailure } from "./write-alerts.js";
 import { OPS_OPERATIONS, OPS_COVERAGE, opsOperation } from "./ops-catalog.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { McpServer, fromJsonSchema, type AuthInfo, type CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { AuditSink } from "./audit.js";
@@ -83,11 +84,11 @@ const offerPatchSchema = z.object({
 function toolResult(envelope: ToolEnvelope): CallToolResult {
   const asset=envelope.ok && isRecord(envelope.data) ? envelope.data : null;
   if(asset && typeof asset.base64==="string" && typeof asset.mimeType==="string"
-    && ["application/pdf","image/jpeg","image/png","image/webp","image/avif"].includes(asset.mimeType)){
-    const metadata={...envelope,data:{mimeType:asset.mimeType,assetIncluded:true}};
-    const media=asset.mimeType.startsWith("image/")
+    && (asset.binaryAsset===true || ["application/pdf","image/jpeg","image/png","image/webp","image/avif"].includes(asset.mimeType))){
+    const metadata={...envelope,data:{mimeType:asset.mimeType,...(typeof asset.originalMimeType==="string"?{originalMimeType:asset.originalMimeType}:{}),assetIncluded:true}};
+    const media=["image/jpeg","image/png","image/webp","image/avif"].includes(asset.mimeType)
       ? {type:"image" as const,mimeType:asset.mimeType,data:asset.base64}
-      : {type:"resource" as const,resource:{uri:"neontrip-ops://asset/"+envelope.meta.correlationId+"/document.pdf",mimeType:asset.mimeType,blob:asset.base64}};
+      : {type:"resource" as const,resource:{uri:"neontrip-ops://asset/"+envelope.meta.correlationId+(asset.mimeType==="application/pdf"?"/document.pdf":"/attachment"),mimeType:asset.mimeType,blob:asset.base64}};
     return {content:[{type:"text",text:JSON.stringify(metadata)},media],structuredContent:metadata};
   }
   return {
@@ -121,9 +122,20 @@ function targetFromArgs(args: unknown) {
   if (!isRecord(args)) return undefined;
   const target: Record<string, string> = {};
   for (const key of ["caseId", "changeRequestId", "offerId", "operation"] as const) {
-    if (typeof args[key] === "string") target[key] = args[key];
+    if (typeof args[key] === "string" && /^[A-Za-z0-9][A-Za-z0-9:_-]{0,159}$/.test(args[key])) target[key] = args[key];
+  }
+  if (isRecord(args.pathParameters)) {
+    const allowed = OPS_OPERATIONS.find(operation => operation.id === args.operation)?.pathParameters ?? [];
+    for (const [key, value] of Object.entries(args.pathParameters)) {
+      if (allowed.includes(key) && typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9:_-]{0,159}$/.test(value)) target[`path.${key}`] = value;
+    }
   }
   return Object.keys(target).length ? target : undefined;
+}
+
+function reasonFingerprint(args: unknown) {
+  return isRecord(args) && typeof args.reason === "string"
+    ? { reasonSha256: createHash("sha256").update(args.reason).digest("hex") } : {};
 }
 
 export function createNeontripMcpServer(input: {
@@ -183,7 +195,7 @@ export function createNeontripMcpServer(input: {
         input.audit({
           timestamp: new Date().toISOString(), correlationId, clientId: identity.clientId,
           actor: identity.actor, role: identity.role, capability: options.name,
-          target: targetFromArgs(args), outcome: "success", durationMs: Date.now() - startedAt,
+          target: targetFromArgs(args), ...reasonFingerprint(args), outcome: "success", durationMs: Date.now() - startedAt,
         });
         return toolResult({ ok: true, data: asJsonValue(data), meta: { capability: options.name, correlationId } });
       } catch (error) {
@@ -191,10 +203,13 @@ export function createNeontripMcpServer(input: {
         input.audit({
           timestamp: new Date().toISOString(), correlationId, clientId: identity.clientId,
           actor: identity.actor, role: identity.role, capability: options.name,
-          target: targetFromArgs(args), outcome: failure.status < 500 ? "denied" : "failure",
+          target: targetFromArgs(args), ...reasonFingerprint(args), outcome: failure.status < 500 ? "denied" : "failure",
           durationMs: Date.now() - startedAt, errorCode: failure.code,
         });
-        return toolResult({
+        const alertTool=options.name === "ops_write" && isRecord(args) && OPS_OPERATIONS.some(operation => operation.id === args.operation)
+          ? "ops_"+String(args.operation) : options.name;
+        const notification=options.readOnly ? undefined : await notifyWriteFailure({clientId:identity.clientId,tool:alertTool,args,correlationId,code:failure.code,notify:notice=>input.api.notifyWriteFailure(notice)});
+        const result=toolResult({
           ok: false,
           error: {
             code: failure.code,
@@ -204,6 +219,11 @@ export function createNeontripMcpServer(input: {
           },
           meta: { capability: options.name, correlationId },
         });
+        if (notification) {
+          result.structuredContent={...(isRecord(result.structuredContent)?result.structuredContent:{}),...notification};
+          result.content.push({type:"text",text:JSON.stringify(notification)});
+        }
+        return result;
       }
     });
   };
@@ -234,7 +254,13 @@ export function createNeontripMcpServer(input: {
         } catch(error) {
           const failure=asGatewayError(error);
           input.audit({timestamp:new Date().toISOString(),correlationId,clientId:identity.clientId,actor:identity.actor,role:identity.role,capability:name,outcome:"failure",durationMs:Date.now()-startedAt,errorCode:failure.code});
-          return toolResult({ok:false,error:{code:failure.code,message:failure.message,retryable:false,requiresHumanReview:!readOnly},meta:{capability:name,correlationId}});
+          const result=toolResult({ok:false,error:{code:failure.code,message:failure.message,retryable:false,requiresHumanReview:!readOnly},meta:{capability:name,correlationId}});
+          if (!readOnly) {
+            const notification=await notifyWriteFailure({clientId:identity.clientId,tool:name,args,correlationId,code:failure.code,notify:notice=>input.api.notifyWriteFailure(notice)});
+            result.structuredContent={...(isRecord(result.structuredContent)?result.structuredContent:{}),...notification};
+            result.content.push({type:"text",text:JSON.stringify(notification)});
+          }
+          return result;
         }
       });
     }
@@ -267,7 +293,7 @@ export function createNeontripMcpServer(input: {
       const names=OPS_OPERATIONS.filter(x=>x.readOnly===readOnly).map(x=>x.id);
       register({
         name:readOnly?"ops_read":"ops_write",title:readOnly?"OPS lesen":"OPS ändern und ausführen",
-        description:"Führt eine feste OPS-Geschäftsfunktion aus. Zuerst ops_describe_operation für den vollständigen Vertrag aufrufen. Keine freien URLs/Methoden. "+(readOnly?"Nur GET-Leseaktionen.":"Nur bei konkretem Auftrag für die ausgewählte Aktion. Kann Kundenmails, Produktionsaktionen oder kostenpflichtige Generierungen auslösen. reason dokumentiert den Auftrag; bestehende Freigaben, Versionsprüfungen und Idempotenz bleiben erforderlich. Unklares Ergebnis niemals blind wiederholen."),
+        description:"Führt eine feste OPS-Geschäftsfunktion aus. Zuerst ops_describe_operation für den vollständigen Vertrag aufrufen. Keine freien URLs/Methoden. "+(readOnly?"Nur GET-Leseaktionen.":"Nur bei konkretem Auftrag für die ausgewählte Aktion. Kann Kundenmails, Produktionsaktionen oder kostenpflichtige Generierungen auslösen. reason kennzeichnet den Auftrag; nur sein SHA-256-Fingerprint wird protokolliert. Bestehende Freigaben, Versionsprüfungen und Idempotenz bleiben erforderlich. Unklares Ergebnis niemals blind wiederholen."),
         scope:readOnly?"ops:read":"ops:write",schema:z.object({
           operation:z.enum(names as [string,...string[]]),
           pathParameters:z.record(z.string(),z.string().min(1).max(160)).default({}),
@@ -323,17 +349,25 @@ export function createNeontripMcpServer(input: {
 
   register({
     name: "billing_list_cases", title: "Rechnungsvorgänge suchen",
-    description: "Sucht Rechnungsvorgänge im verifizierten OPS-System.", scope: "billing:read",
-    schema: z.object({ status: safeText(80).optional(), query: safeText(100).optional(), limit: z.number().int().min(1).max(200).default(80) }).strict(),
+    description: "Sucht Rechnungsvorgänge im verifizierten OPS-System. Für vollständige Ergebnisse pagination.nextOffset bis null folgen; eine Seite ist keine Gesamtmenge.", scope: "billing:read",
+    schema: z.object({ status: safeText(80).optional(), query: safeText(100).optional(), limit: z.number().int().min(1).max(200).default(80), offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(0) }).strict(),
     readOnly: true, destructive: false,
     run: (args) => input.api.listBillingCases(args),
   });
 
   register({
     name: "billing_get_case", title: "Rechnungsvorgang lesen",
-    description: "Liest einen Rechnungsvorgang unmittelbar aus OPS und ergänzt Prüffingerprints für sichere Folgeaktionen.", scope: "billing:read",
-    schema: z.object({ caseId: uuid }).strict(), readOnly: true, destructive: false,
-    run: async ({ caseId }) => attachReviewFingerprints(await input.api.getBillingCase(caseId)),
+    description: "Liest einen Rechnungsvorgang unmittelbar aus OPS und ergänzt Prüffingerprints für sichere Folgeaktionen. Für die vollständige Ereignishistorie eventsPagination.nextOffset bis null folgen.", scope: "billing:read",
+    schema: z.object({ caseId: uuid, eventLimit: z.number().int().min(1).max(200).optional(), eventOffset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional() }).strict(), readOnly: true, destructive: false,
+    run: async ({ caseId, ...page }) => attachReviewFingerprints(await input.api.getBillingCase(caseId, page)),
+  });
+
+  register({
+    name: "billing_list_case_records", title: "Vollständige Rechnungshistorien lesen",
+    description: "Liest Dokumente, Änderungsanträge, Ereignisse, Vorfälle oder Zahlungen eines Rechnungsvorgangs in stabil sortierten Seiten. pagination.nextOffset bis null folgen; keine Seitenmenge als Gesamtmenge ausgeben.", scope: "billing:read",
+    schema: z.object({ caseId: uuid, collection: z.enum(["documents", "changes", "events", "incidents", "payments"]), limit: z.number().int().min(1).max(200).default(100), offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(0) }).strict(),
+    readOnly: true, destructive: false,
+    run: ({ caseId, ...page }) => input.api.listBillingCaseRecords(caseId, page),
   });
 
   register({

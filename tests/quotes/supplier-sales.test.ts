@@ -2235,7 +2235,7 @@ test("supplier assignment task cleanup archives only supplier sale projections",
   assert.equal(supplierSalesPatchCount, 1);
 });
 
-test("supplier sales active board hides rows already tagged in Shopify and uses bounded limit", async () => {
+test("supplier sales active board hides rows already tagged in Shopify and uses bounded source pages", async () => {
   const unassignedRow = saleRow({
     id: "sale-visible",
     sale_key: "shopify:order:visible",
@@ -2316,6 +2316,7 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
     assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       const limit = url.searchParams.get("limit");
       supplierSalesGetLimits.push(limit || "");
@@ -2331,6 +2332,7 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
         unassignedRow,
       ]);
     }
+    if (url.pathname.endsWith("/supplier_sale_items") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
       itemSaleFilter = url.searchParams.get("sale_id");
       return Response.json([
@@ -2338,6 +2340,7 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
         itemRow({ id: "item-similar", sale_id: similarTagRow.id }),
       ]);
     }
+    if (url.pathname.endsWith("/supplier_sale_events") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
   }, async () => {
@@ -2351,8 +2354,8 @@ test("supplier sales active board hides rows already tagged in Shopify and uses 
     assert.equal(visible?.paymentLink, "https://shopify.test/orders/visible/status");
   });
 
-  assert.deepEqual(supplierSalesGetLimits, ["2000", "200"]);
-  assert.equal(itemSaleFilter, "in.(sale-similar-tag,sale-assigned-without-tag,sale-visible)");
+  assert.deepEqual(supplierSalesGetLimits, ["500", "500"]);
+  assert.deepEqual(new Set(String(itemSaleFilter).slice(4, -1).split(",")), new Set(["sale-similar-tag", "sale-assigned-without-tag", "sale-visible"]));
 });
 
 test("supplier production completion is fail-closed and remains visible for exactly ten minutes", () => {
@@ -2418,10 +2421,13 @@ test("supplier sales active board hides fully assigned rows but keeps failed ass
 
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
+    if (url.pathname.endsWith("/supplier_sales") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       return Response.json([assigned, failedAssignment, recentProduction, expiredProduction]);
     }
+    if (url.pathname.endsWith("/supplier_sale_items") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
   }, async () => {
@@ -2487,8 +2493,11 @@ test("supplier sales board reads payment link from offer snapshot fallback", asy
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
     assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([snapshotPaymentRow]);
+    if (url.pathname.endsWith("/supplier_sale_items") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([itemRow({ sale_id: snapshotPaymentRow.id })]);
+    if (url.pathname.endsWith("/supplier_sale_events") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
   }, async () => {
@@ -2537,13 +2546,16 @@ test("supplier sales board marks unpaid active rows when the same customer paid 
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
     assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       if (url.searchParams.get("or") === "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)") {
         return Response.json([priorPaidRow]);
       }
       return Response.json([newOpenRow, repeatOpenRow]);
     }
+    if (url.pathname.endsWith("/supplier_sale_items") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
   }, async () => {
@@ -2574,6 +2586,7 @@ test("supplier sales board finds prior paid Shopify orders through a real exact-
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
     assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       if (url.searchParams.get("or") === "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)") {
         return Response.json([]);
@@ -2598,7 +2611,9 @@ test("supplier sales board finds prior paid Shopify orders through a real exact-
       return Response.json([]);
     }
     if (url.pathname.endsWith("/crm_sales") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
   }, async () => {
@@ -2668,6 +2683,7 @@ test("supplier sales board uses internal paid history by business domain and cus
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
     assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       const or = url.searchParams.get("or") || "";
       if (or.includes("customer_email.ilike")) return Response.json([paidDomainRow]);
@@ -2677,7 +2693,9 @@ test("supplier sales board uses internal paid history by business domain and cus
     }
     if (url.pathname.endsWith("/v_orders_by_email") && method === "GET") return Response.json([]);
     if (url.pathname.endsWith("/crm_sales") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
   }, async () => {
@@ -2743,6 +2761,7 @@ test("supplier sales board uses Shopify paid history by business domain, exact p
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
     assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       if (url.searchParams.get("or") === "(shopify_payment_status.eq.paid,payment_decision_status.eq.paid_confirmed)") {
         return Response.json([]);
@@ -2770,7 +2789,9 @@ test("supplier sales board uses Shopify paid history by business domain, exact p
         },
       ]);
     }
+    if (url.pathname.endsWith("/supplier_sale_items") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_events") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
   }, async () => {
@@ -2809,14 +2830,17 @@ test("supplier sales board filters express and rush orders", async () => {
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
     assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sales") && method === "GET") {
       supplierSalesGetLimits.push(url.searchParams.get("limit") || "");
       return Response.json([standardRow, rushRow]);
     }
+    if (url.pathname.endsWith("/supplier_sale_items") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_items") && method === "GET") {
       itemSaleFilter = url.searchParams.get("sale_id");
       return Response.json([itemRow({ sale_id: rushRow.id })]);
     }
+    if (url.pathname.endsWith("/supplier_sale_events") && Number(url.searchParams.get("offset") || 0) > 0) return Response.json([]);
     if (url.pathname.endsWith("/supplier_sale_events") && method === "GET") return Response.json([]);
     return Response.json([]);
   }, async () => {
@@ -2827,7 +2851,7 @@ test("supplier sales board filters express and rush orders", async () => {
     assert.equal(board.counts.readyToAssign, 1);
   });
 
-  assert.deepEqual(supplierSalesGetLimits, ["2000", "200"]);
+  assert.deepEqual(supplierSalesGetLimits, ["500", "500"]);
   assert.equal(itemSaleFilter, "in.(sale-rush)");
 });
 
@@ -5124,4 +5148,109 @@ test("supplier sales diagnostics accept internal key alias for incoming sales au
       else process.env[key] = value;
     }
   }
+});
+
+test("sales search and supplier filters reach older matches before paging and count every matching active row", async () => {
+  const rows = Array.from({ length: 2403 }, (_, index) => saleRow({
+    id: `sale-page-${String(index).padStart(4, "0")}`, customer_name: index < 2200 ? "Other" : "needle", recommended_supplier: index < 2200 ? "said" : "quentin",
+  }));
+  await withMockedAssignmentFetch((url, init) => {
+    assert.equal(init?.method || "GET", "GET");
+    if (!url.pathname.endsWith("/supplier_sales")) return Response.json([]);
+    const filter = url.searchParams.get("and") || "";
+    assert.match(filter, /assigned_supplier\.eq\.quentin/);
+    assert.match(filter, /customer_name\.ilike/);
+    assert.match(filter, /needle/);
+    const filtered = rows.filter((row) => row.customer_name === "needle");
+    const offset = Number(url.searchParams.get("offset") || 0);
+    return Response.json(filtered.slice(offset, offset + Number(url.searchParams.get("limit"))));
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active", query: "needle", supplier: "quentin", limit: 2, offset: 200 });
+    assert.deepEqual(board.items.map((item) => item.id), ["sale-page-2400", "sale-page-2401"]);
+    assert.equal(board.counts.total, 203);
+    assert.equal(board.pagination?.total, 203);
+    assert.equal(board.pagination?.nextOffset, 202);
+  });
+});
+
+test("sales active urgency pages cross the old 500-row boundary without counting only the first 2000", async () => {
+  const rows = Array.from({ length: 2103 }, (_, index) => saleRow({
+    id: `sale-rush-${String(index).padStart(4, "0")}`, product_summary: "Express Rush Order",
+    raw_shopify: index < 2100 ? { tags: ["Quentin (schon bezahlt)"] } : {},
+  }));
+  await withMockedAssignmentFetch((url) => {
+    if (!url.pathname.endsWith("/supplier_sales")) return Response.json([]);
+    const offset = Number(url.searchParams.get("offset") || 0);
+    // Simulate a database cap smaller than the requested batch: a short page is not EOF.
+    const limit = Math.min(100, Number(url.searchParams.get("limit")));
+    return Response.json(rows.slice(offset, offset + limit));
+  }, async () => {
+    const board = await listSupplierSalesBoard({ scope: "active", urgency: "rush", limit: 1, offset: 1 });
+    assert.deepEqual(board.items.map((item) => item.id), ["sale-rush-2101"]);
+    assert.equal(board.counts.total, 2103);
+    assert.equal(board.pagination?.total, 3);
+    assert.equal(board.pagination?.nextOffset, 2);
+  });
+});
+
+test("sales applies the business priority and recency order before splitting pages", async () => {
+  const rows = [
+    saleRow({ id: "recent-update-old-sale", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-10-29T00:00:00Z" }),
+    saleRow({ id: "recent-sale", created_at: "2026-10-20T00:00:00Z", updated_at: "2026-10-20T00:00:00Z" }),
+  ];
+  await withMockedAssignmentFetch((url) => {
+    if (!url.pathname.endsWith("/supplier_sales")) return Response.json([]);
+    const offset = Number(url.searchParams.get("offset") || 0);
+    return Response.json(rows.slice(offset, offset + Number(url.searchParams.get("limit"))));
+  }, async () => {
+    const first = await listSupplierSalesBoard({ scope: "active", limit: 1 });
+    const second = await listSupplierSalesBoard({ scope: "active", limit: 1, offset: 1 });
+    assert.deepEqual([...first.items, ...second.items].map((item) => item.id), ["recent-sale", "recent-update-old-sale"]);
+  });
+});
+
+test("sales loads complete item details and latest events beyond the old global child cap", async () => {
+  await withMockedAssignmentFetch((url) => {
+    const offset = Number(url.searchParams.get("offset") || 0);
+    const limit = Number(url.searchParams.get("limit"));
+    if (url.pathname.endsWith("/supplier_sales")) return Response.json(offset ? [] : [saleRow({ id: "parent" }), saleRow({ id: "second" })]);
+    if (url.pathname.endsWith("/supplier_sale_items")) {
+      assert.equal(url.searchParams.get("sale_id"), "in.(parent,second)");
+      return Response.json(Array.from({ length: Math.max(0, Math.min(limit, 1003 - offset)) }, (_, i) => itemRow({ id: `item-${offset+i}`, sale_id: "parent" })));
+    }
+    if (url.pathname.endsWith("/supplier_sale_events")) {
+      assert.equal(url.searchParams.get("sale_id"), "in.(parent,second)");
+      return Response.json(Array.from({ length: Math.max(0, Math.min(limit, 1003 - offset)) }, (_, i) => ({ id: `event-${offset+i}`, sale_id: offset+i === 1002 ? "second" : "parent", event_type: "test_event", actor: "test", idempotency_key: `test-${offset+i}`, payload: {}, created_at: offset+i === 1002 ? "2026-01-01T00:00:00Z" : "2026-10-01T00:00:00Z" })));
+    }
+    return Response.json([]);
+  }, async () => {
+    const board = await listSupplierSalesBoard({ limit: 2 });
+    assert.equal(board.items[0].items.length, 1003);
+    assert.equal(board.items[1].latestEvent?.id, "event-1002");
+  });
+});
+
+test("sales paid-history enrichment shares the scan deadline and aborts without a partial board", async () => {
+  const originalTimeout = AbortSignal.timeout;
+  const controller = new AbortController();
+  AbortSignal.timeout = () => controller.signal;
+  const unpaid = saleRow({ shopify_payment_status: "pending", payment_decision_status: "pending", assignment_status: "payment_open" });
+  let historyRead = false;
+  try {
+    await withMockedAssignmentFetch((url, init) => {
+      if (url.pathname.endsWith("/supplier_sales") && !url.searchParams.has("customer_email") && !url.searchParams.has("or")) {
+        return Response.json(Number(url.searchParams.get("offset") || 0) ? [] : [unpaid]);
+      }
+      if (url.pathname.endsWith("/supplier_sales") && url.searchParams.has("customer_email")) {
+        historyRead = true;
+        assert.equal(init?.signal, controller.signal, "history must receive the same deadline signal");
+        controller.abort(new DOMException("test deadline", "TimeoutError"));
+        return Response.json([]);
+      }
+      return Response.json([]);
+    }, async () => {
+      await assert.rejects(() => listSupplierSalesBoard({ scope: "active", limit: 1 }), (error: Error) => error.name === "TimeoutError");
+    });
+    assert.equal(historyRead, true);
+  } finally { AbortSignal.timeout = originalTimeout; }
 });

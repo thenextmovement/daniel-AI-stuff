@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     );
   }
   try {
-    const candidates = await listVoiceKnowledgeCandidates();
+    const candidates = await listVoiceKnowledgeCandidates(request.nextUrl.searchParams.get("status") || "pending", { limit: Number(request.nextUrl.searchParams.get("limit") || 100), offset: Number(request.nextUrl.searchParams.get("offset") || 0) });
     return NextResponse.json(
       { ok: true, enabled: true, availability: "ready", candidates },
       { headers: { "cache-control": "no-store" } },

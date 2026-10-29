@@ -107,3 +107,39 @@ test("Ops business failures are failures even when HTTP status is 200",async()=>
  const api=new NeontripApi(config(),async()=>Response.json({ok:false,error:"version_conflict"}));
  await assert.rejects(api.opsOperation("customer_records_patch",{},{},{requestId:"test"}),/version_conflict/);
 });
+
+test("billing pages and event pages reach the canonical endpoints without changing default write reads", async () => {
+  const calls: URL[] = [];
+  const api = new NeontripApi(config(), async (url, init) => {
+    calls.push(new URL(String(url)));
+    assert.equal(init?.method, "GET");
+    return Response.json({ ok: true });
+  });
+  await api.listBillingCases({ limit: 2, offset: 200 });
+  await api.getBillingCase("00000000-0000-4000-8000-000000000000", { eventLimit: 2, eventOffset: 200 });
+  await api.getBillingCase("00000000-0000-4000-8000-000000000000");
+  assert.equal(calls[0].searchParams.get("offset"), "200");
+  assert.equal(calls[1].searchParams.get("eventLimit"), "2");
+  assert.equal(calls[1].searchParams.get("eventOffset"), "200");
+  assert.equal(calls[2].search, "");
+});
+
+test("all billing detail collections have a fixed scoped read endpoint", async () => {
+  const calls: URL[] = [];
+  const api = new NeontripApi(config(), async (url, init) => {
+    calls.push(new URL(String(url)));
+    assert.equal(init?.method, "GET");
+    return Response.json({ ok: true, records: [] });
+  });
+  for (const collection of ["documents", "changes", "events", "incidents", "payments"]) {
+    await api.listBillingCaseRecords("00000000-0000-4000-8000-000000000000", { collection, limit: 2, offset: 1000 });
+  }
+  assert.equal(calls.length, 5);
+  for (const url of calls) {
+    assert.equal(url.origin, "https://ops.example.test");
+    assert.equal(url.pathname, "/api/ops/billing/00000000-0000-4000-8000-000000000000");
+    assert.equal(url.searchParams.get("limit"), "2");
+    assert.equal(url.searchParams.get("offset"), "1000");
+    assert.ok(url.searchParams.get("collection"));
+  }
+});

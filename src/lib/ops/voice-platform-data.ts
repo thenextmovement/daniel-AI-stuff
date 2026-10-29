@@ -29,6 +29,7 @@ import {
 } from "@/lib/ops/voice-knowledge";
 import { SupabaseRestError, supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
+import { normalizeOpsListPage, type OpsListPageOptions } from "@/lib/ops/list-pagination";
 
 type ModelReleaseRow = {
   id: string;
@@ -647,6 +648,56 @@ export async function executeVoiceTool(input: {
   return { duplicate: false, result };
 }
 
+const ALLOWLIST_SELECT = "id,phone_e164,label,enabled,approved_by,approved_at,created_at,updated_at";
+const CONSENT_SELECT = "id,request_id,phone_e164,purposes,status,consent_wording,form_version,source,source_ref,granted_at,withdrawn_at,valid_until,evidence_retain_until,created_at,updated_at";
+
+// These are the same staff-visible collections and projections as the dashboard.
+// Runtime leases, worker actions and customer consent mutations are not list operations.
+const VOICE_COLLECTIONS: Record<string, { table: string; select: string; timestamp: string; limit: number; filters: Record<string, string> }> = {
+  models: { table: "voice_model_releases", select: MODEL_SELECT, timestamp: "created_at", limit: 50, filters: { lifecycle: "lifecycle", evalStatus: "eval_status", enabled: "enabled" } },
+  evaluations: { table: "voice_model_evaluations", select: "*", timestamp: "evaluated_at", limit: 50, filters: { modelReleaseId: "model_release_id", status: "status" } },
+  prompts: { table: "voice_prompt_versions", select: PROMPT_SELECT, timestamp: "created_at", limit: 50, filters: { mode: "mode", status: "status" } },
+  campaigns: { table: "voice_call_campaigns", select: CAMPAIGN_SELECT, timestamp: "created_at", limit: 50, filters: { mode: "mode", status: "status", promptVersionId: "prompt_version_id" } },
+  targets: { table: "voice_call_targets", select: TARGET_SELECT, timestamp: "created_at", limit: 100, filters: { campaignId: "campaign_id", requestId: "request_id", offerId: "offer_id", consentId: "consent_id", status: "status" } },
+  attempts: { table: "voice_call_attempts", select: ATTEMPT_SELECT, timestamp: "created_at", limit: 100, filters: { targetId: "target_id", modelReleaseId: "model_release_id", promptVersionId: "prompt_version_id", status: "status" } },
+  outcomes: { table: "voice_call_outcomes", select: "*", timestamp: "created_at", limit: 100, filters: { attemptId: "attempt_id", outcomeCode: "outcome_code" } },
+  allowlist: { table: "voice_test_allowlist", select: ALLOWLIST_SELECT, timestamp: "created_at", limit: 100, filters: { phone: "phone_e164", enabled: "enabled" } },
+  consents: { table: "voice_contact_consents", select: CONSENT_SELECT, timestamp: "created_at", limit: 100, filters: { requestId: "request_id", phone: "phone_e164", status: "status" } },
+};
+
+export async function listVoicePlatformCollection(input: OpsListPageOptions & { collection: string; filters?: Record<string, string> }) {
+  if (!Object.prototype.hasOwnProperty.call(VOICE_COLLECTIONS, input.collection)) {
+    throw new QuoteValidationError("Unbekannte Voice-Platform-Sammlung.", ["invalid_collection"], 422);
+  }
+  const collection = VOICE_COLLECTIONS[input.collection];
+  const { limit, offset } = normalizeOpsListPage(input, collection.limit, 200);
+  const query: Record<string, string | number> = { select: collection.select, order: `${collection.timestamp}.desc,id.desc`, limit: limit + 1, offset };
+  for (const [name, value] of Object.entries(input.filters || {})) {
+    if (name !== "id" && !Object.prototype.hasOwnProperty.call(collection.filters, name)) {
+      throw new QuoteValidationError("Filter ist fuer diese Sammlung nicht verfuegbar.", ["invalid_collection_filter"], 422);
+    }
+    if (name === "enabled" && value !== "true" && value !== "false") {
+      throw new QuoteValidationError("enabled muss true oder false sein.", ["invalid_enabled"], 422);
+    }
+    if (value.length > 160 || /[\u0000-\u001f]/.test(value)) {
+      throw new QuoteValidationError("Ungueltiger Voice-Platform-Filter.", ["invalid_collection_filter"], 422);
+    }
+    const filter = name === "phone" ? normalizePhoneE164(value) : requireVoiceText(value, "Filter", 160, 1);
+    query[name === "id" ? "id" : collection.filters[name]] = `eq.${filter}`;
+  }
+  if (!isVoiceCallPlatformEnabled()) return { enabled: false, storageReady: false, collection: input.collection };
+  try {
+    const rows = await supabaseRequest<Array<Record<string, unknown>>>(collection.table, undefined, query);
+    const hasMore = rows.length > limit;
+    return { enabled: true, storageReady: true, collection: input.collection, rows: rows.slice(0, limit), pagination: { limit, offset, hasMore, nextOffset: hasMore ? offset + limit : null } };
+  } catch (error) {
+    if (error instanceof SupabaseRestError && (error.status === 404 || String(error.details || "").includes("does not exist"))) {
+      return { enabled: true, storageReady: false, collection: input.collection };
+    }
+    throw error;
+  }
+}
+
 export async function listVoicePlatformDashboard() {
   if (!isVoiceCallPlatformEnabled()) return { enabled: false, storageReady: false };
   try {
@@ -659,8 +710,8 @@ export async function listVoicePlatformDashboard() {
       supabaseRequest<TargetRow[]>("voice_call_targets", undefined, { select: TARGET_SELECT, order: "created_at.desc", limit: 100 }),
       supabaseRequest<AttemptRow[]>("voice_call_attempts", undefined, { select: ATTEMPT_SELECT, order: "created_at.desc", limit: 100 }),
       supabaseRequest<Array<Record<string, unknown>>>("voice_call_outcomes", undefined, { select: "*", order: "created_at.desc", limit: 100 }),
-      supabaseRequest<Array<Record<string, unknown>>>("voice_test_allowlist", undefined, { select: "id,phone_e164,label,enabled,approved_by,approved_at,created_at,updated_at", order: "created_at.desc", limit: 100 }),
-      supabaseRequest<Array<Record<string, unknown>>>("voice_contact_consents", undefined, { select: "id,request_id,phone_e164,purposes,status,consent_wording,form_version,source,source_ref,granted_at,withdrawn_at,valid_until,evidence_retain_until,created_at,updated_at", order: "created_at.desc", limit: 100 }),
+      supabaseRequest<Array<Record<string, unknown>>>("voice_test_allowlist", undefined, { select: ALLOWLIST_SELECT, order: "created_at.desc", limit: 100 }),
+      supabaseRequest<Array<Record<string, unknown>>>("voice_contact_consents", undefined, { select: CONSENT_SELECT, order: "created_at.desc", limit: 100 }),
     ]);
     return { enabled: true, storageReady: true, settings: settings[0] || null, models, evaluations, prompts, campaigns, targets, attempts, outcomes, allowlist, consents };
   } catch (error) {

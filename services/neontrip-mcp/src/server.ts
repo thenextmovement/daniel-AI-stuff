@@ -46,7 +46,9 @@ export function createGatewayApp(options: {
   const app = createMcpExpressApp({
     host: config.host,
     allowedHosts: config.allowedHosts,
-    ...(config.allowedOrigins.length ? { allowedOrigins: config.allowedOrigins } : {}),
+    // The SDK enables its default Origin guard only for loopback binds.
+    // Production containers bind 0.0.0.0, so supply an explicit allowlist.
+    allowedOrigins: config.allowedOrigins.length ? config.allowedOrigins : [config.publicUrl.hostname],
     jsonLimit: "28mb",
   });
   app.disable("x-powered-by");
@@ -57,7 +59,7 @@ export function createGatewayApp(options: {
     next();
   });
 
-  app.get("/health/live", (_request, response) => response.json({ ok: true }));
+  app.get("/health/live", (_request, response) => response.json({ ok: true, commit: config.releaseCommit || "unknown" }));
   app.get("/health/ready", (_request, response) => {
     const missing = missingRequiredServices(config);
     response.status(missing.length ? 503 : 200).json({ ok: missing.length === 0 });
@@ -110,8 +112,12 @@ export function createGatewayApp(options: {
     },
   );
 
-  app.use((_error: unknown, _request: Request, response: Response, _next: NextFunction) => {
-    if (!response.headersSent) response.status(500).json({ error: "internal_error" });
+  app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
+    if (response.headersSent) return;
+    const type = error && typeof error === "object" && "type" in error ? error.type : null;
+    if (type === "entity.parse.failed") response.status(400).json({ error: "invalid_json" });
+    else if (type === "entity.too.large") response.status(413).json({ error: "request_too_large" });
+    else response.status(500).json({ error: "internal_error" });
   });
   return { app, close: handler.close };
 }

@@ -6,11 +6,36 @@ import type { JsonValue, ServiceName } from "./types.js";
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   binary?: boolean;
+  attachment?: boolean;
   timeoutMs?: number;
   body?: JsonValue;
 };
 
 type FetchLike = typeof fetch;
+
+async function boundedBytes(response: Response, limit: number, failure: GatewayError) {
+  if (Number(response.headers.get("content-length")) > limit) {
+    await response.body?.cancel();
+    throw failure;
+  }
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        throw failure;
+      }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  return new Uint8Array(Buffer.concat(chunks, size));
+}
 
 function joinUrl(base: URL, path: string) {
   if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) {
@@ -40,16 +65,27 @@ export class NeontripApi {
       if (!response.ok) throw new GatewayError("native_offers_denied", `Die Angebotssoftware hat den persönlichen MCP-Zugang abgelehnt (${response.status}).`,response.status);
       if (!(response.headers.get("content-type") || "").includes("application/json")) throw new GatewayError("invalid_native_response","Ungültiges Antwortformat der Angebotssoftware.",502);
       const maxBytes=32*1024*1024;
-      if (Number(response.headers.get("content-length"))>maxBytes) throw new GatewayError("native_response_too_large","Angebotsantwort ist zu groß.",502);
-      const bytes=new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength>maxBytes) throw new GatewayError("native_response_too_large","Angebotsantwort ist zu groß.",502);
+      const bytes=await boundedBytes(response,maxBytes,new GatewayError("native_response_too_large","Angebotsantwort ist zu groß.",502));
       const payload=JSON.parse(new TextDecoder().decode(bytes));
-      if (!payload || payload.jsonrpc!=="2.0" || payload.error || !payload.result || typeof payload.result!=="object") throw new GatewayError("native_offers_protocol_error","Die Angebotssoftware hat den MCP-Aufruf nicht bestätigt.",502);
+      if (!payload || payload.jsonrpc!=="2.0" || payload.id!==1 || payload.error || !payload.result || typeof payload.result!=="object") throw new GatewayError("native_offers_protocol_error","Die Angebotssoftware hat den MCP-Aufruf nicht bestätigt.",502);
       return payload.result as Record<string,unknown>;
     } catch(error) {
       if(error instanceof GatewayError) throw error;
       throw new GatewayError("native_offers_unavailable","Der persönliche Angebotszugang antwortet nicht gültig. Ausführung nicht bestätigt; Schreibaktionen nicht blind wiederholen.",503,true);
     } finally { clearTimeout(timeout); }
+  }
+
+  async notifyWriteFailure(notice: {tool:string;actionId:string;code:string}) {
+    if (!this.config.offers) return {status:"not_configured",deliveryConfirmed:false};
+    try {
+      const value=await this.request("offers","/api/internal/mcp-alerts",{method:"POST",body:notice,timeoutMs:35_000});
+      const record=value && typeof value==="object" ? value as Record<string,unknown> : {};
+      const notification=record.failureNotification as Record<string,unknown> | undefined;
+      if (record.ok===true && notification && ["provider_accepted","failed","unknown","not_configured"].includes(String(notification.status)) && notification.deliveryConfirmed===false) {
+        return {status:String(notification.status),deliveryConfirmed:false};
+      }
+    } catch { /* The original business failure remains authoritative. */ }
+    return {status:"unknown",deliveryConfirmed:false};
   }
 
   configured(service: ServiceName) {
@@ -83,22 +119,23 @@ export class NeontripApi {
         signal: controller.signal,
       });
       const mediaType = String(response.headers.get("content-type") || "").split(";", 1)[0]?.trim().toLowerCase();
+      // Only the known authenticated attachment route may return arbitrary files.
+      // Its disposition header distinguishes files from an upstream login page.
+      if (options.attachment && response.ok && response.headers.has("content-disposition")
+          && /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mediaType || "")) {
+        const bytes = await boundedBytes(response,24*1024*1024,new GatewayError("asset_too_large","Datei ist zu groß.",502));
+        const safeMime = ["text/html","application/xhtml+xml","image/svg+xml"].includes(mediaType!)
+          ? "application/octet-stream" : mediaType!;
+        return { binaryAsset:true, mimeType:safeMime, originalMimeType:mediaType, base64:Buffer.from(bytes).toString("base64") };
+      }
       if (options.binary && response.ok && ["application/pdf","image/jpeg","image/png","image/webp","image/avif"].includes(mediaType || "")) {
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        if (bytes.byteLength > 24*1024*1024) throw new GatewayError("asset_too_large","Datei ist zu groß.",502);
+        const bytes = await boundedBytes(response,24*1024*1024,new GatewayError("asset_too_large","Datei ist zu groß.",502));
         return { mimeType: mediaType, base64: Buffer.from(bytes).toString("base64") };
       }
       if (mediaType !== "application/json" && !mediaType?.endsWith("+json")) {
         throw new GatewayError("invalid_upstream_content_type", "Das Zielsystem hat keine JSON-Antwort geliefert.", 502, true);
       }
-      const length = Number(response.headers.get("content-length") || 0);
-      if (length > this.config.maxResponseBytes) {
-        throw new GatewayError("upstream_response_too_large", "Die Antwort des Zielsystems war zu groß.", 502);
-      }
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > this.config.maxResponseBytes) {
-        throw new GatewayError("upstream_response_too_large", "Die Antwort des Zielsystems war zu groß.", 502);
-      }
+      const bytes = await boundedBytes(response,this.config.maxResponseBytes,new GatewayError("upstream_response_too_large", "Die Antwort des Zielsystems war zu groß.", 502));
       let payload: unknown;
       try {
         payload = JSON.parse(new TextDecoder().decode(bytes));
@@ -126,7 +163,7 @@ export class NeontripApi {
 
   async opsOperation(id: string, pathParameters: Record<string,string>, query: Record<string,string|number|boolean>, body?: JsonValue) {
     const {operation,path}=opsRequest(id,pathParameters,query);
-    const result=await this.request("customers",path,{method:operation.method as RequestOptions["method"],body:operation.method==="GET"?undefined:body,binary:true,timeoutMs:operation.readOnly?30_000:210_000});
+    const result=await this.request("customers",path,{method:operation.method as RequestOptions["method"],body:operation.method==="GET"?undefined:body,binary:true,attachment:id==="customer_records_trello_attachments_get",timeoutMs:operation.readOnly?30_000:210_000});
     if (result && typeof result==="object" && !Array.isArray(result) && "ok" in result && result.ok===false) {
       const candidate="error" in result && typeof result.error==="string" ? result.error : "";
       const code=/^[A-Za-z0-9:_-]{1,100}$/.test(candidate)?candidate:"ops_action_failed";
@@ -149,15 +186,25 @@ export class NeontripApi {
     return this.request("customers", "/api/ops/voice-copilot/transcript?sessionId=" + encodeURIComponent(sessionId) + "&offset=" + offset);
   }
 
-  listBillingCases(input: { status?: string; query?: string; limit: number }) {
+  listBillingCases(input: { status?: string; query?: string; limit: number; offset?: number }) {
     const params = new URLSearchParams({ limit: String(input.limit) });
     if (input.status) params.set("status", input.status);
     if (input.query) params.set("query", input.query);
+    if (input.offset !== undefined) params.set("offset", String(input.offset));
     return this.request("billing", `/api/ops/billing?${params.toString()}`);
   }
 
-  getBillingCase(caseId: string) {
-    return this.request("billing", `/api/ops/billing/${encodeURIComponent(caseId)}`);
+  getBillingCase(caseId: string, input: { eventLimit?: number; eventOffset?: number } = {}) {
+    const params = new URLSearchParams();
+    if (input.eventLimit !== undefined) params.set("eventLimit", String(input.eventLimit));
+    if (input.eventOffset !== undefined) params.set("eventOffset", String(input.eventOffset));
+    const query = params.size ? `?${params}` : "";
+    return this.request("billing", `/api/ops/billing/${encodeURIComponent(caseId)}${query}`);
+  }
+
+  listBillingCaseRecords(caseId: string, input: { collection: string; limit: number; offset: number }) {
+    const params = new URLSearchParams({ collection: input.collection, limit: String(input.limit), offset: String(input.offset) });
+    return this.request("billing", `/api/ops/billing/${encodeURIComponent(caseId)}?${params}`);
   }
 
   billingAction(caseId: string, input: { action: string; idempotencyKey: string; payload: JsonValue }) {

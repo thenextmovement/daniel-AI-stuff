@@ -173,7 +173,7 @@ test("decision outcomes are listed as typed, newest-first records", async () => 
   await withSupabaseMock(async (url) => {
     assert.equal(url.pathname, "/rest/v1/company_decision_outcomes");
     assert.equal(url.searchParams.get("decision_id"), `eq.${DECISION_ID}`);
-    assert.equal(url.searchParams.get("order"), "evaluation_end.desc,created_at.desc");
+    assert.equal(url.searchParams.get("order"), "evaluation_end.desc,created_at.desc,id.asc");
     return json([{
       id: "223e4567-e89b-42d3-a456-426614174000",
       decision_id: DECISION_ID,

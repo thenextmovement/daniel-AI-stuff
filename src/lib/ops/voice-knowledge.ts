@@ -1,3 +1,4 @@
+import { normalizeOpsListPage, type OpsListPageOptions } from "@/lib/ops/list-pagination";
 import { loadVoiceContextRecord } from "@/lib/ops/voice-context-record";
 import { listVoiceHistory, getVoiceTranscript } from "@/lib/ops/voice-history";
 import { createHash, randomUUID } from "node:crypto";
@@ -280,12 +281,14 @@ function mapKnowledgeVersion(row: VoiceKnowledgeVersionRow): VoiceKnowledgeEntry
   };
 }
 
-export async function listVoiceKnowledge(status?: VoiceKnowledgeStatus) {
+export async function listVoiceKnowledge(status?: string | null, options: OpsListPageOptions = {}) {
+  const page = normalizeOpsListPage(options, 100, 100);
+  if (status && !["all", "draft", "review", "approved", "retired"].includes(status)) throw new QuoteValidationError("Wissensstatus ist ungueltig.", ["invalid_status"], 422);
   const rows = await supabaseRequest<VoiceKnowledgeVersionRow[]>("voice_knowledge_review_overview", undefined, {
     select: "id,article_id,slug,version_number,title,content,status,allowed_modes,risk_class,source_refs,authored_by,reviewed_by,reviewed_at,updated_at,email_review_status,email_reviewed_by,email_reviewed_at,email_review_note",
-    ...(status ? { status: `eq.${status}` } : {}),
-    order: "updated_at.desc",
-    limit: 100,
+    ...(status && status !== "all" ? { status: `eq.${status}` } : {}),
+    order: "updated_at.desc,id.asc",
+    ...page,
   });
   return rows.map(mapKnowledgeVersion);
 }
@@ -452,12 +455,14 @@ function mapCandidate(row: VoiceKnowledgeCandidateRow): VoiceKnowledgeCandidate 
   };
 }
 
-export async function listVoiceKnowledgeCandidates(status: VoiceKnowledgeCandidate["status"] = "pending") {
+export async function listVoiceKnowledgeCandidates(status: string = "pending", options: OpsListPageOptions = {}) {
+  const page = normalizeOpsListPage(options, 100, 100);
+  if (!["all", "pending", "approved", "rejected", "merged"].includes(status)) throw new QuoteValidationError("Kandidatenstatus ist ungueltig.", ["invalid_status"], 422);
   const rows = await supabaseRequest<VoiceKnowledgeCandidateRow[]>("voice_knowledge_candidates", undefined, {
     select: "id,source_type,source_ref,request_id,proposed_statement,evidence_refs,confidence,status,proposed_by,reviewed_by,reviewed_at,review_note,created_at",
-    status: `eq.${status}`,
-    order: "created_at.desc",
-    limit: 100,
+    ...(status !== "all" ? { status: `eq.${status}` } : {}),
+    order: "created_at.desc,id.asc",
+    ...page,
   });
   return rows.map(mapCandidate);
 }

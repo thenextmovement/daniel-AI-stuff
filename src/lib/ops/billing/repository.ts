@@ -3,6 +3,8 @@ import { manualPaidSourceRevision, type ManualPaidClaimRequest, type ManualPaidC
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { buildBillingCaseInput, derivePortalToken, portalTokenHash, type BillingIntake } from "./domain";
 import { selectCurrentBillingDocuments, type BillingDocumentVersion } from "./current-documents";
+import { normalizeOpsListPage, type OpsListPageOptions } from "@/lib/ops/list-pagination";
+import { QuoteValidationError } from "@/lib/quotes/validation";
 
 export type BillingCaseRow = {
   id: string;
@@ -85,33 +87,67 @@ export async function ingestBillingCase(input: BillingIntake) {
   return { ...result, portalUrl, ...(paymentObservation ? { paymentObservation } : {}) };
 }
 
-export async function listBillingCases(input: { status?: string | null; query?: string | null; limit?: number } = {}) {
-  const limit = Math.min(Math.max(Number(input.limit || 80), 1), 200);
+type BillingListOptions = OpsListPageOptions & { status?: string | null; query?: string | null };
+
+export async function listBillingCases(input: BillingListOptions = {}) {
+  return (await listBillingCasesPage(input)).cases;
+}
+
+export async function listBillingCasesPage(input: BillingListOptions = {}) {
+  const { limit, offset } = normalizeOpsListPage(input, 80, 200);
   const query: Record<string, string | number> = {
     select: "id,shopify_order_id,shopify_order_name,customer_email,project_number,customer,billing_address,delivery_address,currency,total_gross_cents,payment_method,payment_terms_days,tax_treatment,tax_review_status,tax_exempt,vat_id,status,current_revision,paid_at,delivered_at,final_invoice_at,created_at,updated_at",
-    order: "created_at.desc",
-    limit,
+    order: "created_at.desc,id.desc",
+    limit: limit + 1,
+    offset,
   };
   if (input.status) query.status = `eq.${input.status}`;
   if (input.query) {
     const safe = input.query.trim().replace(/[(),]/g, "").slice(0, 100);
     query.or = `(shopify_order_name.ilike.*${safe}*,customer_email.ilike.*${safe}*,project_number.ilike.*${safe}*)`;
   }
-  return supabaseRequest<BillingCaseRow[]>("billing_cases", undefined, query);
+  const rows = await supabaseRequest<BillingCaseRow[]>("billing_cases", undefined, query);
+  const hasMore = rows.length > limit;
+  return { cases: rows.slice(0, limit), pagination: { limit, offset, hasMore, nextOffset: hasMore ? offset + limit : null } };
 }
 
-export async function getBillingCase(id: string) {
+export async function getBillingCase(id: string, input: { eventLimit?: number; eventOffset?: number } = {}) {
+  const { limit, offset } = normalizeOpsListPage({ limit: input.eventLimit, offset: input.eventOffset }, 200, 200);
   const cases = await supabaseRequest<BillingCaseRow[]>("billing_cases", undefined, { select: "*", id: `eq.${id}`, limit: 1 });
   const billingCase = cases[0] || null;
   if (!billingCase) return null;
   const [documents, changes, events, incidents, payments] = await Promise.all([
     supabaseRequest<Record<string, unknown>[]>("billing_documents", undefined, { select: "*", billing_case_id: `eq.${id}`, order: "created_at.desc" }),
     supabaseRequest<Record<string, unknown>[]>("billing_change_requests", undefined, { select: "*", billing_case_id: `eq.${id}`, order: "created_at.desc" }),
-    supabaseRequest<Record<string, unknown>[]>("billing_events", undefined, { select: "*", billing_case_id: `eq.${id}`, order: "created_at.desc", limit: 200 }),
+    supabaseRequest<Record<string, unknown>[]>("billing_events", undefined, { select: "*", billing_case_id: `eq.${id}`, order: "created_at.desc,id.desc", limit: limit + 1, offset }),
     supabaseRequest<Record<string, unknown>[]>("billing_incidents", undefined, { select: "*", billing_case_id: `eq.${id}`, order: "created_at.desc" }),
     supabaseRequest<Record<string, unknown>[]>("billing_payments", undefined, { select: "*", billing_case_id: `eq.${id}`, order: "booked_at.desc" }),
   ]);
-  return { billingCase, documents, changes, events, incidents, payments };
+  const hasMore = events.length > limit;
+  return { billingCase, documents, changes, events: events.slice(0, limit), incidents, payments, eventsPagination: { limit, offset, hasMore, nextOffset: hasMore ? offset + limit : null } };
+}
+
+const BILLING_CASE_COLLECTIONS: Record<string, { table: string; order: string }> = {
+  documents: { table: "billing_documents", order: "created_at.desc,id.desc" },
+  changes: { table: "billing_change_requests", order: "created_at.desc,id.desc" },
+  events: { table: "billing_events", order: "created_at.desc,id.desc" },
+  incidents: { table: "billing_incidents", order: "created_at.desc,id.desc" },
+  payments: { table: "billing_payments", order: "booked_at.desc,id.desc" },
+};
+
+export async function listBillingCaseRecords(caseId: string, input: OpsListPageOptions & { collection: string }) {
+  if (!Object.prototype.hasOwnProperty.call(BILLING_CASE_COLLECTIONS, input.collection)) {
+    throw new QuoteValidationError("Unbekannte Billing-Sammlung.", ["invalid_collection"], 422);
+  }
+  const { limit, offset } = normalizeOpsListPage(input, 200, 200);
+  const cases = await supabaseRequest<Array<{ id: string }>>("billing_cases", undefined, { select: "id", id: `eq.${caseId}`, limit: 1 });
+  if (!cases.length) return null;
+  const collection = BILLING_CASE_COLLECTIONS[input.collection];
+  const rows = await supabaseRequest<Record<string, unknown>[]>(collection.table, undefined, {
+    select: "*", billing_case_id: `eq.${caseId}`, order: collection.order, limit: limit + 1, offset,
+  });
+  const hasMore = rows.length > limit;
+  return { caseId, collection: input.collection, records: rows.slice(0, limit), pagination: { limit, offset, hasMore, nextOffset: hasMore ? offset + limit : null } };
 }
 
 export async function getBillingPortal(token: string) {

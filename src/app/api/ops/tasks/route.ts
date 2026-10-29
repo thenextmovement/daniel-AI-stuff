@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
-import { createOpsInternalTask, listOpsInternalTasks, summarizeOpsInternalTasks, type OpsInternalTaskInput } from "@/lib/ops/internal-tasks";
+import { createOpsInternalTask, listOpsInternalTasks, summarizeOpsInternalTasks, type OpsInternalTaskInput, type OpsInternalTaskListOptions } from "@/lib/ops/internal-tasks";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
@@ -46,6 +46,9 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams;
     const tasks = await listOpsInternalTasks({
       includeDone: params.get("includeDone") === "1",
+      status: params.get("status") as OpsInternalTaskListOptions["status"],
+      offset: Number(params.get("offset") || 0),
+      sourceRef: params.get("sourceRef"),
       assigneeLabel: params.get("assignee") || null,
       requestId: params.get("requestId") || null,
       limit: Number(params.get("limit") || 80),

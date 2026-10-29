@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const access = await authorizeCompanyBrainActor(request);
   if (!access.ok) return access.response;
   try {
-    const decisions = await listCompanyDecisions(request.nextUrl.searchParams.get("status"));
+    const decisions = await listCompanyDecisions(request.nextUrl.searchParams.get("status"), { limit: Number(request.nextUrl.searchParams.get("limit") || 200), offset: Number(request.nextUrl.searchParams.get("offset") || 0) });
     return companyBrainJson({ ok: true, decisions });
   } catch (error) {
     return companyBrainApiFailure(error, "decision-list");

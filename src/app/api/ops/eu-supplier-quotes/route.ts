@@ -25,7 +25,7 @@ function failure(error:unknown){
 }
 export async function GET(request:NextRequest){
   if(!(await opsAccess(request)))return NextResponse.json({ok:false,error:"unauthorized"},{status:401});
-  try{return NextResponse.json({ok:true,board:await listEuSupplierBoard()},{headers:{"Cache-Control":"no-store"}});}catch(error){return failure(error);}
+  try{return NextResponse.json({ok:true,board:await listEuSupplierBoard({ limit: Number(request.nextUrl.searchParams.get("limit") || 100), offset: Number(request.nextUrl.searchParams.get("offset") || 0), status: request.nextUrl.searchParams.get("status") })},{headers:{"Cache-Control":"no-store"}});}catch(error){return failure(error);}
 }
 export async function POST(request:NextRequest){
   const raw=await request.text();if(raw.length>MAX_BYTES)return NextResponse.json({ok:false,error:"payload_too_large"},{status:413});

@@ -1,3 +1,4 @@
+import { normalizeOpsListPage, type OpsListPageOptions } from "@/lib/ops/list-pagination";
 import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 import { deliveryIdempotencyKey, emailDomain, findOrganizationByEmail, nextDeliveryState, normalizeEmail, validateOfferExtraction, type DeliveryStatus } from "./eu-supplier-quotes";
@@ -28,17 +29,42 @@ export async function listOrganizations() {
   const rows = await supabaseRequest<OrgRow[]>("eu_supplier_organizations", undefined, { select:"*", active:"eq.true", order:"name.asc" });
   return rows.map(mapOrg);
 }
-export async function listEuSupplierBoard() {
-  const [requests,organizations,deliveries,replies,offers] = await Promise.all([
-    supabaseRequest<RequestRow[]>("eu_supplier_requests",undefined,{select:"*",order:"created_at.desc",limit:100}),
+async function listEuBoardChildren<T extends { id: string }>(table: string, requestIds: string[], order: string): Promise<T[]> {
+  if (!requestIds.length) return [];
+  const result: T[] = [];
+  const seen = new Set<string>();
+  const signal = AbortSignal.timeout(25000);
+  for (let offset = 0; offset < 100000; ) {
+    signal.throwIfAborted();
+    const rows = await supabaseRequest<T[]>(table, { signal }, { select: "*", request_id: `in.(${requestIds.join(",")})`, order, limit: 500, offset });
+    if (!rows.length) return result;
+    for (const row of rows) {
+      if (seen.has(row.id)) throw new QuoteValidationError("Supplier-Details haben sich waehrend des Lesens geaendert. Bitte neu laden.", ["supplier_board_changed"], 409);
+      seen.add(row.id);
+    }
+    result.push(...rows);
+    offset += rows.length;
+  }
+  throw new QuoteValidationError("Supplier-Details konnten nicht vollstaendig gelesen werden.", ["supplier_board_incomplete"], 422);
+}
+
+export async function listEuSupplierBoard(options: OpsListPageOptions & { status?: string | null } = {}) {
+  const page = normalizeOpsListPage(options, 100, 100);
+  const status = options.status && options.status !== "all" ? options.status : null;
+  if (status && !["collecting", "ready", "needs_review", "selected", "ordered", "cancelled"].includes(status)) throw new QuoteValidationError("Supplier-Anfragestatus ist ungueltig.", ["invalid_status"], 422);
+  const [requests, organizations] = await Promise.all([
+    supabaseRequest<RequestRow[]>("eu_supplier_requests", undefined, { select: "*", order: "created_at.desc,id.asc", ...page, ...(status ? { status: `eq.${status}` } : {}) }),
     listOrganizations(),
-    supabaseRequest<DeliveryRow[]>("eu_supplier_deliveries",undefined,{select:"*",order:"created_at.asc",limit:1000}),
-    supabaseRequest<ReplyRow[]>("eu_supplier_replies",undefined,{select:"*",order:"received_at.desc",limit:1000}),
-    supabaseRequest<OfferRow[]>("eu_supplier_offers",undefined,{select:"*",order:"created_at.desc",limit:1000}),
   ]);
-  return { organizations, items:requests.map((request)=>({
-    ...request, deliveries:deliveries.filter((item)=>item.request_id===request.id),
-    replies:replies.filter((item)=>item.request_id===request.id), offers:offers.filter((item)=>item.request_id===request.id),
+  const ids = requests.map((request) => request.id);
+  const [deliveries, replies, offers] = await Promise.all([
+    listEuBoardChildren<DeliveryRow>("eu_supplier_deliveries", ids, "created_at.asc,id.asc"),
+    listEuBoardChildren<ReplyRow>("eu_supplier_replies", ids, "received_at.desc,id.asc"),
+    listEuBoardChildren<OfferRow>("eu_supplier_offers", ids, "created_at.desc,id.asc"),
+  ]);
+  return { organizations, items: requests.map((request) => ({
+    ...request, deliveries: deliveries.filter((item) => item.request_id === request.id),
+    replies: replies.filter((item) => item.request_id === request.id), offers: offers.filter((item) => item.request_id === request.id),
   })) };
 }
 export async function upsertRequest(input: {trelloCardId?:unknown;trelloCardUrl?:unknown;trelloCardName?:unknown;sourceListId?:unknown;snapshot?:unknown}) {

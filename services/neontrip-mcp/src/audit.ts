@@ -6,6 +6,7 @@ export type AuditRecord = {
   role: string;
   capability: string;
   target?: Record<string, string>;
+  reasonSha256?: string;
   outcome: "success" | "denied" | "failure";
   durationMs: number;
   errorCode?: string;
