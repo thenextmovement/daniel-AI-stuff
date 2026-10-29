@@ -226,13 +226,9 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
         ? [await loadCarrierReleasedArrivals(cards, localDate, persist)]
         : [arrivalsFromTrelloSignShipped(cards, localDate, trelloTriggerSettings)]),
     );
-    const orderIds = [...new Set(orders.map((order) => order.id))];
-    const [existingByOrder, handledCasesByTracking] = await Promise.all([
-      runtimeClients.existingLabels.findForOrders(orderIds),
-      runtimeClients.existingLabels.findHandledCasesForIncomingTrackings?.(
-        observedArrivals.map((arrival) => arrival.trackingNumber),
-      ) || Promise.resolve(new Map<string, ExistingArrivalCaseEvidence>()),
-    ]);
+    const handledCasesByTracking = await runtimeClients.existingLabels.findHandledCasesForIncomingTrackings?.(
+      observedArrivals.map((arrival) => arrival.trackingNumber),
+    ) || new Map<string, ExistingArrivalCaseEvidence>();
     // Carrier rollout replaces the old list release; DHL mail alone never grants purchase.
     // Keep handled cases for later delivery/mail reconciliation, always as existing_label below.
     const arrivals = observedArrivals.filter((arrival) =>
@@ -249,15 +245,7 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
       });
       const handled = handledCasesByTracking.get(arrival.trackingNumber);
       if (handled) return projectHandledArrivalCase(preliminary, handled);
-      if (!preliminary.shopifyOrder) return preliminary;
-      return decideArrivalCase({
-        arrival,
-        trelloCards: cards,
-        shopifyOrders: orders,
-        customerNameHintsByCardId: hints,
-        existingDpdEvidence: existingByOrder.get(preliminary.shopifyOrder.id) || [],
-        productConfig,
-      });
+      return preliminary;
     });
     const effectiveCases = [...cases];
 

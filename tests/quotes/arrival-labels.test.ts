@@ -721,7 +721,7 @@ test("billing and internal contact metadata can plan standard and Express 12 arr
   }
 });
 
-test("validated NEONTRIP form, reverse-charge and accepted-segment metadata remain automation-safe", () => {
+test("validated form and reverse-charge metadata stay consistent while sales segmentation is audit-only", () => {
   const offerId = "cmabc123456789";
   const publicToken = "_xRsfRkigEtPxgkXGBn7uDigErOGrmodund2IhoRALI";
   const baseNote = [
@@ -792,7 +792,68 @@ test("validated NEONTRIP form, reverse-charge and accepted-segment metadata rema
     ...segmentOrder,
     customAttributes: segmentOrder.customAttributes.filter((attribute) => attribute.key !== "Request Segment Status"),
   };
-  assert.ok(assessShopifyAutomationGate(incompleteSegment).reasonCodes.includes("non_standard_shopify_attribute"));
+  assert.equal(assessShopifyAutomationGate(incompleteSegment).blocked, false);
+});
+
+test("sales classification permits arrival labels without overriding shipping instructions", () => {
+  const offerId = "cmabc123456789";
+  const token = "_xRsfRkigEtPxgkXGBn7uDigErOGrmodund2IhoRALI";
+  const formId = "101dcb01-291d-4a22-a624-5fb0f2dbcccd";
+  const order: ShopifyOrderEvidence = {
+    ...standardOrder,
+    note: [
+      "NEONTRIP Angebot: A/N 14258",
+      `Nerdy-Forms_ID: ${formId}`,
+      `Angebotslink: https://angebote.neontrip.de/offer/${token}`,
+      `PDF Snapshot: https://angebote.neontrip.de/api/public/offers/${token}/pdf`,
+      "Netto: 903 / MwSt: 171.57 / Brutto: 1074.57",
+    ].join("\n"),
+    customAttributes: [
+      { key: "NEONTRIP Offer ID", value: offerId },
+      { key: "NEONTRIP Offer Number", value: "A/N 14258" },
+      { key: "NEONTRIP Offer URL", value: `https://angebote.neontrip.de/offer/${token}` },
+      { key: "NEONTRIP PDF Snapshot", value: `https://angebote.neontrip.de/api/public/offers/${token}/pdf` },
+      { key: "Trello Card ID", value: "0123456789abcdef01234567" },
+      { key: "Nerdy-Forms_ID", value: formId },
+      { key: "Idempotency Key", value: `offer:${offerId}:shopify-sale:v1` },
+      { key: "Invoice Mail Intended", value: "customer_email_suppressed_for_billing_cutover" },
+      { key: "Request Segment Status", value: "pending" },
+    ],
+  };
+  for (const financialStatus of ["paid", "pending"] as const) {
+    const decision = decideArrivalCase({
+      arrival: arrival(), trelloCards: [card()],
+      shopifyOrders: [{ ...order, financialStatus }], productConfig: config,
+    });
+    assert.equal(decision.status, "label_planned", financialStatus);
+    assert.equal(decision.selectedDpdProduct, "DPD_CLASSIC_TEST", financialStatus);
+    assert.deepEqual(decision.reasons, [], financialStatus);
+  }
+  for (const note of ["Kunde holt ab", "Bitte an eine andere Adresse versenden"]) {
+    const decision = decideArrivalCase({
+      arrival: arrival(), trelloCards: [card()],
+      shopifyOrders: [{ ...order, note: `${order.note}\n${note}` }], productConfig: config,
+    });
+    assert.equal(decision.status, "manual_review", note);
+    assert.equal(decision.selectedDpdProduct, null, note);
+    assert.ok(decision.reasons.includes("non_standard_shopify_note"), note);
+  }
+  for (const addition of [
+    { key: "Request Segment", value: "NT-2" },
+    { key: "Request S-Kategorie", value: "S3" },
+    { key: "Request Segment", value: "" },
+  ]) {
+    const gate = assessShopifyAutomationGate({ ...order, customAttributes: [...order.customAttributes, addition] });
+    assert.equal(gate.blocked, false, addition.key);
+  }
+  for (const value of ["accepted", "needs_review", "", "unknown"]) {
+    const gate = assessShopifyAutomationGate({
+      ...order,
+      customAttributes: order.customAttributes.map((attribute) => attribute.key === "Request Segment Status"
+        ? { ...attribute, value } : attribute),
+    });
+    assert.equal(gate.blocked, false, value);
+  }
 });
 
 test("bare internal UUID notes are automation-safe but human note text still blocks", () => {
@@ -1180,13 +1241,33 @@ test("local print API uses a separate 32-character bearer secret", () => {
 });
 
 
-test("existing database labels block only the exact incoming shipment", () => {
+test("existing label evidence never prevents planning a fresh arrival purchase", () => {
   for (const incomingDhlTrackingNumber of [undefined, "9999999999", "1234567890"]) {
     const decision = decideArrivalCase({
       arrival: arrival(), trelloCards: [card()], shopifyOrders: [standardOrder], productConfig: config,
       existingDpdEvidence: [{ trackingNumber: "01470000000001", source: "database", incomingDhlTrackingNumber }],
     });
-    assert.equal(decision.status, incomingDhlTrackingNumber === "1234567890" ? "existing_label" : "label_planned");
-    assert.equal(decision.existingDpdTracking, incomingDhlTrackingNumber === "1234567890" ? "01470000000001" : null);
+    assert.equal(decision.status, "label_planned");
+    assert.equal(decision.existingDpdTracking, null);
+    assert.equal(decision.selectedDpdProduct, "DPD_CLASSIC_TEST");
   }
+});
+
+
+test("new arrivals are planned without querying previously purchased order labels", async () => {
+  const clients: ArrivalDataClients = {
+    outlook: { async listMessagesForLocalDate() { return []; } },
+    trello: { async listQuentinCards() { return [signShippedCard()]; } },
+    shopify: { async listRecentOrders() { return [{ ...standardOrder, fulfillments: [{
+      id: "gid://shopify/Fulfillment/1", status: "SUCCESS", trackingCompany: "DPD",
+      trackingNumber: "01470000000001", trackingUrl: null,
+    }] }]; } },
+    existingLabels: {
+      async findForOrders() { throw new Error("Previous order labels must not be queried for permission to purchase"); },
+      async findHandledCasesForIncomingTrackings() { return new Map(); },
+    },
+  };
+  const result = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config, trelloTriggerSettings });
+  assert.equal(result.cases[0].status, "label_planned");
+  assert.equal(result.cases[0].selectedDpdProduct, "DPD_CLASSIC_TEST");
 });

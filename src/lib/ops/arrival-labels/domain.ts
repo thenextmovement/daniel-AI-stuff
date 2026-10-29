@@ -698,13 +698,7 @@ function standardAttributes(
   if (Boolean(reverseCharge || vatId) !== Boolean(noteMetadata.reverseChargeVatId)
     || (noteMetadata.reverseChargeVatId && (reverseCharge !== "yes_vies_validated" || vatId !== noteMetadata.reverseChargeVatId))) return false;
 
-  const segmentValues = [values.get("Request Segment"), values.get("Request S-Kategorie"), values.get("Request Segment Status")];
-  const hasSegmentMetadata = segmentValues.some((value) => value !== undefined);
-  if (hasSegmentMetadata) {
-    return segmentValues[0] === "NT-2"
-      && segmentValues[1] === "S3"
-      && segmentValues[2] === "accepted";
-  }
+  // Sales classification is internal metadata, never a shipping instruction.
   return true;
 }
 
@@ -810,12 +804,6 @@ export function resolveShopifyOrder(input: {
   if (matches.length === 1) return { order: matches[0], error: null as string | null };
   if (matches.length === 0) return { order: null, error: "Keine eindeutig passende Shopify-Bestellung gefunden." };
   return { order: null, error: `${matches.length} Shopify-Bestellungen passen zum Kundennamen.` };
-}
-
-// An order can have replacements or later shipments. Only an explicit link to
-// this incoming shipment proves its outgoing label already exists.
-export function existingDpdForShipment(incomingDhlTrackingNumber: string, evidence: ExistingDpdEvidence[] = []) {
-  return evidence.find(entry => entry.incomingDhlTrackingNumber === incomingDhlTrackingNumber) || null;
 }
 
 export function selectDpdProduct(
@@ -941,7 +929,6 @@ export function decideArrivalCase(input: {
     };
   }
 
-  const existing = existingDpdForShipment(input.arrival.trackingNumber, input.existingDpdEvidence);
   const gate = assessShopifyAutomationGate(orderMatch.order);
   const destination = assessDestinationGate(orderMatch.order, input.productConfig);
   const note = relevantOrderNote(orderMatch.order.note);
@@ -961,7 +948,7 @@ export function decideArrivalCase(input: {
       deliveryNoteRequired: destination.deliveryNoteRequired,
       deliveryNoteStatus: "manual_review",
       selectedDpdProduct: null,
-      existingDpdTracking: existing?.trackingNumber || null,
+      existingDpdTracking: null,
       status: "manual_review",
       manualReviewReason: blockedReasons,
       relevantOrderNote: gate.noteExcerpt,
@@ -982,32 +969,11 @@ export function decideArrivalCase(input: {
       deliveryNoteRequired: destination.deliveryNoteRequired,
       deliveryNoteStatus: destination.deliveryNoteStatus,
       selectedDpdProduct: null,
-      existingDpdTracking: existing?.trackingNumber || null,
+      existingDpdTracking: null,
       status: "conflicting_instructions",
       manualReviewReason: shipping.conflict,
       relevantOrderNote: note,
       reasons,
-    };
-  }
-  if (existing) {
-    return {
-      idempotencyKey: buildIdempotencyKey(orderMatch.order.id, input.arrival.trackingNumber),
-      trackingNumber: input.arrival.trackingNumber,
-      lastSix: input.arrival.lastSix,
-      expectedArrival: `${input.arrival.localDate} (${input.arrival.deliveryState})`,
-      trelloCard: trelloMatch.card,
-      shopifyOrder: orderMatch.order,
-      shippingClass: shipping.shippingClass,
-      destinationCountryCode: destination.destinationCountryCode,
-      destinationClass: destination.destinationClass,
-      deliveryNoteRequired: destination.deliveryNoteRequired,
-      deliveryNoteStatus: destination.deliveryNoteStatus,
-      selectedDpdProduct: null,
-      existingDpdTracking: existing.trackingNumber,
-      status: "existing_label",
-      manualReviewReason: null,
-      relevantOrderNote: note,
-      reasons: [`existing_${existing.source}_tracking`],
     };
   }
   if (shipping.shippingClass === "unknown") {
