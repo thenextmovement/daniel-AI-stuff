@@ -1,6 +1,22 @@
+import { SupabaseRestError } from '../quotes/supabase-rest';
+import { safeIntegrationFailure } from './arrival-labels/clients';
 import { berlinPollSlot, type DhlCandidate, type DhlIssue } from './dhl-unified';
 
-export type PollAttempt={tracking:string;slot:string;at:number;status:'reserved'|'checked'|'synced'|'failed'|'record_uncertain';code?:string};
+export type PollAttempt={tracking:string;slot:string;at:number;status:'reserved'|'checked'|'synced'|'failed'|'record_uncertain';code?:string;recordPhase?:'prewrite'|'record';recordError?:string};
+// Only the identity-read boundary may construct this; never wrap a submitted RPC.
+export class DhlPrewriteError extends Error {
+  constructor(public readonly code: 'tracking_history_unavailable'|'replacement_tracking_changed', public readonly diagnostic: string, public readonly scope: 'card'|'board' = 'card') {
+    super(code); this.name='DhlPrewriteError';
+  }
+}
+function recordFailure(attempt:PollAttempt,error:unknown):string {
+  attempt.recordPhase=error instanceof DhlPrewriteError?'prewrite':'record';
+  attempt.recordError=error instanceof DhlPrewriteError
+    ? (['TimeoutError','AbortError','SyntaxError','TypeError','integration_error','identity_changed','history_unavailable'].includes(error.diagnostic)||/^http_[1-5][0-9]{2}$/.test(error.diagnostic)?error.diagnostic:'unknown_error')
+    : error instanceof SupabaseRestError && Number.isInteger(error.status) && error.status>=100 && error.status<=599 ? `http_${error.status}` : safeIntegrationFailure(error);
+  attempt.status=error instanceof DhlPrewriteError?'failed':'record_uncertain';
+  return error instanceof DhlPrewriteError?error.code:'dhl_record_uncertain';
+}
 export type PollState={attempts:PollAttempt[]};
 type Ports={now:()=>number;sleep:(ms:number)=>Promise<void>;save:(state:PollState)=>Promise<void>;fetch:(tracking:string)=>Promise<unknown>;record:(payload:unknown)=>Promise<void>};
 
@@ -50,18 +66,19 @@ export async function runDhlPollBatch(candidates:DhlCandidate[],state:PollState,
       const message=error instanceof Error?error.message:'';
       const code=/^dhl_[a-z0-9_]+$/.test(message)?message:'dhl_unknown_error';
       attempt.status='failed';attempt.code=code;issues.push({code,trelloUrl:candidate.card.url});
+      let stopForRecord=false;
       if(sync) {
         try {await ports.record({shipmentId:candidate.shipmentId,trackingNumber:candidate.trackingNumber,trelloCardId:candidate.card.id,trackingError:code});}
-        catch {attempt.status='record_uncertain';issues.push({code:'dhl_record_uncertain',trelloUrl:candidate.card.url});}
+        catch(error) {issues.push({code:recordFailure(attempt,error),trelloUrl:candidate.card.url});stopForRecord=!(error instanceof DhlPrewriteError)||error.scope==='board';}
       }
       await ports.save(state);
       // Auth, quota and provider outage affect the entire batch; no rapid retry storm.
-      if(/http_(401|403|429|5\d\d)|network/.test(code)||attempt.status==='record_uncertain') break;
+      if(/http_(401|403|429|5\d\d)|network/.test(code)||stopForRecord) break;
       continue;
     }
     if(sync) {
       try {await ports.record({...payload as object,shipmentId:candidate.shipmentId,trelloCardId:candidate.card.id});synced++;attempt.status='synced';}
-      catch {attempt.status='record_uncertain';issues.push({code:'dhl_record_uncertain',trelloUrl:candidate.card.url});await ports.save(state);break;}
+      catch(error) {attempt.code=recordFailure(attempt,error);issues.push({code:attempt.code,trelloUrl:candidate.card.url});await ports.save(state);if(!(error instanceof DhlPrewriteError)||error.scope==='board') break;continue;}
     } else attempt.status='checked';
     await ports.save(state);
   }

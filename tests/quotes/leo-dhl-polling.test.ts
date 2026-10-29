@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { runDhlPollBatch, type PollState } from '../../src/lib/ops/dhl-polling';
+import { SupabaseRestError } from '../../src/lib/quotes/supabase-rest';
+import { runDhlPollBatch, DhlPrewriteError, type PollState } from '../../src/lib/ops/dhl-polling';
 const at=Date.parse('2026-10-07T07:00:00Z');
 const candidate=(trackingNumber='0012345678')=>({trackingNumber,shipmentId:'shipment',card:{id:'card',name:'card',url:'https://trello.com/c/abcdef',boardId:'62bae9b97705e7419ed64593'}});
 const response={carrier:'dhl',trackingNumber:'0012345678',events:[],rawResponse:{}};
@@ -149,4 +150,42 @@ for(const oversleep of [false,true]) test(`slot rollover after ${oversleep?'quot
   assert.equal(next.attempted,1);assert.equal(h.state.attempts.at(-1)!.slot,'2026-10-07/18');
   const replay=await runDhlPollBatch([candidate('9912345678')],h.state,h.ports,true);
   assert.equal(replay.attempted,0);
+});
+
+for(const carrierFailure of [false,true]) test(`prewrite failure preserves quota and stops without claiming write uncertainty (carrier error ${carrierFailure})`,async()=>{
+  const h=harness();
+  if(carrierFailure) h.ports.fetch=async()=>{h.calls.push(at);throw new Error('dhl_invalid_payload');};
+  h.ports.record=async()=>{throw new DhlPrewriteError('tracking_history_unavailable','TimeoutError','board');};
+  const r=await runDhlPollBatch([candidate(),candidate('9912345678')],h.state,h.ports,true);
+  assert.equal(h.calls.length,1);assert.equal(r.deferredCount,1);assert.equal(r.synced,0);
+  assert.equal(h.state.attempts[0].status,'failed');assert.equal(h.state.attempts[0].recordPhase,'prewrite');
+  assert.equal(h.state.attempts[0].recordError,'TimeoutError');
+  assert.ok(r.issues.some(i=>i.code==='tracking_history_unavailable'));
+  assert.ok(!r.issues.some(i=>i.code==='dhl_record_uncertain'));
+  await runDhlPollBatch([candidate()],h.state,h.ports,true);assert.equal(h.calls.length,1);
+});
+test('unknown submitted write retains uncertainty, stops and strips upstream data',async()=>{
+  const h=harness();h.ports.record=async()=>{throw new TypeError('https://secret.invalid?token=private');};
+  const r=await runDhlPollBatch([candidate(),candidate('9912345678')],h.state,h.ports,true);
+  assert.equal(r.deferredCount,1);assert.equal(h.state.attempts[0].status,'record_uncertain');
+  assert.equal(h.state.attempts[0].recordPhase,'record');assert.equal(h.state.attempts[0].recordError,'TypeError');
+  assert.doesNotMatch(JSON.stringify([h.state,r]),/private|secret/);
+  await runDhlPollBatch([candidate()],h.state,h.ports,true);assert.equal(h.calls.length,1);
+});
+
+for(const carrierFailure of [false,true]) test(`card-local prewrite failure leaves unrelated tracking eligible (${carrierFailure})`,async()=>{
+  const h=harness();let records=0;
+  if(carrierFailure) h.ports.fetch=async()=>{h.calls.push(at);throw new Error('dhl_invalid_payload');};
+  h.ports.record=async()=>{if(++records===1)throw new DhlPrewriteError('tracking_history_unavailable','http_503','card');};
+  const r=await runDhlPollBatch([candidate(),candidate('9912345678')],h.state,h.ports,true);
+  assert.equal(h.calls.length,2);assert.equal(records,2);assert.equal(r.deferredCount,0);
+  assert.equal(h.state.attempts[0].status,'failed');assert.equal(h.state.attempts[0].recordError,'http_503');
+  assert.equal(r.synced,carrierFailure?0:1);
+});
+
+test('submitted RPC HTTP status is retained without its private body',async()=>{
+  const h=harness();h.ports.record=async()=>{throw new SupabaseRestError('private',502,{token:'private'});};
+  await runDhlPollBatch([candidate()],h.state,h.ports,true);
+  assert.equal(h.state.attempts[0].recordError,'http_502');assert.equal(h.state.attempts[0].status,'record_uncertain');
+  assert.doesNotMatch(JSON.stringify(h.state),/private/);
 });

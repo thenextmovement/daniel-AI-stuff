@@ -1,17 +1,17 @@
 import { mkdir,open,readFile,rename,unlink,writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createTrelloClient } from '../src/lib/ops/arrival-labels/clients';
+import { createTrelloClient,safeIntegrationFailure } from '../src/lib/ops/arrival-labels/clients';
 import { supabaseRequest,supabaseRpc } from '../src/lib/quotes/supabase-rest';
 import { fetchDhlUnified,planDhlChecks,type DhlShipmentLink,type DhlLabelCompletion } from '../src/lib/ops/dhl-unified';
-import { runDhlPollBatch,type PollState } from '../src/lib/ops/dhl-polling';
+import { runDhlPollBatch,DhlPrewriteError,type PollState } from '../src/lib/ops/dhl-polling';
 
 export async function main(args=process.argv.slice(2)) {
   const mode=args[0]||'plan';
   if(args.length>1||!['plan','check','sync'].includes(mode)) throw new Error('leo_mode_invalid');
   if(mode==='sync'&&process.env.LEO_DHL_SYNC_ENABLED!=='true') throw new Error('leo_sync_not_enabled');
   if(mode!=='plan'&&!process.env.DHL_API_KEY?.trim()) throw new Error('dhl_api_key_missing');
-  const cards=await createTrelloClient().listQuentinCards();
+  const cards=await createTrelloClient({retryJsonBody:true}).listQuentinCards();
   const shipments:DhlShipmentLink[]=[];
   // Pagination prevents silently losing historical mappings at the API row limit.
   for(let offset=0;;offset+=500) {
@@ -52,10 +52,16 @@ export async function main(args=process.argv.slice(2)) {
       record:async(value)=>{
         const payload=value as {trackingNumber:string};
         // Recheck all current card identities immediately before a persisted carrier result.
-        const fresh=planDhlChecks(await createTrelloClient().listQuentinCards(),shipments);
+        let freshCards;
+        try {freshCards=await createTrelloClient({retryJsonBody:true}).listQuentinCards();}
+        catch(error) {throw new DhlPrewriteError('tracking_history_unavailable',safeIntegrationFailure(error),'board');}
+        const originalCard=plan.candidates.find(c=>c.trackingNumber===payload.trackingNumber)?.card;
+        const recheckedCard=freshCards.find(c=>c.id===originalCard?.id);
+        if(recheckedCard?.trackingHistoryError) throw new DhlPrewriteError('tracking_history_unavailable',recheckedCard.trackingHistoryErrorCode||'history_unavailable',/^http_(401|403|429)$/.test(recheckedCard.trackingHistoryErrorCode||'')?'board':'card');
+        const fresh=planDhlChecks(freshCards,shipments);
         const current=fresh.candidates.find(c=>c.trackingNumber===payload.trackingNumber);
         const original=plan.candidates.find(c=>c.trackingNumber===payload.trackingNumber);
-        if(!current||current.card.id!==original?.card.id) throw new Error('leo_trello_changed');
+        if(!current||current.card.id!==original?.card.id) throw new DhlPrewriteError('replacement_tracking_changed','identity_changed');
         const c=current.card;
         await supabaseRpc('inbound_record_dhl_unified_response',{p_payload:{...payload,trelloBoardId:c.boardId,trelloCardId:c.id,trelloCardName:c.name,trelloCardUrl:c.url,trelloListId:c.listId,trelloListName:c.listName,replacementRound:c.replacementRound||null}});
       },

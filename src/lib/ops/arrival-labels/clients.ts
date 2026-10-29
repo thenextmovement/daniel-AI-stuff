@@ -56,10 +56,18 @@ export class ArrivalIntegrationError extends Error {
     message: string,
     public readonly code: string,
     public readonly retryable = false,
+    public readonly httpStatus?: number,
   ) {
     super(message);
     this.name = "ArrivalIntegrationError";
   }
+}
+
+// Never retain upstream messages, response bodies, URLs, or arbitrary error codes.
+export function safeIntegrationFailure(error: unknown): string {
+  if (error instanceof ArrivalIntegrationError) return error.httpStatus && error.httpStatus >= 100 && error.httpStatus <= 599 ? `http_${error.httpStatus}` : "integration_error";
+  if (error instanceof Error && ["TimeoutError", "AbortError", "SyntaxError", "TypeError"].includes(error.name)) return error.name;
+  return "unknown_error";
 }
 
 export function requiredEnv(name: string) {
@@ -81,7 +89,7 @@ async function delay(milliseconds: number) {
 export async function fetchWithRetry(
   url: string,
   init: RequestInit,
-  options?: { attempts?: number; timeoutMs?: number; integration?: string },
+  options?: { attempts?: number; timeoutMs?: number; integration?: string; retryJsonBody?: boolean },
 ) {
   const attempts = Math.min(Math.max(options?.attempts || 3, 1), 4);
   const integration = String(options?.integration || "external_api").replace(/[^a-z0-9_-]/gi, "_");
@@ -93,12 +101,20 @@ export async function fetchWithRetry(
         cache: "no-store",
         signal: AbortSignal.timeout(options?.timeoutMs || 15_000),
       });
-      if (response.ok) return response;
+      if (response.ok) {
+        // Opt-in for read-only evidence: the timeout also covers consuming the body.
+        if (options?.retryJsonBody && (!init.method || init.method.toUpperCase() === "GET")) {
+          const payload = await response.json();
+          return Response.json(payload, { status: response.status });
+        }
+        return response;
+      }
       if (![429, 502, 503, 504].includes(response.status) || attempt === attempts - 1) {
         throw new ArrivalIntegrationError(
           `${integration}: Externe API antwortete mit HTTP ${response.status}.`,
           `${integration}_http_error`,
           [429, 502, 503, 504].includes(response.status),
+          response.status,
         );
       }
     } catch (error) {
@@ -241,7 +257,7 @@ export function createOutlookClient(): ArrivalDataClients["outlook"] {
   };
 }
 
-export function createTrelloClient(): ArrivalDataClients["trello"] {
+export function createTrelloClient(options: { retryJsonBody?: boolean } = {}): ArrivalDataClients["trello"] {
   return {
     async listQuentinCards() {
       const apiKey = requiredEnv("TRELLO_API_KEY");
@@ -263,9 +279,9 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
       fieldsUrl.searchParams.set("key", apiKey);
       fieldsUrl.searchParams.set("token", token);
       const [cardsResponse, listsResponse, fieldsResponse] = await Promise.all([
-        fetchWithRetry(cardsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_cards" }),
-        fetchWithRetry(listsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_lists" }),
-        fetchWithRetry(fieldsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_custom_fields" }),
+        fetchWithRetry(cardsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_cards", retryJsonBody: options.retryJsonBody }),
+        fetchWithRetry(listsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_lists", retryJsonBody: options.retryJsonBody }),
+        fetchWithRetry(fieldsUrl.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_custom_fields", retryJsonBody: options.retryJsonBody }),
       ]);
       const cards = await cardsResponse.json() as Array<{
         id?: string;
@@ -309,16 +325,19 @@ export function createTrelloClient(): ArrivalDataClients["trello"] {
             url.searchParams.set("filter", "updateCard:idList,updateCustomFieldItem");
             url.searchParams.set("limit", "1000");
             if (before) url.searchParams.set("before", before);
-            const response = await fetchWithRetry(url.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_shipment_history" });
+            const response = await fetchWithRetry(url.toString(), { headers: { Accept: "application/json" } }, { integration: "trello_shipment_history", retryJsonBody: options.retryJsonBody });
             const page = await response.json() as ShipmentAction[];
             if (!Array.isArray(page) || page.some(a => !a.id || !a.data || seen.has(a.id))) throw new Error("Invalid shipment history page");
             for (const action of page) { seen.add(action.id); actions.push(action); }
             before = page.length === 1000 ? page[page.length - 1].id : null;
           } while (before);
           card.replacementRound = deriveReplacementRound(card, actions, trackingFieldId);
-        } catch {
+        } catch (error) {
+          // Authentication/rate limits affect the board; do not repeat them for each card.
+          if (options.retryJsonBody && /^http_(401|403|429)$/.test(safeIntegrationFailure(error))) throw error;
           // Fail only this card closed. The DHL planner reports its unavailable history.
           card.trackingHistoryError = true;
+          card.trackingHistoryErrorCode = safeIntegrationFailure(error);
         }
       }
       return evidence;

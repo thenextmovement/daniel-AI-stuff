@@ -54,6 +54,7 @@ export type DhlArrival = {
 export type TrelloCardEvidence = {
   replacementRound?: ReplacementRound | null;
   trackingHistoryError?: boolean;
+  trackingHistoryErrorCode?: string;
   trackingField?: string | null;
   id: string;
   name: string;
