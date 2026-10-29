@@ -11,6 +11,34 @@ const event = (description: string, timestamp = '2026-10-07T12:00:00', countryCo
 const body = (events = [event('Arrived at DHL Sort Facility'),event('Clearance processing complete','2026-10-07T12:10:00')]) => ({shipments:[{id:number,service:'express',events}]});
 const card = (id='card1',listId='69ff17bfab2afaaf96f7033a',trackingField:string|null=null) => ({id,name:`#NEONT123 ${number}`,url:`https://trello.com/c/${id}`,boardId:'62bae9b97705e7419ed64593',listId,listName:'Prepare Shipping',trackingField});
 
+test('explicit DHL supplemental customs release survives for alerting without changing the purchase gate',()=>{
+  const release={...event('Customs clearance status updated. Note - The Customs clearance process may start while the shipment is in transit to the destination.'),
+    remark:'Shipment has been given a release status by Customs.',
+    nextSteps:'Unless there is an adhoc physical examination or a stop by another regulatory authority the shipment will proceed to DHL delivery facility. Please continue to monitor the progress online.'};
+  const r=normalizeDhlUnified(number,body([event('Arrived at DHL Sort Facility','2026-10-07T11:00:00'),release]),now);
+  assert.equal(r.events[1].rawEvent.customsReleaseConfirmed,true);
+  const ambiguous={...release,nextSteps:'Additional customs documents required.'};
+  for(const events of [[release,ambiguous],[ambiguous,release]]) {
+    const conflict=normalizeDhlUnified(number,body(events),now);
+    assert.notEqual(conflict.events[0].rawEvent.customsReleaseConfirmed,true);
+    assert.equal(conflict.events[0].eventKey,r.events[1].eventKey);
+  }
+  assert.match(r.events[1].statusText,/\[Unreviewed carrier details\]/);
+  assert.equal(assessDhlRelease({events:r.events.map(e=>({event_time:e.eventTime,event_location:e.eventLocation,carrier_status_text:e.statusText})),lastCheckedAt:'2026-10-07T12:30:00Z',statusReason:null},now).allowed,false);
+  for(const change of [
+    {remark:'Shipment has NOT been given a release status by Customs.'},
+    {remark:release.remark+' Additional documents required.'},
+    {remark:'The clearance process will continue once physical arrival is confirmed.'},
+    {nextSteps:'Please contact DHL with private account details.'},
+    {nextSteps:null}, {statusCode:'failure'}, {description:'Shipment is on hold'},
+    {location:{address:{countryCode:'CN',addressLocality:'SHENZHEN'}}},
+  ]) {
+    const result=normalizeDhlUnified(number,body([{...release,...change}]),now);
+    assert.notEqual(result.events[0].rawEvent.customsReleaseConfirmed,true,JSON.stringify(change));
+    assert.doesNotMatch(JSON.stringify(result),/private account details/);
+  }
+});
+
 test('real DHL event locations and local timestamps feed the existing release gate',()=>{
   const result=normalizeDhlUnified(number,body(),now);
   assert.equal(result.events[0].eventTime,'2026-10-07T10:00:00Z');

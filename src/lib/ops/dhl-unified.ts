@@ -56,9 +56,18 @@ export function normalizeDhlUnified(trackingNumber: string, payload: unknown, no
     // Country evidence must come only from the carrier country code, never a city name.
     const location=/^[A-Z]{2}$/.test(country)?country:null;
     const code=text(e.statusCode)||null;
+    // A known, complete carrier detail may resolve an alert. Keep the blocking
+    // statusText unchanged: this evidence must not relax purchase/print gates.
+    const customsReleaseConfirmed = location==='DE' && code==='transit'
+      && description==='Customs clearance status updated. Note - The Customs clearance process may start while the shipment is in transit to the destination.'
+      && text(e.remark)==='Shipment has been given a release status by Customs.'
+      && text(e.nextSteps)==='Unless there is an adhoc physical examination or a stop by another regulatory authority the shipment will proceed to DHL delivery facility. Please continue to monitor the progress online.';
     const key='dhl-unified:'+createHash('sha256').update(JSON.stringify([trackingNumber,timestamp,location,text(address.addressLocality),code,statusText])).digest('hex');
+    const previous=unique.get(key);
     unique.set(key,{eventKey:key,carrierEventId:null,statusCode:code,statusText,eventTime:timestamp,eventLocation:location,
-      rawEvent:{timestamp,statusCode:code,description,supplementalDetails,location:{address:{addressLocality:text(address.addressLocality),countryCode:country}}}});
+      rawEvent:{timestamp,statusCode:code,description,supplementalDetails,
+        ...(customsReleaseConfirmed && (!previous || previous.rawEvent.customsReleaseConfirmed===true) ? {customsReleaseConfirmed:true} : {}),
+        location:{address:{addressLocality:text(address.addressLocality),countryCode:country}}}});
   }
   const events=[...unique.values()].sort((a,b)=>Date.parse(a.eventTime)-Date.parse(b.eventTime));
   return {carrier:'dhl',trackingNumber,events,rawResponse:{provider:'dhl-unified',id:trackingNumber,service:'express',events:events.map(e=>e.rawEvent)}};
