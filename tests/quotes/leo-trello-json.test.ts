@@ -3,7 +3,7 @@ import test from 'node:test';
 import { fetchWithRetry } from '../../src/lib/ops/arrival-labels/clients';
 for(const kind of ['TimeoutError','SyntaxError']) test(`opt-in retries complete GET body within original three attempts: ${kind}`,async()=>{
   const original=globalThis.fetch;let calls=0;
-  globalThis.fetch=async()=>{calls++;return calls<3?{ok:true,json:async()=>{throw kind==='SyntaxError'?new SyntaxError('private'):new DOMException('private','TimeoutError');}} as Response:Response.json({ok:true});};
+  globalThis.fetch=async()=>{calls++;return calls<3?{ok:true,json:async()=>{throw kind==='SyntaxError'?new SyntaxError('private'):new DOMException('private','TimeoutError');}} as unknown as Response:Response.json({ok:true});};
   try {const r=await fetchWithRetry('https://example.invalid',{}, {retryJsonBody:true});assert.deepEqual(await r.json(),{ok:true});assert.equal(calls,3);}
   finally {globalThis.fetch=original;}
 });

@@ -18,7 +18,7 @@ async function scenario(mode:string,options:{lock?:boolean;changeCard?:boolean;i
       if(u.pathname.endsWith('/cards')) {cardReads++;return Response.json([{id:'111111111111111111111111',name:'#NEONT123',url:'https://trello.com/c/abcd1234',idBoard:'62bae9b97705e7419ed64593',idList:options.replacement?'6347e0a2f062500084675062':'69ff17bfab2afaaf96f7033a',closed:false,customFieldItems:[{idCustomField:'tracking',value:{text:options.changeCard&&cardReads>1?'DHL 9912345678':options.replacement?'DHL 1123456789 / 0012345678':'DHL 0012345678'}}]}]);}
       if(u.pathname.endsWith('/actions')) {
         if(cardReads>1&&options.historyHttp) return new Response('',{status:options.historyHttp});
-        if(cardReads>1&&historyFailures++<(options.historyFailures||0)) return {ok:true,json:async()=>{throw new DOMException('private-token','TimeoutError');}} as Response;
+        if(cardReads>1&&historyFailures++<(options.historyFailures||0)) return {ok:true,json:async()=>{throw new DOMException('private-token','TimeoutError');}} as unknown as Response;
         return Response.json([
         {id:'333333333333333333333333',date:'2026-10-06T10:00:00Z',type:'updateCustomFieldItem',data:{card:{id:'111111111111111111111111'},customField:{id:'tracking'},old:{value:{text:'1123456789'}},customFieldItem:{value:{text:'1123456789 / 0012345678'}}}},
         {id:'222222222222222222222222',date:'2026-10-05T10:00:00Z',type:'updateCard',data:{card:{id:'111111111111111111111111'},listAfter:{id:'646c788ae63245624b6d6a7a'}}},
