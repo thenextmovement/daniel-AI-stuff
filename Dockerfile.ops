@@ -11,6 +11,7 @@ COPY package.json package-lock.json next.config.ts tsconfig.json postcss.config.
 COPY src ./src
 COPY services/voice-runtime ./services/voice-runtime
 COPY public ./public
+COPY assets/neontrip-installation-documents ./assets/neontrip-installation-documents
 COPY tests ./tests
 COPY scripts ./scripts
 RUN npm run build
@@ -27,6 +28,7 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/assets/neontrip-installation-documents ./assets/neontrip-installation-documents
 COPY --from=builder /app/node_modules ./node_modules
 
 EXPOSE 3000

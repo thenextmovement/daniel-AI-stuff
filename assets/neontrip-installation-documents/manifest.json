@@ -1,0 +1,32 @@
+{
+  "wall": {
+    "filename": "NEONTRIP-Wandmontage-LED-Neon_DE.pdf",
+    "sha256": "ab9e92da7f49ee182c122217d24e1f29f2805f9878a2370a4c7023d0f67f8c97",
+    "bytes": 140400
+  },
+  "ceiling": {
+    "filename": "NEONTRIP-Abhaengeset-Deckenmontage_DE_v3.pdf",
+    "sha256": "b58c6e275a26ab5e8f01439fd94c32ff44577b447cf44187ecd60e6287fbeaf5",
+    "bytes": 1651099
+  },
+  "led_connection": {
+    "filename": "NEONTRIP-LED-Neon-Anschluss-und-Bedienung_DE.pdf",
+    "sha256": "1da0b1ad486d3a6a84e2d05cdfafd9366d356fb412d0ecf9565d8350ddc126db",
+    "bytes": 884508
+  },
+  "frontlit": {
+    "filename": "NEONTRIP-3D-Frontbeleuchtet_DE.pdf",
+    "sha256": "ee52e01ef7dad4a5a0db4f3ac297196c47929d4d4464e11b29e435c549b12b62",
+    "bytes": 464664
+  },
+  "nonlit": {
+    "filename": "NEONTRIP-3D-Unbeleuchtet_DE.pdf",
+    "sha256": "0a1478eb9180a35a60893e420afbe8fb776cd714e89f82261484924c26c9fd3c",
+    "bytes": 265553
+  },
+  "power": {
+    "filename": "NEONTRIP-Netzteile-Wichtige-Hinweise_DE.pdf",
+    "sha256": "3ff1950df89862db069f0229cb8844fb47caf13e4e39eaec8c19f3826ad18a52",
+    "bytes": 72192
+  }
+}
