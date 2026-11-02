@@ -1,7 +1,7 @@
 # NEONTRIP Shipping Agent
 
-Lokale Vorbereitung für Montage-PDFs und Mikas Dokumentenmail: siehe
-[Versandunterlagen](./shipping-installation-documents.md). Noch kein automatischer Versand.
+Montage-PDFs und Mikas Dokumentenmail: siehe
+[Versandunterlagen](./shipping-installation-documents.md). Lokale Umsetzung nach bestätigtem Transportscan; Veröffentlichung und Betriebsnachweis stehen noch aus.
 
 ## Status
 

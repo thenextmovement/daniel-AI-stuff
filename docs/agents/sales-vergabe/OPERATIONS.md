@@ -116,3 +116,12 @@ npm run build
 - `[verifiziert]` Konfiguration: Vor Änderung nur Namen/Checksummen und den bisherigen Zustand dokumentieren; Secret-Werte nicht exportieren. Rückkehr auf den vorherigen Secret-Store-Zustand muss separat möglich sein.
 - `[verifiziert]` Datenbank: Rollback-SQL existiert für die Basismigration, ist aber nach produktiver Datennutzung nicht blind anzuwenden. Backup, Impact-Analyse und ausdrückliche Datenbankfreigabe sind Pflicht.
 - `[verifiziert]` Side Effects wie versandte E-Mails, gesetzte Shopify-Tags oder erstellte Trello-Karten sind nicht durch einen Code-Rollback rückgängig. Sie benötigen eine eigene, protokollierte Korrektur.
+
+## Versandunterlagen nach Transportscan (NEONTRIP)
+
+Die lokale Erweiterung des bestehenden Shipping Agent für Mika-Montage-PDF-Mails ist in
+[shipping-installation-documents.md](../../operations/shipping-installation-documents.md) dokumentiert.
+Sie nutzt bestehende Versandbenachrichtigungen mit eigenem Dokumententyp; dieser ist von den
+Legacy-Claims/Retry-/Sent-/Failed-Funktionen ausgeschlossen. Veröffentlichung steht aus.
+Keine interne Testmail gewünscht; ausschließlich nicht sendende Verifikation. Keine alten oder
+unklaren Sends wiederholen. Release-Reihenfolge und Rollback stehen im verlinkten Betriebsdokument.
