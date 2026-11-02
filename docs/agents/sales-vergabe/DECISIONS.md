@@ -60,6 +60,8 @@
 - `[im Code verifiziert; Veröffentlichung offen]` Die Neon-Größenleiter wird für diese Sonderproduktkombination nicht erzeugt oder projiziert. Nach vollständiger Quellen- und Ankerprüfung wird der vorhandene Angebotsweg verwendet. Explizite Dateinamen `Mockup_1_x` / `Mockup_2_x` müssen vollständig zur jeweiligen Produktgruppe passen; flache Altnamen behalten ihre geordnete Zuordnung. Fehlende/zusätzliche/duplizierte Ausgangsbilder und fehlende oder mehrdeutige Preisanker bleiben technische Blocker. Mehr als zwei Anker in einer gemischten Karte werden nicht geraten oder umverteilt.
 - `[im Code verifiziert]` Reine Neon-Karten und homogene Mehrgrößen-Anker behalten ihre vorhandene Gruppierung; eine fehlende Preisposition wird dadurch nicht ersetzt. Es ändern sich keine Preisformeln, Versandwege oder Datenbankschemas.
 
+- `[lokal implementiert; Veröffentlichung offen, 2026-11-02]` `getTrelloCard` löst Dropdown-`idValue` über die aktuellen Board-Optionen auf. Damit erreichen die expliziten `Product 1`/`Product 2`-Texte die bestehende gemischte Produktprüfung; gleich große Produkte werden nicht als zwei Preisanker desselben Designs behandelt. Unbekannte Optionen bleiben leer, andere Feldtypen und gespeicherte Options-IDs unverändert. Regression: `tests/quotes/trello-product-dropdown.test.ts`. Die 24-Stunden-Bildregel bleibt bestehen; getrennt hochgeladene, weiterhin gültige Produktbilder müssen als vollständiger aktueller Bildsatz vorliegen.
+
 ## NEONTRIP Quote-ready: veraltete Ausgangsmockups (2026-09-15)
 
 - Die vorhandene Quellenauswahl vor Designzaehlung und Ankerzuordnung ignoriert

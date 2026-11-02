@@ -259,13 +259,18 @@ export async function getTrelloCard(cardId: string): Promise<TrelloCardData> {
   const fields = await trelloFetch<TrelloCustomField[]>(
     `/boards/${encodeURIComponent(card.idBoard)}/customFields`,
   );
-  const fieldNameById = new Map(fields.map((field) => [field.id, field.name]));
+  const fieldById = new Map(fields.map((field) => [field.id, field]));
   const customFieldItemById = new Map((card.customFieldItems || []).map((item) => [item.idCustomField, item]));
   const customFields: CustomFieldMap = {};
 
   for (const item of card.customFieldItems || []) {
-    const name = fieldNameById.get(item.idCustomField);
-    if (name) customFields[name] = customFieldValue(item);
+    const field = fieldById.get(item.idCustomField);
+    if (!field) continue;
+    // Dropdowns carry only idValue; the board definition owns their text.
+    // Preserve the explicit product choice for downstream size/offer grouping.
+    customFields[field.name] = field.type === "list"
+      ? editableFieldValue(field, item).displayValue || ""
+      : customFieldValue(item);
   }
 
   return {
