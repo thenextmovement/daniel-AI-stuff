@@ -4,6 +4,18 @@ Stand: 2026-06-04
 
 Dieses Runbook beschreibt, wie die interne NEONTRIP Ops-App betrieben, geaendert und sicher deployed wird.
 
+## Trello-Description-Abgleich ohne Aenderung
+
+Ein abgeschlossener `customer_trello_mockup_description_synced`-Abgleich schreibt
+Audit-Status `success`, auch wenn manuelle oder bereits aktuelle Beschreibungen
+erhalten bleiben. `metadata.updated`, `metadata.skipped`, `changed_fields` und die
+Zusammenfassung unterscheiden weiterhin echte Kartenupdates von uebersprungenen
+Karten. Der Datenbankvertrag erlaubt kein `warning`; `skipped` wird von der
+bestehenden Workflow-Attempt-Projektion als Fehler eingeordnet. Beides ist fuer
+eine erfolgreich abgeschlossene Pruefung ungeeignet. Dry-run und `auditSkipped:
+false` behalten ihre bisherige Wirkung. Ein Auditfehler nach einem bestaetigten
+Angebotsversand ist kein Grund, das Angebot erneut zu senden.
+
 ## Aktueller Betrieb
 
 - Live-URL: `https://ops.neontrip.de/ops/customer-records/calls`

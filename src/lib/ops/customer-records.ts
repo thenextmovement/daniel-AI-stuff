@@ -5959,7 +5959,8 @@ export async function syncCustomerTrelloMockupDescription(
     await insertWorkflowAuditLog({
       requestId: normalizedRequestId,
       action: CUSTOMER_RECORDS_TRELLO_MOCKUP_DESCRIPTION_ACTION,
-      status: result.updated.length ? "success" : "warning",
+      // A completed check may safely preserve manual or already-current descriptions.
+      status: "success",
       summary: result.updated.length
         ? `${result.updated.length} Trello-Description${result.updated.length > 1 ? "s" : ""} automatisch aktualisiert`
         : "Keine Trello-Description automatisch aktualisiert",
