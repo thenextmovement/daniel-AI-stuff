@@ -60,11 +60,15 @@ function classify(item: RecordValue) {
   const props = properties(item);
   const section = normalized(item.product_type || props.find(p => p.name === "Bereich")?.value);
   const description = normalized(props.find(p => ["Beschreibung", "Description"].includes(p.name))?.value);
+  // Canonical service/surcharge lines are not additional physical products.
+  // Match the complete known title so an unknown sign cannot bypass review.
+  if (/^3d standardversand ca\. \d+ werktage$/.test(title)
+    || title === "outdoor/ip67 ausfuhrung") return "accessory";
   if (/^(wandmontage|wall.mount|deckenabhang|deckenabhaeng|drahtseil|abhangeset|abhaengeset|hangeset|haengeset|hanging.kit)/.test(title)) return "mounting";
   if (/^(weisses netzteil|schwarzes netzteil|netzteil|dimmer|fernbedienung|verlangerungskabel|verlangerung|versand|lieferung|expressversand)/.test(title)) return "accessory";
   const product = `${section}\n${title}\n${description}`;
   if (/\b3d\b|profilbuchstaben/.test(product)) {
-    if (/backlit|ruckbeleucht|rueckbeleucht|hinterleucht|halo/.test(product)) return "backlit";
+    if (/backlit|ruckbeleucht|rueckbeleucht|ruckleucht|rueckleucht|hinterleucht|halo/.test(product)) return "backlit";
     if (/frontlit|frontbeleucht|frontleucht/.test(product)) return "frontlit";
     if (/unbeleucht|non.?lit|ohne beleuchtung/.test(product)) return "nonlit";
     return "unknown";

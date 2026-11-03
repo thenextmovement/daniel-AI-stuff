@@ -111,6 +111,14 @@ letter lies against the wall, refers to a PSU plus/minus input and does not clar
 construction. It cannot safely be substituted with Frontlit. Adhesive/table-stand instructions are
 also unavailable. These cases reserve a review record and send **no incomplete document mail**.
 
+Repair prepared on 2026-11-03: the German product alias "rückleuchtend" maps to backlit.
+The exact known "3D Standardversand ca. N Werktage" and "Outdoor/IP67 Ausführung" lines
+are services/surcharges, not unknown physical products. Unknown products with similar
+prefixes still block delivery. This does not approve a backlit guide.
+For #NEONT4627, the current pending, never-attempted reservation was reconciled to the
+single genuine reason `backlit_manual_not_cleared`; its send hold remains.
+Existing reservations are not automatically recomputed by an application release.
+
 Manifest in `assets/neontrip-installation-documents/manifest.json` pins filenames, byte sizes and
 SHA256. Server assets remain private, traced into Next and copied into Docker runtime. Payloads
 over 3,900,000 bytes are held for review. The four-document example is 3,668,527 bytes.

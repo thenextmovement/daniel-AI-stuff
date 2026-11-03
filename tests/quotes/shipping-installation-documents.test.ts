@@ -79,6 +79,20 @@ test("unsupported products and backlit are held for review", async () => {
     assert.equal(result.ready, false, title);
   }
 });
+test("backlit order with canonical delivery and outdoor surcharge has only the genuine manual-review reason", () => {
+  const result = selectInstallationDocuments(order([
+    { ...led, title: "3D Schild Rückleuchtend – Test" },
+    { id: 2, title: "3D Standardversand ca. 20 Werktage", quantity: 1 },
+    { id: 3, title: "Outdoor/IP67 Ausführung", quantity: 1 },
+  ]), "456");
+  assert.deepEqual(result.reviewReasons, ["backlit_manual_not_cleared"]);
+  assert.deepEqual(result.documentIds, ["power"]);
+});
+test("service words embedded in an unknown physical product never bypass review", () => {
+  for (const title of ["3D Standardversand Leuchtkasten", "Outdoor/IP67 Ausführung Leuchtkasten"]) {
+    assert(selectInstallationDocuments(order([{ ...led, title }]), "456").reviewReasons.includes("unknown_product"));
+  }
+});
 test("3D PDF is selected when documented construction matches its scope", () => {
   for (const [title, type] of [["3D Frontlit", "frontlit"], ["3D Unbeleuchtet", "nonlit"]]) {
     const item = { ...led, title, properties: [{ name: "Beschreibung", value: "Befestigung: Gewindestangen mit rückseitigen Muttern\nLeuchtfarbe: Kaltweiß" }] };

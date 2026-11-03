@@ -99,6 +99,102 @@ class InstallationTests(unittest.TestCase):
         for role in ['anon','authenticated']:
             self.assertEqual(sql(f"select has_function_privilege('{role}','shipping_reserve_installation_documents(text,text,text[],text,uuid,jsonb)','EXECUTE');"),'f')
 
+class MonitorTests(unittest.TestCase):
+    NOW="'2026-11-03 09:00:00+00'::timestamptz"
+    def setUp(self):
+        sql("truncate shipping_shipments cascade; delete from shipping_audit_log;")
+        self.sid=sql("insert into shipping_shipments(shipment_key,carrier,tracking_number,status,shopify_order_number) values('monitor-fixture','dhl','fixture','in_transit','#TEST') returning id;")
+    def notification(self,key='one',status='pending',kind='customer_installation_documents',reason='backlit_manual_not_cleared',attempts=0):
+        return sql(f"""insert into shipping_notifications(notification_key,shipment_id,kind,recipient_type,recipient_email,status,attempts,last_error,metadata,updated_at,claimed_at)
+          values('{key}','{self.sid}','{kind}','customer','synthetic@example.test','{status}',{attempts},'{reason}',
+          '{{"review_reason":"{reason}"}}','2026-11-02 09:00Z','2026-11-02 09:00Z') returning id;""")
+    def monitor(self,offset="0 hours",field="issue_count"):
+        return sql(f"select {field} from shipping_claim_notification_monitor_alert({self.NOW}+interval '{offset}');")
+    def test_unchanged_case_only_once_per_24_hours(self):
+        self.notification()
+        self.assertEqual(self.monitor(),'1')
+        self.assertEqual(self.monitor('1 hour'),'')
+        self.assertEqual(self.monitor('23 hours'),'')
+        self.assertEqual(self.monitor('24 hours'),'1')
+    def test_poll_timestamp_and_attempt_counter_are_not_new_failures(self):
+        self.notification(status='failed',attempts=3)
+        self.assertEqual(self.monitor(),'1')
+        sql("update shipping_notifications set attempts=4,updated_at='2026-11-03 10:00Z';")
+        self.assertEqual(self.monitor('2 hours'),'')
+    def test_new_case_not_suppressed_and_does_not_repeat_old_case(self):
+        self.notification(); self.monitor()
+        self.notification(key='two')
+        self.assertEqual(self.monitor('1 hour'),'1')
+        self.assertEqual(self.monitor('24 hours'),'1')
+        self.assertEqual(self.monitor('25 hours'),'1')
+    def test_pending_timestamp_refresh_is_not_recovery_or_a_new_problem(self):
+        self.notification(); self.monitor()
+        sql("update shipping_notifications set updated_at='2026-11-03 10:00Z';")
+        self.assertEqual(self.monitor('1 hour'),'')
+        self.assertEqual(self.monitor('3 hours'),'')
+        self.assertEqual(self.monitor('24 hours'),'1')
+    def test_changed_reason_and_worse_status_emit_immediately(self):
+        self.notification(); self.monitor()
+        sql("update shipping_notifications set last_error='unknown_product';")
+        self.assertEqual(self.monitor('1 hour'),'1')
+        sql("update shipping_notifications set status='sending',attempts=1;")
+        self.assertEqual(self.monitor('2 hours'),'1')
+    def test_resolved_then_reopened_case_emits_again(self):
+        self.notification(); self.monitor()
+        sql("update shipping_notifications set status='sent';")
+        self.assertEqual(self.monitor('1 hour'),'')
+        sql("update shipping_notifications set status='pending';")
+        self.assertEqual(self.monitor('2 hours'),'1')
+    def test_manual_review_is_not_failed_send(self):
+        self.notification()
+        self.assertEqual(self.monitor(field='subject'),'Shipping Monitor: manuelle Freigabe erforderlich')
+        self.assertEqual(sql("select metadata->>'delivery_confirmed' from shipping_audit_log where action='shipping_notification_monitor_claim';"),'false')
+        self.assertEqual(sql("select count(*) from shipping_audit_log where action='shipping_notification_monitor_alert';"),'0')
+        self.assertEqual(sql("select status || ':' || attempts::text from shipping_notifications;"),'pending:0')
+    def test_delivered_parcel_does_not_hide_missing_documents(self):
+        self.notification()
+        sql("update shipping_shipments set status='delivered';")
+        self.assertEqual(self.monitor(),'1')
+    def test_obsolete_unattempted_pickup_is_omitted_but_uncertain_send_is_not(self):
+        self.notification(kind='customer_pickup_available')
+        sql("update shipping_shipments set status='delivered';")
+        self.assertEqual(self.monitor(),'')
+        sql("update shipping_notifications set status='sending',attempts=1;")
+        self.assertEqual(self.monitor('1 hour'),'1')
+    def test_resolved_incident_does_not_hide_attempted_mail(self):
+        incident=sql(f"""insert into shipping_incidents(shipment_id,incident_key,incident_type,severity,status,title,rule_version)
+          values('{self.sid}','fixture','delivery_failed','high','resolved','fixture','fixture') returning id;""")
+        self.notification(kind='internal_delivery_problem')
+        sql(f"update shipping_notifications set incident_id='{incident}';")
+        self.assertEqual(self.monitor(),'')
+        sql("update shipping_notifications set attempts=1,status='sending';")
+        self.assertEqual(self.monitor('1 hour'),'1')
+    def test_parallel_claims_have_one_winner(self):
+        self.notification()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            values=list(pool.map(lambda _: self.monitor(),range(5)))
+        self.assertEqual(sum(bool(x) for x in values),1)
+    def test_html_is_escaped(self):
+        self.notification(reason='<img src=x onerror=alert(1)>')
+        body=self.monitor(field='body_html')
+        self.assertIn('&lt;img',body)
+        self.assertNotIn('<img',body)
+    def test_digest_limit_does_not_lose_deferred_cases(self):
+        for i in range(21): self.notification(key=f'case-{i}')
+        self.assertEqual(self.monitor(),'20')
+        self.assertEqual(self.monitor('1 hour'),'1')
+        self.assertEqual(self.monitor('2 hours'),'')
+    def test_claim_is_not_delivery_proof_and_never_retries_a_customer_send(self):
+        nid=self.notification(status='sending',attempts=1)
+        before=sql(f"select row_to_json(n) from shipping_notifications n where id='{nid}'")
+        self.monitor()
+        self.assertEqual(sql(f"select row_to_json(n) from shipping_notifications n where id='{nid}'"),before)
+        self.assertEqual(sql("select metadata->>'meaning' from shipping_audit_log where action='shipping_notification_monitor_claim'"),'claim_only_not_outlook_delivery')
+    def test_monitor_privileges(self):
+        for role in ['anon','authenticated']:
+            self.assertEqual(sql(f"select has_function_privilege('{role}','shipping_claim_notification_monitor_alert(timestamptz)','EXECUTE');"),'f')
+        self.assertEqual(sql("select has_function_privilege('service_role','shipping_claim_notification_monitor_alert(timestamptz)','EXECUTE');"),'t')
+
 if __name__=='__main__':
     try:
         run(['docker','run','--pull=never','--name',CONTAINER,'--network','none','--tmpfs','/var/lib/postgresql/data','-e','POSTGRES_HOST_AUTH_METHOD=trust','-d','postgres:17-alpine'])
@@ -106,7 +202,7 @@ if __name__=='__main__':
             try: sql('select 1'); break
             except RuntimeError: time.sleep(.2)
         sql('create role anon; create role authenticated; create role service_role;')
-        for filename in ['202606050016_create_shipping_ops.sql','202606051840_create_shipping_notifications.sql','20261102122441_shipping_installation_documents.sql']:
+        for filename in ['202606050016_create_shipping_ops.sql','202606051840_create_shipping_notifications.sql','20261102122441_shipping_installation_documents.sql','20261103090555_shipping_monitor_case_dedup.sql']:
             sql((ROOT/'supabase/migrations'/filename).read_text())
         unittest.main(verbosity=2)
     finally: subprocess.run(['docker','rm','-f',CONTAINER],capture_output=True)

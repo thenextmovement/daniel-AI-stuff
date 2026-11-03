@@ -106,7 +106,16 @@ Monitoring:
   - `sending` aelter als 45 Minuten.
   - `pending` aelter als 2 Stunden.
   - `failed` mit mindestens 3 Versuchen.
-- Deduplizierung pro UTC-Stunde ueber `shipping_audit_log.idempotency_key`.
+- Reparatur vom 03.11.2026: neue oder geaenderte Prueffaelle beim naechsten
+  regulaeren Poll, unveraenderte Faelle hoechstens alle 24 Stunden. Zustand und
+  Claims nutzen ausschliesslich das vorhandene `shipping_audit_log`; keine neue Queue.
+  Bis zur Migration `20261103090555` gilt produktiv noch die alte UTC-Stunden-Deduplizierung.
+- Dokumentenfreigaben ohne Sendeversuch werden als manuelle Freigabe bezeichnet.
+  Erledigte Vorfaelle werden nur bei noch nie versuchten Benachrichtigungen ausgeblendet.
+  Unklare Sends und fehlende Montageunterlagen bleiben auch nach Paketzustellung sichtbar.
+- Ein Monitor-Claim beweist keine Outlook-Zustellung. Der Workflow hat weiterhin keinen
+  Rueckkanal fuer Sent-Items-Belege; bei einem Sendefehler dessen Ausfuehrung abgleichen,
+  nicht blind wiederholen. Die 24-Stunden-Frist bezieht sich auf den Claim.
 - Keine Kundenkommunikation im Monitoring-Zweig.
 
 Rollback:
