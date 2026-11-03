@@ -1282,7 +1282,7 @@ export type CustomerTrelloMockupDescriptionSyncResult = {
     boardKey: string;
     boardName: string;
     cardId: string | null;
-    reason: "missing_card_id" | "manual_description" | "already_current" | "card_filter";
+    reason: "missing_card_id" | "manual_description" | "already_current" | "card_filter" | "request_mismatch";
   }>;
 };
 
@@ -1834,7 +1834,8 @@ async function fetchTrelloContext(
   if (primaryCardLookupId) {
     try {
       const primaryCard = await getTrelloCard(primaryCardLookupId);
-      if (primaryCard.idBoard && !byBoard.has(primaryCard.idBoard)) {
+      // A stored card association outranks broad title/name search results.
+      if (primaryCard.idBoard) {
         byBoard.set(primaryCard.idBoard, {
           id: primaryCard.id,
           name: primaryCard.name,
@@ -4432,7 +4433,7 @@ async function fetchDownstreamRows(
         request?.title,
         master.name,
         [master.first_name, master.last_name].filter(Boolean).join(" "),
-      ], trelloCardIdHint);
+      ], trimNullable(request?.trello_card_id) || trelloCardIdHint);
     } catch (error) {
       console.warn("customer records trello context unavailable", { requestId, error });
     }
@@ -5881,6 +5882,25 @@ function defaultTrelloCardForMockupDescription(context: CustomerContext, cardId?
   return cards.filter((card) => card.found && card.cardId);
 }
 
+function trelloDescriptionBelongsToRequest(
+  context: CustomerContext,
+  card: CustomerTrelloContext["cards"][number],
+  requestId: string,
+) {
+  const descriptionRequestIds = Array.from(
+    String(card.cardDescription || "").matchAll(/^\s*Request-ID:[ \t]*(\S+)[ \t]*$/gmi),
+    (match) => match[1],
+  );
+  // A conflicting marker must never be replaced, even on a stored card.
+  if (descriptionRequestIds.some((id) => id !== requestId)) return false;
+  const storedIds = uniqueValues([
+    trimNullable(context.request?.trello_card_id),
+    parseTrelloCardIdentifier(context.request?.trello_card_url),
+  ]);
+  const cardIds = [card.cardId, parseTrelloCardIdentifier(card.cardUrl)].filter(Boolean);
+  return storedIds.some((id) => cardIds.includes(id)) || descriptionRequestIds.includes(requestId);
+}
+
 export async function syncCustomerTrelloMockupDescription(
   requestId: string,
   actor?: UpdateActor,
@@ -5919,6 +5939,16 @@ export async function syncCustomerTrelloMockupDescription(
         boardName: card.boardName,
         cardId: null,
         reason: "missing_card_id",
+      });
+      continue;
+    }
+
+    if (!trelloDescriptionBelongsToRequest(context, card, normalizedRequestId)) {
+      result.skipped.push({
+        boardKey: card.boardKey,
+        boardName: card.boardName,
+        cardId: card.cardId,
+        reason: "request_mismatch",
       });
       continue;
     }

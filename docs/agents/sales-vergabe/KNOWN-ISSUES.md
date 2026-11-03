@@ -2,6 +2,15 @@
 
 ## Priorität Hoch
 
+### Angebotsnachbereitung: Trello-Suchtreffer ohne Anfragezuordnung (2026-11-03)
+
+- `[live verifiziert]` Ein manuell angelegtes Angebot ohne `trelloCardId` konnte den direkten `ops_record_offer_sent`-Aufruf nicht zuordnen (`missing_request_id`). Der separate Call-Task-Pfad löste den Kunden über dessen E-Mail auf und legte Aufgabe, Cadence und ein Fallback-Ereignis trotz des 8-Sekunden-Client-Timeouts erfolgreich an. Ein Timeout ist daher kein Auftrag zum Wiederholen oder erneuten Kundenversand.
+- `[live verifiziert]` Die dabei ausgeführte Mockup-Beschreibungssynchronisation übernahm die ersten breiten Titel-Suchtreffer je Board. Diese konnten die gespeicherte Primärkarte verdrängen; drei fremde Karten wurden überschrieben. Ihre unmittelbar vorherigen Beschreibungen wurden anhand der Trello-Aktionen nach Prüfung auf zwischenzeitliche Änderungen wiederhergestellt. Der fehlende direkte Versandnachweis wurde separat mit Provider-ID ergänzt; bestehende Aufgaben, Termine, Cadence und Kundenversand blieben unverändert.
+- `[lokal implementiert; Veröffentlichung offen]` Die gespeicherte `master_requests.trello_card_id` wird auch ohne URL verwendet und verdrängt Suchtreffer auf demselben Board. Automatische Beschreibungsänderungen benötigen eine gespeicherte Kartenbindung oder einen exakt passenden `Request-ID`-Marker. Ein widersprechender Marker sperrt den Schreibzugriff auch auf eine gespeicherte Karte; ungebundene Treffer werden als `request_mismatch` protokolliert. Manuelle Beschreibungen bleiben geschützt.
+- **Ziel/Nachbar/Wirkung:** Keine Änderung fremder Karten; gebundene Karten und Kopien mit exakter Request-ID bleiben nutzbar, manuelle Inhalte unverändert. Der Fix ändert weder Versand noch Aufgaben/Cadence, Preise, Workflows oder Datenbankschema. Regressionen simulieren falsche erste Suchtreffer, leere ungebundene Karten, passende Kopien und widersprechende Marker ohne echte Providerkontakte.
+- **Prüfung:** 48 gezielte Tests bestanden; vollständige Quote-Suite 1.742 bestanden / 2 übersprungen, Typprüfung und Produktionsbuild erfolgreich. Unter lokalem Node 24 benötigt die bestehende verschachtelte QC-Testausgabe `NODE_OPTIONS=--test-reporter=tap`; ohne diese Einstellung scheitert nur deren Formatvergleich trotz 13 erfolgreicher Kindtests. Kein Testcode außerhalb des Kartenfixes geändert.
+- **Restpunkt/Rollback:** Veröffentlichung benötigt die Freigabe des vollständigen geprüften Commits. Die fehlende Quellenbindung bei manueller Angebotserstellung und der 8-Sekunden-Offers-Client-Timeout werden mit diesem begrenzten Kartenfix nicht global umgebaut. Kein vollständiger Call-Task-Replay zur Reparatur einzelner Versandnachweise: der bestehende RPC kann Aufgaben wieder öffnen und Cadence-Termine ändern. Code-Rollback per gezieltem Revert; reparierte Bestandsdaten nicht zurücksetzen.
+
 ### Verspätete Proforma nach Zahlung setzt Rechnungsstatus zurück
 
 - Am 07.10.2026 bei #NEONT4746 durch aktive SQL-Funktionen, kanonische Jobs und die tatsächlich versandten PDFs bestätigt.

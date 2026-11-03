@@ -38,7 +38,7 @@ export type TrelloDescriptionSyncResponse = {
   requestId: string;
   trelloCardId: string | null;
   dryRun: boolean;
-  reason?: "missing_segment" | "manual_description" | "already_current" | "missing_card" | "card_filter";
+  reason?: "missing_segment" | "manual_description" | "already_current" | "missing_card" | "card_filter" | "request_mismatch";
   result?: CustomerTrelloMockupDescriptionSyncResult;
 };
 
@@ -92,6 +92,7 @@ function normalizeSyncStatus(result: CustomerTrelloMockupDescriptionSyncResult):
   }
 
   const reasons = result.skipped.map((entry) => entry.reason);
+  if (reasons.includes("request_mismatch")) return { status: "skipped", reason: "request_mismatch" };
   if (reasons.includes("manual_description")) return { status: "skipped", reason: "manual_description" };
   if (reasons.includes("already_current")) return { status: "skipped", reason: "already_current" };
   if (reasons.includes("missing_card_id")) return { status: "skipped", reason: "missing_card" };
@@ -104,7 +105,7 @@ function backfillStatusFromSync(result: CustomerTrelloMockupDescriptionSyncResul
   const reasons = result.skipped.map((entry) => entry.reason);
   if (reasons.includes("manual_description")) return "skip_manual";
   if (reasons.includes("already_current")) return "already_current";
-  if (reasons.includes("missing_card_id") || reasons.includes("card_filter")) return "missing_card";
+  if (reasons.includes("missing_card_id") || reasons.includes("card_filter") || reasons.includes("request_mismatch")) return "missing_card";
   return "skipped";
 }
 
