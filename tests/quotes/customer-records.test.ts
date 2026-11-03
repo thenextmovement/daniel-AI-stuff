@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
+  addCustomerOpsNote,
   buildCaseFlowSummary,
   buildCustomerDownstreamRepairPlan,
   buildSpecialCaseSummary,
@@ -33,6 +35,69 @@ const current = {
   company: "NEONTRIP",
   displayName: "Samuele Micacchioni",
 };
+
+test("team notes, tasks and updates persist under the audit status contract and reload unchanged", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const migration = readFileSync(new URL("../../supabase/migrations/20260720192300_workflow_audit_status_contract.sql", import.meta.url), "utf8");
+  const statusList = migration.match(/status in \(([\s\S]*?)\)/)?.[1] || "";
+  const allowedStatuses = new Set([...statusList.matchAll(/'([^']+)'/g)].map((match) => match[1]));
+  assert.ok(allowedStatuses.has("success"));
+  assert.equal(allowedStatuses.has("info"), false);
+
+  const stored: Array<Record<string, unknown>> = [];
+  const mutations: string[] = [];
+  process.env.SUPABASE_URL = "https://supabase.example.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+  globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    const method = String(init.method || "GET").toUpperCase();
+    if (method !== "GET") {
+      mutations.push(`${method} ${url.pathname}`);
+      assert.equal(url.pathname, "/rest/v1/workflow_audit_log");
+      assert.equal(method, "POST");
+      const [row] = JSON.parse(String(init.body)) as Array<Record<string, unknown>>;
+      if (!allowedStatuses.has(String(row.status))) {
+        return Response.json({ code: "23514", message: "workflow_audit_log_status_check" }, { status: 400 });
+      }
+      const persisted = { ...row, id: `note-${stored.length + 1}`, created_at: "2026-11-03T10:00:00.000Z" };
+      stored.push(persisted);
+      return Response.json([persisted]);
+    }
+    if (url.pathname.endsWith("/master_customers")) {
+      return Response.json([{ id: "customer-notes", request_id: "request-notes", email: "notes@example.com", name: "Notes Test", cc_emails: [] }]);
+    }
+    if (url.pathname.endsWith("/master_requests")) {
+      return Response.json([{ id: "request-notes-row", request_id: "request-notes", customer_id: "customer-notes", status: "new" }]);
+    }
+    if (url.pathname.endsWith("/workflow_audit_log")) return Response.json(stored);
+    return Response.json([]);
+  }) as typeof fetch;
+
+  try {
+    for (const kind of ["note", "task", "update"] as const) {
+      const text = `Montagehinweis (${kind}):\nWeiße Rückplatte behalten. @Fabienne`;
+      const saved = await addCustomerOpsNote("request-notes", { note: text, kind, assigneeLabel: "Fabienne" });
+      assert.equal(saved.note, text);
+      assert.equal(saved.kind, kind);
+      assert.equal(saved.assigneeLabel, "Fabienne");
+      assert.ok(saved.mentions.includes("Fabienne"));
+      const reloaded = await getCustomerRecordByRequestId("request-notes", { includeTrello: false });
+      assert.deepEqual(reloaded.notes.find((entry) => entry.id === saved.id), saved);
+    }
+    assert.equal(stored.length, 3);
+    assert.deepEqual(mutations, Array(3).fill("POST /rest/v1/workflow_audit_log"));
+    await assert.rejects(addCustomerOpsNote("request-notes", "  "), QuoteValidationError);
+    assert.equal(stored.length, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  }
+});
 
 test("shadow classification never replaces the authoritative master request segment", () => {
   const resolved = resolveRequestSegmentForOpsUi(

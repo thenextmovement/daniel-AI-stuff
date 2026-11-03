@@ -7025,7 +7025,7 @@ export async function addCustomerOpsNote(requestId: string, input: string | Cust
           document_id: context.master.request_id,
           workflow_name: CUSTOMER_RECORDS_WORKFLOW_NAME,
           action: CUSTOMER_RECORDS_NOTE_ACTION,
-          status: "info",
+          status: "success",
           metadata: {
             request_id: context.master.request_id,
             note_text: normalizedNote,

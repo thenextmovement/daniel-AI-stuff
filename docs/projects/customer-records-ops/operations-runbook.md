@@ -4,6 +4,18 @@ Stand: 2026-06-04
 
 Dieses Runbook beschreibt, wie die interne NEONTRIP Ops-App betrieben, geaendert und sicher deployed wird.
 
+## Teamnotizen speichern
+
+Notizen, Aufgaben und Updates speichern ihren Notizeintrag über
+`addCustomerOpsNote` als `customer_record_note` mit Audit-Status `success`.
+Der bestehende Datenbankvertrag `workflow_audit_log_status_check` erlaubt kein
+`info`; dieser Wert verhinderte das Speichern. Die fachliche Eintragsart bleibt
+in `metadata.note_kind`, Zuständigkeit und Markierungen bleiben erhalten.
+`success` beschreibt nur die gespeicherte Notiz, nicht den Abschluss einer
+Aufgabe. Die zusätzliche Aufgabenanlage und ihre Fehleranzeige bleiben separat.
+Der Regressionstest in `tests/quotes/customer-records.test.ts` prüft den
+Statusvertrag sowie Speichern und erneutes Lesen aller drei Eintragsarten.
+
 ## Trello-Description-Abgleich ohne Aenderung
 
 Ein abgeschlossener `customer_trello_mockup_description_synced`-Abgleich schreibt
