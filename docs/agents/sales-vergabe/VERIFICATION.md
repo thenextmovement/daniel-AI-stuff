@@ -1,5 +1,13 @@
 # Sales-Vergabe Verification
 
+## 2026-11-03: Gespeicherter Vergabehinweis direkt am Auftrag
+
+- **Ziel:** Das bestehende Feld `supplier_sales.assignment_note` erscheint vollständig als „Hinweis zur Vergabe / Produktion“ direkt an der Sale. Das vorhandene englische Vergabefeld übernimmt den gespeicherten Text beim Laden und bei einer geänderten gespeicherten Notiz, damit eine spätere Vergabe ihn nicht versehentlich durch leeren Text ersetzt.
+- **Nachbar:** Sales ohne Notiz erhalten keinen Hinweis. Unveränderte Board-Antworten überschreiben keinen lokalen Textentwurf. Zahlungs-, Änderungsprüfungs- und Vergabestatus sowie Kundenauswahl bleiben unverändert. Kundenaktennotizen werden nicht pauschal auf andere Aufträge übertragen.
+- **Wirkung / Scope:** Nur Anzeige und Vorbelegung im bestehenden Client, bestehender UI-Smoke und diese Dokumentation. Kein neuer Speicherweg, kein Schema, kein zusätzlicher API-Aufruf oder automatischer Versand. Die tatsächliche Supplier-Vergabe verwendet weiterhin den vorhandenen bestätigten Ablauf.
+- **Prüfung:** Vorhandener UI-Smoke grün: vollständige Anzeige, isolierte Zuordnung, Neuladen und unveränderter Notiztext im abgefangenen Vergabeaufruf. Screenshot visuell geprüft, keine Browserfehler oder horizontaler Überlauf bei 390 / 1.440 px. Alle API-Schreibaufrufe des Smoke-Tests wurden lokal abgefangen. Quote-Suite: 1.746 bestanden, 2 bestehende Skips, keine Fehler; unter lokalem Node 24 mit `NODE_OPTIONS=--test-reporter=tap`. TypeScript und Produktionsbuild erfolgreich. Veröffentlichung und produktiver Sichtnachweis bleiben offen.
+- **Betrieb:** Einen auftragsbezogenen Hinweis ausschließlich am verifizierten Sale im vorhandenen Feld hinterlegen; den unveränderlichen Annahme-Snapshot nicht ändern. Für bestehende leere Vergabefelder zuerst diese UI-Korrektur veröffentlichen, anschließend den konkret beauftragten Hinweis setzen und nach Neuladen prüfen. Rollback nach `OPERATIONS.md`; eine Datenkorrektur nur mit ursprünglichem Feldwert und Vergleich gegen den eigenen geschriebenen Text zurücknehmen.
+
 ## 2026-10-27: Montagehinweis ohne Wandmontageset
 
 - `[lokal verifiziert; nicht veröffentlicht]` Basis `812710018b100d902c65af2ca9f2337c571e4035`, Aufgabenworktree `neontrip-ops-montage-hinweis-20261027-100541`.

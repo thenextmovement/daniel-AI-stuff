@@ -110,7 +110,8 @@ function sale(overrides = {}) {
   };
 }
 
-const paidSale = sale({ id: "sale-paid", offerNumber: "NT-PAID", customerName: "Bezahlter Kunde" });
+const savedAssignmentNote = "Keep the white backplate. Supply longer standoffs so the transformer can be concealed behind it.\nCheck the required length and feasibility against the actual transformer dimensions before production.";
+const paidSale = sale({ id: "sale-paid", offerNumber: "NT-PAID", customerName: "Bezahlter Kunde", assignmentNote: savedAssignmentNote });
 paidSale.items.push({ ...paidSale.items[0], id: "paid-wall-mount", title: "Wandmontage-Set", productType: "Zusatzoptionen", selectionDetails: [] });
 const configuratorSale = sale({
   id: "sale-configurator",
@@ -487,6 +488,17 @@ async function main() {
   assert(await unpaidCard.count() === 1, "unpaid sale card fehlt");
   assert(await specialCard.count() === 1, "special sale card fehlt");
   assert(await openReviewCard.count() === 1, "open-review sale card fehlt");
+  const assignmentNotice = paidCard.getByRole("note", { name: "Gespeicherter Vergabehinweis" });
+  assert(await assignmentNotice.isVisible(), "Gespeicherter Vergabehinweis fehlt direkt an der Sale");
+  assert((await assignmentNotice.innerText()).includes(savedAssignmentNote), "Vergabehinweis ist unvollständig");
+  assert(await paidCard.getByLabel("Additional Information (English)").inputValue() === savedAssignmentNote, "Gespeicherter Hinweis fehlt im Vergabefeld");
+  assert(await unpaidCard.getByRole("note", { name: "Gespeicherter Vergabehinweis" }).count() === 0, "Hinweis wird auf eine fremde Sale übertragen");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await assignmentNotice.waitFor();
+  assert(await paidCard.getByLabel("Additional Information (English)").inputValue() === savedAssignmentNote, "Hinweis geht beim Neuladen verloren");
+  if (process.env.SALES_VERGABE_UI_NOTE_SCREENSHOT) {
+    await assignmentNotice.screenshot({ path: process.env.SALES_VERGABE_UI_NOTE_SCREENSHOT });
+  }
   assert(await openReviewCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Vergeben darf bei offenem 24h-Fenster nicht disabled sein");
   const mountingNotice = (card) => card.getByRole("note", { name: "Montage und Bohrungen mit dem Kunden klären" });
   const hangingNotice = mountingNotice(configuratorCard);
@@ -554,6 +566,7 @@ async function main() {
   page.once("dialog", dialogHandler(dialogs, "accept-paid-assign", true));
   await paidCard.getByRole("button", { name: "Vergeben" }).click();
   assert(posts.length === 4 && posts[3].body.action === "assign_supplier", "Bezahlte Vergabe sendet falsche Action");
+  assert(posts[3].body.assignmentNote === savedAssignmentNote, "Vergabe überschreibt den gespeicherten Hinweis mit leerem Text");
 
   page.once("dialog", dialogHandler(dialogs, "dismiss-order-confirmation", false));
   await paidCard.getByRole("button", { name: "AB senden" }).click();

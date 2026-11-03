@@ -817,7 +817,7 @@ function SaleCard({
   const [shopifySupplierTagConfirmed, setShopifySupplierTagConfirmed] = useState(false);
   const [deliveryDate, setDeliveryDate] = useState(sale.supplierDueDate || sale.customerDueDate || "");
   const [paymentDecision, setPaymentDecision] = useState<SupplierSalePaymentDecision>(defaultPaymentDecision(sale));
-  const [assignmentNote, setAssignmentNote] = useState("");
+  const [assignmentNote, setAssignmentNote] = useState(sale.assignmentNote || "");
   const [reminderLink, setReminderLink] = useState(sale.paymentLink || sale.shopifyOrderUrl || "");
   const [reviewNow, setReviewNow] = useState(() => Date.now());
   const [completionNow, setCompletionNow] = useState(() => Date.now());
@@ -830,6 +830,10 @@ function SaleCard({
   const [trelloLinkSaved, setTrelloLinkSaved] = useState(false);
   const [approvedDesignBusy, setApprovedDesignBusy] = useState(false);
   const [approvedDesignUpload, setApprovedDesignUpload] = useState<SupplierSaleApprovedDesignUpload | null>(null);
+  useEffect(() => {
+    setAssignmentNote(sale.assignmentNote || "");
+  }, [sale.id, sale.assignmentNote]);
+
   useEffect(() => {
     setSupplier(defaultSupplierSelection(sale));
     setSpecialSupplierName(sale.specialSupplierName || "");
@@ -1170,6 +1174,12 @@ function SaleCard({
                 >
                   SAID auswählen
                 </button>
+              </div>
+            ) : null}
+            {sale.assignmentNote?.trim() ? (
+              <div role="note" aria-label="Gespeicherter Vergabehinweis" className="rounded-[0.5rem] border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                <p className="font-semibold">Hinweis zur Vergabe / Produktion</p>
+                <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5">{sale.assignmentNote}</p>
               </div>
             ) : null}
             {sale.postOrderReview.status === "change_requested" ? (
