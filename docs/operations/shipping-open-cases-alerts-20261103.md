@@ -1,5 +1,10 @@
 # NEONTRIP: offene Kundenfaelle und wiederholte Meldungen, 03.11.2026
 
+Fortschreibung nach Freigabe: Monitor-Datenbankkorrektur ist live. Daniel hat 17TRACK
+als nicht mehr genutzt bestaetigt und seine Stilllegung beauftragt; die unten genannten
+Kontingent-Aufladungen entfallen. Aktueller Stand und die neue Commit-Freigabe nach
+fortgeschrittenem main stehen in [17TRACK-Stilllegung](17track-retirement-20261103.md).
+
 ## Umfang und Ausgangspunkt
 
 Ziel: belegbare offene Fallangaben korrigieren; gleiche Shipping-Monitor-Meldungen

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { claimAndRegisterOutbound17TrackShipments, isInternalRequestAuthorized } from "@/lib/ops/seventeen-track";
+import { isInternalRequestAuthorized } from "@/lib/ops/seventeen-track";
 
 export const dynamic = "force-dynamic";
 
@@ -8,13 +8,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as { limit?: number };
-  const limit = Number.isFinite(Number(body.limit)) ? Math.max(1, Math.min(Number(body.limit), 50)) : 20;
-  try {
-    const result = await claimAndRegisterOutbound17TrackShipments(limit);
-    return NextResponse.json({ ok: true, ...result });
-  } catch (error) {
-    console.error("outbound 17track registration route failed", error);
-    return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
-  }
+  // Retired by the owner on 2026-11-03. Acknowledge without claims, provider calls or writes.
+  return NextResponse.json({ ok: true, disabled: true, reason: "provider_retired", claimed: 0, recorded: false });
 }

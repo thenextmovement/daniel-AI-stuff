@@ -109,7 +109,7 @@ Monitoring:
 - Reparatur vom 03.11.2026: neue oder geaenderte Prueffaelle beim naechsten
   regulaeren Poll, unveraenderte Faelle hoechstens alle 24 Stunden. Zustand und
   Claims nutzen ausschliesslich das vorhandene `shipping_audit_log`; keine neue Queue.
-  Bis zur Migration `20261103090555` gilt produktiv noch die alte UTC-Stunden-Deduplizierung.
+  Migration `20261103090555` ist seit 03.11.2026 angewandt und zurueckgelesen.
 - Dokumentenfreigaben ohne Sendeversuch werden als manuelle Freigabe bezeichnet.
   Erledigte Vorfaelle werden nur bei noch nie versuchten Benachrichtigungen ausgeblendet.
   Unklare Sends und fehlende Montageunterlagen bleiben auch nach Paketzustellung sichtbar.
