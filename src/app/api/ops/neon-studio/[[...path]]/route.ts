@@ -1,7 +1,7 @@
 import { isOpsPortalConfigured, resolveOpsRequestActor } from "@/lib/ops/auth";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-const ALLOWED = /^(?:|health|app\.js|cloud\.js|style\.css|example\.png|test-logo\.png|cloud\/(?:list|project|save|publish|enqueue|retry)|api\/(?:prepare|upload|trace-selection|vector-page|geometry|pricing|export|example|split-paths|recovery-source|recovery-preview|recovery-apply|outline-[a-z-]+))$/;
+const ALLOWED = /^(?:|health|app\.js|cloud\.js|style\.css|example\.png|test-logo\.png|cloud\/(?:list|project|save|publish|enqueue|retry)|api\/(?:prepare|upload|trace-selection|vector-page|geometry|pricing|manufacturing|export|example|split-paths|recovery-source|recovery-preview|recovery-apply|outline-[a-z-]+))$/;
 async function proxy(req: Request, context: { params: Promise<{path?: string[]}> }) {
   const host=req.headers.get("x-forwarded-host") || req.headers.get("host");
   if (!isOpsPortalConfigured(host) || !(await resolveOpsRequestActor(host,req.headers)))
