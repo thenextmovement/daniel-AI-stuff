@@ -1,3 +1,4 @@
+import { attachOrderConfirmation } from "./order-confirmation-delivery.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -787,6 +788,7 @@ const customerDeliveryWorkflow = {
   versionId: "neontrip-billing-v2-customer-document-delivery-worker-inactive"
 };
 
+attachOrderConfirmation(customerDeliveryWorkflow);
 fs.writeFileSync(path.join(generated, "customer-document-delivery-worker-v2.inactive.json"), JSON.stringify(customerDeliveryWorkflow, null, 2) + "\n");
 
 const changeRequestNotificationPrepareCode = String.raw`
