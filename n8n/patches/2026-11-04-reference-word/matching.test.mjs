@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const source=readFileSync(process.env.VALIDATE_ORDER_SOURCE || new URL('./validate-order.js',import.meta.url),'utf8');
+const run=new Function('$input','$',source);
+function resolve({amount=1787.38,payer='Schach zu Dritt | Ge',company='Schach zu Dritt Gesellschaft für Kommunikation mbH',prev={},order={},orders=null}={}) {
+ const p={neonNumber:'NEONT9001',amount,amountCents:Math.round(amount*100),customer_name:payer,customer_identity_candidates:[payer],fuzzyMatch:false,raw_transaction:{currency:'EUR'},...prev};
+ const o={id:'9001001',name:'#NEONT9001',total_price:String(amount),currency:'EUR',financial_status:'pending',billing_address:{company},...order};
+ return run({first:()=>({json:{data:{orders:{nodes:[],pageInfo:{hasNextPage:false}}}}})},name=>({first:()=>({json:name==='Not Duplicate?'?p:{orders:orders || [o]}})}))[0].json;
+}
+for(const amount of [0.01,1787.38,1999.99]) test('exact reference/amount accepts unrelated payer below limit '+amount,()=>{const r=resolve({amount,payer:'Other Person'});assert.equal(r.stop,false);assert.equal(r.identityMatchType,'EXACT_REFERENCE_AMOUNT_UNDER_2000');});
+test('no payer below limit',()=>assert.equal(resolve({payer:''}).stop,false));
+for(const amount of [2000,2000.01,12500]) test('one payer word accepts company abbreviation '+amount,()=>{const r=resolve({amount});assert.equal(r.stop,false);assert.equal(r.identityMatchType,'EXACT_REFERENCE_PAYER_WORD');});
+for(const field of ['billing_address','shipping_address']) test('word in '+field,()=>assert.equal(resolve({amount:2000,payer:'Schach | Ge',company:'Unrelated',order:{[field]:{address1:'Am Schach Platz'}}}).stop,false));
+test('customer name word',()=>assert.equal(resolve({amount:2000,payer:'Schach | Ge',company:'Unrelated',order:{customer:{last_name:'Schach'}}}).stop,false));
+for(const amount of [2000,2000.01]) test('at limit identity still required '+amount,()=>assert.equal(resolve({amount,payer:'Unrelated Sender'}).stop,true));
+test('full words not substrings',()=>assert.equal(resolve({amount:2000,payer:'Schach',company:'Schachbrett GmbH'}).stop,true));
+test('legal form alone is not company identity',()=>assert.equal(resolve({amount:2000,payer:'GmbH',company:'Other GmbH'}).stop,true));
+test('wrong amount blocked',()=>assert.equal(resolve({order:{total_price:'1787.39'}}).primaryFailureReason,'amount_mismatch'));
+test('cancelled blocked',()=>assert.equal(resolve({order:{cancelled_at:'2026-11-01'}}).primaryFailureReason,'order_cancelled'));
+test('wrong reference blocked',()=>assert.equal(resolve({prev:{neonNumber:'NEONT9002'}}).stop,true));
+test('fuzzy reference not broadened',()=>assert.equal(resolve({payer:'Other',prev:{fuzzyMatch:true}}).stop,true));
+test('already paid skips shopify update',()=>{const r=resolve({order:{financial_status:'paid'}});assert.equal(r.stop,false);assert.equal(r.shopifyNeedsUpdate,false);});
+test('under 2000 EUR rule not applied to other currency',()=>assert.equal(resolve({payer:'Other',order:{currency:'USD'},prev:{raw_transaction:{currency:'USD'}}}).stop,true));
+test('ambiguous reference not broadened',()=>assert.equal(resolve({payer:'Other',orders:[{name:'#NEONT9001',total_price:'1787.38',currency:'EUR'},{name:'#NEONT9001',total_price:'1787.38',currency:'EUR'}]}).stop,true));
+const expression=readFileSync(new URL('./mail-expression.txt',import.meta.url),'utf8').slice(3,-3).trim();
+const mail=new Function('$json','return ('+expression+')');
+test('mail contains paragraphs and explicit breaks',()=>{const r=mail({emailBody:'PROBLEM\nDetails\n\nAKTION\nBitte prüfen'});assert.equal((r.match(/<p /g)||[]).length,2);assert.match(r,/PROBLEM<br>Details/);assert.doesNotMatch(r,/white-space/);});
+test('mail escapes plain text and keeps gate footer',()=>{const r=mail({emailBody:'A & B < C\n\nDetails<hr><p>Digest</p>'});assert.match(r,/A &amp; B &lt; C/);assert.match(r,/<hr><p>Digest<\/p>$/);});
+test('existing HTML preserved',()=>assert.equal(mail({emailBody:'<p>Existing</p>'}),'<p>Existing</p>'));
