@@ -1029,7 +1029,8 @@ function processing(title,detail='Linien und Kurven werden aus deinem Bild berec
   $('processingTitle').textContent=title;$('processingDetail').textContent=detail;
   $('processingOverlay').hidden=false;$('stage').setAttribute('aria-busy','true');
   document.querySelector('.inspector').inert=true;
-  const tick=()=>{$('processingElapsed').textContent=`${Math.floor((performance.now()-start)/1000)} s · lokal auf deinem Rechner`;};tick();processingTimer=setInterval(tick,1000);
+  const processingPlace=location.pathname.startsWith('/api/ops/neon-studio')?'Verarbeitung auf dem Server':'lokal auf deinem Rechner';
+  const tick=()=>{$('processingElapsed').textContent=`${Math.floor((performance.now()-start)/1000)} s · ${processingPlace}`;};tick();processingTimer=setInterval(tick,1000);
 }
 function hideProcessing(){clearInterval(processingTimer);$('processingOverlay').hidden=true;$('stage').setAttribute('aria-busy','false');}
 function finishAnalysis(){state.analyzing=false;hideProcessing();document.querySelector('.inspector').inert=false;}

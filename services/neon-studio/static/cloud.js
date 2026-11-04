@@ -129,7 +129,7 @@ async function cloudBoot(){
   source.onclick=()=>cloudSources();
   bar.append(source);
   if(!cloud.model){
-    processing('Anfrage wird vorbereitet',cloud.error||'Das Kundenmotiv wird als Zeichnung erstellt. Du kannst dieses Fenster schließen und später wieder öffnen.');
+    processing('Anfrage wird vorbereitet',cloud.error||'Das Kundenmotiv wird auf dem Server als Zeichnung erstellt. Du kannst dieses Fenster schließen und später wieder öffnen.');
     if(cloud.error){$('processingOverlay').hidden=true;toast(cloud.error,true);cloudSources();}
     if(['queued','copying','generating'].includes(cloud.status))setTimeout(()=>location.reload(),10000);
     return;
