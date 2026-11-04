@@ -1,6 +1,6 @@
 # Supplier Order Confirmation Email
 
-Purpose: manual customer email for Sales-Vergabe `AB senden`. The Ops app generates the order-confirmation PDF from `offer_snapshot`, reserves the side effect with an idempotency key, then calls n8n. n8n only validates and sends through Outlook.
+Purpose: manual customer email for Sales-Vergabe `AB senden`. The Ops app generates the plain order-confirmation PDF with the original NEONTRIP logo from the accepted order and current BillingCase, reserves the side effect with an idempotency key, then calls n8n. n8n only validates and sends through Outlook.
 
 ## Workflow
 
@@ -79,7 +79,7 @@ The workflow returns:
 2. Confirm the dialog.
 3. Expected UI message: `Auftragsbestaetigung wurde an ... gesendet.`
 4. Confirm the customer received one email with one PDF attachment.
-5. Click the same button again on the same sale without changing the snapshot. Expected: Ops app idempotency prevents duplicate sending for the same PDF state.
+5. A newly confirmed button click intentionally sends the AB again. Reusing the same request idempotency key does not resend. The old cover-page AB renderer is removed.
 
 ## Rollback
 
@@ -90,3 +90,13 @@ SUPPLIER_ORDER_CONFIRMATION_WEBHOOK_URL
 ```
 
 The button remains visible, but sends nothing and reports that the webhook is not configured.
+
+## Proforma attachment (2026-11-04)
+
+The active customer delivery worker `wqaTsVKuKqKnp2AG` adds this same PDF to unsent `ORDER_CONFIRMATION_PROFORMA` and `PROFORMA_UPDATE` documents through Easybill attachments. The internal worker-authenticated `/api/internal/billing/order-confirmation` endpoint only renders; it never sends. Both manual and automatic paths use the current BillingCase, falling back to the accepted sale where no BillingCase exists. Only the selected delivery is shown, followed by the approved production/payment timing note at the end.
+
+Existing Easybill `last_postbox_id` still prevents resending. An AB already linked to the same document is reused by exact filename and document ownership; a new upload must have its document linkage confirmed before email. Failures go through the existing leased job retry/block path and error workflow `M4uG1HAtN9Zggxww` to `support@neontrip.de`. The manual Outlook workflow `p4lm3w9jPHnaP4VX` uses that error workflow too. The hyphenated domain remains unverified and is not used.
+
+The existing single-PDF recipient `erechnung@duesseldorf.de` is held for manual combined-document handling instead of sending two PDFs to a mailbox that rejects them. Previously sent documents are not replayed. No customer test email is part of release verification.
+
+Localized n8n rollback uses version history for the customer delivery worker; code rollback reverts this change through the normal release gate. Deploy the renderer endpoint before updating the delivery worker. Source patch: `workflows/billing-v2/order-confirmation-delivery.mjs`.

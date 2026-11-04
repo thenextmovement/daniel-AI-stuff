@@ -4638,10 +4638,10 @@ test("supplier order confirmation PDF is generated from offer snapshot", async (
     const pdf = await generateSupplierOrderConfirmationPdf(row.id);
     const text = Buffer.from(pdf.bytes).toString("utf8");
     assert.equal(pdf.fileName, "auftragsbestaetigung-A-N-15333-ABCDEF.pdf");
-    assert.equal(text.startsWith("%PDF-1.4"), true);
+    assert.equal(text.startsWith("%PDF-1."), true);
     assert.equal(text.includes("/Type /Catalog"), true);
     assert.equal(text.includes("/BaseFont /Helvetica-Bold"), true);
-    assert.equal(text.includes("(NEONTRIP)"), true);
+    assert.equal(text.includes("/Subtype /Image"), true);
     assert.equal(text.includes("þÿ"), false);
     assert.ok(pdf.bytes.length > 1000);
   });
@@ -4673,7 +4673,7 @@ test("supplier sales route downloads order confirmation PDF", async () => {
     assert.match(response.headers.get("content-type") || "", /^application\/pdf/);
     assert.match(response.headers.get("content-disposition") || "", /auftragsbestaetigung-A-N-15334-ABCDEF\.pdf/);
     const bytes = new Uint8Array(await response.arrayBuffer());
-    assert.equal(Buffer.from(bytes).toString("utf8", 0, 8), "%PDF-1.4");
+    assert.match(Buffer.from(bytes).toString("utf8", 0, 8), /^%PDF-1\./);
 
     const snapshotRequest = new NextRequest(`http://127.0.0.1:3100/api/ops/supplier-sales?action=snapshot_pdf&saleId=${row.id}`, {
       headers: { host: "127.0.0.1:3100" },
@@ -4710,7 +4710,7 @@ test("supplier order confirmation email sends generated PDF through configured w
       assert.equal(body.subject, "Auftragsbestätigung A-N-15335-ABCDEF");
       assert.equal(body.signature, "fabienne_neontrip");
       assert.equal(body.attachment.filename, "auftragsbestaetigung-A-N-15335-ABCDEF.pdf");
-      assert.equal(Buffer.from(body.attachment.contentBase64, "base64").toString("utf8", 0, 8), "%PDF-1.4");
+      assert.match(Buffer.from(body.attachment.contentBase64, "base64").toString("utf8", 0, 8), /^%PDF-1\./);
       return Response.json({ messageId: "outlook-message-1" });
     }
 

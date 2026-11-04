@@ -1418,9 +1418,10 @@ function SaleCard({
                 title={!sale.customerEmail ? "Kunden-E-Mail fehlt." : "Auftragsbestaetigung senden"}
                 onClick={() => {
                   const recipient = sale.customerEmail || "";
-                  if (!confirmAction(`Auftragsbestaetigung als PDF per Outlook/n8n an ${recipient} senden? Der Versand wird protokolliert und bei gleichem PDF-Stand nicht doppelt ausgefuehrt.`)) return;
+                  if (!confirmAction(`Auftragsbestätigung als PDF erneut an ${recipient} senden? Dies löst eine weitere E-Mail aus. Der Versand wird protokolliert.`)) return;
                   void onAction({
                     action: "send_order_confirmation_email",
+                    idempotencyKey: `order-confirmation:${sale.id}:${crypto.randomUUID()}`,
                     saleId: sale.id,
                     recipientEmail: recipient,
                     operatorName,
