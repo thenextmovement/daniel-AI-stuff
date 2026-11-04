@@ -6,6 +6,16 @@ from cloud_ai import drawing_model, Review
 SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60"><path id="bold" d="M0 0 L30 0 L30 30 Z" fill="none" stroke="red"/><path id="thin" d="M40 0 C60 0 60 30 40 30" fill="none" stroke="blue"/><path id="dot" d="M70 0 L70 1" fill="none" stroke="blue"/></svg>'
 PLAN=[{'name':'Bold','mode':'double','reason':'Breite Buchstaben','path_ids':['bold'],'dot_ids':[]},{'name':'Thin','mode':'single','reason':'Dünne Schrift','path_ids':['thin','dot'],'dot_ids':['dot']}]
 class ManufacturingTests(unittest.TestCase):
+ def test_already_drawn_closed_centerline_is_not_skeletonized_again(self):
+  svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100"><path id="D" d="M0 0 L0 80 C60 80 60 0 0 0 Z" fill="none" stroke="blue"/></svg>'
+  plan=[{'name':'Deutschland','mode':'single','reason':'Dünne Schrift','path_ids':['D'],'dot_ids':[]}]
+  model,modes=drawing_model({'svg':svg,'line_plan':plan})
+  original=copy.deepcopy(model['modes']['double'][0]['commands'])
+  d=build_geometry(model,{'width':600,'mode':'single','partModes':modes,'shape':'rectangle'})
+  self.assertEqual(len(d['paths']),1)
+  self.assertEqual([c[0] for c in d['paths'][0]],[c[0] for c in original])
+  self.assertEqual(d['names'],['Deutschland'])
+  self.assertEqual(model['modes']['double'][0]['commands'],original)
  def test_mixed_plan_survives_import_and_measures_actual_paths(self):
   model,modes=drawing_model({'svg':SVG,'line_plan':PLAN})
   d=build_geometry(model,{'width':600,'mode':'single','partModes':modes,'shape':'rectangle'})
@@ -25,6 +35,7 @@ class ManufacturingTests(unittest.TestCase):
   self.assertEqual(normalize_dot({**item,'role':'logo'},2)['commands'],item['commands'])
   double=normalize_dot({**item,'mode':'double'},2)
   self.assertEqual(double['commands'][-1],['h']);self.assertAlmostEqual(path_length(double['commands']),10*3.14159,delta=.02)
+  self.assertAlmostEqual(path_bounds(double['commands'])[3],6)
  def drawing(self,paths):
   return {'paths':paths,'names':['Path '+str(i) for i in range(len(paths))],'pathModes':['single']*len(paths),
    'settings':{'tube':6,'gap':15},'width':130,'neonMeters':sum(map(path_length,paths))/1000,'neonMaterialMeters':sum(map(path_length,paths))*1.1/1000}
@@ -33,6 +44,13 @@ class ManufacturingTests(unittest.TestCase):
   r=inspect(d)
   self.assertEqual(r['minimumSpacing'],4);self.assertIsNone(r['minimumRadius']);self.assertEqual(r['recommendedWidth'],250)
   self.assertFalse(r['approved'])
+ def test_spacing_size_separate_from_tight_curve_and_local_corners(self):
+  d=self.drawing([[['m',[0,0]],['l',[100,0]]],[['m',[0,4]],['l',[100,4]]],
+   [['m',[0,50]],['c',[0,51],[1,51],[1,50]],['l',[100,50]]]])
+  r=inspect(d)
+  self.assertEqual(r['spacingWidth'],250)
+  self.assertGreater(r['unchangedPathWidth'],1000)
+  self.assertIsNone(r['recommendedWidth'])
  def test_quarter_circle_radius_and_sharp_corners(self):
   r=10;k=KAPPA*r
   d=self.drawing([[['m',[r,0]],['c',[r,k],[k,r],[0,r]]]])

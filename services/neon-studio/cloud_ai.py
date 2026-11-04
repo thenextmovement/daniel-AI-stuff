@@ -50,6 +50,7 @@ def drawing_model(data):
             region,dot=assignments[ids[item['originalGroup']]]
             item['name']=region['name'][:100]+(' · Punkt' if dot else '')
             item['role']='dot' if dot else 'stroke'
+            item['neonCenterline']=region['mode']=='single'
             part_modes[item['partId']]=region['mode']
     for part in model['parts']:
         item=next(i for i in model['modes']['double'] if i['partId']==part['id'])

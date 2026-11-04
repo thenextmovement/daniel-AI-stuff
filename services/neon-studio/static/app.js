@@ -328,6 +328,7 @@ async function checkManufacturing(){
       Object.entries(report.modes).map(([mode,count])=>`${count} ${mode==='single'?'Single':'Double'}-Line-Pfade`).join(' · '),
       report.minimumRadius===null?'Keine größenbestimmenden Kurven gefunden.':`Engster Kurvenradius: ${number(report.minimumRadius,2)} mm.`,
       report.minimumSpacing===null?'Kein zu enger Abstand zwischen getrennten, nicht berührenden Pfaden gefunden.':`Engster Abstand: ${number(report.minimumSpacing,2)} mm Mitte–Mitte; benötigt ${number(report.requiredSpacing,1)} mm.`,
+      ...(report.spacingWidth?[`Nur für die gemessenen Linienabstände wären bei unveränderter Zeichnung etwa ${number(report.spacingWidth/10,1)} cm Breite nötig. Kurven, Punkte und Anschlüsse sind damit noch nicht geprüft.`]:[]),
       ...(report.recommendedWidth?[`Größenorientierung für unveränderte Linien: ${number(report.recommendedWidth/10,1)} cm Breite.`]:['Mindestgröße noch offen: erst lokale Details und Anschlüsse korrigieren.']),...report.reasons,...report.warnings];
     for(const text of rows){const row=document.createElement('p');row.textContent=text;target.append(row);}
     $('manufacturingApply').hidden=!report.recommendedWidth||Math.abs(report.recommendedWidth-report.currentWidth)<.1;

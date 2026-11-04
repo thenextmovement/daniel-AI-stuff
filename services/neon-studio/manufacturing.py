@@ -14,7 +14,7 @@ def normalize_dot(item, scale):
         height=max(20/scale,y1-y0)
         commands=[['m',[cx,y1]],['l',[cx,y1-height]]]
     else:
-        r=max(10/scale,(x1-x0)/2,(y1-y0)/2);cy=(y0+y1)/2;k=KAPPA*r
+        r=max(10/scale,(x1-x0)/2,(y1-y0)/2);cy=y1-r;k=KAPPA*r
         commands=[['m',[cx+r,cy]],['c',[cx+r,cy+k],[cx+k,cy+r],[cx,cy+r]],
                   ['c',[cx-k,cy+r],[cx-r,cy+k],[cx-r,cy]],
                   ['c',[cx-r,cy-k],[cx-k,cy-r],[cx,cy-r]],
@@ -87,6 +87,8 @@ def inspect(drawing, profile=None):
     # Acrylic padding stays fixed while the motif scales. Never scale padding.
     s=drawing['settings'];gaps=s.get('gapSides',{});padding=gaps.get('left',s['gap'])+gaps.get('right',s['gap'])
     proposed=math.ceil(((drawing['width']-padding)*max(factors)+padding)/50)*50
+    spacing_factor=max(1,required/minimum_spacing[0]) if minimum_spacing[0] is not None else 1
+    spacing_width=math.ceil(((drawing['width']-padding)*spacing_factor+padding)/50)*50
     warnings=['Profilwerte sind Annahmen, keine bestätigte Lieferantenvorgabe. Mindestgröße ist eine geometrische Orientierung, keine Fertigungsfreigabe.',
               'Abstand wird zwischen getrennten Pfaden geprüft. Selbstannäherungen innerhalb eines Pfads und Anschlüsse müssen zusätzlich geprüft werden.']
     if corners:warnings.append(f'{corners} scharfe Richtungswechsel: abrunden oder als getrennte Neonstücke planen. Größer skalieren allein löst diese Ecken nicht.')
@@ -100,6 +102,7 @@ def inspect(drawing, profile=None):
     return dict(profile=values,tube=tube,requiredSpacing=required,minimumRadius=minimum_radius[0],
         minimumSpacing=minimum_spacing[0],shortPaths=short,corners=corners,junctions=junctions,
         recommendedWidth=proposed if proposed<=20000 and not needs_local else None,
+        spacingWidth=spacing_width if spacing_factor>1 else None,
         unchangedPathWidth=proposed,needsLocalCorrection=needs_local,currentWidth=drawing['width'],
         rawMeters=drawing['neonMeters'],materialMeters=drawing['neonMaterialMeters'],
         modes={mode:drawing['pathModes'].count(mode) for mode in set(drawing['pathModes'])},

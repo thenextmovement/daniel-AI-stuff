@@ -70,10 +70,25 @@ class DurableStore(Store):
     def model(self,token):
         with self.lock:
             if token in self.models:return super().model(token)
-        with self.db.connect() as c:r=c.execute("SELECT model FROM models WHERE id=?",(token,)).fetchone()
+        with self.db.connect() as c:r=c.execute("SELECT model,info FROM models WHERE id=?",(token,)).fetchone()
         if not r:raise ValueError('Motiv nicht gefunden.')
         # Database is private, never writable through an upload or API.
         model=pickle.loads(r[0])
+        # Older generated projects already have a validated per-region line plan.
+        # Recover that semantic information without another paid generation or
+        # reinterpreting customer-uploaded outlines as finished centerlines.
+        if json.loads(r['info']).get('name')=='KI-Zeichnung.svg' and not any('neonCenterline' in p for p in model['modes']['double']):
+            with self.db.connect() as c:
+                saved=c.execute("SELECT json_extract(data,'$.spec.line_plan') FROM projects WHERE json_extract(data,'$.model')=? LIMIT 1",(token,)).fetchone()
+            modes={}
+            for region in json.loads(saved[0]) if saved and saved[0] else []:
+                if region.get('mode') in ('single','double'):
+                    modes.setdefault(region['name'][:100],set()).add(region['mode'])
+            for items in model['modes'].values():
+                for item in items:
+                    name=item.get('name','');name=name.removesuffix(' · Punkt') if item.get('role')=='dot' else name
+                    if item.get('role') in ('dot','stroke') and modes.get(name)=={'single'}:
+                        item['neonCenterline']=True
         with self.lock:
             self.models[token]=model
             while len(self.models)>12:self.models.popitem(last=False)

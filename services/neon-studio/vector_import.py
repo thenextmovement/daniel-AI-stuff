@@ -344,7 +344,7 @@ def _build_outline_single(model, selected):
     shapes=model.setdefault('_outlineShapes',{})
     candidates={}
     for i,item in enumerate(model['modes']['double']):
-        if item.get('filled') or item['partId'] not in selected:continue
+        if item.get('filled') or item.get('neonCenterline') or item['partId'] not in selected:continue
         commands=item['commands']
         # SVG circles and some PDF exporters close by returning to the start,
         # without emitting an explicit close-path command.

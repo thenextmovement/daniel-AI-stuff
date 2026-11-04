@@ -8,6 +8,25 @@ import fitz
 from PIL import Image
 SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path d="M10 50 C60 0 80 0 110 50 M120 10 L180 50" fill="none" stroke="#f333a5" stroke-width="1"/></svg>'
 class CloudTests(unittest.TestCase):
+ def test_saved_ai_closed_centerline_survives_restart_without_regeneration(self):
+  from cloud_ai import drawing_model
+  from geometry import build_geometry
+  svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100"><path id="D" d="M0 0 L0 80 C60 80 60 0 0 0 Z" fill="none" stroke="blue"/></svg>'
+  plan=[{'name':'Deutschland','mode':'single','reason':'Dünne Schrift','path_ids':['D'],'dot_ids':[]}]
+  model,modes=drawing_model({'svg':svg,'line_plan':plan})
+  for items in model['modes'].values():
+   for item in items:item.pop('neonCenterline',None)
+  info=DurableStore(self.db).add_model(model,'KI-Zeichnung.svg')
+  p=self.db.enqueue('saved-ai','event',{})
+  self.db.save(p['id'],{'model':info['id'],'spec':{'line_plan':plan},'settings':{'partModes':modes}})
+  restored=DurableStore(Database(self.tmp.name)).model(info['id'])
+  d=build_geometry(restored,{'width':600,'mode':'single','partModes':modes,'shape':'rectangle'})
+  self.assertEqual(d['names'],['Deutschland'])
+  self.assertEqual([c[0] for c in d['paths'][0]],[c[0] for c in model['modes']['double'][0]['commands']])
+  # Normal outline imports without a generated line plan still convert on request.
+  info2=DurableStore(self.db).add_model(model,'customer.svg')
+  imported=DurableStore(Database(self.tmp.name)).model(info2['id'])
+  self.assertFalse(imported['modes']['double'][0].get('neonCenterline'))
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.db=Database(self.tmp.name)
  def tearDown(self):self.tmp.cleanup()
