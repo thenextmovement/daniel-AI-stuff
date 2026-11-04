@@ -8,6 +8,19 @@ import fitz
 from PIL import Image
 SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path d="M10 50 C60 0 80 0 110 50 M120 10 L180 50" fill="none" stroke="#f333a5" stroke-width="1"/></svg>'
 class CloudTests(unittest.TestCase):
+ def test_review_and_watcher_failures_do_not_send_email(self):
+  from unittest.mock import patch
+  p=self.db.enqueue('no-mail-card','no-mail-event',{})
+  jobs=Jobs(self.db,None,object())
+  self.db.meta('alert_error','E-Mail-Ausführung nicht bestätigt.')
+  with patch.dict('os.environ',{'NEON_ALERT_URL':'https://alerts.invalid','NEON_ALERT_KEY':'test-only'}),patch('requests.post') as send:
+   jobs.fail(p['id'],'Mindestgröße prüfen.')
+   jobs.alert({'id':'watcher'},'Trello-Abruf fehlgeschlagen.')
+   send.assert_not_called()
+  saved=self.db.get(p['id'])
+  self.assertEqual(saved['status'],'review')
+  self.assertEqual(saved['error'],'Mindestgröße prüfen.')
+  self.assertEqual(self.db.meta('alert_error'),'')
  def test_saved_ai_closed_centerline_survives_restart_without_regeneration(self):
   from cloud_ai import drawing_model
   from geometry import build_geometry

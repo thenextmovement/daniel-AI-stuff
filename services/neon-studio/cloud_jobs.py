@@ -1,7 +1,6 @@
-import fcntl,hashlib,json,os,threading,time,traceback
+import fcntl,json,os,threading,time,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
-import requests
 from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal
 from cloud_ai import generate,validate_spec,Review,drawing_model
 from cloud_exports import artifacts,CUT
@@ -9,16 +8,9 @@ class Jobs:
     def __init__(self,db,store,trello=None):
         self.db=db;self.store=store;self.t=trello or Trello();self.lock=threading.RLock()
     def alert(self,p,error):
-        key='alert:'+p['id']+':'+hashlib.sha256(error.encode()).hexdigest()[:16]
-        if float(self.db.meta(key) or 0)>time.time()-86400:return
-        url=os.getenv('NEON_ALERT_URL');token=os.getenv('NEON_ALERT_KEY')
-        if not url or not token:
-            self.db.meta('alert_error','Fehlerbenachrichtigung nicht eingerichtet.');return
-        try:
-            r=requests.post(url,json={'project':p['id'],'error':error[:600]},headers={'X-Neon-Studio-Key':token},timeout=30)
-            if r.ok and (r.json().get('sent') is True or r.json().get('suppressed') is True):self.db.meta(key,time.time());self.db.meta('alert_error','')
-            else:self.db.meta('alert_error','E-Mail-Ausführung nicht bestätigt.')
-        except Exception:self.db.meta('alert_error','E-Mail-Ausführung nicht bestätigt.')
+        # User opt-out, 2026-11-04: project/watch errors stay in Studio only.
+        # Do not contact the email webhook, even if old credentials remain set.
+        self.db.meta('alert_error','')
     def fail(self,id,error):
         p=self.db.save(id,{'error':error},status='review');self.alert(p,error)
     def ingest(self,source,event):
