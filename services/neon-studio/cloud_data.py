@@ -28,6 +28,10 @@ class Database:
         with self.connect() as c:r=c.execute("SELECT * FROM projects WHERE id=?",(id,)).fetchone()
         if not r:raise ValueError('Projekt nicht gefunden.')
         return {**json.loads(r['data']),**{k:r[k] for k in ('id','source','revision','status','updated')}}
+    def for_card(self,card):
+        with self.connect() as c:
+            r=c.execute("SELECT id FROM projects WHERE source=? OR json_extract(data,'$.copy')=? LIMIT 1",(card,card)).fetchone()
+        return self.get(r[0]) if r else None
     def save(self,id,data,expected=None,status=None):
         with self.connect() as c:
             c.execute("BEGIN IMMEDIATE")

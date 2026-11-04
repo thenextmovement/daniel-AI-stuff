@@ -3,6 +3,7 @@ from cloud_data import Database,DurableStore,Conflict
 from cloud_ai import validate_svg,validate_spec,Review
 from cloud_trello import eligible,Trello,REQUEST,BOARD,named_fields
 from cloud_exports import artifacts
+from cloud_jobs import Jobs
 import fitz
 from PIL import Image
 SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path d="M10 50 C60 0 80 0 110 50 M120 10 L180 50" fill="none" stroke="#f333a5" stroke-width="1"/></svg>'
@@ -13,6 +14,59 @@ class CloudTests(unittest.TestCase):
  def test_event_and_source_dedup_persist(self):
   a=self.db.enqueue('card','event-1',{});b=self.db.enqueue('card','event-2',{})
   self.assertEqual(a['id'],b['id']);self.assertEqual(len(Database(self.tmp.name).list()),1)
+
+ def test_card_links_resolve_only_through_trello(self):
+  class Fake(Trello):
+   def __init__(self):self.reads=[]
+   def fields(self,board,refresh=False):return []
+   def call(self,method,path,**kwargs):
+    self.reads.append((method,path));return {'id':'a'*24,'idBoard':BOARD}
+  t=Fake()
+  for reference in ('https://trello.com/c/AbCd1234',' https://www.trello.com/c/AbCd1234/17-led-neon?share=1#details ', 'AbCd1234'):
+   self.assertEqual(t.card(reference)['id'],'a'*24)
+   self.assertTrue(t.reads[-1][1].startswith('cards/AbCd1234?'))
+  for reference in ('https://evil.example/c/AbCd1234','https://trello.com.evil.example/c/AbCd1234','https://user@trello.com/c/AbCd1234','https://trello.com:444/c/AbCd1234','https://trello.com/b/AbCd1234','file:///c/AbCd1234','../cards/AbCd1234',''):
+   before=len(t.reads)
+   with self.assertRaises(ValueError):t.card(reference)
+   self.assertEqual(len(t.reads),before)
+ def test_manual_link_and_watcher_share_one_canonical_project(self):
+  card={'id':'a'*24,'idBoard':BOARD,'name':'LED Neon Flex | Test','attachments':[]}
+  class Fake:
+   def card(self,reference):return card
+  jobs=Jobs(self.db,None,Fake())
+  first=jobs.ingest('https://trello.com/c/AbCd1234','manual:link')
+  second=jobs.ingest(card['id'],'action:event')
+  third=jobs.ingest('https://trello.com/c/AbCd1234/title','manual:link-again')
+  self.assertEqual(first['source'],card['id'])
+  self.assertEqual({first['id'],second['id'],third['id']},{first['id']})
+  self.assertEqual(len(self.db.pending()),1)
+ def test_manual_original_and_robot_copy_open_saved_project_without_restarting(self):
+  source='a'*24;copy='b'*24
+  first=self.db.enqueue(source,'action:event',{})
+  class Fake:
+   def card(self,reference):
+    return {'id':copy if 'Copy1234' in reference else source,'idBoard':'quentin','name':'🤖 LED Neon Test 🤖'}
+  jobs=Jobs(self.db,None,Fake())
+  for status in ('queued','generating','draft','ready','review'):
+   saved=self.db.save(first['id'],{'copy':copy,'model':'saved-model','settings':{'gap':15},'error':'review detail'},status=status)
+   for reference in ('https://trello.com/c/Orig1234/title','https://trello.com/c/Copy1234'):
+    self.assertEqual(jobs.ingest(reference,'manual:'+reference),saved)
+  self.assertEqual(len(self.db.list()),1)
+ def test_manual_existing_project_not_limited_to_recent_200(self):
+  source='a'*24
+  first=self.db.enqueue(source,'old',{})
+  for i in range(201):self.db.enqueue('other-'+str(i),'other-'+str(i),{})
+  class Fake:
+   def card(self,reference):return {'id':source,'idBoard':'quentin','name':'LED Neon Test'}
+  self.assertEqual(Jobs(self.db,None,Fake()).ingest(source,'manual:old')['id'],first['id'])
+ def test_manual_new_projects_preserve_scope(self):
+  class Fake:
+   def card(self,reference):return {'id':'a'*24,'idBoard':board,'name':title}
+  jobs=Jobs(self.db,None,Fake())
+  for board,title in ((BOARD,'3D Neon'),(BOARD,'Light Box'),('foreign','LED Neon'),(BOARD,'🤖 LED Neon')):
+   with self.assertRaises(Review):jobs.ingest('a'*24,'manual:test')
+  self.assertEqual(self.db.list(),[])
+
  def test_conflict_and_interruption_not_retried(self):
   p=self.db.enqueue('card','event',{});self.db.save(p['id'],{'copy_intent':True},status='copying')
   with self.assertRaises(Conflict):self.db.save(p['id'],{},expected=0)

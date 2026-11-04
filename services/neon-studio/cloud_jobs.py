@@ -23,6 +23,9 @@ class Jobs:
         p=self.db.save(id,{'error':error},status='review');self.alert(p,error)
     def ingest(self,source,event):
         card=self.t.card(source)
+        source=card['id']
+        existing=self.db.for_card(source)
+        if existing:return existing
         if not eligible(card['name']):raise Review('Nur LED/Neon-Anfragen ohne 3D werden verarbeitet.')
         if card['idBoard']!=BOARD and not event.startswith('action:'):raise Review('Karte gehört nicht zum Anfrage-Board.')
         return self.db.enqueue(source,event,card)

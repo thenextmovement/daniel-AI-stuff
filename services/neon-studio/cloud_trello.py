@@ -13,6 +13,14 @@ FIELDS=[
  ['67f4faf657f304d308f1435b','67f4fb02b7f3aaf40ae0636d','67f4fb0c593bcdebe2a99775','67f4fb1601e710fe13ee8f23']]
 def eligible(name):
     return bool(re.search(r'\b(?:LED|NEON)\b',name,re.I)) and not re.search(r'\b3D\b',name,re.I) and '🤖' not in name
+def card_reference(value):
+    value=value.strip()
+    if re.fullmatch(r'(?:[a-f0-9]{24}|[A-Za-z0-9]{8})',value):return value
+    parsed=urlparse(value)
+    match=re.fullmatch(r'/c/([A-Za-z0-9]{8}|[a-f0-9]{24})(?:/[^/]*)?/?',parsed.path)
+    if parsed.scheme=='https' and parsed.netloc.lower() in ('trello.com','www.trello.com') and match:
+        return match[1]
+    raise ValueError('Bitte einen Trello-Kartenlink einfügen, zum Beispiel https://trello.com/c/AbCd1234.')
 def decimal(value):
     return ('%.2f'%float(value)).replace('.',',')
 def field_value(card,id):
@@ -49,7 +57,7 @@ class Trello:
             self._fields[board]=self.call('GET',f'boards/{board}/customFields')
         return self._fields[board]
     def card(self,id):
-        if not re.fullmatch(r'[a-f0-9]{24}',id):raise ValueError('Ungültige Karten-ID.')
+        id=card_reference(id)
         card=self.call('GET',f'cards/{id}?attachments=true&customFieldItems=true&checklists=all&members=true&fields=all')
         card['field_definitions']=self.fields(card['idBoard'])
         return card

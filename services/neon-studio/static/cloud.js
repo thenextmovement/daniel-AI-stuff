@@ -93,9 +93,28 @@ async function cloudBoot(){
     const panel=document.createElement('section');panel.style.cssText='padding:24px;overflow:auto;max-height:85vh;color:white';
     panel.append(textElement('h1','Neon Studio'));
     panel.append(textElement('p','LED/Neon-Anfragen werden beim Verschieben zu Quentin zusätzlich vorbereitet. Hier bearbeitest du die gespeicherten Entwürfe.'));
-    const row=document.createElement('div'),input=document.createElement('input');input.placeholder='Trello-Karten-ID für einen Test';input.style.width='300px';
-    const start=textElement('button','Testkopie vorbereiten');start.onclick=async()=>{try{const p=await cloudRequest('enqueue',{card:input.value.trim()});location.href=cloudBase+'/?project='+p.id;}catch(e){toast(e.message,true);}};
-    row.append(input,start);panel.append(row);
+    const form=document.createElement('form');form.style.cssText='margin:24px 0;max-width:760px';
+    const label=textElement('label','Trello-Link');label.htmlFor='trelloCardLink';label.style.cssText='display:block;margin-bottom:8px';
+    const row=document.createElement('div');row.style.cssText='display:flex;gap:10px;flex-wrap:wrap';
+    const input=document.createElement('input');input.id='trelloCardLink';input.name='card';input.required=true;
+    input.placeholder='https://trello.com/c/…';input.autocomplete='off';input.spellcheck=false;
+    input.style.cssText='flex:1 1 280px;min-width:0;padding:12px';
+    input.setAttribute('aria-describedby','trelloLinkHint trelloLinkStatus');
+    const start=textElement('button','Anfrage laden');start.type='submit';
+    const hint=textElement('p','Vorhandene Entwürfe öffnen sich direkt – auch über den Link der Roboter-Kopie. Neue LED/Neon-Anfragen werden als Kopie vorbereitet.');
+    hint.id='trelloLinkHint';hint.style.cssText='font-size:13px;line-height:1.5;color:#bbc1c7';
+    const feedback=textElement('p','');feedback.id='trelloLinkStatus';feedback.setAttribute('role','status');feedback.hidden=true;
+    form.onsubmit=async event=>{
+      event.preventDefault();if(start.disabled)return;
+      start.disabled=true;input.readOnly=true;start.textContent='Wird geladen…';feedback.hidden=false;feedback.textContent='Trello-Karte wird geprüft…';input.removeAttribute('aria-invalid');
+      try{
+        const p=await cloudRequest('enqueue',{card:input.value.trim()});
+        location.href=cloudBase+'/?project='+encodeURIComponent(p.id);
+      }catch(e){
+        feedback.textContent=e.message;input.setAttribute('aria-invalid','true');start.disabled=false;input.readOnly=false;start.textContent='Anfrage laden';input.focus();
+      }
+    };
+    row.append(input,start);form.append(label,row,hint,feedback);panel.append(form);
     const list=await cloudRequest('list');
     if(list.watch_error||list.alert_error)panel.append(textElement('p',list.watch_error||list.alert_error));
     for(const p of list.projects){
