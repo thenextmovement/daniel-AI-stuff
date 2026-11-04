@@ -5254,3 +5254,32 @@ test("sales paid-history enrichment shares the scan deadline and aborts without 
     assert.equal(historyRead, true);
   } finally { AbortSignal.timeout = originalTimeout; }
 });
+
+test("supplier order confirmation uses current billing case for either Shopify ID format", async () => {
+  const row = saleRow({ shopify_order_id: "gid://shopify/Order/42", offer_snapshot: {} });
+  const billing:any = {shopify_order_name:"#NEONT42",customer:{},billing_address:{name:"Aktuelle Adresse"},delivery_address:{},line_items:[],totals:{},subtotal_net_cents:10000,vat_cents:1900,total_gross_cents:11900,currency:"EUR",created_at:row.created_at,paid_at:row.created_at};
+  await withMockedAssignmentFetch(async (url) => {
+    if (url.pathname.endsWith("/supplier_sales")) return Response.json([row]);
+    if (url.pathname.endsWith("/billing_cases")) {
+      const filter=url.searchParams.get("shopify_order_id")||"";
+      assert.match(filter,/^in\./);assert.match(filter,/42/);assert.match(filter,/gid:\/\/shopify\/Order\/42/);return Response.json([billing]);
+    }
+    throw new Error("unexpected read");
+  }, async () => {
+    const {orderConfirmationFromBillingCase,renderOrderConfirmation}=await import("../../src/lib/ops/order-confirmation");
+    const pdf=await generateSupplierOrderConfirmationPdf(row.id);
+    assert.deepEqual(pdf.bytes,await renderOrderConfirmation(orderConfirmationFromBillingCase(billing,row)));
+  });
+});
+
+test("supplier order confirmation without billing case respects confirmed payment", async () => {
+  const row = saleRow({shopify_payment_status:"paid",offer_snapshot:{}});
+  await withMockedAssignmentFetch(async (url) => url.pathname.endsWith("/supplier_sales")?Response.json([row]):Response.json([]), async () => {
+    const {getDocument}=await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const pdf=await generateSupplierOrderConfirmationPdf(row.id);
+    const document=await getDocument({data:pdf.bytes.slice(),useSystemFonts:true}).promise;
+    const content=await(await document.getPage(1)).getTextContent();
+    const text=content.items.map((x:any)=>x.str||"").join(" ");
+    assert.match(text,/vollständig bezahlt/);assert.doesNotMatch(text,/Gesamtbetrag ist fällig/);
+  });
+});

@@ -5914,8 +5914,10 @@ export async function generateSupplierOrderConfirmationPdf(saleId: string): Prom
   const row = await fetchSaleRowById(saleId);
   if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
   if (row.shopify_order_id) {
+    const orderId = row.shopify_order_id.replace(/^gid:\/\/shopify\/Order\//, "");
+    if (!/^\d+$/.test(orderId)) throw new Error("order_confirmation_order_id_invalid");
     const cases = await supabaseRequest<import("./billing/repository").BillingCaseRow[]>("billing_cases", undefined, {
-      select: "*", shopify_order_id: `eq.${row.shopify_order_id}`, limit: 2,
+      select: "*", shopify_order_id: `in.(${orderId},gid://shopify/Order/${orderId})`, limit: 2,
     });
     if (cases.length > 1) throw new Error("order_confirmation_billing_case_ambiguous");
     if (cases[0]) {
@@ -5934,6 +5936,9 @@ export async function generateSupplierOrderConfirmationPdf(saleId: string): Prom
     subtotal: numericValue(row.subtotal_price), total: numericValue(row.total_price),
     fallbackItems: itemRows.map(item => ({ title: item.title || "Position", description: recordString(item.raw_line_item, ["description"], 4000) || "", quantity: Number(item.quantity || 1), unitPrice: null, total: null })),
   });
+  if (["paid", "partially_refunded"].includes(row.shopify_payment_status) || row.payment_decision_status === "paid_confirmed") {
+    input.paymentTerms = "Der Gesamtbetrag ist vollständig bezahlt. Es ist keine weitere Zahlung erforderlich.";
+  }
   return { fileName: orderConfirmationFileName(row.document_reference || row.offer_number || input.reference), bytes: await renderOrderConfirmation(input) };
 }
 

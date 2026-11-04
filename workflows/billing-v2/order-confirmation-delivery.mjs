@@ -42,12 +42,19 @@ const a=$json.body??$json;const ctx=$('Check Existing Customer Delivery').first(
 const response=$('Load Order Confirmation PDF').first().json;const pdf=response.body??response;
 if(!a.id||String(a.document_id)!==String(ctx.easybillDocumentId)||a.file_name!==pdf.filename)throw new Error('order_confirmation_attachment_link_not_confirmed');
 return [{json:{attached:true,attachmentId:a.id}}];`});
+  add('content','Load Existing Order Confirmation Content','httpRequest',{method:'GET',url:"={{ 'https://api.easybill.de/rest/v1/attachments/' + encodeURIComponent($('Select Existing Order Confirmation').first().json.attachmentId) + '/content' }}",authentication:'genericCredentialType',genericAuthType:'httpHeaderAuth',options:{timeout:30000,response:{response:{responseFormat:'file',outputPropertyName:'data'}}}},easybillCredentials);
+  add('content-check','Verify Existing Order Confirmation Content','code',{jsCode:`
+const response=$('Load Order Confirmation PDF').first().json;const pdf=response.body??response;
+const bytes=await this.helpers.getBinaryDataBuffer(0,'data');
+if(bytes.toString('base64')!==pdf.contentBase64)throw new Error('FATAL_order_confirmation_stale_attachment_remove_old_AB_in_Easybill_before_retry');
+return [{json:{attached:true}}];`});
   workflow.connections['Customer Document Already Sent'].main[1]=[edge('Proforma Needs Order Confirmation')];
   workflow.connections['Proforma Needs Order Confirmation']={main:[[edge('Load Order Confirmation PDF')],[edge('Easybill Send Customer Document')]]};
   connect('Load Order Confirmation PDF','Order Confirmation Attachment IDs');connect('Order Confirmation Attachment IDs','Has Existing Attachment IDs');
   workflow.connections['Has Existing Attachment IDs']={main:[[edge('Load Existing Attachment Metadata')],[edge('Select Existing Order Confirmation')]]};
   connect('Load Existing Attachment Metadata','Select Existing Order Confirmation');connect('Select Existing Order Confirmation','Order Confirmation Already Attached');
-  workflow.connections['Order Confirmation Already Attached']={main:[[edge('Easybill Send Customer Document')],[edge('Prepare Order Confirmation Upload')]]};
+  workflow.connections['Order Confirmation Already Attached']={main:[[edge('Load Existing Order Confirmation Content')],[edge('Prepare Order Confirmation Upload')]]};
+  connect('Load Existing Order Confirmation Content','Verify Existing Order Confirmation Content');connect('Verify Existing Order Confirmation Content','Easybill Send Customer Document');
   connect('Prepare Order Confirmation Upload','Upload Order Confirmation PDF');connect('Upload Order Confirmation PDF','Link Order Confirmation PDF');connect('Link Order Confirmation PDF','Verify Order Confirmation Link');connect('Verify Order Confirmation Link','Easybill Send Customer Document');
   const send=get('Easybill Send Customer Document');
   send.parameters.url="={{ 'https://api.easybill.de/rest/v1/documents/' + encodeURIComponent($('Check Existing Customer Delivery').first().json.easybillDocumentId) + '/send/email' }}";

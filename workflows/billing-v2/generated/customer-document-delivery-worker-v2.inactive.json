@@ -660,6 +660,52 @@
         "jsCode": "\nconst a=$json.body??$json;const ctx=$('Check Existing Customer Delivery').first().json;\nconst response=$('Load Order Confirmation PDF').first().json;const pdf=response.body??response;\nif(!a.id||String(a.document_id)!==String(ctx.easybillDocumentId)||a.file_name!==pdf.filename)throw new Error('order_confirmation_attachment_link_not_confirmed');\nreturn [{json:{attached:true,attachmentId:a.id}}];"
       },
       "onError": "continueErrorOutput"
+    },
+    {
+      "id": "ab-content",
+      "name": "Load Existing Order Confirmation Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3170,
+        500
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.easybill.de/rest/v1/attachments/' + encodeURIComponent($('Select Existing Order Confirmation').first().json.attachmentId) + '/content' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_EASYBILL_BEARER",
+          "name": "easybill REST API"
+        }
+      }
+    },
+    {
+      "id": "ab-content-check",
+      "name": "Verify Existing Order Confirmation Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3390,
+        500
+      ],
+      "parameters": {
+        "jsCode": "\nconst response=$('Load Order Confirmation PDF').first().json;const pdf=response.body??response;\nconst bytes=await this.helpers.getBinaryDataBuffer(0,'data');\nif(bytes.toString('base64')!==pdf.contentBase64)throw new Error('FATAL_order_confirmation_stale_attachment_remove_old_AB_in_Easybill_before_retry');\nreturn [{json:{attached:true}}];"
+      },
+      "onError": "continueErrorOutput"
     }
   ],
   "connections": {
@@ -987,7 +1033,7 @@
       "main": [
         [
           {
-            "node": "Easybill Send Customer Document",
+            "node": "Load Existing Order Confirmation Content",
             "type": "main",
             "index": 0
           }
@@ -995,6 +1041,42 @@
         [
           {
             "node": "Prepare Order Confirmation Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Existing Order Confirmation Content": {
+      "main": [
+        [
+          {
+            "node": "Verify Existing Order Confirmation Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Customer Delivery Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Existing Order Confirmation Content": {
+      "main": [
+        [
+          {
+            "node": "Easybill Send Customer Document",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Customer Delivery Failure",
             "type": "main",
             "index": 0
           }

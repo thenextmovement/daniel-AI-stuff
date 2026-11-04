@@ -12,7 +12,9 @@ export async function POST(request:NextRequest) {
   try {
     const cases=await supabaseRequest<BillingCaseRow[]>('billing_cases',undefined,{select:'*',id:`eq.${body.billingCaseId}`,limit:1});
     const c=cases[0];if(!c)return NextResponse.json({ok:false,error:'not_found'},{status:404});
-    const sales=await supabaseRequest<Record<string,any>[]>('supplier_sales',undefined,{select:'id,offer_id,offer_number,document_reference,offer_snapshot,created_at',shopify_order_id:`eq.${c.shopify_order_id.replace(/^gid:\/\/shopify\/Order\//,'')}`,limit:3});
+    const orderId=c.shopify_order_id.replace(/^gid:\/\/shopify\/Order\//,'');
+    if(!/^\d+$/.test(orderId))throw new Error('order_confirmation_order_id_invalid');
+    const sales=await supabaseRequest<Record<string,any>[]>('supplier_sales',undefined,{select:'id,offer_id,offer_number,document_reference,offer_snapshot,created_at',shopify_order_id:`in.(${orderId},gid://shopify/Order/${orderId})`,limit:3});
     const sale=(c.source_offer_id?sales.find(s=>s.offer_id===c.source_offer_id):null)|| (sales.length===1?sales[0]:null);
     if(sales.length>1&&!sale)throw new Error('order_confirmation_sale_ambiguous');
     const input=orderConfirmationFromBillingCase(c,sale);

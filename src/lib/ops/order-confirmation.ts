@@ -92,7 +92,7 @@ export function orderConfirmationFromSnapshot(snapshot:Record<string,unknown>,fa
   const items=rawItems.length?rawItems.map((item,index)=>{
     const quantity=number(item.normalizedQuantity)??number(item.quantity)??1;
     const unitPrice=number(item.unitPriceNet);
-    return {title:clean(item.title||item.name)||`Position ${index+1}`,description:clean(String(item.description||'').replace(/\r?\n/g,' · ')),quantity,unitPrice,total:number(item.lineNet)??(unitPrice===null?null:Math.round(unitPrice*quantity*100)/100)};
+    return {title:clean(item.title||item.name)||`Position ${index+1}`,description:/liefer|shipping|versand/i.test(String(item.section||''))||/standardversand|standardlieferung|expressversand|eilauftrag/i.test(String(item.title||''))?'':clean(String(item.description||'').replace(/\r?\n/g,' · ')),quantity,unitPrice,total:number(item.lineNet)??(unitPrice===null?null:Math.round(unitPrice*quantity*100)/100)};
   }):fallback.fallbackItems||[];
   const deliveryItem=rawItems.find(item=>/liefer|shipping|versand/i.test(String(item.section||'')))||rawItems.find(item=>/standardversand|standardlieferung|expressversand|eilauftrag/i.test(String(item.title||'')));
   const selectedLabel=clean(delivery.label||delivery.method||deliveryItem?.title);

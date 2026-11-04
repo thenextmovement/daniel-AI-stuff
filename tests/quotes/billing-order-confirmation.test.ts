@@ -27,7 +27,7 @@ test('worker renders a PDF for the exact billing case without invoking any send 
  globalThis.fetch=async(input,init)=>{
   const url=new URL(String(input));assert.equal(init?.method||'GET','GET');assert.equal(url.origin,'https://supabase.test');reads++;
   if(url.pathname.endsWith('/billing_cases')){assert.equal(url.searchParams.get('id'),`eq.${c.id}`);return Response.json([c]);}
-  if(url.pathname.endsWith('/supplier_sales')){assert.equal(url.searchParams.get('shopify_order_id'),'eq.42');return Response.json([{offer_id:'offer-1',offer_number:'A/N 123',created_at:c.created_at,offer_snapshot:{delivery:{requestedDays:20,requestedDate:'2026-12-01'}}}]);}
+  if(url.pathname.endsWith('/supplier_sales')){assert.equal(url.searchParams.get('shopify_order_id'),'in.(42,gid://shopify/Order/42)');return Response.json([{offer_id:'offer-1',offer_number:'A/N 123',created_at:c.created_at,offer_snapshot:{delivery:{requestedDays:20,requestedDate:'2026-12-01'}}}]);}
   throw new Error('Unexpected external side effect: '+url.pathname);
  };
  try{

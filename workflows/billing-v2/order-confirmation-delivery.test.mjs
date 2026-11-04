@@ -25,3 +25,12 @@ test('link must be acknowledged before the email can be sent',()=>{
  assert.throws(()=>run('Verify Order Confirmation Link',[{json:{id:7,document_id:null,file_name:'ab.pdf'}}],ctx),/not_confirmed/);
  assert.equal(run('Verify Order Confirmation Link',[{json:{id:7,document_id:42,file_name:'ab.pdf'}}],ctx)[0].json.attached,true);
 });
+
+test('retry reuses only byte-identical AB and blocks a stale paid/address snapshot before sending',async()=>{
+ const source=get('Verify Existing Order Confirmation Content').parameters.jsCode;
+ const runContent=bytes=>vm.runInNewContext(`(async function(){${source}}).call({helpers:{getBinaryDataBuffer:async()=>bytes}})`,{bytes:Buffer.from(bytes),$:()=>({first:()=>({json:{contentBase64:Buffer.from('current PDF').toString('base64')}})})});
+ assert.equal((await runContent('current PDF'))[0].json.attached,true);
+ await assert.rejects(runContent('old PDF'),/stale_attachment/);
+ assert.equal(wf.connections['Order Confirmation Already Attached'].main[0][0].node,'Load Existing Order Confirmation Content');
+ assert.equal(wf.connections['Verify Existing Order Confirmation Content'].main[0][0].node,'Easybill Send Customer Document');
+});
