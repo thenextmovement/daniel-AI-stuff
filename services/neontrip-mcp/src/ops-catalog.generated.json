@@ -9574,7 +9574,7 @@
     },
     {
       "source": "src/app/api/ops/neon-studio/[[...path]]/route.ts",
-      "sha256": "42224217b133ca62f475024542a55bc77325e4465998f8fb4f834a80f7331f36",
+      "sha256": "566b7b2be7534300b273ab5e2802cb93837fc5372940d785487b7cd48cf7022e",
       "methods": [
         "GET",
         "POST"
