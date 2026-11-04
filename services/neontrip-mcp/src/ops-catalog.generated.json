@@ -9573,6 +9573,15 @@
       ]
     },
     {
+      "source": "src/app/api/ops/neon-studio/[[...path]]/route.ts",
+      "sha256": "42224217b133ca62f475024542a55bc77325e4465998f8fb4f834a80f7331f36",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "coverage": "Browser-only Neon Studio document and asset proxy; edit persisted projects in the authenticated Neon Studio UI. No arbitrary catch-all MCP forwarding."
+    },
+    {
       "source": "src/app/api/ops/session/route.ts",
       "sha256": "fcf49a24f74b48a8ea7f20700f30ea185460bdde7ad0ec0827c0226413849cad",
       "methods": [
