@@ -12,6 +12,7 @@ export type OpsAppKey =
   | "companyKnowledge"
   | "design"
   | "socialStudio"
+  | "neonStudio"
   | "offers"
   | "billing"
   | "dunning"
@@ -95,6 +96,13 @@ const OPS_APPS: Array<{
     label: "Design",
     helper: "Mockups & Freigaben",
     href: "/ops/design",
+    Icon: Palette,
+  },
+  {
+    key: "neonStudio",
+    label: "Neon Studio",
+    helper: "Zeichnung & Auto-Quote",
+    href: "/ops/neon-studio",
     Icon: Palette,
   },
   {

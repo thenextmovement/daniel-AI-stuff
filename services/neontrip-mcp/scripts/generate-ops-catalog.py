@@ -3,6 +3,7 @@ import hashlib,json,re
 from pathlib import Path
 root=Path(__file__).resolve().parents[3]
 excluded={
+ 'neon-studio/[[...path]]':'Browser-only Neon Studio document and asset proxy; edit persisted projects in the authenticated Neon Studio UI. No arbitrary catch-all MCP forwarding.',
  'customer-records/offers/[offerId]/admin':'Browser-only redirect; use offers_get/editor tools to read and edit the offer directly.',
  'session':'Browser login/logout; not a business action. MCP uses its own authenticated identity.',
  'design/worker/jobs':'Worker lease/claim protocol; use design jobs/generate/queue operator actions.',
