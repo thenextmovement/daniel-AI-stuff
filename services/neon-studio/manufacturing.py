@@ -14,7 +14,7 @@ def normalize_dot(item, scale):
         height=max(20/scale,y1-y0)
         commands=[['m',[cx,y1]],['l',[cx,y1-height]]]
     else:
-        r=max(10/scale,(x1-x0)/2,(y1-y0)/2);cy=y1-r;k=KAPPA*r
+        r=max((x1-x0)/2,(y1-y0)/2);cy=y1-r;k=KAPPA*r
         commands=[['m',[cx+r,cy]],['c',[cx+r,cy+k],[cx+k,cy+r],[cx,cy+r]],
                   ['c',[cx-k,cy+r],[cx-r,cy+k],[cx-r,cy]],
                   ['c',[cx-r,cy-k],[cx-k,cy-r],[cx,cy-r]],
@@ -56,7 +56,7 @@ def inspect(drawing, profile=None):
                 if valid.any():
                     radius=float(np.min(speed[valid]**3/cross[valid]))
                     if dot:
-                        if radius<values['bendRadius']:local.append(f'{name}: Kreis lokal auf mindestens {2*values["bendRadius"]:g} mm Durchmesser anpassen; Platz zum Buchstaben prüfen.')
+                        if radius<values['bendRadius']:local.append(f'{name}: Kreisradius kleiner als der Profilwert {values["bendRadius"]:g} mm. Punktform und lokale Fertigung prüfen.')
                     else:radii.append((radius,name))
             joins=list(zip(tangents,tangents[1:]))
             if part[-1][0]=='h' and tangents:joins.append((tangents[-1],tangents[0]))

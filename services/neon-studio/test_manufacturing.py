@@ -34,8 +34,16 @@ class ManufacturingTests(unittest.TestCase):
   self.assertEqual(item,before);self.assertEqual(new['commands'],[['m',[10,6]],['l',[10,-4]]])
   self.assertEqual(normalize_dot({**item,'role':'logo'},2)['commands'],item['commands'])
   double=normalize_dot({**item,'mode':'double'},2)
-  self.assertEqual(double['commands'][-1],['h']);self.assertAlmostEqual(path_length(double['commands']),10*3.14159,delta=.02)
+  self.assertEqual(double['commands'][-1],['h']);self.assertAlmostEqual(path_length(double['commands']),3.14159,delta=.02)
   self.assertAlmostEqual(path_bounds(double['commands'])[3],6)
+ def test_double_dot_keeps_design_proportions_at_different_sizes(self):
+  item={'role':'dot','mode':'double','commands':[['m',[9,4]],['l',[11,4]],['l',[11,6]],['l',[9,6]],['h']]}
+  before=copy.deepcopy(item)
+  for scale in (.5,1,2,10):
+   dot=normalize_dot(item,scale)
+   self.assertEqual(path_bounds(dot['commands']),[9,4,11,6])
+   self.assertAlmostEqual(path_length(dot['commands']),2*3.14159,delta=.02)
+  self.assertEqual(item,before)
  def drawing(self,paths):
   return {'paths':paths,'names':['Path '+str(i) for i in range(len(paths))],'pathModes':['single']*len(paths),
    'settings':{'tube':6,'gap':15},'width':130,'neonMeters':sum(map(path_length,paths))/1000,'neonMaterialMeters':sum(map(path_length,paths))*1.1/1000}
@@ -66,12 +74,15 @@ class ManufacturingTests(unittest.TestCase):
  def test_invalid_profile(self):
   for value in (float('nan'),0,'25',True):
    with self.assertRaises(ValueError):inspect(self.drawing([]),{'bendRadius':value})
- def test_fixed_size_dot_is_local_adjustment_not_global_enlargement(self):
+ def test_proportional_dot_still_requires_manufacturing_review(self):
   dot=normalize_dot({'role':'dot','mode':'double','commands':[['m',[0,0]],['l',[0,1]]]},1)
   d=self.drawing([dot['commands']]);d['pathRoles']=['dot']
   result=inspect(d,{'bendRadius':25})
   self.assertIsNone(result['recommendedWidth'])
-  self.assertTrue(any('Kreis lokal' in w for w in result['warnings']))
+  self.assertTrue(result['needsLocalCorrection'])
+  self.assertFalse(result['approved'])
+  self.assertTrue(any('Kreisradius' in w for w in result['warnings']))
+  self.assertEqual(len(result['shortPaths']),1)
  def test_tight_curve_with_unresolved_corner_is_not_a_size_recommendation(self):
   d=self.drawing([[['m',[0,0]],['c',[0,1],[1,1],[1,0]],['l',[100,0]]]])
   result=inspect(d)
