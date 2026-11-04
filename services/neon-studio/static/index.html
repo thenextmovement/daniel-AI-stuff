@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#202224">
+  <title>Neon Studio · NEONTRIP</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">NEONTRIP<span class="brand-divider"></span><span class="studio-name">Neon Studio</span><span class="version">V1</span></div>
+    <button class="file-button" id="fileInfo" title="Motivdetails öffnen"><span data-icon="file"></span><span id="filename">Kein Motiv</span><span class="filetype" id="filetype">PNG</span></button>
+    <button class="button upload-button" id="upload"><span data-icon="upload"></span><span>Datei hochladen</span></button>
+    <input id="fileInput" type="file" hidden>
+    <div class="topbar-spacer"></div>
+    <div class="history-tools"><button class="icon-button" id="undo" aria-label="Rückgängig" title="Rückgängig · ⌘Z" disabled><span data-icon="undo"></span></button><button class="icon-button" id="redo" aria-label="Wiederholen" title="Wiederholen · ⇧⌘Z" disabled><span data-icon="redo"></span></button></div>
+    <div class="top-divider"></div>
+    <label class="zoom-control"><select id="zoom" aria-label="Zoom"><option value="fit">Einpassen</option><option value="50">50 %</option><option value="75">75 %</option><option value="100" selected>100 %</option><option value="125">125 %</option><option value="150">150 %</option><option value="200">200 %</option><option value="300">300 %</option><option value="600">600 %</option><option value="800">800 %</option><option value="1200">1200 %</option><option value="1600">1600 %</option><option value="2400">2400 %</option><option value="3200">3200 %</option></select><span data-icon="chevron"></span></label>
+    <div class="top-divider"></div>
+    <button class="settings-trigger" id="settings"><span data-icon="settings"></span><span>Einstellungen</span></button>
+  </header>
+
+  <main class="workspace">
+    <section class="canvas-panel" id="dropzone" aria-label="Zeichenfläche">
+      <div class="view-toolbar">
+        <div class="segmented view-switch" role="group" aria-label="Ansicht"><button data-view="original" aria-pressed="false">Original</button><button data-view="vectors" class="active" aria-pressed="true">Vektoren</button></div>
+        <button class="dimension-toggle" id="dimensions" aria-pressed="true"><span data-icon="ruler"></span>Maße<span class="check-box" data-icon="check"></span></button>
+        <span class="live-indicator" id="liveStatus"><i></i><span>Bereit</span></span>
+      </div>
+      <div class="stage" id="stage">
+        <svg id="drawing" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vektorvorschau des Neonschildes" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="empty-state" id="emptyState"><div class="empty-icon" data-icon="image"></div><h1>Dein Motiv als Neonzeichnung.</h1><p>PNG, JPG, WebP, SVG oder PDF hier ablegen.</p><button class="primary" id="emptyUpload">Datei hochladen</button><button class="text-button" id="example">B-KITE-Beispiel öffnen <span>↗</span></button><small>Die Verarbeitung erfolgt auf deinem Rechner.</small></div>
+      </div>
+      <div class="canvas-tool-menu">
+        <div class="tool-dock" role="group" aria-label="Zeichenwerkzeuge">
+          <button class="icon-button active" id="selectTool" aria-label="Pfad auswählen" aria-pressed="true" data-tooltip="Auswählen · Linie anklicken oder ein Rechteck um mehrere Linien ziehen. Shift ergänzt die Auswahl."><span data-icon="pointer"></span></button>
+          <button class="icon-button" id="moveTool" aria-label="Auswahl verschieben" aria-pressed="false" data-tooltip="Verschieben · Auswahl ziehen oder mit den Pfeiltasten um 1 mm versetzen. Shift: gerade ziehen / 10 mm." disabled><span data-icon="move"></span></button>
+          <span class="dock-divider" aria-hidden="true"></span>
+          <button class="icon-button" id="colorSelected" aria-label="Linienfarbe ändern (C)" data-tooltip="Farbe ändern · Erst Linien auswählen, dann ihre Neonfarbe wählen. Taste C öffnet die Palette." aria-keyshortcuts="C" aria-expanded="false" aria-controls="pathColorPanel" disabled><span data-icon="palette"></span></button>
+          <button class="icon-button" id="hideSelected" aria-label="Ausgewählte Linien ausblenden" data-tooltip="Ausblenden · Entfernt die ausgewählten Linien aus der Zeichnung. Über „Ausgeblendet“ wieder einblenden." disabled><span data-icon="eyeOff"></span></button>
+          <button class="icon-button" id="splitSelected" aria-label="An Verbindungen trennen" data-tooltip="Trennen · Teilt ausgewählte Linien an Kreuzungen und Verbindungen. Die Stücke lassen sich einzeln färben oder verschieben." disabled><span data-icon="scissors"></span></button>
+          <button class="icon-button" id="recoveryTool" aria-label="Linien nacherkennen" data-tooltip="Nacherkennen · Bereich im Original markieren und die gewünschte Farbe aufnehmen, um fehlende Linien zu ergänzen." aria-expanded="false" aria-controls="recoveryPanel" disabled><span data-icon="recover"></span></button>
+          <span class="dock-divider" aria-hidden="true"></span>
+          <button class="icon-button" id="outlinePointTool" aria-label="Konturpunkte bearbeiten" aria-pressed="false" aria-expanded="false" aria-controls="outlinePointOptions" data-tooltip="Acrylkontur · Konturpunkte verschieben, hinzufügen oder löschen und Abschnitte begradigen."><span data-icon="contour"></span></button>
+          <span class="dock-divider" aria-hidden="true"></span>
+          <button class="icon-button" id="panTool" aria-label="Ansicht verschieben" aria-pressed="false" data-tooltip="Hand · Verschiebt den sichtbaren Ausschnitt. Das Design bleibt an seiner Position."><span data-icon="hand"></span></button>
+          <button class="icon-button" id="cropTool" aria-label="Logobereich markieren" data-tooltip="Ausschnitt · Den Motivbereich im Bild für die Erkennung auswählen."><span data-icon="crop"></span></button>
+          <button class="icon-button" id="fit" aria-label="Ansicht einpassen" data-tooltip="Einpassen · Zeigt das gesamte Design und setzt Zoom und Ansichtsverschiebung zurück."><span data-icon="fit"></span></button>
+        </div>
+        <div id="recoveryPanel" role="group" aria-label="Linien nacherkennen" hidden>
+          <div class="recovery-actions">
+            <button class="icon-button active" id="recoveryRect" aria-label="Bereich mit Rechteck markieren" title="Bereich mit Rechteck markieren" aria-pressed="true"><span data-icon="rectangle"></span></button>
+            <button class="icon-button" id="recoveryBrush" aria-label="Bereich mit Pinsel markieren" title="Bereich mit Pinsel markieren" aria-pressed="false"><span data-icon="brush"></span></button>
+            <button class="icon-button" id="recoveryPick" aria-label="Linienfarbe im Original aufnehmen" title="Linienfarbe im Original aufnehmen" aria-pressed="false"><span data-icon="pipette"></span></button>
+            <span class="recovery-color" id="recoveryColor" title="Aufgenommene Originalfarbe"></span>
+            <span class="recovery-spacer"></span>
+            <button class="icon-button" id="recoveryApply" aria-label="Erkannte Linien übernehmen" title="Erkannte Linien übernehmen" disabled><span data-icon="check"></span></button>
+            <button class="icon-button" id="recoveryCancel" aria-label="Nacherkennung abbrechen" title="Nacherkennung abbrechen"><span data-icon="close"></span></button>
+          </div>
+          <label class="recovery-slider" id="recoveryBrushControl" hidden>Pinsel <input id="recoveryBrushSize" type="range" min="12" max="160" value="50" aria-label="Pinselgröße zur Nacherkennung"></label>
+          <label class="recovery-slider">Empfindlichkeit <input id="recoveryTolerance" type="range" min="0" max="160" value="35" aria-label="Empfindlichkeit der Nacherkennung"><output id="recoveryToleranceValue">35</output></label>
+          <p id="recoveryStatus" role="status">Bereich im Original markieren, dann die gewünschte Farbfläche anklicken.</p>
+        </div>
+        <div class="outline-point-options" id="outlinePointOptions" role="group" aria-label="Konturpunkt-Optionen" hidden>
+          <div class="outline-action-row">
+            <button class="icon-button" id="addOutlinePoint" aria-label="Punkt hinzufügen" title="Punkt hinzufügen" aria-pressed="false"><span data-icon="pointAdd"></span></button>
+            <button class="icon-button" id="deleteOutlinePoint" aria-label="Punkt löschen" title="Punkt löschen" disabled><span data-icon="pointDelete"></span></button>
+            <button class="icon-button" id="outlineStraightenTool" aria-label="Konturabschnitt begradigen" title="Konturabschnitt begradigen" aria-pressed="false"><span data-icon="straighten"></span></button>
+            <button class="icon-button" id="resetOutlineEdits" aria-label="Konturkorrekturen zurücksetzen" title="Konturkorrekturen zurücksetzen" disabled><span data-icon="undo"></span></button>
+            <details class="outline-point-help"><summary class="icon-button" aria-label="Hilfe zur Konturbearbeitung" title="Hilfe zur Konturbearbeitung"><span data-icon="info"></span></summary><p class="help-text">Punkt ziehen; mit Shift nur waagerecht oder senkrecht. Shift + Klick oder Rechteck: mehrere Punkte auswählen. Doppelklick auf die Kante: Punkt hinzufügen. Der Randabstand bleibt erhalten.</p></details>
+            <button class="icon-button" id="finishOutlinePoints" aria-label="Konturbearbeitung beenden" title="Konturbearbeitung beenden"><span data-icon="close"></span></button>
+          </div>
+          <p class="help-text" id="outlinePointHint" role="status" hidden></p>
+          <div id="outlineStraightenOptions" hidden>
+            <p class="help-text" id="outlineStraightenHint" role="status">Ziehe ein Rechteck über eine Einkerbung der Acrylkante, einschließlich ihrer beiden Anschlussstücke.</p>
+            <div class="outline-confirm-row"><button class="icon-button" id="applyOutlineStraighten" aria-label="Gerade übernehmen" title="Gerade übernehmen" disabled><span data-icon="check"></span></button><button class="icon-button" id="cancelOutlineStraighten" aria-label="Begradigen abbrechen" title="Begradigen abbrechen"><span data-icon="close"></span></button></div>
+          </div>
+        </div>
+        <div id="pathColorPanel" hidden aria-labelledby="pathColorTitle">
+          <div class="dialog-heading"><div><h2 id="pathColorTitle">Linienfarbe</h2><span class="eyebrow" id="colorPathName">NEONPFAD</span></div><button class="icon-button" id="closePathColor" aria-label="Farbauswahl schließen" title="Farbauswahl schließen"><span data-icon="close"></span></button></div>
+          <div class="palette-strip"><button class="icon-button" id="palettePrevious" aria-label="Vorherige Farben" title="Farben nach links"><span data-icon="left"></span></button><div class="neon-palette" id="neonPalette" role="group" aria-label="Neonfarben" tabindex="0"></div><button class="icon-button" id="paletteNext" aria-label="Weitere Farben" title="Farben nach rechts"><span data-icon="right"></span></button></div>
+          <details><summary class="icon-button" aria-label="Weitere Farboptionen" title="Freie Farbe und weitere Optionen"><span data-icon="sliders"></span></summary>
+            <div class="custom-line-color"><label for="customPathColor">Freie Farbe</label><input id="customPathColor" type="color" value="#ff7a18"><button class="button" id="applyCustomColor">Übernehmen</button></div>
+            <p class="help-text" id="colorSource"></p>
+            <label class="checkbox-row"><input type="checkbox" id="applySameColor"><span>Alle Linien dieser Originalfarbe ändern<br><small>Auch in der anderen Linienart und bei ausgeblendeten Pfaden</small></span></label>
+            <p class="help-text">Kaltweiß und Warmweiß: schwarze Linien in der PDF, unterschiedliche Farbnamen in der Legende. Farbfelder sind Bildschirmannäherungen. Ein erkannter Pfad erhält eine Farbe; Farbverläufe werden nicht in mehrere Linien zerlegt.</p>
+            <button class="text-button" id="resetPathColor">Erkannte Originalfarbe wiederherstellen</button>
+          </details>
+        </div>
+        <div class="uv-canvas-tools"><button class="button" id="uvCanvasButton" hidden>UV-Druck markieren</button><button class="button" id="uvCanvasErase" aria-pressed="false" hidden>UV radieren</button></div>
+      </div>
+      <div class="canvas-bottom">
+        <div class="canvas-meta" id="canvasMeta"></div>
+        <button class="text-button" id="hiddenSummary" hidden>Ausgeblendet (0)</button>
+        <div id="selectionLabel" class="selection-label"></div>
+      </div>
+      <div class="processing-overlay" id="processingOverlay" role="status" aria-live="polite" hidden><div class="processing-card"><span class="processing-spinner" aria-hidden="true"></span><h2 id="processingTitle">Dein Motiv wird nachgezeichnet</h2><p id="processingDetail">Linien und Kurven werden aus deinem Bild berechnet.</p><small id="processingElapsed">0 s</small></div></div>
+      <div class="drop-overlay" id="dropOverlay"><span data-icon="upload"></span>Datei hier ablegen</div>
+    </section>
+
+    <aside class="inspector" aria-label="Motiv-Einstellungen">
+      <nav class="tabs" role="tablist" aria-label="Bearbeitungsschritte"><button role="tab" data-tab="motif" aria-selected="false">Motiv</button><button role="tab" data-tab="neon" aria-selected="false">Neon</button><button role="tab" data-tab="acrylic" class="active" aria-selected="true">Acryl</button><button role="tab" data-tab="pricing" aria-selected="false">Preis</button><button role="tab" data-tab="check" aria-selected="false">Prüfen</button></nav>
+      <div class="inspector-scroll">
+        <section class="tab-panel" id="panel-motif" role="tabpanel" hidden>
+          <div class="section-heading"><h2>Dein Motiv</h2><span class="muted-label">01</span></div>
+          <div class="source-card"><img id="sourceThumbnail" alt="Hochgeladenes Motiv"><div><strong id="sourceName">Noch kein Bild</strong><span id="sourceSize">PNG · JPG · WebP</span></div></div>
+          <button class="button full" id="replaceImage"><span data-icon="upload"></span>Datei austauschen</button>
+          <button class="button full secondary-action" id="cropImage"><span data-icon="crop"></span>Logobereich markieren</button>
+          <div class="section-divider"></div><h2>Herkunft der Linien</h2><p class="source-description" id="sourceDescription">Lade ein Bild hoch oder öffne das B-KITE-Beispiel.</p>
+          <p class="help-text">SVG, Vektor-PDF und PDF-kompatible AI: Motiv vor dem Import auswählen; vorhandene Kurven und Farben bleiben erhalten. CDR, EPS und DXF bitte zuerst als SVG oder PDF exportieren. Bilder werden automatisch nachgezeichnet; B-KITE behält seine abgestimmte Vektorvorlage.</p>
+          <button class="text-button" id="loadExample">B-KITE-Beispiel laden <span>↗</span></button>
+          <button class="text-button" id="loadTestLogo">NOVA-Rastertest laden <span>↗</span></button>
+          <p class="help-text compact">Neues Testlogo ohne Vektorvorlage. Auch zum Vergleichen von Single und Double Line.</p>
+        <div class="section-divider"></div>
+          <div class="section-heading"><h2>UV-Druck</h2><span class="muted-label">Originalfarben</span></div>
+          <p class="help-text">Übermale im Original, was gedruckt werden soll. Die markierte Fläche erscheint vollflächig in der Vektoransicht, zählt nicht als Neon und bleibt Teil von Cut to Shape.</p>
+          <div class="segmented uv-content-switch" role="group" aria-label="UV-Druck-Inhalt"><button data-uv-mode="forms" aria-pressed="false">Nur erkannte Formen</button><button data-uv-mode="original" class="active" aria-pressed="true">Mit Hintergrund</button></div>
+          <p class="help-text compact" id="uvModeHelp">Übernimmt den übermalten Originalausschnitt einschließlich Hintergrund.</p>
+          <div class="part-mode-buttons"><button class="button" id="uvBrushTool" aria-pressed="false">UV-Pinsel</button><button class="button" id="uvEraseTool" aria-pressed="false">Radierer</button></div>
+          <div id="uvTools" hidden>
+            <label class="uv-brush-size" for="uvBrushSize">Pinselgröße <input type="range" id="uvBrushSize" min="8" max="180" value="60"><output id="uvBrushValue">60 px</output></label>
+            <p class="help-text">Türkis markiert den Druckbereich. Zwei Finger verschieben die Ansicht; Zoomen hilft bei feiner Schrift.</p>
+            <button class="button full" id="uvDone">Druck in Vektoransicht ansehen</button>
+          </div>
+          <p class="help-text" id="uvStatus" role="status">Noch kein UV-Druck markiert.</p>
+          <button class="text-button" id="uvClear" hidden>UV-Markierung zurücksetzen</button>
+          <p class="help-text compact">PDF: „Zeichnung“ zeigt Neon und Druck gemeinsam. „UV-Druck“ enthält nur die Druckflächen in 1:1; „CNC“ nur Neon und Acrylkontur.</p>
+        </section>
+
+        <section class="tab-panel" id="panel-neon" role="tabpanel" hidden>
+          <div class="section-heading"><h2>Grundmodus</h2><span class="muted-label">02</span></div>
+          <div class="segmented mode-switch" role="group" aria-label="Linienart"><button data-mode="single" aria-pressed="false">Single Line</button><button data-mode="double" class="active" aria-pressed="true">Double Line</button></div>
+          <p class="help-text" id="modeHelp">Die Innen- und Außenlinien des Motivs bilden die Neonpfade.</p>
+          <div class="straighten-controls">
+            <button class="button full" id="straightenTool" aria-pressed="false">Kurvenabschnitt begradigen</button>
+            <div id="straightenOptions" hidden>
+              <p class="help-text" id="straightenHint" role="status">Klicke eine Kurve im Motiv an. Gelb zeigt die Gerade zwischen ihren Endpunkten.</p>
+              <p class="help-text compact">Nur dieser Abschnitt wird geändert. Rückgängig ist oben möglich.</p>
+              <div class="part-mode-buttons"><button class="button" id="applyStraighten" disabled>Gerade übernehmen</button><button class="text-button" id="cancelStraighten">Beenden</button></div>
+            </div>
+          </div>
+          <div class="region-controls">
+            <div class="section-heading"><h2>Bereiche zuweisen</h2><button class="text-button" id="resetPartModes">Zurücksetzen</button></div>
+            <button class="button full" id="regionTool" aria-pressed="false">Bereich mit Rechteck markieren</button>
+            <p class="help-text compact">Pfeil: Shift + Klick ergänzt die Auswahl. Nach rechts ziehen: ganz eingeschlossene Pfade. Nach links: auch berührte. Die Linienart gilt für das zugehörige Element.</p>
+            <p class="selection-count" id="partSelectionCount" role="status">Kein Element ausgewählt</p>
+            <div class="part-mode-buttons"><button class="button" data-part-mode="single" disabled>Auswahl: Single</button><button class="button" data-part-mode="double" disabled>Auswahl: Double</button><button class="text-button" data-part-mode="default" disabled>Grundmodus</button></div>
+            <div class="part-list" id="partList" aria-label="Motivelemente"></div>
+          </div>
+          <p class="notice" id="traceWarning" hidden>Automatischer Entwurf: Bei ausgefüllten Flächen und Verzweigungen kann Single Line vom gewünschten Neonverlauf abweichen. Mit dem Original vergleichen.</p>
+          <div class="section-divider"></div>
+          <label class="field-row" for="tube"><span>Neonbreite</span><div class="number-field"><input id="tube" type="number" data-setting="tube" min="1" max="30" step=".5" value="6"><span>mm</span></div></label>
+          <p class="help-text">Schlauchbreite für die Leuchtvorschau. Der Randabstand wird bis zur gezeichneten Neonlinie gemessen und bleibt davon unabhängig.</p>
+          <div class="section-divider"></div><h2 id="pathOverview">Pfadübersicht <span class="count" id="pathCount">0</span></h2>
+          <p class="help-text">Das Auge schaltet den Pfad ein oder aus. Ausgeblendete Pfade bleiben hier und zählen nicht zu Neonmetern, Außenkontur oder PDF. Die Auswahl gilt je Linienmodus.</p><div class="path-list" id="pathList"></div>
+
+        </section>
+
+        <section class="tab-panel" id="panel-acrylic" role="tabpanel">
+          <div class="section-heading"><h2>Plattenform</h2><span class="muted-label">03</span></div>
+          <div class="segmented shape-switch" role="group" aria-label="Plattenform"><button data-shape="rectangle" aria-pressed="false">Rechteck</button><button data-shape="shape" aria-pressed="false">Cut to Shape</button><button data-shape="bottom" class="active" aria-pressed="true">Nur unten</button></div>
+          <div class="sliders">
+            <div class="side-control" id="gapRow">
+              <div class="slider-row"><div class="side-heading"><button class="side-toggle" data-side-toggle="gap" aria-label="Randabstand pro Seite" aria-controls="gapSides" aria-expanded="false"><span data-icon="chevron"></span></button><label for="gap">Randabstand</label></div><input id="gapRange" aria-label="Randabstand Regler" type="range" data-setting="gap" min="2" max="100" step=".5" value="15"><div class="number-field"><input id="gap" aria-label="Randabstand" type="number" data-setting="gap" min="2" max="100" step=".5" value="15"><span>mm</span></div></div>
+              <p class="help-text compact">Von der Acrylkontur bis zur gezeichneten Neonlinie.</p>
+              <div class="side-settings" id="gapSides" hidden>
+                <p>Einzeln anpassen. Der Hauptregler setzt wieder alle Seiten.</p>
+                <div class="side-slider-row"><label for="gapLeftRange">Links</label><input id="gapLeftRange" aria-label="Randabstand links Regler" type="range" data-side-setting="gap" data-side="left" min="2" max="100" step=".5"><div class="number-field"><input aria-label="Randabstand links" type="number" data-side-setting="gap" data-side="left" min="2" max="100" step=".5"><span>mm</span></div></div>
+                <div class="side-slider-row"><label for="gapRightRange">Rechts</label><input id="gapRightRange" aria-label="Randabstand rechts Regler" type="range" data-side-setting="gap" data-side="right" min="2" max="100" step=".5"><div class="number-field"><input aria-label="Randabstand rechts" type="number" data-side-setting="gap" data-side="right" min="2" max="100" step=".5"><span>mm</span></div></div>
+                <div class="side-slider-row"><label for="gapTopRange">Oben</label><input id="gapTopRange" aria-label="Randabstand oben Regler" type="range" data-side-setting="gap" data-side="top" min="2" max="100" step=".5"><div class="number-field"><input aria-label="Randabstand oben" type="number" data-side-setting="gap" data-side="top" min="2" max="100" step=".5"><span>mm</span></div></div>
+                <div class="side-slider-row"><label for="gapBottomRange">Unten</label><input id="gapBottomRange" aria-label="Randabstand unten Regler" type="range" data-side-setting="gap" data-side="bottom" min="2" max="100" step=".5"><div class="number-field"><input aria-label="Randabstand unten" type="number" data-side-setting="gap" data-side="bottom" min="2" max="100" step=".5"><span>mm</span></div></div>
+              </div>
+            </div>
+            <div class="side-control" id="depthRow">
+              <div class="slider-row"><div class="side-heading"><button class="side-toggle" data-side-toggle="depth" aria-label="Einkerbung pro Seite" aria-controls="depthSides" aria-expanded="false"><span data-icon="chevron"></span></button><label for="depth">Max. Einkerbung</label></div><input id="depthRange" aria-label="Einkerbung Regler" type="range" data-setting="depth" min="0" max="500" step="1" value="20"><div class="number-field"><input id="depth" aria-label="Einkerbung" type="number" data-setting="depth" min="0" max="20000" step="1" value="20"><span>mm</span></div></div>
+              <div class="side-settings" id="depthSides" hidden>
+                <p>Einzeln anpassen. Der Hauptregler setzt wieder alle Seiten.</p>
+                <div class="side-slider-row"><label for="depthLeftRange">Links</label><input id="depthLeftRange" aria-label="Einkerbung links Regler" type="range" data-side-setting="depth" data-side="left" min="0" max="500" step="1"><div class="number-field"><input aria-label="Einkerbung links" type="number" data-side-setting="depth" data-side="left" min="0" max="20000" step="1"><span>mm</span></div></div>
+                <div class="side-slider-row"><label for="depthRightRange">Rechts</label><input id="depthRightRange" aria-label="Einkerbung rechts Regler" type="range" data-side-setting="depth" data-side="right" min="0" max="500" step="1"><div class="number-field"><input aria-label="Einkerbung rechts" type="number" data-side-setting="depth" data-side="right" min="0" max="20000" step="1"><span>mm</span></div></div>
+                <div class="side-slider-row"><label for="depthTopRange">Oben</label><input id="depthTopRange" aria-label="Einkerbung oben Regler" type="range" data-side-setting="depth" data-side="top" min="0" max="500" step="1"><div class="number-field"><input aria-label="Einkerbung oben" type="number" data-side-setting="depth" data-side="top" min="0" max="20000" step="1"><span>mm</span></div></div>
+                <div class="side-slider-row"><label for="depthBottomRange">Unten</label><input id="depthBottomRange" aria-label="Einkerbung unten Regler" type="range" data-side-setting="depth" data-side="bottom" min="0" max="500" step="1"><div class="number-field"><input aria-label="Einkerbung unten" type="number" data-side-setting="depth" data-side="bottom" min="0" max="20000" step="1"><span>mm</span></div></div>
+              </div>
+            </div>
+            <div class="slider-row"><label for="radius">Eckenradius</label><input id="radiusRange" aria-label="Eckenradius Regler" type="range" data-setting="radius" min=".5" max="30" step=".5" value="3"><div class="number-field"><input id="radius" aria-label="Eckenradius" type="number" data-setting="radius" min=".5" max="40" step=".5" value="3"><span>mm</span></div></div>
+          </div>
+          <p class="inline-note"><span data-icon="info"></span>Alle Ecken leicht gerundet.</p>
+          <p class="help-text compact" id="depthHelp">Begrenzt die Tiefe der Einkerbungen. Der Randabstand zum Neon bleibt erhalten.</p>
+          <div class="straighten-controls" id="depthRegionControls">
+            <button class="button full" id="depthRegionTool" aria-pressed="false">Einkerbung im Bereich</button>
+            <div id="depthRegionOptions" hidden>
+              <p class="help-text" id="depthRegionHint" role="status">Ziehe ein Rechteck über den gewünschten Bereich einschließlich der Acrylkante.</p>
+              <div class="slider-row"><label for="depthRegionValue">Max. Tiefe</label><input id="depthRegionRange" aria-label="Lokale Einkerbung Regler" type="range" min="0" max="500" step="1" value="20"><div class="number-field"><input id="depthRegionValue" aria-label="Lokale Einkerbung" type="number" min="0" max="20000" step="1" value="20"><span>mm</span></div></div>
+              <p class="help-text compact">Kleiner = gerader. Größer = stärker der Form folgen. Nur im Rechteck; der Neonabstand bleibt erhalten.</p>
+              <div class="part-mode-buttons"><button class="button" id="applyDepthRegion" disabled>Bereich übernehmen</button><button class="text-button" id="cancelDepthRegion">Abbrechen</button></div>
+            </div>
+            <div id="depthRegionList" class="depth-region-list"></div>
+            <p class="help-text compact" id="depthRegionDormant" hidden>Die gespeicherten Bereiche wirken bei Cut to Shape.</p>
+          </div>
+
+          <div class="notice" id="geometryNotice" hidden></div>
+          <div class="section-divider"></div><div class="section-heading"><h2>Außenmaße</h2><div class="segmented dimension-units" role="group" aria-label="Einheit der Außenmaße"><button data-dimension-unit="mm" aria-pressed="false">mm</button><button data-dimension-unit="cm" class="active" aria-pressed="true">cm</button></div></div>
+          <div class="width-slider"><label for="widthRange">Breite in 5-cm-Schritten</label><input id="widthRange" aria-label="Außenbreite Regler" type="range" data-setting="width" min="100" max="20000" step="50" value="600"><div><span>10 cm</span><span>20 m</span></div></div>
+          <div class="dimensions-fields"><div><label class="field-row" for="width"><span>Breite</span><div class="number-field"><input id="width" aria-label="Außenbreite" type="number" data-setting="width" min="8" max="2000" step="any" value="60.00"><span data-dimension-suffix>cm</span></div></label><div class="field-row"><span>Höhe</span><div class="number-field readonly"><output id="height">—</output><span data-dimension-suffix>cm</span></div></div></div><div class="ratio-lock" title="Motiv wird proportional skaliert"><span data-icon="link"></span></div></div>
+          <p class="inline-note"><span class="tiny-check" data-icon="check"></span>Motiv proportional skalieren</p><p class="help-text compact">Im Zahlenfeld sind auch Zwischenmaße möglich. Randabstand, Neonbreite und Eckenradius bleiben beim Skalieren erhalten.</p>
+        </section>
+
+        <section class="tab-panel" id="panel-pricing" role="tabpanel" hidden>
+          <div class="section-heading"><h2>LED-Neon-Kalkulation</h2><span class="muted-label">NUR INTERN</span></div>
+          <p class="help-text">Einkaufsschätzung aus Außenmaßen und reiner Neonlänge. Der Verschnitt von 10 % wird genau einmal berücksichtigt. Preise werden nicht in PDFs übernommen.</p>
+          <h2>Neon-Flex</h2>
+          <div class="segmented pricing-colors" role="group" aria-label="Neon-Farbtyp"><button data-price-color="single" class="active" aria-pressed="true">Einfarbig</button><button data-price-color="rgb" aria-pressed="false">RGB</button><button data-price-color="chasing_rgb" aria-pressed="false">Chasing RGB</button></div>
+          <div class="segmented" role="group" aria-label="Einsatzort"><button data-price-outdoor="false" class="active" aria-pressed="true">Indoor</button><button data-price-outdoor="true" aria-pressed="false">Outdoor</button></div>
+          <label class="field-row" id="pricePsuRow" hidden>Wasserdichte Netzteile je Schild<div class="number-field"><input id="pricePsus" aria-label="Wasserdichte Netzteile je Schild" type="number" min="0" max="100" step="1" value="1"></div></label>
+          <p class="help-text" id="priceOutdoorNote" hidden>Outdoor: Neonanteil × 1,2, dazu 25 $ je wasserdichtem Netzteil inklusive Anschlüssen. Benötigte Anzahl prüfen.</p>
+          <div class="section-divider"></div><h2>Verpackung</h2>
+          <label class="field-row" for="pricePacking">Versandart<select id="pricePacking"><option value="single">Ein Schild · 6 cm dick</option><option value="pair">Zwei identische · 10 cm dick</option><option value="split">Ein Schild in zwei Teilen · 10 cm dick</option></select></label>
+          <div id="priceSplit" hidden><p class="help-text">Tatsächliche Grundfläche des Stapels vor Verpackungszugabe. Nicht automatisch aus dem Gesamtmaß ableiten.</p><label class="field-row">Stapelbreite<div class="number-field"><input id="priceSplitWidth" aria-label="Stapelbreite" type="number" min=".01" step="any"><span>cm</span></div></label><label class="field-row">Stapelhöhe<div class="number-field"><input id="priceSplitHeight" aria-label="Stapelhöhe" type="number" min=".01" step="any"><span>cm</span></div></label></div>
+          <p class="help-text" id="priceFormula">Zuerst ein Motiv laden.</p>
+          <div class="section-divider"></div><h2>Kunden-Richtpreis</h2>
+          <label class="field-row" for="priceFactor">Verkaufsfaktor<strong id="priceFactorValue">2,3</strong></label><input class="price-factor" id="priceFactor" aria-label="Verkaufsfaktor" type="range" min="1" max="5" step=".1" value="2.3">
+          <p class="help-text">USD-Zahlenwert × Faktor = EUR-Richtpreis. Keine Wechselkursumrechnung. Steuerstatus nicht festgelegt; kein verbindliches Angebot.</p>
+          <details class="price-assumptions"><summary>Offene Annahmen & Zusatzkosten</summary><p class="help-text">Die Lieferantenvorlage ist bei Verschnitt und Polsterzugabe nicht eindeutig. Arbeitsstand: × 1,1 und insgesamt +10 cm pro Längen-/Breitenmaß. Fracht ca. 12 $/kg (Vorlage: 80 RMB/kg), einmal +20 $ bei einer Paketkante über 120 cm. Tatsächliches Gewicht und Gewichtsaufrundung sind noch offen.</p>
+          <label class="field-row">Mindestfracht je Paket<div class="number-field"><input id="priceMinimum" aria-label="Mindestfracht in USD" type="number" min="0" step=".01" value="0"><span>$</span></div></label><p class="help-text compact">45–50 $ sind bisher nur vermutet. 0 = keine angenommene Untergrenze; Überlänge kommt zusätzlich hinzu.</p>
+          <label class="field-row">Manuelle Zusatzkosten gesamt<div class="number-field"><input id="priceExtra" aria-label="Zusatzkosten in USD" type="number" min="0" step=".01" value="0"><span>$</span></div></label><p class="help-text">Kein pauschaler Korrekturaufschlag bestätigt. UV-Druck, Sonderacryl, Zubehör, Einfuhrabgaben und Weitertransport sind nicht bepreist. Controller/Indoor-Netzteil: keine gesonderte bestätigte Rate.</p></details>
+          <p class="help-text" id="priceWarnings" role="status"></p>
+        </section>
+        <section class="tab-panel" id="panel-check" role="tabpanel" hidden>
+          <div class="section-heading"><h2>Zeichnung prüfen</h2><span class="muted-label">04</span></div>
+          <div class="check-list" id="checkList"><p class="help-text">Zuerst ein Motiv laden.</p></div>
+          <div class="section-divider"></div><div class="check-detail"><span>Neonpfade</span><strong id="checkPaths">—</strong></div><div class="check-detail"><span>Offene Neonpfade</span><strong id="checkOpen">—</strong></div><p class="help-text">Offene Enden sind bei Single Line häufig beabsichtigt.</p>
+          <div class="notice subtle">VCarve-Import, Fräser, Nuttiefe und tatsächliche Neon-Biegeradien werden separat geprüft.</div>
+        </section>
+      </div>
+      <footer class="export-panel">
+        <p class="length-calculation" id="lengthCalculation">—</p><div class="length-row"><div><h2>Neon-Length</h2><span class="muted-label" id="lengthDetail">ohne Acrylkontur und Kabel</span></div><div class="length-value"><strong id="neonLength">—</strong><span>m</span></div></div>
+        <div class="price-summary" aria-live="polite"><button class="text-button" id="priceConfigure">Kalkulation · intern <span>↗</span></button><div><span>Produktion</span><strong id="priceProduction">—</strong></div><div><span>Versand ca.</span><strong id="priceShipping">—</strong></div><div class="price-total"><span>Eure Kosten ca.</span><strong id="priceTotal">—</strong></div><div><span id="priceCustomerLabel">Kunden-Richtpreis · × 2,3</span><strong id="priceCustomer">—</strong></div><small id="priceStatus">Zuerst ein Motiv laden.</small></div>
+        <div class="export-area">
+          <div class="export-menu" id="exportMenu" hidden><div class="menu-heading">PDF-Ausgabe</div><button data-export="cnc" class="selected"><span data-icon="file"></span><span><strong>CNC-PDF</strong><small>1:1 · ohne Maße und Text</small></span><span data-icon="check"></span></button><button data-export="drawing"><span data-icon="ruler"></span><span><strong>Zeichnung mit Maßen</strong><small>Mit Neonmetern</small></span></button><button data-export="uv"><span data-icon="image"></span><span><strong>UV-Druck-PDF</strong><small>Originalfarben · 1:1 · ohne Fräslinien</small></span></button><button data-export="custom"><span data-icon="sliders"></span><span><strong>Eigene Angaben …</strong><small>Maße, Meter, Auftrag und Notiz</small></span></button></div>
+          <div class="split-button"><button id="export" disabled><span data-icon="download"></span><span>PDF exportieren</span></button><button id="exportDropdown" aria-label="PDF-Exportoptionen" aria-expanded="false"><span data-icon="chevron"></span></button></div>
+        </div><p class="export-caption" id="exportCaption">CNC · ohne Angaben · 1:1</p>
+      </footer>
+    </aside>
+  </main>
+
+  <dialog id="vectorDialog" class="motif-dialog" aria-labelledby="vectorTitle">
+    <div class="dialog-heading"><div><span class="eyebrow">VEKTORDATEI · AUSWAHL VOR DEM IMPORT</span><h2 id="vectorTitle">Was soll aufs Schild?</h2></div><button class="icon-button" data-close="vectorDialog" aria-label="Vektorauswahl abbrechen"><span data-icon="close"></span></button></div>
+    <p class="dialog-intro">Grüne Pfade werden übernommen, rote weggelassen. Du kannst den Vorschlag ändern. Die originalen Linien, Kurven und Farben bleiben erhalten.</p>
+    <div class="motif-tools" role="group" aria-label="Vektorauswahl">
+      <button class="button" id="vectorAuto">Automatischer Vorschlag</button><button class="button" id="vectorAll">Alles verwenden</button>
+      <button class="button" data-vector-tool="click" aria-pressed="true">Pfade anklicken</button><button class="button" data-vector-tool="rectangle" aria-pressed="false">Rechteck</button>
+      <button class="button" id="vectorFit">Gesamte Seite</button><button class="text-button" id="vectorRaster" hidden>Seite als Bild nachzeichnen</button>
+      <label id="vectorPageLabel" hidden>Seite <select id="vectorPage" aria-label="PDF-Seite"></select></label>
+    </div>
+    <div class="motif-brush"><button class="text-button" id="vectorUndo">Letzten Schritt zurück</button><button class="text-button" id="vectorNone">Auswahl leeren</button><span>Nach Originalfarbe auswählen:</span><span id="vectorColors"></span></div>
+    <div class="vector-selection-wrap"><svg id="vectorCanvas" xmlns="http://www.w3.org/2000/svg" aria-label="Vektorpfade für das Schild auswählen"></svg></div>
+    <p class="help-text" id="vectorHelp"></p><p class="help-text" id="vectorStatus" role="status"></p>
+    <details><summary>Alle Pfade einzeln auswählen</summary><div id="vectorPathList" class="vector-path-list"></div></details>
+    <div class="vector-mode-row"><span>Linienart nach dem Import</span><div class="segmented" role="group" aria-label="Linienart beim Vektorimport"><button data-vector-mode="single" aria-pressed="false">Single Line · Mittellinien</button><button data-vector-mode="double" class="active" aria-pressed="true">Double Line · Konturen</button></div></div>
+    <p class="help-text" id="vectorImportNote"></p>
+    <div class="motif-actions"><span id="vectorCount" role="status"></span><button class="button" data-close="vectorDialog">Abbrechen</button><button class="primary" id="vectorConfirm">Auswahl übernehmen</button></div>
+  </dialog>
+
+  <dialog id="motifDialog" class="motif-dialog" aria-labelledby="motifTitle">
+    <div class="dialog-heading"><div><span class="eyebrow">VOR DER NACHZEICHNUNG</span><h2 id="motifTitle">Was soll aufs Schild?</h2></div><button class="icon-button" data-close="motifDialog" aria-label="Motivauswahl abbrechen"><span data-icon="close"></span></button></div>
+    <p class="dialog-intro">Grüne Bildbereiche werden ausgelesen. Rot und unmarkierte Bereiche bleiben draußen. Pinsel und Rechteck wirken nur dort, wo du zeichnest.</p>
+    <p class="notice" id="motifImportNote" hidden></p>
+    <label class="help-text" id="motifPageLabel" hidden>PDF-Seite <select id="motifPage" aria-label="PDF-Seite zur Nachzeichnung"></select></label>
+    <div class="motif-tools" role="group" aria-label="Motivauswahl"><button class="button" id="motifAuto">Automatisch erkennen</button><button class="button" id="motifAll">Alles verwenden</button><button class="button" data-motif-tool="color" aria-pressed="false">Farbe erkennen</button><button class="button" data-motif-tool="rectangle" aria-pressed="false">Rechteck</button><button class="button keep-tool" data-motif-tool="keep" aria-pressed="false"><i></i>Grün · aufnehmen</button><button class="button remove-tool" data-motif-tool="remove" aria-pressed="false"><i></i>Rot · weglassen</button></div>
+    <div class="motif-brush"><label for="motifBrush">Pinselgröße</label><input id="motifBrush" type="range" min="6" max="160" value="42"><button class="text-button" id="motifUndo" disabled>Letzten Schritt zurück</button><button class="text-button" id="motifNone">Auswahl leeren</button></div>
+    <div class="motif-brush" id="motifColorOptions" hidden><span id="motifColorSample" aria-label="Gewählte Farbe"></span><label for="motifTolerance">Farbtoleranz</label><input id="motifTolerance" type="range" min="0" max="100" value="24"><output id="motifToleranceValue">24</output><span>Nur die zusammenhängende Fläche am Klickpunkt</span></div>
+    <div class="motif-canvas-wrap"><canvas id="motifCanvas" aria-label="Motiv mit Rechteck oder Pinsel auswählen"></canvas><div id="motifCursor" hidden></div></div>
+    <p class="help-text" id="motifHelp">Ziehe ein Rechteck um dein Motiv. Anschließend kannst du die Auswahl mit den Pinseln verfeinern.</p>
+    <p class="help-text" id="motifStatus" role="status">Automatisch erkannter Vorschlag. Bei Fotos können auch Teile des Hintergrunds erkannt werden.</p>
+    <div class="motif-actions"><span id="motifCount" role="status"></span><button class="button" data-close="motifDialog">Abbrechen</button><button class="primary" id="motifConfirm">Auswahl nachzeichnen</button></div>
+  </dialog>
+
+  <dialog id="settingsDialog"><div class="dialog-heading"><div><span class="eyebrow">NEON STUDIO</span><h2>Einstellungen</h2></div><button class="icon-button" data-close="settingsDialog" aria-label="Einstellungen schließen"><span data-icon="close"></span></button></div><p class="dialog-intro">Deine Ansicht. Deine Farben.</p><div class="preset-row" id="presetRow"><button class="button" data-preset="technical">Technisch</button><button class="button" data-preset="glow">Leuchtvorschau</button><button class="button" data-preset="light">Heller Hintergrund</button></div><div class="color-fields"><label>Technische Linienfarbe<input id="neonColor" type="color" value="#79c6ff"></label><label>Acrylfarbe<input id="acrylicColor" type="color" value="#aab4be"></label><label>Zeichenfläche<input id="backgroundColor" type="color" value="#222527"></label></div><label class="field-row opacity-row"><span>Acryl-Deckkraft</span><input id="acrylicOpacity" type="range" min="0" max="60" value="8"><output id="opacityValue">8 %</output></label><label class="checkbox-row"><input id="logoColors" type="checkbox" checked><span>Erkannte / zugewiesene Linienfarben anzeigen</span></label><label class="checkbox-row"><input id="glow" type="checkbox"><span>Neon als Leuchtvorschau darstellen</span></label><div class="section-divider"></div><div class="save-preset"><input id="presetName" type="text" maxlength="32" placeholder="Name für eigenes Preset" aria-label="Preset-Name"><button class="button" id="savePreset">Speichern</button></div><div class="custom-presets" id="customPresets"></div><p class="help-text">Die PDF übernimmt die Farben aus der Pfadübersicht mit 1 mm Strichstärke. Kaltweiß und Warmweiß werden als schwarze Linien ausgegeben. Diese Ansichtseinstellungen verändern die PDF nicht.</p><button class="primary full" data-close="settingsDialog">Fertig</button></dialog>
+
+
+
+  <dialog id="exportDialog"><div class="dialog-heading"><div><span class="eyebrow">PDF-AUSGABE</span><h2>Eigene Angaben</h2></div><button class="icon-button" data-close="exportDialog" aria-label="Exportangaben schließen"><span data-icon="close"></span></button></div><p class="dialog-intro">Wähle, was auf der Zeichnung stehen soll.</p><label class="checkbox-row"><input type="checkbox" id="pdfDimensions" checked><span>Außenmaße anzeigen</span></label><label class="checkbox-row"><input type="checkbox" id="pdfMeters" checked><span>Neonmeter anzeigen</span></label><label class="checkbox-row"><input type="checkbox" id="pdfTitleEnabled" checked><span>Projekt-/Auftragsname anzeigen</span></label><label class="stacked-field">Projekt / Auftrag<input id="pdfTitle" type="text" maxlength="120" placeholder="z. B. B-KITE / Auftrag 1042"></label><label class="stacked-field">Zusätzliche Notiz<textarea id="pdfNote" rows="3" maxlength="600" placeholder="Angaben für die Zeichnung …"></textarea></label><p class="help-text">Für den VCarve-Import steht separat die CNC-PDF ohne Beschriftungen zur Verfügung.</p><button class="primary full" id="saveExportOptions">Auswahl übernehmen</button></dialog>
+
+  <dialog id="cropDialog" class="crop-dialog"><div class="dialog-heading"><div><span class="eyebrow">MOTIV</span><h2>Logobereich markieren</h2></div><button class="icon-button" data-close="cropDialog" aria-label="Ausschnitt schließen"><span data-icon="close"></span></button></div><p class="dialog-intro">Ziehe ein Rechteck um den Bereich, den du verwenden möchtest.</p><div id="cropStage"><img id="cropPreview" alt="Bild zum Zuschneiden"><div id="cropSelection" hidden></div></div><div class="crop-actions"><button class="button" id="resetCrop">Ganzes Bild</button><button class="primary" id="applyCrop">Ausschnitt verwenden</button></div></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <div id="toolTooltip" role="tooltip" hidden></div>
+</body>
+</html>

@@ -1,0 +1,11 @@
+numpy>=2.0
+scipy>=1.13
+shapely>=2.0
+scikit-image>=0.25
+Pillow>=10
+reportlab>=4
+pdfplumber>=0.11
+lazy-loader>=0.4
+potracer==0.0.4
+svglib==1.6.0
+pypdf>=5

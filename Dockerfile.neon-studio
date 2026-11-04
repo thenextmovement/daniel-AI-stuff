@@ -1,0 +1,14 @@
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 NEON_DATA_DIR=/data
+WORKDIR /app
+COPY services/neon-studio/requirements.txt .
+RUN apt-get update && apt-get install -y --no-install-recommends gcc pkg-config libcairo2-dev && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir -r requirements.txt requests==2.32.5 PyMuPDF==1.26.7
+COPY services/neon-studio/ .
+ARG SOURCE_COMMIT=unknown
+ENV SOURCE_COMMIT=$SOURCE_COMMIT
+RUN mkdir -p /data && useradd -u 10001 studio && chown studio:studio /data
+USER studio
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"
+CMD ["python","cloud_server.py"]
