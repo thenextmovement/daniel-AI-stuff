@@ -42,29 +42,40 @@ function cloudPriceControls(){
   $$('[data-price-color]').forEach(b=>{const active=b.dataset.priceColor===pricing.color;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
   $$('[data-price-outdoor]').forEach(b=>{const active=(b.dataset.priceOutdoor==='true')===pricing.outdoor;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
   $('pricePsuRow').hidden=!pricing.outdoor;$('priceOutdoorNote').hidden=!pricing.outdoor;
-  const warning=$('cloudSizeWarning');if(warning)warning.hidden=!!cloudSpec.widths_mm?.length;
+  const warning=$('cloudSizeWarning');if(warning){
+    warning.hidden=cloudSpec.minimum_width_mm==null&&!!cloudSpec.widths_mm?.length;
+    warning.textContent=cloudSpec.minimum_width_mm!=null?'Mindestbreite: '+(cloudSpec.minimum_width_mm/10).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' cm · manuell':'Vorschaugröße – Mindestgröße noch nicht geprüft';
+  }
 }
 function cloudDetails(){
   let dialog=document.getElementById('cloudDetails');if(dialog)dialog.remove();
   dialog=document.createElement('dialog');dialog.id='cloudDetails';
   Object.assign(dialog.style,{maxWidth:'520px',width:'90%',padding:'24px',borderRadius:'16px',background:'#25292c',color:'white',border:'1px solid #555'});
   dialog.append(textElement('h2','Anfrageangaben'));
-  const fields=[['customer_name','Kundenname'],['colors','Leuchtfarbe (Deutsch)'],['widths_mm','Breiten in cm, getrennt mit Semikolon'],['usage','Innen oder Außen'],['quantity','Stückzahl'],['waterproof_psus','Wasserdichte Netzteile (bei Außen)']];
+  const fields=[['customer_name','Kundenname'],['colors','Leuchtfarbe (Deutsch)'],['widths_mm','Breiten in cm, getrennt mit Semikolon'],['minimum_width_mm','Mindestbreite in cm (manuell, optional)'],['usage','Innen oder Außen'],['quantity','Stückzahl'],['waterproof_psus','Wasserdichte Netzteile (bei Außen)']];
   const inputs={};
   for(const [key,label] of fields){
     const wrap=textElement('label',label);wrap.style.display='block';wrap.style.margin='12px 0';
     const input=document.createElement('input');input.style.width='100%';
-    input.value=key==='widths_mm'?(cloudSpec[key]||[]).map(v=>v/10).join('; '):String(cloudSpec[key]??'');
+    input.value=key==='widths_mm'?(cloudSpec[key]||[]).map(v=>Number((v/10).toFixed(2))).join('; '):key==='minimum_width_mm'?(cloudSpec[key]==null?'':String(cloudSpec[key]/10).replace('.',',')):String(cloudSpec[key]??'');
     wrap.append(input);dialog.append(wrap);inputs[key]=input;
+    if(key==='minimum_width_mm'){
+      input.inputMode='decimal';input.setAttribute('aria-describedby','cloudMinimumHint');
+      const hint=textElement('p','Wird in Trello, PDF und image.png vermerkt. Ohne Angebotsbreite wird diese Größe verwendet. Keine automatische Fertigungsfreigabe.');
+      hint.id='cloudMinimumHint';hint.style.cssText='font-size:12px;line-height:1.4;color:#bbc1c7;margin:4px 0 12px';dialog.append(hint);
+    }
   }
   const save=textElement('button','Angaben übernehmen');
   save.onclick=async()=>{
     const next={...cloudSpec,issues:[]};
     for(const [key] of fields)next[key]=inputs[key].value.trim();
-    next.widths_mm=next.widths_mm.split(';').map(v=>Number(v.trim().replace(',','.'))*10);
-    if(!next.widths_mm.length||next.widths_mm.some(v=>!Number.isFinite(v)||v<80||v>20000)){toast('Bitte eine Breite zwischen 8 cm und 20 m eintragen. Eine Mindestgröße wurde noch nicht geprüft.',true);return;}
+    next.minimum_width_mm=next.minimum_width_mm===''?null:Number(next.minimum_width_mm.replace(',','.'))*10;
+    if(next.minimum_width_mm!==null&&(!Number.isFinite(next.minimum_width_mm)||next.minimum_width_mm<80||next.minimum_width_mm>20000)){toast('Bitte eine Mindestbreite zwischen 8 cm und 20 m eintragen oder das Feld leer lassen.',true);return;}
+    next.widths_mm=next.widths_mm===''?(next.minimum_width_mm===null?[]:[next.minimum_width_mm]):next.widths_mm.split(';').map(v=>Number(v.trim().replace(',','.'))*10);
+    if(next.widths_mm.length>4||next.widths_mm.some(v=>!Number.isFinite(v)||v<80||v>20000)){toast('Bitte höchstens vier Breiten zwischen 8 cm und 20 m eintragen.',true);return;}
+    if(next.minimum_width_mm!==null&&next.widths_mm.some(v=>v<next.minimum_width_mm-.1)){toast('Eine Angebotsbreite liegt unter der manuellen Mindestbreite. Bitte die Breiten anpassen.',true);return;}
     next.quantity=Number(next.quantity||1);next.waterproof_psus=next.waterproof_psus===''?null:Number(next.waterproof_psus);
-    cloudSpec=next;cloudPriceControls();state.settings.width=next.widths_mm[0];state.settings.scale=null;
+    cloudSpec=next;cloudPriceControls();if(next.widths_mm.length){state.settings.width=next.widths_mm[0];state.settings.scale=null;}
     dialog.close();await requestGeometry(true);try{await cloudSave();toast('Angaben gespeichert.');}catch(e){toast(e.message,true);}
   };
   const cancel=textElement('button','Schließen');cancel.onclick=()=>dialog.close();dialog.append(save,cancel);document.body.append(dialog);dialog.showModal();

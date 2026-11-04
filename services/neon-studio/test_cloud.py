@@ -114,6 +114,92 @@ class CloudTests(unittest.TestCase):
   spec={'customer_name':'Test','colors':'Pink','widths_mm':[700]}
   self.assertEqual(validate_spec(spec)['usage'],'Innen')
   with self.assertRaises(Review):validate_spec({**spec,'widths_mm':[]})
+ def test_manual_minimum_width_validation_and_fallback(self):
+  spec={'customer_name':'Test','colors':'Pink','widths_mm':[],'minimum_width_mm':1105}
+  self.assertEqual(validate_spec(spec)['widths_mm'],[1105])
+  self.assertEqual(validate_spec({**spec,'widths_mm':[1200,1500]})['widths_mm'],[1200,1500])
+  for value in (True,'1105',float('nan'),float('inf'),79,20001):
+   with self.subTest(value=value),self.assertRaises(Review):validate_spec({**spec,'minimum_width_mm':value})
+  with self.assertRaisesRegex(Review,'Mindestbreite'):validate_spec({**spec,'widths_mm':[1000,1200]})
+  self.assertIsNone(validate_spec({**spec,'minimum_width_mm':None,'widths_mm':[800]})['minimum_width_mm'])
+ def test_manual_minimum_save_reload_and_clear(self):
+  from cloud_server import CloudHandler
+  from http.server import ThreadingHTTPServer
+  from threading import Thread
+  from urllib.request import Request,urlopen
+  from urllib.error import HTTPError
+  from unittest.mock import patch
+  store=DurableStore(self.db);info=store.add(SVG.encode(),'Test.svg')
+  settings={'mode':'single','width':1200,'gap':15,'shape':'shape','radius':3}
+  p=self.db.enqueue('minimum-save','event',{})
+  p=self.db.save(p['id'],{'model':info['id'],'settings':settings,'spec':{'customer_name':'Test','colors':'Pink','widths_mm':[1200]}},status='draft')
+  class QuietHandler(CloudHandler):
+   def log_message(self,*args):pass
+  server=ThreadingHTTPServer(('127.0.0.1',0),QuietHandler)
+  server.db=self.db;server.store=store;server.jobs=Jobs(self.db,store,object())
+  thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+  token='test-only-minimum-token-not-a-secret'
+  base='http://127.0.0.1:'+str(server.server_port)
+  try:
+   with patch.dict('os.environ',{'NEON_SERVICE_TOKEN':token}):
+    for minimum in (1105,None):
+     payload={'id':p['id'],'revision':p['revision'],'model':info['id'],'settings':settings,'spec':{**p['spec'],'minimum_width_mm':minimum}}
+     req=Request(base+'/cloud/save',json.dumps(payload).encode(),{'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+     with urlopen(req) as response:self.assertEqual(response.status,200)
+     p=Database(self.tmp.name).get(p['id'])
+     self.assertEqual(p['spec']['minimum_width_mm'],minimum)
+     with urlopen(Request(base+'/cloud/project?id='+p['id'],headers={'Authorization':'Bearer '+token})) as response:
+      self.assertEqual(json.load(response)['spec']['minimum_width_mm'],minimum)
+    payload['revision']=p['revision'];payload['spec']['minimum_width_mm']=True
+    with self.assertRaises(HTTPError) as error:urlopen(Request(base+'/cloud/save',json.dumps(payload).encode(),{'Authorization':'Bearer '+token,'Content-Type':'application/json'}))
+    self.assertEqual(error.exception.code,400)
+    self.assertEqual(self.db.get(p['id'])['revision'],p['revision'])
+  finally:server.shutdown();server.server_close();thread.join()
+ def test_manual_minimum_is_exported_without_changing_technical_drawing(self):
+  store=DurableStore(self.db);info=store.add(SVG.encode(),'Test.svg')
+  d=store.drawing(info['id'],json.dumps({'mode':'single','width':1200,'gap':15,'shape':'shape','radius':3}))
+  spec=validate_spec({'customer_name':'Test','colors':'Pink','widths_mm':[1200]})
+  before,_=artifacts([d],spec)
+  files,_=artifacts([d],{**spec,'minimum_width_mm':1105})
+  doc=fitz.open(stream=files[0][2],filetype='pdf')
+  self.assertIn('Mindestbreite (manuell): 110,50 cm',doc[0].get_text())
+  self.assertIn('120,00',doc[0].get_text())
+  pix=doc[0].get_pixmap(matrix=fitz.Matrix(2,2),alpha=False)
+  self.assertEqual(Image.open(io.BytesIO(files[1][2])).tobytes(),pix.samples)
+  self.assertEqual(files[2][2],before[2][2])
+ def test_publish_manual_minimum_transfers_comment_artifacts_and_actual_size(self):
+  from cloud_trello import HOLDING,READY,FIELDS
+  class Fake:
+   def __init__(self):
+    self.data={'idBoard':BOARD,'idList':HOLDING,'attachments':[],'customFieldItems':[]};self.comments=[];self.uploads=[]
+   def card(self,id):return self.data
+   def field(self,id,key,value):self.data['customFieldItems'].append({'idCustomField':key,'value':{'text':value}})
+   def comment_once(self,id,text,marker):self.comments.append(text)
+   def call(self,method,path,**kwargs):
+    if method=='POST':
+     item={'id':str(len(self.uploads)+1)};self.data['attachments'].append(item);self.uploads.append(kwargs['files']['file']);return item
+    if method=='PUT':self.data.update(kwargs['json']);return self.data
+    raise AssertionError((method,path))
+  store=DurableStore(self.db);info=store.add(SVG.encode(),'Test.svg');t=Fake()
+  p=self.db.enqueue('minimum-card','minimum-event',{'name':'LED Neon Test'})
+  p=self.db.save(p['id'],{'copy':'copy','model':info['id'],'settings':{'mode':'single','width':1200,'gap':15,'shape':'shape','radius':3},'spec':{'customer_name':'Test','colors':'Pink','widths_mm':[1200],'minimum_width_mm':1105}},status='draft')
+  Jobs(self.db,store,t).publish(p)
+  self.assertEqual(self.db.get(p['id'])['status'],'ready')
+  self.assertEqual(t.data['idList'],READY)
+  self.assertIn('Mindestbreite (manuell): 110,50 cm',t.comments[0])
+  self.assertEqual(len(t.uploads),3)
+  self.assertIn('Mindestbreite (manuell): 110,50 cm',fitz.open(stream=t.uploads[0][1],filetype='pdf')[0].get_text())
+  size=next(x['value']['text'] for x in t.data['customFieldItems'] if x['idCustomField']==FIELDS[0][1])
+  self.assertTrue(size.startswith('120,00 × '),size)
+ def test_publish_rejects_actual_drawing_below_manual_minimum_before_upload(self):
+  from cloud_trello import HOLDING
+  from unittest.mock import Mock
+  p=self.db.enqueue('small-card','small-event',{'name':'LED Neon Test'})
+  p=self.db.save(p['id'],{'copy':'copy','model':'model','settings':{'width':1200},'spec':{'customer_name':'Test','colors':'Pink','widths_mm':[1200],'minimum_width_mm':1100}},status='draft')
+  store=Mock();store.drawing.return_value={'exportable':True,'paths':[['M',0,0]],'width':1000}
+  t=Mock();t.card.return_value={'idBoard':BOARD,'idList':HOLDING}
+  with self.assertRaisesRegex(Review,'Mindestbreite'):Jobs(self.db,store,t).publish(p)
+  t.call.assert_not_called();t.comment_once.assert_not_called()
  def test_color_array_from_model_is_normalized(self):
   spec=validate_spec({'customer_name':'Test','colors':['Pink','Eisblau'],'widths_mm':[800]})
   self.assertEqual(spec['colors'],'Pink + Eisblau')

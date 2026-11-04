@@ -5,7 +5,7 @@ from http.server import ThreadingHTTPServer
 from server import Handler,ROOT
 from cloud_data import Database,DurableStore,Conflict
 from cloud_jobs import Jobs
-from cloud_ai import Review,validate_spec
+from cloud_ai import Review,validate_spec,manual_minimum_width
 from cloud_trello import request_id
 
 PREFIX='/api/ops/neon-studio'
@@ -67,6 +67,7 @@ class CloudHandler(Handler):
                     model=str(payload.get('model') or p.get('model',''));self.server.store.model(model)
                     settings=payload.get('settings');spec=payload.get('spec',p.get('spec'))
                     if not isinstance(settings,dict) or not isinstance(spec,dict):raise Review('Ungültige Einstellungen.')
+                    manual_minimum_width(spec)
                     # Geometry settings are validated by the existing engine.
                     self.server.store.drawing(model,json.dumps(settings,sort_keys=True))
                     p=db.save(p['id'],{'model':model,'settings':settings,'spec':spec},expected=p['revision'],status='draft')

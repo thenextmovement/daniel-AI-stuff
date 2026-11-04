@@ -57,6 +57,12 @@ def drawing_model(data):
         part['name']=item['name']
     return model,part_modes
 
+def manual_minimum_width(spec):
+    value=spec.get('minimum_width_mm')
+    if value is not None and (type(value) not in (int,float) or not 80<=value<=20000):
+        raise Review('Die manuelle Mindestbreite muss zwischen 8 cm und 20 m liegen.')
+    return value
+
 def validate_spec(spec):
     if not isinstance(spec,dict):raise Review('Vorgaben fehlen.')
     if spec.get('issues'):raise Review('Bitte prüfen: '+'; '.join(map(str,spec['issues']))[:600])
@@ -66,7 +72,10 @@ def validate_spec(spec):
     if isinstance(spec.get('colors'),list) and all(isinstance(c,str) for c in spec['colors']):spec['colors']=' + '.join(c.strip() for c in spec['colors'] if c.strip())
     if not isinstance(spec.get('colors'),str) or not spec['colors'].strip():raise Review('Leuchtfarbe fehlt.')
     widths=spec.get('widths_mm',[])
+    minimum=manual_minimum_width(spec)
+    if widths==[] and minimum is not None:widths=spec['widths_mm']=[minimum]
     if not isinstance(widths,list) or not 1<=len(widths)<=4 or any(type(w) not in (int,float) or not 80<=w<=20000 for w in widths):raise Review('Eine bis vier eindeutige Breiten zwischen 8 cm und 20 m werden benötigt.')
+    if minimum is not None and any(w<minimum-.1 for w in widths):raise Review('Eine Angebotsbreite liegt unter der manuell eingetragenen Mindestbreite.')
     if spec.get('light_type','single') not in ('single','rgb','chasing_rgb'):raise Review('Lichttyp unklar.')
     if spec['usage']=='Außen' and not isinstance(spec.get('waterproof_psus'),int):raise Review('Anzahl wasserdichter Netzteile für Außen fehlt.')
     if type(spec.get('quantity',1)) is not int or not 1<=spec.get('quantity',1)<=100:raise Review('Stückzahl unklar.')

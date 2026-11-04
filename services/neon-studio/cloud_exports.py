@@ -49,6 +49,8 @@ def artifacts(variants,spec):
         q=price(d,spec);quotes.append(q)
         c.setFont('Helvetica',12);c.drawString(36,726,'AUTO QUOTE · '+spec['customer_name'][:70])
         c.setFont('Helvetica',10);c.drawString(36,704,'Variante %d · %s × %s cm'%(i+1,de(d['width']/10),de(d['height']/10)))
+        if spec.get('minimum_width_mm') is not None:
+            c.setFont('Helvetica',9);c.drawString(36,688,'Mindestbreite (manuell): '+de(spec['minimum_width_mm']/10)+' cm')
         artwork(c,d,58,440,506/mm,218/mm)
         dimensions(c,d,58,440,506/mm,218/mm)
         entries=[('Produkt','LED Neon Flex'),('Material','Silikon'),('Zuschnitt',CUT[d['settings']['shape']]),

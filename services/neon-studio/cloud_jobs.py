@@ -63,6 +63,7 @@ class Jobs:
                 if i>0 or abs(float(settings.get('width',0))-width)>.1:options['scale']=None
                 d=self.store.drawing(p['model'],json.dumps(options,sort_keys=True))
                 if not d.get('exportable') or not d['paths']:raise Review('Zeichnung enthält noch ungeklärte Pfade.')
+                if spec.get('minimum_width_mm') is not None and d['width']<spec['minimum_width_mm']-.1:raise Review('Die Zeichnung liegt unter der manuell eingetragenen Mindestbreite.')
                 variants.append(d)
             files,quotes=artifacts(variants,spec)
             revision=p['revision'];marker='Neon Studio '+p['id']+' Revision '+str(revision)
@@ -95,7 +96,8 @@ class Jobs:
                         self.t.call('DELETE',f"cards/{p['copy']}/attachments/{attachment}")
                     old.remove(attachment)
                     self.db.save(p['id'],{'cleanup_pending':list(old)})
-                self.t.comment_once(p['copy'],marker+'\nDrei Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
+                minimum_note=('\nMindestbreite (manuell): '+decimal(spec['minimum_width_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.') if spec.get('minimum_width_mm') is not None else ''
+                self.t.comment_once(p['copy'],marker+'\nDrei Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
                 self.t.call('PUT',f"cards/{p['copy']}",json={'name':'🤖 '+p['snapshot']['name']+' 🤖','idList':READY})
                 checked=self.t.card(p['copy'])
                 if checked['idList']!=READY:raise Review('Zielliste nicht bestätigt.')
