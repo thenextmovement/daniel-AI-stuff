@@ -9885,7 +9885,7 @@
     },
     {
       "source": "src/lib/ops/customer-records.ts",
-      "sha256": "f60008fa2b0a9aeb1a4a9fcdd4bc804f7e8ea270b5ee16af30280f4868505bf1"
+      "sha256": "cdc720df573e688c2ee3284c5b64af93f3e3cd89ef365b276fd7af7cc5f51f32"
     },
     {
       "source": "src/lib/ops/customer-call-module.ts",
@@ -9917,7 +9917,7 @@
     },
     {
       "source": "src/lib/quotes/trello.ts",
-      "sha256": "12cc00fff9ebad9293abf864eade47b6bac43434717ae3a4f58bd92cfad5327f"
+      "sha256": "ca8aa0f92a8eca96631a04b9d0f79ca461db110078f4f4d7eb372a957d7ed549"
     },
     {
       "source": "src/lib/quotes/supabase-rest.ts",
@@ -10065,7 +10065,7 @@
     },
     {
       "source": "src/lib/ops/supplier-sales.ts",
-      "sha256": "1b21afa4a8598761c307e2fc8f965b2c4a106490a372ddf29ce2ab33fe280495"
+      "sha256": "80049ae2dc85d65bd0ad09e074166519107f36dcc4e7481d103d0ebefb587eb0"
     },
     {
       "source": "src/lib/ops/voice-knowledge.ts",
