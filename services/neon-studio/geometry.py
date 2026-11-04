@@ -995,6 +995,14 @@ def build_geometry(model, options=None, *, editable=True):
             a in settings['straightened'] for leaf in leaves for a in ancestors(leaf) if a!=key) and all(
             catalog[leaf]['offset']==catalog[key]['offset'] for leaf in leaves)
         support_source.extend([catalog[key]] if unchanged else [catalog[leaf] for leaf in leaves if leaf in visible_keys])
+    # Fixed physical dot dimensions are applied before the acrylic and length
+    # calculations. Other artwork retains its original proportional scale.
+    if any(item.get('role')=='dot' for item in source):
+        dot_scale=float(settings['scale']) if settings.get('scale') is not None else (settings['width']-side_gaps['left']-side_gaps['right'])/max(scale_width,.00001)
+        if not math.isfinite(dot_scale) or not .0001<=dot_scale<=1000:raise ValueError('Ungültiger Motivmaßstab.')
+        from manufacturing import normalize_dot
+        source=[normalize_dot(item,dot_scale) for item in source]
+        support_source=[normalize_dot(item,dot_scale) for item in support_source]
     reference=np.asarray(model['sourceOrigin']) if 'sourceOrigin' in model else np.array([path_bounds(p['commands']) for p in model['modes']['double']])[:,:2].min(axis=0)
     from uv_print import uv_geometry, subtract_mask, polygon_commands, subpaths
     uv_mask,uv_shape,uv_clip=uv_geometry(model,settings.get('uvStrokes',[]),reference,settings.get('uvMode','original'),hidden)
@@ -1206,7 +1214,7 @@ def build_geometry(model, options=None, *, editable=True):
         notices.append('UV-Druck: Originaldarstellung, ohne Neonmeter. Die Druckflächen werden bei der Acrylkontur berücksichtigt.')
     return dict(outlineVisibleControls=transform(visible_path,1,shift_x,shift_y),outlineControls=outline_controls,uv=uv,paths=paths, names=[p['name'] for p in source], outer=outer,
                 pathColors=[resolved_colors[p['key']] for p in source],colorSources=color_sources,neonPalette=NEON_COLORS,
-                pathPartIds=[p['partId'] for p in source],pathModes=[p['mode'] for p in source],pathKeys=[p['key'] for p in source],
+                pathPartIds=[p['partId'] for p in source],pathModes=[p['mode'] for p in source],pathRoles=[p.get('role','stroke') for p in source],pathKeys=[p['key'] for p in source],
                 parts=parts,modeLabel=mode_label,exportable=not missing,hiddenPaths=hidden_paths,
                 pathData=[path_d(p) for p in paths], outerData=path_d(outer),outlinePreview=outline_preview,activeDepthRegions=active_depth_regions,
                 width=float(bbox[2]-bbox[0]), height=float(bbox[3]-bbox[1]), bounds=bbox,

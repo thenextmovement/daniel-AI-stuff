@@ -47,7 +47,7 @@ const presets = {
   light:{neon:'#1951ae',acrylic:'#a3b4c1',background:'#e9edf0',opacity:18,glow:false}
 };
 function validPrefs(p) {
-  const v={...presets.technical};
+  const v={...presets.light};
   for (const key of ['neon','acrylic','background']) if (/^#[0-9a-f]{6}$/i.test(p?.[key])) v[key]=p[key];
   if (Number.isFinite(p?.opacity)) v.opacity=Math.max(0,Math.min(60,p.opacity));
   v.glow=Boolean(p?.glow);v.logoColors=p?.logoColors!==false; return v;
@@ -58,7 +58,7 @@ const state = {project:null, settings:{...defaults}, drawing:null, view:'vectors
   dimensionUnit:readLocal('neonstudio.dimensionUnit.v1','cm')==='mm'?'mm':'cm',
   tab:'acrylic',zoom:100,pan:{x:0,y:0},tool:'select',selection:-1,selectedParts:[],selectedKeys:[],straightenSelection:null,outlineDraft:null,outlineBusy:false,outlineTicket:0,outlineError:'',outlineSelection:[],valid:false,busy:false,analyzing:false,
   exportKind:'cnc',exporting:false, generation:0, uploadGeneration:0, history:[],historyIndex:-1,
-  prefs:validPrefs(readLocal('neonstudio.view.v1',presets.technical)),
+  prefs:validPrefs(readLocal('neonstudio.view.v1',presets.light)),
   customPresets:readLocal('neonstudio.presets.v1',{}),
   exportOptions:{dimensions:true,meters:true,includeTitle:true,title:'',note:''}};
 let recoverySession=null, recoveryTimer;
@@ -79,7 +79,7 @@ function setLive(text,status='') {
   $('liveStatus').className='live-indicator '+status;$('liveStatus').querySelector('span').textContent=text;
 }
 function exportState() { $('export').disabled=!state.project||!state.valid||state.busy||state.exporting||!!state.straightenSelection||!!state.outlineDraft||state.outlineBusy||!!uvDraft||!!moveDraft||!!recoverySession; }
-function markPending() {cancelMoveSelection();closeRecovery(false);invalidatePrice();clearOutlineDraft();state.outlineSelection=[];state.outlineSelected=null;state.busy=true;state.valid=false;state.straightenSelection=null;renderStraightenControls();renderVisibilityControls();exportState();setLive('Berechne …','busy');}
+function markPending() {invalidateManufacturing();cancelMoveSelection();closeRecovery(false);invalidatePrice();clearOutlineDraft();state.outlineSelection=[];state.outlineSelected=null;state.busy=true;state.valid=false;state.straightenSelection=null;renderStraightenControls();renderVisibilityControls();exportState();setLive('Berechne …','busy');}
 
 async function loadImage(file=null, suppliedData=null, suppliedName=null, cropSource=null) {
   if(file && file.size>100*1024*1024) return toast('Bitte eine Datei mit höchstens 100 MB auswählen.',true);
@@ -307,6 +307,42 @@ function renderDetails() {
   renderPathList();
   renderStraightenControls();
 }
+let manufacturingTicket=0, manufacturingReport=null;
+function invalidateManufacturing(){
+  manufacturingTicket++;manufacturingReport=null;
+  if($('manufacturingResult'))$('manufacturingResult').textContent='Nach Änderungen erneut prüfen.';
+  if($('manufacturingApply'))$('manufacturingApply').hidden=true;
+  if($('manufacturingCheck'))$('manufacturingCheck').disabled=false;
+}
+function manufacturingKey(){return JSON.stringify([state.project?.id,state.settings]);}
+async function checkManufacturing(){
+  if(!state.project||!state.valid||state.busy)return toast('Bitte zuerst eine Zeichnung laden und die Berechnung abwarten.');
+  invalidateManufacturing();const ticket=manufacturingTicket,key=manufacturingKey();
+  const profile={bendRadius:Number($('manufacturingRadius').value),spacing:Number($('manufacturingSpacing').value),cutLength:Number($('manufacturingCut').value)};
+  $('manufacturingCheck').disabled=true;$('manufacturingResult').textContent='Kurven, Abstände und Stücklängen werden geprüft …';
+  try{
+    const report=await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings,profile})).json();
+    if(ticket!==manufacturingTicket||key!==manufacturingKey())return;
+    manufacturingReport={...report,key};const target=$('manufacturingResult');target.replaceChildren();
+    const rows=[`${number(report.rawMeters,3)} m gezeichnet · ${number(report.materialMeters,3)} m mit 10 % Zuschlag.`,
+      Object.entries(report.modes).map(([mode,count])=>`${count} ${mode==='single'?'Single':'Double'}-Line-Pfade`).join(' · '),
+      report.minimumRadius===null?'Keine größenbestimmenden Kurven gefunden.':`Engster Kurvenradius: ${number(report.minimumRadius,2)} mm.`,
+      report.minimumSpacing===null?'Kein zu enger Abstand zwischen getrennten, nicht berührenden Pfaden gefunden.':`Engster Abstand: ${number(report.minimumSpacing,2)} mm Mitte–Mitte; benötigt ${number(report.requiredSpacing,1)} mm.`,
+      ...(report.recommendedWidth?[`Größenorientierung für unveränderte Linien: ${number(report.recommendedWidth/10,1)} cm Breite.`]:['Mindestgröße noch offen: erst lokale Details und Anschlüsse korrigieren.']),...report.reasons,...report.warnings];
+    for(const text of rows){const row=document.createElement('p');row.textContent=text;target.append(row);}
+    $('manufacturingApply').hidden=!report.recommendedWidth||Math.abs(report.recommendedWidth-report.currentWidth)<.1;
+    $('manufacturingApply').textContent=report.recommendedWidth?`${number(report.recommendedWidth/10,1)} cm als Vorschau übernehmen`:'Vorschaugröße übernehmen';
+  }catch(error){if(ticket===manufacturingTicket)$('manufacturingResult').textContent=error.message;}
+  finally{if(ticket===manufacturingTicket)$('manufacturingCheck').disabled=false;}
+}
+$('manufacturingCheck').onclick=checkManufacturing;
+for(const id of ['manufacturingRadius','manufacturingSpacing','manufacturingCut'])$(id).oninput=invalidateManufacturing;
+$('manufacturingApply').onclick=()=>{
+  const report=manufacturingReport;
+  if(!report?.recommendedWidth||report.key!==manufacturingKey()||state.busy)return;
+  state.settings.width=report.recommendedWidth;state.settings.scale=null;
+  updateControls();commitHistory();requestGeometry(true);
+};
 function uvLayer() {
   const d=state.drawing;if(state.view!=='vectors'||!d?.uv)return '';
   const [x,y,w,h]=d.imageBox;
@@ -1491,7 +1527,7 @@ async function updatePrice() {
   invalidatePrice();
   if(!state.project||!state.drawing||state.busy){$('priceStatus').textContent=state.busy?'Geometrie wird berechnet …':'Zuerst ein Motiv laden.';return;}
   const ticket=priceTicket;
-  const options={...pricing,waterproof_psus:pricing.outdoor?$('pricePsus').value:0,mode:$('pricePacking').value,
+  const options={...pricing,uv_print:$('priceUv').checked,controllers:$('priceControllers').value,waterproof_psus:pricing.outdoor?$('pricePsus').value:0,mode:$('pricePacking').value,
     footprint_cm:[$('priceSplitWidth').value,$('priceSplitHeight').value],sales_factor:$('priceFactor').value,
     minimum_shipping_usd:$('priceMinimum').value,additional_cost_usd:$('priceExtra').value};
   try {
@@ -1502,8 +1538,8 @@ async function updatePrice() {
     $('priceCustomerLabel').textContent=`Kunden-Richtpreis · × ${number(Number(q.customer_price.factor),1)}`;
     $('priceStatus').textContent='Unverbindliche Schätzung · offene Annahmen unter Preis';
     const p=q.packages[0],item=q.items[0];
-    $('priceFormula').textContent=`${number(Number(item.neon_m),2)} m × 1,1 × ${item.rate_usd_m} $/m${item.outdoor?' × 1,2':''}${item.waterproof_psus?' + Netzteile':''}${q.items.length===2?' · zweimal Produktion':''}. Paket: ${p.dimensions_cm.map(v=>number(Number(v),2)).join(' × ')} cm; ${number(Number(p.volume_kg),3)} kg Volumengewicht × ca. 12 $${Number(p.oversize_usd)?' + 20 $ Überlänge':''}.`;
-    $('priceWarnings').textContent=[Number(q.additional_cost_usd)?`In Gesamtkosten enthalten: ${dollars(q.additional_cost_usd)} manuelle Zusatzkosten.`:'',pricing.outdoor?'Netzteilanzahl und technische Outdoor-Eignung separat prüfen.':'',state.drawing.uv?'UV-Druck aktiv: Druckkosten fehlen in dieser Schätzung.':''].filter(Boolean).join(' ');
+    $('priceFormula').textContent=`${number(Number(item.neon_m),2)} m × 1,1 × ${item.rate_usd_m} $/m${item.outdoor?' × 1,2':''}${item.waterproof_psus?' + Netzteile':''}${item.uv_print?' + 30 $ UV-Druck (vorläufig)':''}${item.controllers?' + '+item.controllers+' × 15 $ Controller (vorläufig)':''}${q.items.length===2?' · zweimal Produktion':''}. Paket: ${p.dimensions_cm.map(v=>number(Number(v),2)).join(' × ')} cm; ${number(Number(p.volume_kg),3)} kg Volumengewicht × ca. 12 $, mindestens ${p.minimum_usd} $ je Paket${Number(p.oversize_usd)?' + 20 $ Überlänge':''}.`;
+    $('priceWarnings').textContent=[Number(q.additional_cost_usd)?`In Gesamtkosten enthalten: ${dollars(q.additional_cost_usd)} manuelle Zusatzkosten.`:'',pricing.outdoor?'Netzteilanzahl und technische Outdoor-Eignung separat prüfen.':'',q.assumptions.includes('uv_print_rate_provisional')?'UV-Druck mit vorläufig 30 $ je Schild enthalten.':'',q.assumptions.includes('controller_rate_provisional')?'Controller mit vorläufig 15 $ pro Stück enthalten.':''].filter(Boolean).join(' ');
   }catch(error){if(ticket===priceTicket){invalidatePrice('Kalkulation nicht verfügbar');$('priceWarnings').textContent=error.message;}}
 }
 $('priceConfigure').onclick=()=>setTab('pricing');
@@ -1516,7 +1552,7 @@ $$('[data-price-outdoor]').forEach(button=>button.onclick=()=>{
   $$('[data-price-outdoor]').forEach(b=>{const active=b===button;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
   $('pricePsuRow').hidden=!pricing.outdoor;$('priceOutdoorNote').hidden=!pricing.outdoor;updatePrice();
 });
-for(const id of ['pricePsus','pricePacking','priceSplitWidth','priceSplitHeight','priceFactor','priceMinimum','priceExtra']){
+for(const id of ['priceUv','priceControllers','pricePsus','pricePacking','priceSplitWidth','priceSplitHeight','priceFactor','priceMinimum','priceExtra']){
   $(id).addEventListener('input',()=>{$('priceSplit').hidden=$('pricePacking').value!=='split';$('priceFactorValue').textContent=number(Number($('priceFactor').value),1);updatePrice();});
 }
 

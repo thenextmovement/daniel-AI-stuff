@@ -76,6 +76,23 @@ class APITests(unittest.TestCase):
         self.assertIn('error',json.load(error.exception))
         with self.request('/health') as response:self.assertEqual(json.load(response)['app'],'neon-studio')
 
+    def test_manufacturing_uses_same_paths_as_pricing_and_rejects_bad_profile(self):
+        from test_manufacturing import SVG, PLAN
+        from cloud_ai import drawing_model
+        model,modes=drawing_model({'svg':SVG,'line_plan':PLAN})
+        project=self.server.store.add_model(model,'mixed.svg')
+        payload={'id':project['id'],'settings':{'width':600,'partModes':modes}}
+        with self.request('/api/manufacturing',payload) as response:report=json.load(response)
+        with self.request('/api/geometry',payload) as response:drawing=json.load(response)
+        with self.request('/api/pricing',{**payload,'options':{'minimum_shipping_usd':0}}) as response:quote=json.load(response)
+        self.assertEqual(report['rawMeters'],drawing['neonMeters'])
+        self.assertAlmostEqual(float(quote['items'][0]['neon_m']),drawing['neonMeters'],places=4)
+        self.assertGreaterEqual(float(quote['shipping_usd']),45)
+        self.assertEqual(set(report['modes']),{'single','double'})
+        for profile in ([],{'bendRadius':0}):
+            with self.assertRaises(urllib.error.HTTPError) as error:self.request('/api/manufacturing',{**payload,'profile':profile})
+            self.assertEqual(error.exception.code,400)
+
     def test_pixel_selection_cuts_inside_connected_form_without_removing_rest(self):
         import io
         import numpy as np

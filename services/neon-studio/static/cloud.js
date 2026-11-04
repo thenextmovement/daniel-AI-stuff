@@ -12,7 +12,9 @@ async function cloudSave() {
   try {
     await requestGeometry(true);
     if(state.busy||!state.valid)throw new Error('Die Zeichnung ist noch nicht bereit. Bitte die Einstellungen prüfen.');
-    cloudSpec.widths_mm=cloudSpec.widths_mm||[];cloudSpec.widths_mm[0]=state.drawing.width;
+    cloudSpec.widths_mm=cloudSpec.widths_mm||[];
+    if(cloudSpec.widths_mm.length)cloudSpec.widths_mm[0]=state.drawing.width;
+    Object.assign(cloudSpec,{light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',waterproof_psus:pricing.outdoor?Number($('pricePsus').value):0,uv_print:$('priceUv').checked,controllers:Number($('priceControllers').value)});
     cloudSpec.shape=state.settings.shape;
     cloud={...cloud,...await cloudRequest('save',{id:cloud.id,revision:cloud.revision,model:state.project.id,settings:state.settings,spec:cloudSpec})};
     return cloud;
@@ -33,6 +35,15 @@ async function cloudPoll(){
   }
   toast('Die Verarbeitung läuft weiter. Den Status findest du in der Projektübersicht.');
 }
+function cloudPriceControls(){
+  pricing.color=cloudSpec.light_type||'single';pricing.outdoor=cloudSpec.usage==='Außen';
+  $('priceUv').checked=cloudSpec.uv_print===true;$('priceControllers').value=cloudSpec.controllers||0;
+  $('pricePsus').value=cloudSpec.waterproof_psus??1;
+  $$('[data-price-color]').forEach(b=>{const active=b.dataset.priceColor===pricing.color;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
+  $$('[data-price-outdoor]').forEach(b=>{const active=(b.dataset.priceOutdoor==='true')===pricing.outdoor;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
+  $('pricePsuRow').hidden=!pricing.outdoor;$('priceOutdoorNote').hidden=!pricing.outdoor;
+  const warning=$('cloudSizeWarning');if(warning)warning.hidden=!!cloudSpec.widths_mm?.length;
+}
 function cloudDetails(){
   let dialog=document.getElementById('cloudDetails');if(dialog)dialog.remove();
   dialog=document.createElement('dialog');dialog.id='cloudDetails';
@@ -51,8 +62,9 @@ function cloudDetails(){
     const next={...cloudSpec,issues:[]};
     for(const [key] of fields)next[key]=inputs[key].value.trim();
     next.widths_mm=next.widths_mm.split(';').map(v=>Number(v.trim().replace(',','.'))*10);
+    if(!next.widths_mm.length||next.widths_mm.some(v=>!Number.isFinite(v)||v<80||v>20000)){toast('Bitte eine Breite zwischen 8 cm und 20 m eintragen. Eine Mindestgröße wurde noch nicht geprüft.',true);return;}
     next.quantity=Number(next.quantity||1);next.waterproof_psus=next.waterproof_psus===''?null:Number(next.waterproof_psus);
-    cloudSpec=next;state.settings.width=next.widths_mm[0];state.settings.scale=null;
+    cloudSpec=next;cloudPriceControls();state.settings.width=next.widths_mm[0];state.settings.scale=null;
     dialog.close();await requestGeometry(true);try{await cloudSave();toast('Angaben gespeichert.');}catch(e){toast(e.message,true);}
   };
   const cancel=textElement('button','Schließen');cancel.onclick=()=>dialog.close();dialog.append(save,cancel);document.body.append(dialog);dialog.showModal();
@@ -125,10 +137,12 @@ async function cloudBoot(){
   }
   cloud=await cloudRequest('project?id='+encodeURIComponent(id));cloudSpec=cloud.spec||{};
   status.textContent=cloud.name;
+  const sizeWarning=textElement('span','Vorschaugröße – Mindestgröße noch nicht geprüft');sizeWarning.id='cloudSizeWarning';sizeWarning.hidden=!!cloudSpec.widths_mm?.length;bar.append(sizeWarning);
+  cloudPriceControls();
   const source=textElement('button','Kundenmotiv wählen');
   source.onclick=()=>cloudSources();
   bar.append(source);
-  if(!cloud.model){
+  if(!cloud.model||['queued','copying','generating'].includes(cloud.status)){
     processing('Anfrage wird vorbereitet',cloud.error||'Das Kundenmotiv wird auf dem Server als Zeichnung erstellt. Du kannst dieses Fenster schließen und später wieder öffnen.');
     if(cloud.error){$('processingOverlay').hidden=true;toast(cloud.error,true);cloudSources();}
     if(['queued','copying','generating'].includes(cloud.status))setTimeout(()=>location.reload(),10000);
@@ -136,6 +150,11 @@ async function cloudBoot(){
   }
   state.project=cloud.model;state.settings={...defaults,...cloud.settings};state.analyzing=false;state.history=[];state.historyIndex=-1;
   commitHistory();renderProject();updateControls();await requestGeometry(true);
+  const plan=document.createElement('div');plan.className='help-text';
+  if(cloud.metrics?.model)plan.append(textElement('p','KI-Zeichnung: '+cloud.metrics.model+'. Die Fertigungsprüfung berechnet Kurven und Abstände separat.'));
+  for(const region of cloudSpec.line_plan||[])plan.append(textElement('p',region.name+' · '+(region.mode==='double'?'Double Line':'Single Line')+': '+region.reason));
+  $('manufacturingResult').before(plan);
+  await checkManufacturing();
   $('export').onclick=cloudPublish;cloudLabel();$('exportDropdown').hidden=true;
   const save=textElement('button','Entwurf speichern');save.onclick=async()=>{try{await cloudSave();toast('Entwurf gespeichert.');}catch(e){toast(e.message,true);}};
   const details=textElement('button','Anfrageangaben');details.onclick=cloudDetails;

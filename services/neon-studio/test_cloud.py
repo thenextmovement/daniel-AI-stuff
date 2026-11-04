@@ -132,5 +132,6 @@ class CloudTests(unittest.TestCase):
   self.assertIn('70,00',text);self.assertIn('USD',text)
   self.assertGreater(Image.open(io.BytesIO(files[1][2])).width,1000)
   self.assertGreater(Image.open(io.BytesIO(files[2][2])).width,1500)
+  self.assertGreaterEqual(float(quotes[0]['shipping_usd']),45)
   self.assertGreater(float(quotes[0]['total_usd']),0)
 if __name__=='__main__':unittest.main()

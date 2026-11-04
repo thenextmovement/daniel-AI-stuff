@@ -215,6 +215,9 @@
           <div class="segmented" role="group" aria-label="Einsatzort"><button data-price-outdoor="false" class="active" aria-pressed="true">Indoor</button><button data-price-outdoor="true" aria-pressed="false">Outdoor</button></div>
           <label class="field-row" id="pricePsuRow" hidden>Wasserdichte Netzteile je Schild<div class="number-field"><input id="pricePsus" aria-label="Wasserdichte Netzteile je Schild" type="number" min="0" max="100" step="1" value="1"></div></label>
           <p class="help-text" id="priceOutdoorNote" hidden>Outdoor: Neonanteil × 1,2, dazu 25 $ je wasserdichtem Netzteil inklusive Anschlüssen. Benötigte Anzahl prüfen.</p>
+          <label class="check-row"><input id="priceUv" type="checkbox"> UV-Druck je Schild · ca. 30 $</label>
+          <label class="field-row">Controller je Schild<div class="number-field"><input id="priceControllers" aria-label="Controller je Schild" type="number" min="0" max="100" step="1" value="0"><span>× 15 $</span></div></label>
+          <p class="help-text">UV- und Controllerpreise sind vorläufige Richtwerte. Nur benötigte Extras auswählen; Lieferantenpreis noch bestätigen.</p>
           <div class="section-divider"></div><h2>Verpackung</h2>
           <label class="field-row" for="pricePacking">Versandart<select id="pricePacking"><option value="single">Ein Schild · 6 cm dick</option><option value="pair">Zwei identische · 10 cm dick</option><option value="split">Ein Schild in zwei Teilen · 10 cm dick</option></select></label>
           <div id="priceSplit" hidden><p class="help-text">Tatsächliche Grundfläche des Stapels vor Verpackungszugabe. Nicht automatisch aus dem Gesamtmaß ableiten.</p><label class="field-row">Stapelbreite<div class="number-field"><input id="priceSplitWidth" aria-label="Stapelbreite" type="number" min=".01" step="any"><span>cm</span></div></label><label class="field-row">Stapelhöhe<div class="number-field"><input id="priceSplitHeight" aria-label="Stapelhöhe" type="number" min=".01" step="any"><span>cm</span></div></label></div>
@@ -222,16 +225,25 @@
           <div class="section-divider"></div><h2>Kunden-Richtpreis</h2>
           <label class="field-row" for="priceFactor">Verkaufsfaktor<strong id="priceFactorValue">2,3</strong></label><input class="price-factor" id="priceFactor" aria-label="Verkaufsfaktor" type="range" min="1" max="5" step=".1" value="2.3">
           <p class="help-text">USD-Zahlenwert × Faktor = EUR-Richtpreis. Keine Wechselkursumrechnung. Steuerstatus nicht festgelegt; kein verbindliches Angebot.</p>
-          <details class="price-assumptions"><summary>Offene Annahmen & Zusatzkosten</summary><p class="help-text">Die Lieferantenvorlage ist bei Verschnitt und Polsterzugabe nicht eindeutig. Arbeitsstand: × 1,1 und insgesamt +10 cm pro Längen-/Breitenmaß. Fracht ca. 12 $/kg (Vorlage: 80 RMB/kg), einmal +20 $ bei einer Paketkante über 120 cm. Tatsächliches Gewicht und Gewichtsaufrundung sind noch offen.</p>
-          <label class="field-row">Mindestfracht je Paket<div class="number-field"><input id="priceMinimum" aria-label="Mindestfracht in USD" type="number" min="0" step=".01" value="0"><span>$</span></div></label><p class="help-text compact">45–50 $ sind bisher nur vermutet. 0 = keine angenommene Untergrenze; Überlänge kommt zusätzlich hinzu.</p>
-          <label class="field-row">Manuelle Zusatzkosten gesamt<div class="number-field"><input id="priceExtra" aria-label="Zusatzkosten in USD" type="number" min="0" step=".01" value="0"><span>$</span></div></label><p class="help-text">Kein pauschaler Korrekturaufschlag bestätigt. UV-Druck, Sonderacryl, Zubehör, Einfuhrabgaben und Weitertransport sind nicht bepreist. Controller/Indoor-Netzteil: keine gesonderte bestätigte Rate.</p></details>
+          <details class="price-assumptions"><summary>Offene Annahmen & Zusatzkosten</summary><p class="help-text">Verschnitt × 1,1; Verpackung insgesamt +10 cm pro Längen-/Breitenmaß. Fracht ca. 12 $/kg (Vorlage: 80 RMB/kg), einmal +20 $ bei einer Paketkante über 120 cm. Tatsächliches Gewicht und Gewichtsaufrundung sind noch offen.</p>
+          <label class="field-row">Mindestfracht je Paket<div class="number-field"><input id="priceMinimum" aria-label="Mindestfracht in USD" type="number" min="45" step=".01" value="45"><span>$</span></div></label><p class="help-text compact">Mindestens 45 $ je Paket. Ein höherer Betrag kann eingetragen werden; Überlänge kommt zusätzlich hinzu.</p>
+          <label class="field-row">Manuelle Zusatzkosten gesamt<div class="number-field"><input id="priceExtra" aria-label="Zusatzkosten in USD" type="number" min="0" step=".01" value="0"><span>$</span></div></label><p class="help-text">Kein Mindestpreis für Produktion bestätigt. Sonderacryl, Zubehör, Indoor-Netzteil, Einfuhrabgaben und Weitertransport sind nicht separat bepreist. UV-Druck und Controller oben auswählen, nicht erneut als Zusatzkosten eintragen.</p></details>
           <p class="help-text" id="priceWarnings" role="status"></p>
         </section>
         <section class="tab-panel" id="panel-check" role="tabpanel" hidden>
           <div class="section-heading"><h2>Zeichnung prüfen</h2><span class="muted-label">04</span></div>
           <div class="check-list" id="checkList"><p class="help-text">Zuerst ein Motiv laden.</p></div>
           <div class="section-divider"></div><div class="check-detail"><span>Neonpfade</span><strong id="checkPaths">—</strong></div><div class="check-detail"><span>Offene Neonpfade</span><strong id="checkOpen">—</strong></div><p class="help-text">Offene Enden sind bei Single Line häufig beabsichtigt.</p>
-          <div class="notice subtle">VCarve-Import, Fräser, Nuttiefe und tatsächliche Neon-Biegeradien werden separat geprüft.</div>
+          <div class="section-divider"></div><h2>Fertigung &amp; Größenorientierung</h2>
+          <p class="help-text">Die passende Größe hängt von Linienart, Schlauchbreite, Kurven und Zwischenräumen ab. Diese Profilwerte sind vorläufig und müssen zum verwendeten Neon-Flex passen.</p>
+          <label class="field-row">Mindest-Biegeradius<div class="number-field"><input id="manufacturingRadius" type="number" min="1" max="200" value="25"><span>mm</span></div></label>
+          <label class="field-row">Freiraum zwischen Schläuchen<div class="number-field"><input id="manufacturingSpacing" type="number" min="0" max="30" value="2"><span>mm</span></div></label>
+          <label class="field-row">Kürzestes Stück<div class="number-field"><input id="manufacturingCut" type="number" min="1" max="200" value="20"><span>mm</span></div></label>
+          <p class="help-text">Schlauchbreite: Einstellung unter Neon. Biegeradius bezeichnet den Radius der Mittellinie. i/j-Punkte neuer KI-Zeichnungen werden lokal auf mindestens 20 mm als Strich bzw. Kreis angepasst.</p>
+          <button id="manufacturingCheck" class="button full-width">Fertigung prüfen</button>
+          <div id="manufacturingResult" class="help-text" role="status"></div>
+          <button id="manufacturingApply" class="button full-width" hidden>Vorschaugröße übernehmen</button>
+          <div class="notice subtle">Keine Fertigungsfreigabe. Scharfe Ecken, Kreuzungen, Anschlüsse und Schnittstellen benötigen eine gesonderte Prüfung. Fräser und Nuttiefe gehören zur CNC-Vorbereitung.</div>
         </section>
       </div>
       <footer class="export-panel">

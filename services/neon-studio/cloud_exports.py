@@ -13,8 +13,9 @@ CUT={'shape':'Formzuschnitt','rectangle':'Rechteck','bottom':'Nur unten'}
 def price(drawing,spec):
     q=calculate({'items':[{'width_cm':drawing['width']/10,'height_cm':drawing['height']/10,
         'neon_m':drawing['neonMeters'],'color':spec.get('light_type','single'),
-        'outdoor':spec['usage']=='Außen','waterproof_psus':spec.get('waterproof_psus',0)}],
-        'packing':'separate','minimum_shipping_usd':0,'additional_cost_usd':0,'sales_factor':2.3})
+        'outdoor':spec['usage']=='Außen','waterproof_psus':spec.get('waterproof_psus',0),
+        'uv_print':bool(drawing.get('uv')) or spec.get('uv_print',False),'controllers':spec.get('controllers',0)}],
+        'packing':'separate','minimum_shipping_usd':45,'additional_cost_usd':0,'sales_factor':2.3})
     quantity=spec.get('quantity',1)
     for key in ('production_usd','shipping_usd','total_usd'):
         q[key]=format(Decimal(q[key])*quantity,'.2f')
@@ -58,6 +59,11 @@ def artifacts(variants,spec):
                  ('Produktion',de(q['production_usd'])+' USD'),('Versand ca.',de(q['shipping_usd'])+' USD'),('Gesamt EK ca.',de(q['total_usd'])+' USD')]
         for j,(key,value) in enumerate(entries):
             c.setFont('Helvetica',12);c.drawString(36,408-j*25,key+': '+value[:80])
+        if any(a in q['assumptions'] for a in ('uv_print_rate_provisional','controller_rate_provisional')):
+            extra=[]
+            if q['items'][0]['uv_print']:extra.append('UV-Druck 30 USD je Schild')
+            if q['items'][0]['controllers']:extra.append(str(q['items'][0]['controllers'])+' Controller je 15 USD je Schild')
+            c.setFont('Helvetica',9);c.drawString(36,81,'Enthalten, vorläufig: '+', '.join(extra))
         c.setFont('Helvetica',9);c.drawString(36,58,'Interner Entwurf · Kosten nach hinterlegter Formel geschätzt.')
         c.drawString(36,43,'Vor Produktion: Pfadführung, Biegeradien und Lieferantenpreis prüfen.')
         c.showPage()

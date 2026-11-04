@@ -3,7 +3,7 @@ from datetime import datetime,timezone,timedelta
 from pathlib import Path
 import requests
 from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal
-from cloud_ai import generate,validate_spec,Review
+from cloud_ai import generate,validate_spec,Review,drawing_model
 from cloud_exports import artifacts,CUT
 class Jobs:
     def __init__(self,db,store,trello=None):
@@ -47,9 +47,14 @@ class Jobs:
         self.t.comment_once(p['copy'],marker+'\nhttps://ops.neontrip.de/ops/neon-studio?project='+id+'\nInterner Auto-Quote-Entwurf; kein Kundenversand.',marker)
         data,metrics=generate(self.t,source,p.get('selected_attachments'))
         # Persist even an incomplete spec so a staff member can correct it.
-        info=self.store.add(data['svg'].encode(),'KI-Zeichnung.svg')
+        model,part_modes=drawing_model(data)
+        info=self.store.add_model(model,'KI-Zeichnung.svg')
         spec={k:v for k,v in data.items() if k!='svg'}
-        p=self.db.save(id,{'model':info['id'],'spec':spec,'metrics':metrics,'settings':{'mode':'single','shape':spec.get('shape') or 'shape','width':(spec.get('widths_mm') or [600])[0],'gap':15,'tube':6,'radius':3,'depth':20,'reserve':.1,'scale':None}},status='draft')
+        settings={'mode':'single','partModes':part_modes,'shape':spec.get('shape') or 'shape','width':(spec.get('widths_mm') or [600])[0],'gap':15,'tube':6,'radius':3,'depth':20,'reserve':.1,'scale':None}
+        from manufacturing import inspect
+        drawing=self.store.drawing(info['id'],json.dumps(settings,sort_keys=True))
+        metrics['manufacturing']=inspect(drawing)
+        p=self.db.save(id,{'model':info['id'],'spec':spec,'metrics':metrics,'settings':settings},status='draft')
         self.publish(p)
     def publish(self,p):
         with self.lock:

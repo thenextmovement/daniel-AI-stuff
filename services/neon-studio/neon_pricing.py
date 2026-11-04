@@ -8,7 +8,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
 import sys
 
-VERSION = '2026-10-21.2'
+VERSION = '2026-11-04.1'
+MINIMUM_SHIPPING_USD = Decimal(45)
 RATES = {'single':Decimal(14), 'rgb':Decimal(20), 'chasing_rgb':Decimal(28)}
 
 def decimal(value, name, minimum=0, maximum=100000):
@@ -30,15 +31,14 @@ def calculate(request):
     packing=request.get('packing','separate')
     if packing not in ('separate','stacked','split'):raise ValueError('Unbekannte Verpackungsart.')
     if (packing=='stacked' and len(items)!=2) or (packing=='split' and len(items)!=1):raise ValueError('Stapel: zwei Schilder. Geteilt: ein Schild aus zwei Teilen.')
-    minimum=decimal(request.get('minimum_shipping_usd',0),'Mindestversand')
+    minimum=max(MINIMUM_SHIPPING_USD,decimal(request.get('minimum_shipping_usd',MINIMUM_SHIPPING_USD),'Mindestversand'))
     extra=decimal(request.get('additional_cost_usd',0),'Zusatzkosten')
     sales_factor=decimal(request.get('sales_factor','2.3'),'Verkaufsfaktor',Decimal('.01'),100)
     rows=[];dims=[];production=Decimal(0)
     assumptions=['loss_factor_1_1_once','padding_10cm_per_dimension','usd_per_kg_12_approximate','oversize_once_per_package','actual_weight_unknown','supplier_quote_required']
-    if minimum:assumptions.append('minimum_shipping_unconfirmed')
     if extra:assumptions.append('manual_additional_cost')
     for i,item in enumerate(items):
-        if not isinstance(item,dict) or set(item)-{'width_cm','height_cm','neon_m','color','outdoor','waterproof_psus'}:raise ValueError('Unbekannte Schildfelder.')
+        if not isinstance(item,dict) or set(item)-{'width_cm','height_cm','neon_m','color','outdoor','waterproof_psus','uv_print','controllers'}:raise ValueError('Unbekannte Schildfelder.')
         width=decimal(item.get('width_cm'),'Breite',Decimal('.01'),2000)
         height=decimal(item.get('height_cm'),'Höhe',Decimal('.01'),2000)
         meters=decimal(item.get('neon_m'),'Neonmeter',0,10000)
@@ -54,11 +54,19 @@ def calculate(request):
         material=meters*Decimal('1.1')
         flex=material*RATES[color]*factor
         supply=psus*25
-        cost=flex+supply;production+=Decimal(money(cost));dims.append((width,height))
+        uv=item.get('uv_print',False)
+        if not isinstance(uv,bool):raise ValueError('UV-Druck muss true oder false sein.')
+        controllers=decimal(item.get('controllers',0),'Controller',0,100)
+        if controllers!=controllers.to_integral_value():raise ValueError('Controller: ganze Anzahl erforderlich.')
+        uv_cost=Decimal(30 if uv else 0);controller_cost=controllers*15
+        if uv:assumptions.append('uv_print_rate_provisional')
+        if controllers:assumptions.append('controller_rate_provisional')
+        cost=flex+supply+uv_cost+controller_cost;production+=Decimal(money(cost));dims.append((width,height))
         rows.append({'item':i+1,'width_cm':number(width),'height_cm':number(height),'neon_m':number(meters),
                      'material_m':number(material),'color':color,'rate_usd_m':number(RATES[color]),
                      'outdoor':outdoor,'outdoor_factor':number(factor),'waterproof_psus':int(psus),
-                     'flex_usd':money(flex),'psu_usd':money(supply),'production_usd':money(cost)})
+                     'flex_usd':money(flex),'psu_usd':money(supply),'uv_print':uv,'uv_print_usd':money(uv_cost),
+                     'controllers':int(controllers),'controller_usd':money(controller_cost),'production_usd':money(cost)})
     override=request.get('footprint_cm')
     if packing=='split' and override is None:raise ValueError('Bei Teilung die tatsächlichen Stapelmaße angeben.')
     if override is not None:
@@ -87,9 +95,9 @@ def calculate(request):
                               'factor':number(sales_factor),'method':'USD-Zahlenwert × Faktor = EUR-Richtpreis; keine Wechselkursumrechnung',
                               'tax_status':'nicht festgelegt','binding':False},
             'assumptions':list(dict.fromkeys(assumptions)),
-            'not_priced':['UV-Druck, Sonderacryl und Montagezubehör','Controller/Indoor-Netzteil: keine separate bestätigte Rate',
-                          'Zoll, Einfuhrabgaben, Steuern und Weitertransport','Mindestfracht, Gewichtsaufrundung und tatsächliches Paketgewicht ungeklärt'],
-            'source':'Quentin-Preissheet + interne Ergänzungen Rahim, 21.10.2026'}
+            'not_priced':['Sonderacryl und Montagezubehör','Indoor-Netzteil: keine separate bestätigte Rate',
+                          'Zoll, Einfuhrabgaben, Steuern und Weitertransport','Gewichtsaufrundung und tatsächliches Paketgewicht ungeklärt'],
+            'source':'Quentin-Preissheet + interne Ergänzungen Rahim; Mindestfracht 45 USD und +10 cm je Außenmaß bestätigt 04.11.2026; UV 30 USD und Controller 15 USD vorläufig'}
 
 if __name__=='__main__':
     try:print(json.dumps(calculate(json.load(sys.stdin)),ensure_ascii=False))
