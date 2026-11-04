@@ -1,7 +1,7 @@
 import io,json,tempfile,unittest
 from cloud_data import Database,DurableStore,Conflict
 from cloud_ai import validate_svg,validate_spec,Review
-from cloud_trello import eligible
+from cloud_trello import eligible,Trello,REQUEST,BOARD,named_fields
 from cloud_exports import artifacts
 import fitz
 from PIL import Image
@@ -31,6 +31,42 @@ class CloudTests(unittest.TestCase):
  def test_color_array_from_model_is_normalized(self):
   spec=validate_spec({'customer_name':'Test','colors':['Pink','Eisblau'],'widths_mm':[800]})
   self.assertEqual(spec['colors'],'Pink + Eisblau')
+
+ def test_ai_context_contains_named_fields_and_dropdown_labels(self):
+  card={'field_definitions':[
+   {'id':'size-q','name':'Size_1','type':'text'},
+   {'id':'usage-q','name':'Usage','type':'list','options':[{'id':'outside-q','value':{'text':'Außen'}}]}],
+   'customFieldItems':[
+    {'idCustomField':'size-q','value':{'text':'80 x 30 cm'}},
+    {'idCustomField':'usage-q','idValue':'outside-q'}]}
+  self.assertEqual(named_fields(card),[
+   {'name':'Size_1','type':'text','value':'80 x 30 cm'},
+   {'name':'Usage','type':'list','value':'Außen'}])
+
+ def test_copy_maps_cross_board_fields_and_dropdown_values(self):
+  request_source='request-on-quentin'
+  source={'name':'LED Neon Test','desc':'Same description','idBoard':'quentin','attachments':[],
+   'field_definitions':[{'id':request_source,'name':'Nerdy-Forms_ID','type':'text'},{'id':'art-q','name':'Art','type':'list','options':[{'id':'led-q','value':{'text':'LED Neon'}}]}],
+   'customFieldItems':[{'idCustomField':request_source,'value':{'text':'REQ-123'}},{'idCustomField':'art-q','idValue':'led-q'}]}
+  target_defs=[{'id':REQUEST,'name':'Nerdy-Forms_ID','type':'text'},{'id':'art-home','name':'Art','type':'list','options':[{'id':'led-home','value':{'text':'LED Neon'}}]}]
+  target={**source,'idBoard':BOARD,'customFieldItems':[]}
+  class Fake(Trello):
+   def __init__(self):self.writes=[]
+   def card(self,id):return target
+   def fields(self,board,refresh=False):return target_defs
+   def call(self,method,path,**kwargs):
+    self.writes.append((path,kwargs['json']))
+    field=path.split('/')[-2];target['customFieldItems'].append({'idCustomField':field,**kwargs['json']})
+  t=Fake();t.verify_copy(source,'copy')
+  self.assertEqual(t.writes[0],('cards/copy/customField/'+REQUEST+'/item',{'value':{'text':'REQ-123'}}))
+  self.assertEqual(t.writes[1],('cards/copy/customField/art-home/item',{'idValue':'led-home'}))
+ def test_copy_does_not_accept_two_missing_request_ids(self):
+  source={'name':'LED Neon Test','desc':'','idBoard':BOARD,'attachments':[],'customFieldItems':[],'field_definitions':[]}
+  class Fake(Trello):
+   def __init__(self):pass
+   def card(self,id):return source
+   def fields(self,board,refresh=False):return []
+  with self.assertRaisesRegex(RuntimeError,'Request-ID'):Fake().verify_copy(source,'copy')
  def test_three_outputs_and_durable_model(self):
   store=DurableStore(self.db);info=store.add(SVG.encode(),'Test.svg')
   store=DurableStore(Database(self.tmp.name))

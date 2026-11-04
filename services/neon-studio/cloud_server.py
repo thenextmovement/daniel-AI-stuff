@@ -6,6 +6,7 @@ from server import Handler,ROOT
 from cloud_data import Database,DurableStore,Conflict
 from cloud_jobs import Jobs
 from cloud_ai import Review,validate_spec
+from cloud_trello import request_id
 
 PREFIX='/api/ops/neon-studio'
 class CloudHandler(Handler):
@@ -88,7 +89,7 @@ class CloudHandler(Handler):
 
 def public(p):
     return {k:p.get(k) for k in ('id','source','revision','status','updated','copy_url','error','metrics')} | {
-        'name':p.get('snapshot',{}).get('name','Anfrage'),'request_id':next((f.get('value',{}).get('text') for f in p.get('snapshot',{}).get('customFieldItems',[]) if f['idCustomField']=='67a200bd23b1ffd304e63335'),None)}
+        'name':p.get('snapshot',{}).get('name','Anfrage'),'request_id':request_id(p.get('snapshot',{}))}
 def main():
     if len(os.getenv('NEON_SERVICE_TOKEN',''))<32:raise RuntimeError('NEON_SERVICE_TOKEN fehlt.')
     db=Database(os.getenv('NEON_DATA_DIR','/data'));store=DurableStore(db)
