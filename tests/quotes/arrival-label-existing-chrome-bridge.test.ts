@@ -546,6 +546,8 @@ test("content permits an old order label but pins history and never clicks the s
   const product = select(["B2C", "B2C Predict", "DPD Express 8:30", "DPD Express 12:00", "DPD Express 18:00"], "B2C");
   const format = select(["4 Labels auf A4", "Einzeln auf A6"], "Einzeln auf A6");
   const weight = { value: "500", getAttribute: () => "Total package weight g" };
+  const quantity = { value: "1", getAttribute: (name: string) => (({ min: "0", max: "1" } as Record<string, string>)[name] ?? null) };
+  let quantities = [quantity];
   let clicks = 0;
   const button = { textContent: "Create label", disabled: false, getAttribute: () => null, click: () => { clicks++; } };
   const storage = new Map();
@@ -558,7 +560,7 @@ test("content permits an old order label but pins history and never clicks the s
       if (selector === "a[href]") return anchors;
       if (selector === "select") return [product, format];
       if (selector === "button") return [button];
-      if (selector.startsWith("input")) return [weight];
+      if (selector.startsWith("input")) return [weight, ...quantities];
       if (selector === '[role="alert"]') return [];
       throw new Error(selector);
     } },
@@ -567,10 +569,30 @@ test("content permits an old order label but pins history and never clicks the s
   const send = (action: string, extra: Record<string, unknown> = {}): Promise<any> => new Promise(resolve => listener({
     target: "neontrip-easydpd-frame", action, job: job(), ...extra,
   }, {}, resolve));
+  for (const value of ["0", "", "-1", "0.5", "2", "NaN"]) {
+    quantity.value = value;
+    const blocked = await send("validate_and_prepare");
+    assert.equal(blocked.ok, false, `quantity ${value} must fail before dispatch`);
+    assert.match(blocked.error, /Artikelmenge/);
+    const click = await send("purchase_once", { dispatchNonce: "quantity-test" });
+    assert.equal(click.result.clicked, false);
+    assert.equal(clicks, 0);
+    assert.equal(storage.size, 0);
+    assert.equal(quantity.value, value);
+  }
+  quantities = [];
+  assert.equal((await send("validate_and_prepare")).ok, false);
+  quantities = [quantity];
+  quantity.value = "1";
   const prepared = await send("validate_and_prepare");
   assert.equal(prepared.ok, true);
   assert.equal(prepared.result.ready, true);
   const historyBaseline = prepared.result.historyBaseline;
+  quantity.value = "0";
+  assert.equal((await send("purchase_once", { dispatchNonce: "quantity-changed", historyBaseline })).result.clicked, false);
+  assert.equal(clicks, 0);
+  assert.equal(storage.size, 0);
+  quantity.value = "1";
   assert.deepEqual(JSON.parse(JSON.stringify(historyBaseline)), { paths: [new URL(oldUrl).pathname], trackingNumbers: ["01470000000001"] });
   anchors.push({ href: "https://easydpd.247apps.de/labels/11/download/other.pdf", textContent: "" });
   assert.equal((await send("purchase_once", { dispatchNonce: "test", historyBaseline })).result.clicked, false);

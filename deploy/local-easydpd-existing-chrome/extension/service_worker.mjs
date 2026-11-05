@@ -367,7 +367,7 @@ async function recoverPostDispatchDownload(tabId, job, settleDelayMs = 0, primar
   const evidence = safeHistoryEvidence(observed);
   await record("post_dispatch_history_checked", { jobId: job.id, orderName: job.orderName, evidence });
   if (!evidence.found) throw new Error("EasyDPD-History blieb nach frischem Reload ohne Label; kein automatischer Wiederholungskauf.");
-  if (!recoveredUrl) throw new Error("Kein neues Zusatzlabel nachweisbar; kein automatischer Wiederholungskauf.");
+  if (!recoveredUrl) throw new Error(`Kein neues ${job.parcelKind === "acrylic_table_device" ? "Zusatzlabel" : "Sendungslabel"} nachweisbar; kein automatischer Wiederholungskauf.`);
   const downloadUrl = validateEasyDpdLabelDownloadUrl(recoveredUrl);
   const startedAt = Date.now();
   const downloadId = await chrome.downloads.download({ url: downloadUrl, saveAs: false, conflictAction: "uniquify" });
