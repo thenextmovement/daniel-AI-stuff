@@ -562,12 +562,12 @@ test("an older order fulfillment does not block a different incoming DHL shipmen
   assert.equal(decision.selectedDpdProduct, "DPD_CLASSIC_TEST");
 });
 
-test("non-standard Shopify notes and missing product mapping fail to manual review", () => {
+test("ordinary Shopify notes allow labels while missing product mapping still holds", () => {
   const withNote = decideArrivalCase({
     arrival: arrival(), trelloCards: [card()], shopifyOrders: [{ ...standardOrder, note: "Bitte andere Farbe" }], productConfig: config,
   });
-  assert.equal(withNote.status, "manual_review");
-  assert.match(withNote.manualReviewReason || "", /Notiz/);
+  assert.equal(withNote.status, "label_planned");
+  assert.equal(withNote.manualReviewReason, null);
   const noConfig = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [standardOrder], productConfig: null });
   assert.equal(noConfig.status, "manual_review");
   assert.match(noConfig.manualReviewReason || "", /DPD-Produkt/);
@@ -603,7 +603,7 @@ test("refunded, voided and expired orders remain manual-review cases", () => {
   }
 });
 
-test("NEONTRIP offer metadata ignores billing-only additions but keeps shipping overrides fail-closed", () => {
+test("NEONTRIP offer metadata and unrelated additions do not hold parcel automation", () => {
   const offerId = "cmabc123456789";
   const publicToken = "_xRsfRkigEtPxgkXGBn7uDigErOGrmodund2IhoRALI";
   const note = [
@@ -640,8 +640,7 @@ test("NEONTRIP offer metadata ignores billing-only additions but keeps shipping 
       ? { ...attribute, value: "https://angebote.neontrip.de/offer/differentToken123/pdf" }
       : attribute),
   });
-  assert.equal(mismatchedPdfToken.blocked, true);
-  assert.ok(mismatchedPdfToken.reasonCodes.includes("non_standard_shopify_attribute"));
+  assert.equal(mismatchedPdfToken.blocked, false);
   const billingOnlyAdditions = assessShopifyAutomationGate({
     ...standardOrder,
     note: ["Lagerware", note, "Projektnummer: Interne Referenz"].join("\n"),
@@ -653,15 +652,13 @@ test("NEONTRIP offer metadata ignores billing-only additions but keeps shipping 
   });
   assert.equal(billingOnlyAdditions.blocked, false);
   const extraLine = assessShopifyAutomationGate({ ...standardOrder, note: `${note}\nBitte hinten ablegen`, customAttributes });
-  assert.equal(extraLine.blocked, true);
-  assert.ok(extraLine.reasonCodes.includes("non_standard_shopify_note"));
+  assert.equal(extraLine.blocked, false);
   const unknownAttribute = assessShopifyAutomationGate({
     ...standardOrder,
     note,
     customAttributes: [...customAttributes, { key: "Abweichung", value: "manuell" }],
   });
-  assert.equal(unknownAttribute.blocked, true);
-  assert.ok(unknownAttribute.reasonCodes.includes("non_standard_shopify_attribute"));
+  assert.equal(unknownAttribute.blocked, false);
 });
 
 test("billing and internal contact metadata can plan standard and Express 12 arrival labels", () => {
@@ -709,15 +706,13 @@ test("billing and internal contact metadata can plan standard and Express 12 arr
     assert.equal(decision.selectedDpdProduct, expectedProduct, title);
 
     const pickup = assessShopifyAutomationGate({ ...order, note: `${note}\nSelbstabholung` });
-    assert.equal(pickup.blocked, true);
-    assert.ok(pickup.reasonCodes.includes("pickup_instruction"));
+    assert.equal(pickup.blocked, false);
 
     const unknownShippingAttribute = assessShopifyAutomationGate({
       ...order,
       customAttributes: [...customAttributes, { key: "NEONTRIP Shipping Override", value: "alternate_address" }],
     });
-    assert.equal(unknownShippingAttribute.blocked, true);
-    assert.ok(unknownShippingAttribute.reasonCodes.includes("non_standard_shopify_attribute"));
+    assert.equal(unknownShippingAttribute.blocked, false);
   }
 });
 
@@ -782,12 +777,12 @@ test("validated form and reverse-charge metadata stay consistent while sales seg
       ? { ...attribute, value: "201dcb01-291d-4a22-a624-5fb0f2dbcccd" }
       : attribute),
   };
-  assert.ok(assessShopifyAutomationGate(mismatchedForm).reasonCodes.includes("non_standard_shopify_attribute"));
+  assert.equal(assessShopifyAutomationGate(mismatchedForm).blocked, false);
   const incompleteReverseCharge = {
     ...reverseChargeOrder,
     customAttributes: reverseChargeOrder.customAttributes.filter((attribute) => attribute.key !== "Reverse Charge"),
   };
-  assert.ok(assessShopifyAutomationGate(incompleteReverseCharge).reasonCodes.includes("non_standard_shopify_attribute"));
+  assert.equal(assessShopifyAutomationGate(incompleteReverseCharge).blocked, false);
   const incompleteSegment = {
     ...segmentOrder,
     customAttributes: segmentOrder.customAttributes.filter((attribute) => attribute.key !== "Request Segment Status"),
@@ -795,7 +790,7 @@ test("validated form and reverse-charge metadata stay consistent while sales seg
   assert.equal(assessShopifyAutomationGate(incompleteSegment).blocked, false);
 });
 
-test("sales classification permits arrival labels without overriding shipping instructions", () => {
+test("sales classification and ordinary Shopify notes permit arrival labels", () => {
   const offerId = "cmabc123456789";
   const token = "_xRsfRkigEtPxgkXGBn7uDigErOGrmodund2IhoRALI";
   const formId = "101dcb01-291d-4a22-a624-5fb0f2dbcccd";
@@ -834,9 +829,8 @@ test("sales classification permits arrival labels without overriding shipping in
       arrival: arrival(), trelloCards: [card()],
       shopifyOrders: [{ ...order, note: `${order.note}\n${note}` }], productConfig: config,
     });
-    assert.equal(decision.status, "manual_review", note);
-    assert.equal(decision.selectedDpdProduct, null, note);
-    assert.ok(decision.reasons.includes("non_standard_shopify_note"), note);
+    assert.equal(decision.status, "label_planned", note);
+    assert.equal(decision.selectedDpdProduct, "DPD_CLASSIC_TEST", note);
   }
   for (const addition of [
     { key: "Request Segment", value: "NT-2" },
@@ -856,7 +850,7 @@ test("sales classification permits arrival labels without overriding shipping in
   }
 });
 
-test("bare internal UUID notes are automation-safe but human note text still blocks", () => {
+test("bare internal UUID and ordinary human notes do not hold parcel automation", () => {
   const note = "101dcb01-291d-4a22-a624-5fb0f2dbcccd";
   assert.equal(isAutomationSafeOrderNote(note), true);
   assert.equal(relevantOrderNote(note), null);
@@ -864,12 +858,11 @@ test("bare internal UUID notes are automation-safe but human note text still blo
 
   const humanNote = `${note}\nBitte andere Adresse verwenden`;
   const gate = assessShopifyAutomationGate({ ...standardOrder, note: humanNote });
-  assert.equal(gate.blocked, true);
-  assert.ok(gate.reasonCodes.includes("non_standard_shopify_note"));
+  assert.equal(gate.blocked, false);
   assert.equal(relevantOrderNote(humanNote), humanNote);
 });
 
-test("pickup wording blocks label purchase and print even when a DPD label already exists", () => {
+test("pickup wording alone does not hold planning despite unrelated fulfillment metadata", () => {
   const order = {
     ...standardOrder,
     note: "Ladenlokal holt ab – nicht versenden",
@@ -882,16 +875,14 @@ test("pickup wording blocks label purchase and print even when a DPD label alrea
     }],
   };
   const decision = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [order], productConfig: config });
-  assert.equal(decision.status, "manual_review");
-  assert.equal(decision.selectedDpdProduct, null);
-  assert.equal(decision.existingDpdTracking, null);
-  assert.ok(decision.reasons.includes("pickup_instruction"));
+  assert.equal(decision.status, "label_planned");
+  assert.equal(decision.selectedDpdProduct, "DPD_CLASSIC_TEST");
 });
 
-test("common German and English pickup variants are recognized deterministically", () => {
+test("pickup words alone are not package-opening instructions", () => {
   for (const note of ["Abholer", "Selbstabholung", "zur Abholung bereit", "Kunde holt ab", "wird abgeholt", "Laden lokal", "vor Ort", "Local pickup"]) {
     const gate = assessShopifyAutomationGate({ ...standardOrder, note });
-    assert.ok(gate.reasonCodes.includes("pickup_instruction"), note);
+    assert.equal(gate.blocked, false, note);
   }
 });
 
@@ -1134,7 +1125,7 @@ test("handled cases still reconcile later DHL mail outside Sign SHIPPED without 
   assert.equal(result.summary.trelloSignShippedTriggered, 0);
 });
 
-test("a pickup order produces no label plan and one internal review notification preview", async () => {
+test("a package-opening instruction produces no label plan and one internal review notification preview", async () => {
   const messages: DhlMailEvidence[] = [{
     messageId: "mail-pickup", receivedAt: "2026-07-20T06:00:00Z", senderAddress: "DHL Express <tracking@example.invalid>",
     subject: "DHL Express kommt HEUTE", bodyText: "Sendungsnummer: 1234567890",
@@ -1142,7 +1133,7 @@ test("a pickup order produces no label plan and one internal review notification
   const clients: ArrivalDataClients = {
     outlook: { async listMessagesForLocalDate() { return messages; } },
     trello: { async listQuentinCards() { return [signShippedCard()]; } },
-    shopify: { async listRecentOrders() { return [{ ...standardOrder, note: "Abholer – Ladenlokal" }]; } },
+    shopify: { async listRecentOrders() { return [{ ...standardOrder, note: "Bitte Paket öffnen und Lieferschein beilegen" }]; } },
     existingLabels: { async findForOrders() { return new Map(); } },
   };
   const result = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config, trelloTriggerSettings });
@@ -1270,4 +1261,68 @@ test("new arrivals are planned without querying previously purchased order label
   const result = await runArrivalLabels({ localDate: "2026-07-20", clients, productConfig: config, trelloTriggerSettings });
   assert.equal(result.cases[0].status, "label_planned");
   assert.equal(result.cases[0].selectedDpdProduct, "DPD_CLASSIC_TEST");
+});
+
+
+test("package handling gate permits NEONT4806 checkout metadata", () => {
+  const decision = decideArrivalCase({
+    arrival: arrival(), trelloCards: [card()], productConfig: config,
+    shopifyOrders: [{ ...standardOrder,
+      shippingLines: [{ title: "Expressversand", code: "Expressversand" }], customAttributes: [
+      { key: "NEONTRIP Entwurf", value: "52998dca9740f8074c66f8c05ecdaf7f9d8989114396073c471032e4ea249cce" },
+      { key: "Kalkulationsversion", value: "neontrip-led-20261008-min189" },
+      { key: "NEONTRIP Messwiderruf", value: "2f8112ef990ec666854ee0919a982885094e876cae3f19b4f96776a0859d24d6" },
+      { key: "Wunschliefertermin", value: "2026-11-17" },
+      { key: "Lieferzeit (Werktage)", value: "15" },
+      { key: "Lieferkalkulation", value: "neontrip-delivery-20261006" },
+    ] }],
+  });
+  assert.equal(decision.status, "label_planned");
+  assert.equal(decision.selectedDpdProduct, "DPD_EXPRESS_12_TEST");
+});
+
+test("package handling gate stops clear opening and enclosed-item instructions only in Notes or Additional details", () => {
+  for (const text of [
+    "Paket öffnen", "Paket öffnen und gegebenenfalls Lieferschein beilegen", "Paket oeffnen", "Bitte Paket öffnen ohne die Verpackung zu beschädigen",
+    "Fernbedienung befindet sich im Paket", "Bitte das Paket aufmachen und den Dimmer herausnehmen",
+    "Das Paket muss geöffnet werden", "Karton bitte aufschneiden",
+    "Bitte einen Lieferschein ins Paket legen", "Dimmer wurde ins Paket gelegt",
+    "Bitte Fernbedienung beilegen", "Lieferschein liegt im Paket", "Dem Paket liegt ein Dimmer bei",
+    "Nicht vergessen: Fernbedienung beilegen", "Paket nicht öffnen, aber Lieferschein beilegen",
+    "Please open the package", "Please put the remote into the parcel",
+    "Invoice has been placed inside the package",
+  ]) {
+    for (const source of ["note", "details"] as const) {
+      const gate = assessShopifyAutomationGate({ ...standardOrder,
+        note: source === "note" ? text : null,
+        customAttributes: source === "details" ? [{ key: "Versandhinweis", value: text }] : [],
+      });
+      assert.equal(gate.blocked, true, `${source}: ${text}`);
+      assert.deepEqual(gate.reasonCodes, ["package_handling_required"], text);
+    }
+  }
+  const otherSources = assessShopifyAutomationGate({ ...standardOrder,
+    tags: ["Paket öffnen"], lineItems: [{ title: "Paket öffnen", quantity: 1 }],
+    shippingLines: [{ title: "Paket öffnen", code: "Paket öffnen" }],
+  });
+  assert.equal(otherSources.blocked, false);
+});
+
+test("package handling gate ignores links, ordinary metadata, ambiguous text and negated handling", () => {
+  for (const note of [
+    "Bitte andere Farbe", "Bitte dem Angebot ein Foto beilegen",
+    "Bitte der E-Mail den Link beilegen", "Paket bitte öffnen, falls noch etwas fehlt", "Ladenlokal holt ab", "Bitte an andere Adresse versenden",
+    "Paket", "Zubehör", "Paket ungeöffnet weiterleiten", "Bitte Paket nicht öffnen",
+    "Paket muss nicht geöffnet werden", "Keinen Lieferschein beilegen",
+    "Lieferschein liegt nicht im Paket", "Nicht das Paket öffnen",
+    "Do not open the package", "Paket öffnen: Nein", "Paket öffnen: false", "Paket öffnen?: Nein", "Paket öffnen?: false", "Please do not put the remote into the package",
+    "https://example.invalid/paket-oeffnen?instruction=beilegen",
+    "https://example.invalid/open-the-package", "Liefertermin: 2026-11-17",
+  ]) {
+    const gate = assessShopifyAutomationGate({ ...standardOrder, note });
+    assert.equal(gate.blocked, false, note);
+  }
+  assert.equal(assessShopifyAutomationGate({ ...standardOrder,
+    note: "Paket nicht öffnen. Bitte Fernbedienung beilegen.",
+  }).blocked, true);
 });

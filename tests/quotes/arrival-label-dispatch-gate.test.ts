@@ -11,7 +11,7 @@ const WORKER = "test-worker-01";
 const TOKEN = "test-only-dispatch-token-32-characters-long";
 const keys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ARRIVAL_LABEL_PRINT_API_TOKEN", "ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN", "SHOPIFY_SHOP_DOMAIN", "SHOPIFY_ADMIN_API_ACCESS_TOKEN", "SHOPIFY_ADMIN_API_VERSION"] as const;
 
-async function scenario(kind: "print" | "browser", options: { country?: string | null; note?: string | null; pickup?: boolean; missingOrder?: boolean; malformed?: boolean; wrongOwner?: boolean; holdFails?: boolean; result?: string; parcelKind?: string; shopDomain?: string; held?: boolean; auditedHold?: boolean; replacement?: boolean } = {}) {
+async function scenario(kind: "print" | "browser", options: { country?: string | null; note?: string | null; pickup?: boolean; attributes?: Array<{ key: string; value: string }>; missingOrder?: boolean; malformed?: boolean; wrongOwner?: boolean; holdFails?: boolean; result?: string; parcelKind?: string; shopDomain?: string; held?: boolean; auditedHold?: boolean; replacement?: boolean } = {}) {
   const previous = keys.map(key => process.env[key]);
   const beforeFetch = globalThis.fetch;
   Object.assign(process.env, { SUPABASE_URL: "https://database.example.invalid", SUPABASE_SERVICE_ROLE_KEY: "test-only", ARRIVAL_LABEL_PRINT_API_TOKEN: TOKEN, ARRIVAL_LABEL_BROWSER_WORKER_API_TOKEN: TOKEN, SHOPIFY_SHOP_DOMAIN: options.shopDomain || "galaxybuzzdk.myshopify.com", SHOPIFY_ADMIN_API_ACCESS_TOKEN: "test-only", SHOPIFY_ADMIN_API_VERSION: "2026-07" });
@@ -35,7 +35,7 @@ async function scenario(kind: "print" | "browser", options: { country?: string |
       return Response.json({ data: { order: options.missingOrder ? null : {
         id: GID, name: "#TEST", displayFinancialStatus: "PAID", note: options.note ?? null,
         shippingAddress: options.country === null ? null : { countryCodeV2: options.country ?? "DE" },
-        tags: [], customAttributes: [], shippingLines: { nodes: [{ title: options.pickup ? "Abholung" : "Standard", code: null }], pageInfo: { hasNextPage: false } },
+        tags: [], customAttributes: options.attributes || [], shippingLines: { nodes: [{ title: options.pickup ? "Abholung" : "Standard", code: null }], pageInfo: { hasNextPage: false } },
         lineItems: { nodes: [{ title: "Acryl LED-Tischgerät", quantity: 1 }] },
         ...(options.malformed ? { customAttributes: null } : {}),
       } } });
@@ -66,10 +66,25 @@ for (const kind of ["print", "browser"] as const) {
     assert.match(String(result.hold?.p_reason), /Shopify/);
     assert.equal(result.calls.some(path => path.includes("rpc/arrival_labels_update_")), false);
   });
-  test(`${kind}: pickup shipping method blocks even with empty notes`, async () => {
+  test(`${kind}: pickup method alone does not trigger the content hold`, async () => {
     const result = await scenario(kind, { pickup: true });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.hold, null);
+  });
+  test(`${kind}: Additional details containing a clear handling instruction holds dispatch`, async () => {
+    const result = await scenario(kind, { attributes: [{ key: "Hinweis", value: "Bitte Paket öffnen" }] });
     assert.equal(result.response.status, 409);
+    assert.deepEqual(result.hold?.p_reason_codes, ["package_handling_required"]);
     assert.equal(result.calls.some(path => path.includes("rpc/arrival_labels_update_")), false);
+  });
+  test(`${kind}: ordinary Notes and checkout Additional details permit dispatch`, async () => {
+    const result = await scenario(kind, { note: "Bitte andere Farbe", attributes: [
+      { key: "NEONTRIP Entwurf", value: "technical-reference" },
+      { key: "Wunschliefertermin", value: "2026-11-17" },
+      { key: "Link", value: "https://example.invalid/paket-oeffnen" },
+    ] });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.hold, null);
   });
   for (const parcelKind of ["main", "acrylic_table_device"]) test(`${kind}: acrylic item alone remains allowed (${parcelKind})`, async () => {
     const result = await scenario(kind, { parcelKind });

@@ -182,9 +182,7 @@ export type DestinationGate = {
 };
 
 export type ShopifyAutomationGateReason =
-  | "pickup_instruction"
-  | "non_standard_shopify_note"
-  | "non_standard_shopify_attribute"
+  | "package_handling_required"
   | "payment_terminal_status";
 
 export type ShopifyAutomationGate = {
@@ -200,37 +198,12 @@ export type TrelloAutomationGate =
   | { blocked: true; reasonCode: "trello_manual_list"; reason: string };
 
 const OFFER_TOKEN = "[A-Za-z0-9_-]{8,128}";
-const OFFER_URL = new RegExp(`^https://angebote[.]neontrip[.]de/offer/(${OFFER_TOKEN})$`);
 const PDF_URL = new RegExp(`^https://angebote[.]neontrip[.]de/(?:offer|api/public/offers)/(${OFFER_TOKEN})/pdf$`);
-const OFFER_ID = new RegExp(`^${OFFER_TOKEN}$`);
-const OFFER_NUMBER = /^A\/N [0-9]{1,12}$/;
 const MONEY = "[0-9]+(?:[.,][0-9]{1,2})?";
 const PICKUP_PATTERN = /\b(?:(?:selbst)?abhol[a-z]*|abgeholt|holt\s+ab|holen\s+ab|wird\s+abgeholt|ladenlokal|laden\s+lokal|vor\s+ort|local\s+pickup|pickup|pick\s+up|customer\s+collect)\b/i;
 const SHIPPING_OVERRIDE_NOTE_PATTERN = /\b(?:adress(?:e|en|iert)|anschrift|address|nicht\s+(?:versenden|verschicken|senden)|kein\s+versand|do\s+not\s+ship|manuell|manual|stopp?|sperr[a-z]*|ableg[a-z]*|ablageort|hinterleg[a-z]*|hinterhof|garage|nachbar[a-z]*|briefkasten|haustu(?:r|er))\b/i;
 const OFFER_METADATA_LINE_PREFIX = /^(?:NEONTRIP Angebot|Angebotslink|PDF Snapshot|Netto|Nerdy-Forms_ID|Reverse Charge \/ steuerfrei mit USt-IdNr[.]):/i;
 const INTERNAL_UUID_NOTE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const REQUIRED_STANDARD_ATTRIBUTE_KEYS = new Set([
-  "NEONTRIP Offer ID",
-  "NEONTRIP Offer Number",
-  "NEONTRIP Offer URL",
-  "NEONTRIP PDF Snapshot",
-  "Trello Card ID",
-  "Idempotency Key",
-]);
-const OPTIONAL_STANDARD_ATTRIBUTE_KEYS = new Set([
-  "Invoice Mail Intended",
-  "Nerdy-Forms_ID",
-  "Reverse Charge",
-  "USt-IdNr.",
-  "Request Segment",
-  "Request S-Kategorie",
-  "Request Segment Status",
-  "Rechnungs-E-Mail",
-  "Projektnummer",
-  "NEONTRIP Admin URL",
-  "NEONTRIP Contact Fallback",
-  "NEONTRIP Contact Omitted",
-]);
 const VAT_ID = /^[A-Z]{2}[A-Z0-9]{6,14}$/;
 
 // Reviewed 2026-07-20 against the official EU country and Commission territorial-scope tables.
@@ -328,7 +301,7 @@ export function assessDestinationGate(order: ShopifyOrderEvidence, _config: Prod
 }
 
 const EXPRESS_DPD_ITEM_PATTERN = /\b(?:expressversand|expresszustellung|expresslieferung|express\s+(?:versand|zustellung|lieferung|shipping|delivery|produktion)|eilauftrag)\b/i;
-const EXPRESS_SHIPPING_LINE_PATTERN = /\bexpress\b/i;
+const EXPRESS_SHIPPING_LINE_PATTERN = /\b(?:express|expressversand|expresszustellung|expresslieferung)\b/i;
 const STANDARD_SHIPPING_ITEM_PATTERN = /\b(?:standardversand|standardlieferung|standard\s+(?:versand|lieferung|shipping|delivery)|normaler\s+versand)\b/i;
 const STANDARD_SHIPPING_LINE_PATTERN = /\b(?:standard|normal|classic|b2c)\b/i;
 const SHIPPING_ITEM_PATTERN = /\b(?:versand|versandkosten|lieferung|zustellung|liefertermin|direktfahrt|abholung|shipping|delivery|courier|kurier)\b/i;
@@ -663,64 +636,45 @@ export function noteHash(note: string | null | undefined) {
   return createHash("sha256").update(String(note || ""), "utf8").digest("hex");
 }
 
-function standardAttributes(
-  attributes: ShopifyOrderEvidence["customAttributes"],
-  noteMetadata: ReturnType<typeof parseStandardOfferMetadataNote>,
-) {
-  if (attributes.length === 0) return !noteMetadata.nerdyFormsId && !noteMetadata.reverseChargeVatId;
-  const values = new Map<string, string>();
-  for (const attribute of attributes) {
-    const key = String(attribute.key || "").trim();
-    const value = String(attribute.value || "").trim();
-    if ((!REQUIRED_STANDARD_ATTRIBUTE_KEYS.has(key) && !OPTIONAL_STANDARD_ATTRIBUTE_KEYS.has(key)) || values.has(key)) return false;
-    values.set(key, value);
-  }
-  if ([...REQUIRED_STANDARD_ATTRIBUTE_KEYS].some((key) => !values.has(key))) return false;
-  const offerId = values.get("NEONTRIP Offer ID") || "";
-  const offerUrlId = values.get("NEONTRIP Offer URL")?.match(OFFER_URL)?.[1] || "";
-  const pdfUrlId = values.get("NEONTRIP PDF Snapshot")?.match(PDF_URL)?.[1] || "";
-  const baseValid = OFFER_ID.test(offerId)
-    && OFFER_NUMBER.test(values.get("NEONTRIP Offer Number") || "")
-    && Boolean(offerUrlId)
-    && pdfUrlId === offerUrlId
-    && /^[a-f0-9]{24}$/i.test(values.get("Trello Card ID") || "")
-    && values.get("Idempotency Key") === `offer:${offerId}:shopify-sale:v1`
-    && (!noteMetadata.offerNumber || noteMetadata.offerNumber === values.get("NEONTRIP Offer Number"))
-    && (!noteMetadata.publicToken || noteMetadata.publicToken === offerUrlId);
-  if (!baseValid) return false;
-
-  const nerdyFormsId = values.get("Nerdy-Forms_ID")?.toLowerCase() || null;
-  if (Boolean(nerdyFormsId) !== Boolean(noteMetadata.nerdyFormsId)
-    || (nerdyFormsId && (!INTERNAL_UUID_NOTE.test(nerdyFormsId) || nerdyFormsId !== noteMetadata.nerdyFormsId))) return false;
-
-  const reverseCharge = values.get("Reverse Charge") || null;
-  const vatId = values.get("USt-IdNr.")?.toUpperCase() || null;
-  if (Boolean(reverseCharge || vatId) !== Boolean(noteMetadata.reverseChargeVatId)
-    || (noteMetadata.reverseChargeVatId && (reverseCharge !== "yes_vies_validated" || vatId !== noteMetadata.reverseChargeVatId))) return false;
-
-  // Sales classification is internal metadata, never a shipping instruction.
-  return true;
+// Only explicit parcel handling in Shopify Notes / Additional details holds automation.
+// Evaluate clauses separately so a negated instruction cannot hide a later positive one.
+function requiresPackageHandling(value: string) {
+  const text = String(value || "").replace(/(?:https?:\/\/|www\.)\S+/gi, "").replace(/don[’']t/gi, "do not");
+  const parcel = "(?:paket|karton|sendung|package|parcel|box)";
+  const opening = "(?:offnen|oeffnen|geoffnet|geoeffnet|aufmachen|aufgemacht|aufschneiden|aufgeschnitten|auspacken|ausgepackt|open|opened|unpack|unpacked)";
+  const enclosing = "(?:beilegen|beigelegt|beizulegen|dazulegen|dazugelegt|hinzulegen|hineinlegen|reinlegen)";
+  return text.split(/[.!;\n]+/).some((sentence) => {
+    // A condition on the same sentence does not establish mandatory handling.
+    if (/\b(?:falls|if)\b/.test(normalizeHumanText(sentence))) return false;
+    return sentence.split(/[,]+|\b(?:aber|sondern|but|und|and)\b/i).some((clause) => {
+      if (/\b(?:eventuell|vielleicht|gegebenenfalls|maybe|possibly)\b/.test(normalizeHumanText(clause))) return false;
+      const instruction = normalizeHumanText(clause).replace(/\bnicht vergessen\b|\bdo not forget\b/g, "");
+      if (/\b(?:nein|false|no)\s*$/.test(instruction)) return false;
+      const packageOpening = new RegExp(`\\b${parcel}\\b.{0,80}\\b${opening}\\b|\\b${opening}\\b.{0,80}\\b${parcel}\\b`);
+      const negatedOpening = new RegExp(`\\b(?:nicht|not|never|keinesfalls)\\b.{0,45}\\b${opening}\\b|\\b${opening}\\b.{0,20}\\b(?:nicht|not)\\b|\\bkein[a-z]*\\s+${parcel}\\b|\\bohne\\s+(?:(?:das|den|die|the)\\s+)?(?:${parcel}\\s+)?(?:zu\\s+)?${opening}\\b`);
+      if (packageOpening.test(instruction) && !negatedOpening.test(instruction)) return true;
+      const enclosedItem = new RegExp(`\\b(?:ins|in das|im|in dem|in diesem|into|inside|in)\\s+(?:(?:the|this)\\s+)?${parcel}\\b.{0,60}\\b(?:legen|gelegt|packen|gepackt|hineinlegen|reinlegen|beilegen)\\b|\\b(?:liegt|liegen|befindet sich|befinden sich|gelegt|put|place|placed|packed|enclosed)\\b.{0,60}\\b(?:im|ins|in dem|in das|in|into|inside)\\s+(?:(?:the|this)\\s+)?${parcel}\\b|\\b${parcel}\\b.{0,30}\\b(?:liegt|liegen)\\b.{0,60}\\bbei\\b|\\b(?:liegt|liegen)\\b.{0,60}\\b${parcel}\\s+bei\\b`);
+      const negatedEnclosure = /\b(?:nicht|nichts|kein[a-z]*|not|never|no)\b/.test(instruction)
+        || new RegExp(`\\bohne\\b.{0,45}\\b${enclosing}\\b`).test(instruction);
+      if (negatedEnclosure) return false;
+      if (enclosedItem.test(instruction)) return true;
+      // An offer/email attachment is not an instruction to change parcel contents.
+      const digitalAttachment = /\b(?:angebot|angebote|e mail|email|mail|datei|pdf|link|url)\b/.test(instruction);
+      return new RegExp(`\\b${enclosing}\\b`).test(instruction)
+        && (!digitalAttachment || new RegExp(`\\b${parcel}\\b`).test(instruction));
+    });
+  });
 }
 
 export function assessShopifyAutomationGate(order: ShopifyOrderEvidence): ShopifyAutomationGate {
   const reasonCodes: ShopifyAutomationGateReason[] = [];
   const note = String(order.note || "").trim();
-  const noteMetadata = parseStandardOfferMetadataNote(note);
-  const pickupEvidence = [
-    note,
-    ...order.customAttributes.flatMap((attribute) => [attribute.key, attribute.value]),
-    ...order.tags,
-    ...order.shippingLines.flatMap((line) => [line.title, line.code || ""]),
-  ].map(normalizeHumanText).join("\n");
-  if (PICKUP_PATTERN.test(pickupEvidence)) reasonCodes.push("pickup_instruction");
-  if (!noteMetadata.standard && !INTERNAL_UUID_NOTE.test(note)) reasonCodes.push("non_standard_shopify_note");
-  if (!standardAttributes(order.customAttributes, noteMetadata)) reasonCodes.push("non_standard_shopify_attribute");
+  const handlingEvidence = [note, ...order.customAttributes.map(({ key, value }) => `${key}: ${value}`)];
+  if (handlingEvidence.some(requiresPackageHandling)) reasonCodes.push("package_handling_required");
   if (["refunded", "voided", "expired"].includes(order.financialStatus)) reasonCodes.push("payment_terminal_status");
   const uniqueCodes = [...new Set(reasonCodes)];
   const reasonParts = uniqueCodes.map((code) => ({
-    pickup_instruction: "Shopify enthaelt einen Abhol- oder Ladenlokal-Hinweis.",
-    non_standard_shopify_note: "Shopify enthaelt eine Notiz ausserhalb der freigegebenen Automationsformate.",
-    non_standard_shopify_attribute: "Shopify enthaelt Zusatzfelder ausserhalb des freigegebenen NEONTRIP-Angebotsformats.",
+    package_handling_required: "Shopify Notes oder Additional details enthalten einen eindeutigen Hinweis auf Paket oeffnen oder Inhalt beilegen/entnehmen.",
     payment_terminal_status: `Shopify-Zahlungsstatus ${order.financialStatus} weist auf eine beendete oder rueckabgewickelte Bestellung hin.`,
   })[code]);
   return {
