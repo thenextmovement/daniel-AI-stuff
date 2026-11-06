@@ -9,6 +9,7 @@ export const SCOPES = [
   "billing:change:draft",
   "billing:change:reject",
   "billing:actions",
+  "billing:invoice:create",
   "offers:read",
   "offers:write",
   "offers:send",

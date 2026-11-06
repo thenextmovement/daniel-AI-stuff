@@ -348,3 +348,13 @@ export async function completeManualPaidReconciliation(jobId: string, result: Ma
     p_job_id: jobId, p_lease_token: leaseToken, p_result: completion,
   });
 }
+
+export async function requestBillingOpsInvoice(input: {
+  caseId: string; expectedRevision: number; expectedUpdatedAt: string;
+  actor: string; customerRequestRef: string; idempotencyKey: string;
+}) {
+  return supabaseRpc<Record<string, unknown>>("billing_ops_request_invoice", {
+    p_case_id: input.caseId, p_revision: input.expectedRevision, p_updated_at: input.expectedUpdatedAt,
+    p_actor: input.actor, p_customer_request_ref: input.customerRequestRef, p_idempotency_key: input.idempotencyKey,
+  });
+}

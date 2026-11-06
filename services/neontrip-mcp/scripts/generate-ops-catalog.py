@@ -21,6 +21,7 @@ excluded={
  'voice-phone/ai-handoffs':'Personal phone device session required; voice-platform provides operator queue management.',
  'billing':'Covered by guarded billing_list_cases.',
  'billing/[caseId]':'Covered by guarded billing_get_case.',
+ 'billing/[caseId]/invoice':'Covered by guarded billing_convert_proforma; no generic bypass of customer request, version or payment boundaries.',
  'billing/[caseId]/actions':'Covered by guarded billing action tools; do not bypass fingerprints or notification policy.',
 }
 excluded_methods={

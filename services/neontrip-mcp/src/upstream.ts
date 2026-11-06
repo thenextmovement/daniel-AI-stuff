@@ -207,6 +207,10 @@ export class NeontripApi {
     return this.request("billing", `/api/ops/billing/${encodeURIComponent(caseId)}?${params}`);
   }
 
+  requestBillingInvoice(caseId: string, input: { expectedRevision: number; expectedUpdatedAt: string; customerRequestConfirmed: true; customerRequestRef: string; actor: string; idempotencyKey: string }) {
+    return this.request("billing", `/api/ops/billing/${encodeURIComponent(caseId)}/invoice`, { method: "POST", body: input });
+  }
+
   billingAction(caseId: string, input: { action: string; idempotencyKey: string; payload: JsonValue }) {
     return this.request("billing", `/api/ops/billing/${encodeURIComponent(caseId)}/actions`, { method: "POST", body: input });
   }

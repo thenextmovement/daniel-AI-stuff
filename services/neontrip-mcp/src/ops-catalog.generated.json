@@ -8854,6 +8854,14 @@
       "coverage": "Covered by guarded billing action tools; do not bypass fingerprints or notification policy."
     },
     {
+      "source": "src/app/api/ops/billing/[caseId]/invoice/route.ts",
+      "sha256": "17f4e46f7901db469c1fe765cf8b6e38954f5920c806d1db7003d85900949fdc",
+      "methods": [
+        "POST"
+      ],
+      "coverage": "Covered by guarded billing_convert_proforma; no generic bypass of customer request, version or payment boundaries."
+    },
+    {
       "source": "src/app/api/ops/billing/[caseId]/route.ts",
       "sha256": "9dbdf6fdaaae29743ddafd93ba6f3d3a09952adc7dd3e2aac1dc000e210d8f3b",
       "methods": [
@@ -9870,7 +9878,7 @@
   "contractDependencies": [
     {
       "source": "src/lib/ops/billing/repository.ts",
-      "sha256": "2b454939a2424c4932139f6e13333175b86e441a3ade1619f6acb2e03264ae98"
+      "sha256": "21ef6ca94e5c4913e10c948350238360e7ed249915ed69522840c18c53501e69"
     },
     {
       "source": "src/lib/ops/billing/portal-change.ts",
@@ -9879,6 +9887,14 @@
     {
       "source": "src/lib/ops/billing/vies.ts",
       "sha256": "0f5b494772310a1cd08758022c826927fcd140f8007c72a7ebc3512f4cbe6eab"
+    },
+    {
+      "source": "src/lib/ops/billing/invoice-request.ts",
+      "sha256": "5a92aaf15ca0362ce7bd5f84919fb3ab2f319c40ca54e0ebcd47c3110164af31"
+    },
+    {
+      "source": "src/lib/quotes/supabase-rest.ts",
+      "sha256": "3de2618663a466eaad7d68c8614b74e53614328b2665d83eae2b5cf7fd7ed684"
     },
     {
       "source": "src/lib/ops/list-pagination.ts",
@@ -9927,10 +9943,6 @@
     {
       "source": "src/lib/quotes/trello.ts",
       "sha256": "ca8aa0f92a8eca96631a04b9d0f79ca461db110078f4f4d7eb372a957d7ed549"
-    },
-    {
-      "source": "src/lib/quotes/supabase-rest.ts",
-      "sha256": "3de2618663a466eaad7d68c8614b74e53614328b2665d83eae2b5cf7fd7ed684"
     },
     {
       "source": "src/app/api/ops/company-brain/actions/route.ts",

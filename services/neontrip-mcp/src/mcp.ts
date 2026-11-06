@@ -438,6 +438,15 @@ export function createNeontripMcpServer(input: {
     },
   });
 
+  register({
+    name: "billing_convert_proforma", title: "Proforma auf Kundenwunsch in Rechnung umwandeln",
+    description: "Nur nach ausdrücklichem Kundenwunsch und Prüfung des vollständigen Kundenverlaufs. Unveränderte, fertige Proforma in eine Rechnung umwandeln. expectedRevision und expectedUpdatedAt exakt aus billing_get_case übernehmen. Sperrt Änderungen und beauftragt den bestehenden Rechnungsworker einschließlich dessen Kundenversand. Keine Zahlungsbuchung, Betrags- oder Zahlungsbedingungsänderung. Bei Timeout zuerst den Fall und Versandbelege lesen; nicht separat senden.",
+    scope: "billing:invoice:create",
+    schema: z.object({ caseId: uuid, expectedRevision: z.number().int().nonnegative(), expectedUpdatedAt: z.iso.datetime({ offset: true }), customerRequestConfirmed: z.literal(true), customerRequestRef: safeText(1000).refine(value => value.length > 0), idempotencyKey }).strict(),
+    readOnly: false, destructive: true, idempotent: true,
+    run: ({ caseId, ...args }) => input.api.requestBillingInvoice(caseId, { ...args, actor: identity.actor }),
+  });
+
   const billingActionPayload = z.object({
     paymentMethod: z.enum(["VORKASSE", "KAUF_AUF_RECHNUNG"]).optional(),
     paymentTermsDays: z.union([z.literal(7), z.literal(14), z.literal(30)]).optional(),
