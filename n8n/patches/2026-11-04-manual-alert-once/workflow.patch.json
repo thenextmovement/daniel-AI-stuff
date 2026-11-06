@@ -1,0 +1,144 @@
+{
+  "workflowId": "M4uG1HAtN9Zggxww",
+  "expectedVersionId": "ba6cf319-6ff9-49a6-ba63-7a0109b44952",
+  "operations": [
+    {
+      "type": "updateNode",
+      "nodeName": "Prepare Alert Data",
+      "updates": {
+        "parameters.jsCode": "const errorData = $input.first()?.json || {};\n\nfunction clean(value, max = 500) {\n  return String(value ?? '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, max);\n}\nfunction escapeHtml(value) {\n  return clean(value, 4000)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\\\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\n\nconst workflowName = clean(errorData.workflow?.name || 'Unknown Workflow', 200);\nconst workflowId = clean(errorData.workflow?.id || 'unknown', 100);\nconst executionId = clean(errorData.execution?.id || 'N/A', 100);\nconst errorMessage = clean(errorData.execution?.error?.message || 'Unbekannter Fehler', 500);\nconst errorDescription = clean(errorData.execution?.error?.description || '', 1000);\nconst executionUrlRaw = clean(errorData.execution?.url || '', 1000);\nconst executionUrl = /^https:\\/\\/fuajob\\.online\\//.test(executionUrlRaw) ? executionUrlRaw : '';\nconst failedNode = clean(errorData.execution?.lastNodeExecuted || errorData.execution?.error?.node?.name || 'unknown', 200);\n// Only this execution-bound unknown-claim path uses the atomic incident gate.\nconst manualPaidClaim = workflowId === '6NZnfGpyfUVikqpf'\n  && failedNode === 'Stop Unconfirmed Manual Paid Claim'\n  && /^MANUAL_PAID_CLAIM_UNCONFIRMED;/.test(errorMessage);\nconst manualOperation = errorMessage.match(/\\boperation=(claim|admit)\\b/)?.[1] || 'claim';\nconst manualHttpStatus = errorMessage.match(/\\bhttpStatus=([1-5]\\d{2})\\b/)?.[1] || 'unknown';\nconst manualAlertKey = manualPaidClaim ? 'manual-paid-claim:' + manualOperation + ':' + manualHttpStatus : null;\nconst manualCandidates = (errorMessage.match(/\\bcandidateOrderIds=([\\d,]+)/)?.[1] || '').split(',').filter(v => /^\\d+$/.test(v));\nconst rawError = clean(JSON.stringify(errorData.execution?.error || {}), 4000);\nconst normalizedError = errorMessage.toLowerCase().replace(/\\b\\d{4,}\\b/g, '#').slice(0, 240);\nconst fingerprint = [workflowId, failedNode, normalizedError].join('|');\n\nconst now = Date.now();\nconst cooldownMs = 15 * 60 * 1000;\nconst outageThresholdMs = 10 * 60 * 1000;\nconst recoveryGapMs = 3 * 60 * 1000;\nconst hourKey = new Date(now).toISOString().slice(0, 13);\nconst state = $getWorkflowStaticData('global');\nstate.alertDedupe = state.alertDedupe && typeof state.alertDedupe === 'object' ? state.alertDedupe : { fingerprints: {}, hours: {} };\nstate.alertDedupe.fingerprints = state.alertDedupe.fingerprints || {};\nstate.alertDedupe.hours = state.alertDedupe.hours || {};\nfor (const [key, entry] of Object.entries(state.alertDedupe.fingerprints)) {\n  if (!entry || now - Number(entry.lastSeenAt || 0) > 24 * 60 * 60 * 1000) delete state.alertDedupe.fingerprints[key];\n}\nfor (const key of Object.keys(state.alertDedupe.hours)) {\n  if (key !== hourKey) delete state.alertDedupe.hours[key];\n}\n\n// Billing-Worker laufen jede Minute. Vorübergehende Claim-/Gateway-Ausfälle\n// werden deshalb durch den nächsten Planlauf automatisch erneut geprüft.\n// Erst ein mindestens zehn Minuten durchgehend sichtbarer Ausfall alarmiert.\nconst combinedErrorText = [errorMessage, errorDescription, rawError].join(' ').toLowerCase();\nconst isBillingWorkflow = /^neontrip billing v2\\b/i.test(workflowName);\nconst isClaimPath = /^claim .+ job$/i.test(failedNode)\n  || /^raise .+ claim error$/i.test(failedNode)\n  || failedNode === 'Raise Claim Error'\n  || failedNode === 'Prepare Shopify Tax Sync Failure';\nconst hasTransientSignal = /(bad gateway|origin_bad_gateway|cloudflare|service failed|gateway timeout|timed? out|timeout|econnreset|econnrefused|socket hang up|fetch failed|too many requests|http(?: status)?\\s*(?:429|500|502|503|504)\\b|billing-job konnte nicht abgeholt werden|kundenversand-job konnte nicht abgeholt werden|änderungsbenachrichtigung konnte keinen job abrufen|shopify_tax_sync_failure_without_job)/i.test(combinedErrorText);\nconst isTransientBillingOpsOutage = isBillingWorkflow && isClaimPath && hasTransientSignal;\n\nif (state.billingOpsOutage && now - Number(state.billingOpsOutage.lastSeenAt || 0) > recoveryGapMs) {\n  delete state.billingOpsOutage;\n}\n\nif (isTransientBillingOpsOutage) {\n  let incident = state.billingOpsOutage;\n  if (!incident) {\n    incident = {\n      firstSeenAt: now,\n      lastSeenAt: now,\n      count: 0,\n      alertSentAt: 0,\n      workflows: {},\n      latestExecutionId: executionId,\n      latestExecutionUrl: executionUrl,\n      latestError: errorMessage\n    };\n  }\n  incident.lastSeenAt = now;\n  incident.count = Number(incident.count || 0) + 1;\n  incident.workflows = incident.workflows && typeof incident.workflows === 'object' ? incident.workflows : {};\n  incident.workflows[workflowId] = {\n    name: workflowName,\n    failedNode,\n    lastSeenAt: now,\n    lastExecutionId: executionId\n  };\n  incident.latestExecutionId = executionId;\n  incident.latestExecutionUrl = executionUrl;\n  incident.latestError = errorMessage;\n  state.billingOpsOutage = incident;\n\n  const outageDurationMs = now - Number(incident.firstSeenAt || now);\n  if (outageDurationMs < outageThresholdMs || Number(incident.alertSentAt || 0) > 0) {\n    return [];\n  }\n\n  const sentThisHour = Number(state.alertDedupe.hours[hourKey] || 0);\n  if (sentThisHour >= 20) return [];\n\n  incident.alertSentAt = now;\n  state.billingOpsOutage = incident;\n  state.alertDedupe.hours[hourKey] = sentThisHour + 1;\n\n  const workflowEntries = Object.values(incident.workflows)\n    .sort((a, b) => String(a.name).localeCompare(String(b.name)))\n    .map((entry) => `<li><strong>${escapeHtml(entry.name)}</strong> – ${escapeHtml(entry.failedNode)}</li>`)\n    .join('');\n  const firstSeen = new Date(Number(incident.firstSeenAt)).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });\n  const lastSeen = new Date(Number(incident.lastSeenAt)).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });\n  const safeUrl = escapeHtml(incident.latestExecutionUrl || '');\n  const bodyHtml = `<h2>Billing-Ops seit mindestens 10 Minuten nicht erreichbar</h2>\n<p>Die minütlichen automatischen Wiederholungen sind weiterhin fehlgeschlagen. Es handelt sich um einen zusammengefassten Vorfall; die einzelnen Billing-Worker senden dafür keine separaten Warnungen.</p>\n<table style=\"border-collapse:collapse;width:100%;font-family:Arial,sans-serif;\">\n<tr style=\"background:#f44336;color:white;\"><td style=\"padding:10px;\" colspan=\"2\"><strong>Störungsbericht</strong></td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;width:190px;\"><strong>Erstmals erkannt</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${escapeHtml(firstSeen)}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Zuletzt bestätigt</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${escapeHtml(lastSeen)}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Fehlversuche</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${Number(incident.count || 0)}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Betroffene Worker</strong></td><td style=\"padding:8px;border:1px solid #ddd;\"><ul>${workflowEntries}</ul></td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Letzter Fehler</strong></td><td style=\"padding:8px;border:1px solid #ddd;color:#d32f2f;\">${escapeHtml(incident.latestError || 'Unbekannter Fehler')}</td></tr>\n${incident.latestExecutionUrl ? `<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Letzte Ausführung</strong></td><td style=\"padding:8px;border:1px solid #ddd;\"><a href=\"${safeUrl}\">${safeUrl}</a></td></tr>` : ''}\n</table>\n<p>Nach einer fehlerfreien Lücke von drei Minuten gilt der Vorfall automatisch als erholt. Ein späterer neuer Ausfall wird separat überwacht.</p>`;\n\n  return [{ json: {\n    alert_type: 'error',\n    severity_hint: 'critical',\n    source_workflow_id: 'billing-ops-outage',\n    source_workflow_name: 'NEONTRIP Billing v2',\n    subject: 'DRINGEND: Billing-Ops seit 10 Minuten nicht erreichbar',\n    body_html: bodyHtml,\n    metadata: {\n      execution_id: incident.latestExecutionId,\n      execution_url: incident.latestExecutionUrl || null,\n      alert_fingerprint: 'billing-ops-outage',\n      first_seen_at: new Date(Number(incident.firstSeenAt)).toISOString(),\n      last_seen_at: new Date(Number(incident.lastSeenAt)).toISOString(),\n      failure_count: Number(incident.count || 0),\n      affected_workflow_ids: Object.keys(incident.workflows),\n      retry_window_minutes: 10\n    }\n  } }];\n}\n\nconst previous = state.alertDedupe.fingerprints[fingerprint] || { lastSentAt: 0, lastSeenAt: 0, suppressed: 0 };\nprevious.lastSeenAt = now;\nif (!manualPaidClaim && now - Number(previous.lastSentAt || 0) < cooldownMs) {\n  previous.suppressed = Number(previous.suppressed || 0) + 1;\n  state.alertDedupe.fingerprints[fingerprint] = previous;\n  return [];\n}\nconst sentThisHour = Number(state.alertDedupe.hours[hourKey] || 0);\nif (!manualPaidClaim && sentThisHour >= 20) {\n  previous.suppressed = Number(previous.suppressed || 0) + 1;\n  state.alertDedupe.fingerprints[fingerprint] = previous;\n  return [];\n}\nconst suppressedSinceLastAlert = Number(previous.suppressed || 0);\nprevious.lastSentAt = now;\nprevious.suppressed = 0;\nstate.alertDedupe.fingerprints[fingerprint] = previous;\nstate.alertDedupe.hours[hourKey] = sentThisHour + 1;\n\n\nfunction readable(value) {\n  return clean(String(value ?? '')\n    .replace(/data:[^\\s\"'<>]+/gi, '[eingebettete Daten entfernt]')\n    .replace(/<!DOCTYPE[\\s\\S]*|<html[\\s\\S]*/gi, '[HTML-Fehlerseite des Dienstes]')\n    .replace(/<[^>]*>/g, ' '), 2500);\n}\nconst originalError = errorData.execution?.error || {};\nconst stackHeadline = String(originalError.stack || '').split(/\\r?\\n\\s+at\\s/)[0].replace(/^(?:\\w*Error):\\s*/, '');\nconst recoveredMessage = /^(?:https?|\\/\\/|image\\/)/i.test(errorMessage) || /^https?$/.test(errorDescription)\n  ? (stackHeadline || errorMessage) : errorMessage;\nconst readableMessage = readable(recoveredMessage);\nconst vatNotice = workflowId === 'gdnW2tkXdwwHoKLy' && failedNode === 'Send VAT Review Through Error Mail';\nconst orderReference = readableMessage.match(/#NEONT\\d+/i)?.[0] || '';\nconst vatUnchecked = /checked=false/.test(readableMessage);\nconst vatInvalid = /checked=true, valid=false/.test(readableMessage);\nconst vatAddress = /checked=true, valid=true/.test(readableMessage) && /addressComparison=DIFFERENT_REQUIRES_REVIEW/.test(readableMessage);\nlet explanation = 'Der automatische Ablauf „' + workflowName + '“ konnte einen Arbeitsschritt nicht abschließen. Der erfolgreiche Abschluss ist damit nicht bestätigt.';\nlet nextStep = 'Bitte den betroffenen Vorgang und die technischen Details prüfen. Vor einer Wiederholung klären, ob bereits eine Rechnung, Zahlung oder Nachricht verarbeitet wurde.';\nif (manualPaidClaim) {\n  explanation = 'Der interne Abgleichdienst hat die Übernahme eines Zahlungsabgleichs nicht bestätigt. Die Meldung beweist keine fehlende Kundenzahlung. Die genannten Bestellungen sind Suchkandidaten; daraus lässt sich kein tatsächlich übernommener Auftrag ableiten.';\n  nextStep = 'Den dauerhaften Übernahmebeleg dieser Ausführung und den aktuellen Shopify-/easybill-Zahlungsstand prüfen. Ohne bestätigte Übernahme nicht automatisch wiederholen und keine Zahlung erneut buchen.';\n} else if (vatNotice) {\n  explanation = (orderReference ? 'Bei Bestellung ' + orderReference + ' ' : 'Bei dieser Bestellung ')\n    + (vatUnchecked ? 'konnte die Umsatzsteuer-ID nicht erfolgreich geprüft werden. Das bedeutet nicht, dass die Nummer ungültig ist.'\n       : vatInvalid ? 'wurde die Umsatzsteuer-ID bei der Prüfung nicht als gültig bestätigt.'\n       : vatAddress ? 'ist die Umsatzsteuer-ID gültig, aber die Rechnungsanschrift weicht von der Anschrift der EU-Auskunft ab.'\n       : 'müssen Umsatzsteuer-ID, Firmenangaben und Rechnungsanschrift vor der steuerlichen Freigabe geklärt werden.')\n    + ' Dies ist ein fachlicher Prüfhinweis. Laut diesem Ablauf bleibt die finale steuerfreie Rechnung gesperrt; andere vorhandene Sperren werden dadurch nicht aufgehoben.';\n  nextStep = 'Die angegebenen Firmen- und Rechnungsdaten mit der EU-Auskunft vergleichen. Bei Abweichungen die richtige Zuordnung beim Kunden bestätigen lassen und die Klärung in OPS dokumentieren.';\n} else if (/503|service unavailable|gleich wieder erreichbar/i.test(combinedErrorText) && /easybill/i.test(combinedErrorText + ' ' + failedNode)) {\n  explanation = 'easybill war beim Abruf vorübergehend nicht erreichbar. Deshalb konnte der Ablauf die benötigten Rechnungsdaten nicht lesen und diesen Schritt nicht abschließen. Die Meldung beweist weder eine fehlende Kundenzahlung noch einen Fehler in der Rechnung.';\n  nextStep = 'Nach Wiederherstellung von easybill den betroffenen Auftrag und den erfolgreichen Folgelauf prüfen. Zahlungen oder Erstattungen nicht ungeprüft erneut auslösen.';\n} else if (/502|504|timeout|timed out|bad gateway/i.test(combinedErrorText)) {\n  explanation = 'Ein benötigter Dienst hat nicht rechtzeitig oder mit einem Verbindungsfehler geantwortet. Deshalb konnte der erfolgreiche Abschluss dieses Arbeitsschritts nicht bestätigt werden.';\n}\nconst explanationHtml = '<p>' + escapeHtml(explanation) + '</p><p><strong>Was ist zu tun?</strong> ' + escapeHtml(nextStep) + '</p>';\n\nconst safeWorkflowName = escapeHtml(workflowName);\nconst safeExecutionId = escapeHtml(executionId);\nconst safeErrorMessage = escapeHtml(readableMessage);\nconst safeDescription = escapeHtml(/^https?$/.test(readable(errorDescription)) ? 'Der vollständige Hinweis steht oben; der ursprüngliche Fehler wurde an einer Webadresse aufgeteilt.' : readable(errorDescription) || 'Keine zusätzliche technische Beschreibung vorhanden.');\nconst safeFailedNode = escapeHtml(failedNode);\nconst safeUrl = escapeHtml(executionUrl);\nconst bodyHtml = `<h2>${vatNotice ? 'Umsatzsteuerprüfung: Klärung erforderlich' : 'Automatischer Ablauf konnte nicht abgeschlossen werden'}</h2>\\n${explanationHtml}\n<table style=\"border-collapse:collapse;width:100%;font-family:Arial,sans-serif;\">\n<tr style=\"background:#f44336;color:white;\"><td style=\"padding:10px;\" colspan=\"2\"><strong>Fehlerbericht</strong></td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;width:170px;\"><strong>Workflow</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${safeWorkflowName}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Node</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${safeFailedNode}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Execution ID</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${safeExecutionId}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Fehlermeldung</strong></td><td style=\"padding:8px;border:1px solid #ddd;color:#d32f2f;\">${safeErrorMessage}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Beschreibung</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${safeDescription}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Unterdrückt seit letzter Meldung</strong></td><td style=\"padding:8px;border:1px solid #ddd;\">${suppressedSinceLastAlert}</td></tr>\n${executionUrl ? `<tr><td style=\"padding:8px;border:1px solid #ddd;\"><strong>Execution Link</strong></td><td style=\"padding:8px;border:1px solid #ddd;\"><a href=\"${safeUrl}\">${safeUrl}</a></td></tr>` : ''}\n</table>\n${manualPaidClaim ? '<p>Für denselben Ausfall wird nur eine E-Mail freigegeben, auch wenn weitere Bestellungen betroffen sind. Alle Ausführungen bleiben protokolliert. Erst nach 24 Stunden ohne diesen Fehler beginnt ein neuer Vorfall.</p>' : '<p>Weitere identische Fehler werden 15 Minuten lang zusammengefasst. Globales Sicherheitslimit: 20 Fehlermails pro Stunde.</p>'}`;\n\nreturn [{ json: {\n  alert_type: 'error',\n  severity_hint: 'warning',\n  source_workflow_id: workflowId,\n  source_workflow_name: workflowName,\n  subject: `N8N Fehler: ${workflowName}`,\n  body_html: bodyHtml,\n  metadata: {\n    ...(manualPaidClaim ? { manual_paid_alert_key: manualAlertKey, manual_paid_candidate_order_ids: manualCandidates } : {}),\n    execution_id: executionId,\n    execution_url: executionUrl || null,\n    failed_node: failedNode,\n    error_message: errorMessage,\n    error_description: errorDescription,\n    alert_fingerprint: fingerprint,\n    suppressed_since_last_alert: suppressedSinceLastAlert,\n    dedupe_window_minutes: 15\n  }\n} }];\n"
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "manual-paid-alert-scope",
+        "name": "Manual Paid Unknown Claim Alert?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          900,
+          0
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "version": 2,
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "manual-key",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                },
+                "leftValue": "={{ !!$json.metadata?.manual_paid_alert_key }}",
+                "rightValue": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "claim-manual-paid-error-mail",
+        "name": "Claim One Manual Paid Incident Email",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.3,
+        "position": [
+          1140,
+          -180
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        },
+        "retryOnFail": false,
+        "parameters": {
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "method": "POST",
+          "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_manual_paid_error_mail",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({p_key:$json.metadata.manual_paid_alert_key,p_execution_id:String($json.metadata.execution_id),p_candidate_order_ids:$json.metadata.manual_paid_candidate_order_ids || []}) }}",
+          "options": {
+            "timeout": 30000,
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "only-claimed-manual-alert",
+        "name": "Only Claimed Manual Paid Email",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1380,
+          -180
+        ],
+        "parameters": {
+          "jsCode": "const response=$input.first().json;\nif (response.statusCode !== 200 || typeof response.body?.approved !== 'boolean') throw new Error('manual_paid_error_mail_claim_unconfirmed');\nif (!response.body.approved) return [];\nconst email={...$('Prepare Alert Data').first().json};\nemail.gateApproved=true;\nemail.gateVersion='manual-paid-atomic-v1';\nreturn [{json:email}];"
+        }
+      }
+    },
+    {
+      "type": "removeConnection",
+      "source": "Prepare Alert Data",
+      "target": "Five-Minute Internal Mail Throttle"
+    },
+    {
+      "type": "addConnection",
+      "source": "Prepare Alert Data",
+      "target": "Manual Paid Unknown Claim Alert?"
+    },
+    {
+      "type": "addConnection",
+      "source": "Manual Paid Unknown Claim Alert?",
+      "target": "Claim One Manual Paid Incident Email",
+      "sourceIndex": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Manual Paid Unknown Claim Alert?",
+      "target": "Five-Minute Internal Mail Throttle",
+      "sourceIndex": 1
+    },
+    {
+      "type": "addConnection",
+      "source": "Claim One Manual Paid Incident Email",
+      "target": "Only Claimed Manual Paid Email"
+    },
+    {
+      "type": "addConnection",
+      "source": "Only Claimed Manual Paid Email",
+      "target": "Send Prepared Alert Email"
+    }
+  ]
+}
