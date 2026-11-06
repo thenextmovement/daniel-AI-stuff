@@ -1,0 +1,142 @@
+{
+  "id": "6NZnfGpyfUVikqpf",
+  "operations": [
+    {
+      "type": "addNode",
+      "node": {
+        "id": "t300-recon-read-collective",
+        "name": "Read Registered Collective Context",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.3,
+        "position": [
+          2500,
+          2100
+        ],
+        "parameters": {
+          "method": "GET",
+          "url": "={{ 'https://klibiejfisijpagzkxls.supabase.co/rest/v1/billing_cases?select=id,shopify_order_id,shopify_order_name,total_gross_cents,currency,status,customer,cancelled_at,refunded_at,tax_review_status,billing_payments(id,billing_case_id,provider,provider_transaction_id,amount_cents,currency,match_status,booked_at,evidence),billing_jobs(id,billing_case_id,idempotency_key,job_type,status,payload,created_at)&or=' + encodeURIComponent('(shopify_order_id.eq.'+$json.shopifyOrderId+',shopify_order_id.eq.gid://shopify/Order/'+$json.shopifyOrderId+')')+'&limit=2' }}",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Accept",
+                "value": "application/json"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 30000,
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 3000,
+        "alwaysOutputData": true
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "t300-recon-guard",
+        "name": "Check Registered Collective Context",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2720,
+          2100
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "function collectiveReconciliationWait(ctx,response,now=Date.now()){\n const keep={...ctx,_collectiveWait:false};\n if(!ctx._manualPaidReconcile)return keep;\n if(Number(response.statusCode)!==200||!Array.isArray(response.body))throw new Error('COLLECTIVE_RECONCILIATION_READ_FAILED');\n const rows=response.body;if(rows.length!==1)return keep;\n const c=rows[0],ps=c.billing_payments,js=c.billing_jobs;\n const norm=v=>String(v??'').toLowerCase().replace(/[^a-z0-9]/g,'');\n if(!Array.isArray(ps)||!Array.isArray(js)||ps.length!==1)return keep;\n const p=ps[0],e=p.evidence||{},r=e.collectivePaymentId,request=e.collectiveRequest||{},bank=request.payment||{},as=request.allocations;\n if(!/^[a-f0-9-]{36}$/.test(String(r))||p.provider!=='QONTO'||p.match_status!=='MATCHED'||p.currency!=='EUR'||p.billing_case_id!==c.id||\n String(c.shopify_order_id).replace('gid://shopify/Order/','')!==ctx.shopifyOrderId||c.shopify_order_name!==ctx.shopifyOrderName||\n c.currency!=='EUR'||Number(c.total_gross_cents)!==ctx.amountCents||Number(p.amount_cents)!==ctx.amountCents||\n !['INVOICE_PENDING','INVOICED'].includes(c.status)||c.cancelled_at||c.refunded_at||c.tax_review_status==='REVIEW_REQUIRED'||\n bank.id!==r||bank.currency!=='EUR'||norm(bank.payer)!==norm(c.customer?.company||c.customer?.name)||\n Date.parse(bank.bookedAt)!==Date.parse(p.booked_at)||!Array.isArray(as)||as.length<2||as.length>10||\n as.some(a=>!Number.isSafeInteger(a.amountCents)||a.amountCents<=0)||new Set(as.map(a=>a.orderId)).size!==as.length||\n as.reduce((sum,a)=>sum+a.amountCents,0)!==bank.amountCents||\n as.filter(a=>a.caseId===c.id&&a.orderId===ctx.shopifyOrderId&&a.orderName===ctx.shopifyOrderName&&a.amountCents===ctx.amountCents).length!==1||\n p.provider_transaction_id!==r+':allocation:'+ctx.shopifyOrderId)return keep;\n const type=ctx._proformaTransition?'CREATE_INVOICE':'PROJECT_PAYMENT_EASYBILL';\n const jobs=js.filter(j=>j.job_type===type);\n if(jobs.length!==1)return keep;\n const j=jobs[0],age=now-Date.parse(j.created_at);\n if(j.billing_case_id!==c.id||!['PENDING','PROCESSING','DONE'].includes(j.status)||!Number.isFinite(age)||age<0||age>30*60*1000)return keep;\n if(type==='CREATE_INVOICE'){\n  const ids=j.payload?.collectiveRequiredShopifyPaymentIds;\n  if(j.idempotency_key!=='billing:'+c.id+':invoice'||j.payload.documentNumber!==ctx.shopifyOrderName||j.payload.collectivePaymentId!==r||\n   !Array.isArray(ids)||ids.length!==as.length||new Set(ids).size!==ids.length||!ids.includes(p.id))return keep;\n }else if(j.idempotency_key!=='billing:'+c.id+':project-payment-easybill'||String(j.payload?.documentId)!==String(ctx.easybillDocumentId)||Number(j.payload?.amountCents)!==ctx.amountCents)return keep;\n return {...ctx,_collectiveWait:true,_manualPaidOutcome:'BILLING_PAYMENTS_REGISTERED',reasonCode:'COLLECTIVE_PAYMENT_PROJECTION_IN_PROGRESS',\n _manualPaidProof:{collectivePaymentId:r,paymentIds:[p.id],amountCents:ctx.amountCents,currency:'EUR',projectionJobId:j.id,projectionJobType:type,projectionJobStatus:j.status} };\n}\n\nreturn [{json:collectiveReconciliationWait($('Invoice Ready for Qonto?').first().json,$input.first().json)}];"
+        }
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "t300-recon-wait",
+        "name": "Registered Collective Projection Pending?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          2940,
+          2100
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "t300-recon-wait-condition",
+                "leftValue": "={{ $json._collectiveWait }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      }
+    },
+    {
+      "type": "removeConnection",
+      "source": "Invoice Ready for Qonto?",
+      "target": "Read Qonto Transactions",
+      "sourceIndex": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Invoice Ready for Qonto?",
+      "target": "Read Registered Collective Context",
+      "sourceIndex": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Read Registered Collective Context",
+      "target": "Check Registered Collective Context",
+      "sourceIndex": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Check Registered Collective Context",
+      "target": "Registered Collective Projection Pending?",
+      "sourceIndex": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Registered Collective Projection Pending?",
+      "target": "Prepare Manual Paid Reconciliation Completion",
+      "sourceIndex": 0
+    },
+    {
+      "type": "addConnection",
+      "source": "Registered Collective Projection Pending?",
+      "target": "Read Qonto Transactions",
+      "sourceIndex": 1
+    }
+  ]
+}
