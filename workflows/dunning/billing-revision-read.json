@@ -1,0 +1,87 @@
+{
+  "schema": "dunning.billing-revision-read.v1",
+  "node": {
+    "id": "read-billing-revisions",
+    "name": "Read Billing Revisions",
+    "type": "n8n-nodes-base.httpRequest",
+    "typeVersion": 4.3,
+    "position": [
+      1800,
+      1200
+    ],
+    "parameters": {
+      "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/billing_cases?select=shopify_order_id,shopify_order_name,current_revision,status,currency,total_gross_cents,paid_at,cancelled_at,refunded_at,tax_review_status,billing_documents(document_type,revision,document_number,easybill_document_id,amount_cents,currency,status,sent_at)&current_revision=gt.0&order=id.asc&limit=1000&offset=0",
+      "authentication": "genericCredentialType",
+      "genericAuthType": "httpHeaderAuth",
+      "sendHeaders": true,
+      "headerParameters": {
+        "parameters": [
+          {
+            "name": "Accept",
+            "value": "application/json"
+          },
+          {
+            "name": "Prefer",
+            "value": "count=exact"
+          }
+        ]
+      },
+      "options": {
+        "response": {
+          "response": {
+            "responseFormat": "json",
+            "fullResponse": true
+          }
+        },
+        "pagination": {
+          "pagination": {
+            "paginationMode": "updateAParameterInEachRequest",
+            "parameters": {
+              "parameters": [
+                {
+                  "type": "qs",
+                  "name": "offset",
+                  "value": "={{ $pageCount * 1000 }}"
+                }
+              ]
+            },
+            "paginationCompleteWhen": "other",
+            "completeExpression": "={{ (() => { const range = String($response.headers['content-range'] || $response.headers['Content-Range'] || ''); if (range === '*/0') return true; const match = range.match(/^(\\d+)-(\\d+)\\/(\\d+)$/); if (!match) return false; const start = Number(match[1]); const end = Number(match[2]); const total = Number(match[3]); return [start, end, total].every(Number.isSafeInteger) && start <= end && total > 0 && end + 1 === total; })() }}",
+            "limitPagesFetched": true,
+            "maxRequests": 500,
+            "requestInterval": 100
+          }
+        },
+        "timeout": 30000
+      }
+    },
+    "credentials": {
+      "httpHeaderAuth": {
+        "id": "NTtNxoBGGzJCQi9u",
+        "name": "Header Auth account 2 | SUPABASE"
+      }
+    },
+    "retryOnFail": true,
+    "maxTries": 3,
+    "waitBetweenTries": 2000,
+    "onError": "continueRegularOutput",
+    "executeOnce": true
+  },
+  "insertions": [
+    {
+      "workflow_id": "sEP7CFh1qr6EpO0V",
+      "after": "Read All Live Open Easybill Proformas",
+      "before": "Build Live Complete Open Union Audit"
+    },
+    {
+      "workflow_id": "oA57luKTeHEE06uN",
+      "after": "Read Daily Intake Snapshot",
+      "before": "Build Daily OPS Reconciliation"
+    },
+    {
+      "workflow_id": "HzMgctp78bcMq44A",
+      "after": "Read Current Dunning Hold",
+      "before": "Build Complete Live Gate + Message"
+    }
+  ]
+}

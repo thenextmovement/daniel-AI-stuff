@@ -80,3 +80,12 @@ test("a young post-cutover proforma is routed to regular intake, never excluded 
  const f:any=fixture();f.orders[0].createdAt="2026-10-01T09:00:00Z";f.proofs=[];f.mails=[];f.states=[];f.cases[0].stage=0;f.cases[0].stage_source="unknown";f.cases[0].status="reminder_missing";
  const r=build(f);assert.equal(r.candidates.length,0);assert.equal(r.excluded[0].reason,"REGULAR_INTAKE");
 });
+
+test("manual reminder body plus exact sent timestamp preserves legacy stage and resolved billing review",()=>{
+ const f:any=fixture();f.proofs=[];f.mails[0].cc_emails=["colleague@example.com"];f.mails[0].subject="AW: Anfrage Schriftzug";f.mails[0].body_preview="Hallo Herr Balko, wir haben noch die Rechnung #NEONT9000 offen bzw. unbezahlt.";
+ const review={id:"8a19fc8c-1dbf-4bb2-bdbd-2325a04c179c",action:"one_time_correspondence_review",status:"success",created_at:"2026-10-14T13:10:26Z",metadata:{schema:"dunning.mailreview.v1",provider_mailbox:"support@neontrip.de",findings:{"9000":{hold:false,outcome:"answered_billing_route"}}}};f.proofs.push(review);
+ const c=build(f).candidates[0];assert.equal(c?.continuation.anchor.stage,1);assert.deepEqual(c.continuation.anchor.cc_emails,["colleague@example.com"]);assert.equal(c.continuation.stage_model,"legacy_4");assert.equal(c.continuation.correspondence_review.outcome,"answered_billing_route");
+ f.mails[0].body_preview="Rechnung #NEONT90000 offen bzw. unbezahlt.";assert.equal(build(f).candidates.length,0);
+ f.mails[0].body_preview="Rechnung #NEONT9000 ist beigefügt.";assert.equal(build(f).candidates.length,0);
+ f.mails[0].body_preview="Rechnung #NEONT9000 offen bzw. unbezahlt.";f.states[0].paused=true;assert.equal(build(f).candidates.length,0);
+});

@@ -1,3 +1,43 @@
+// Billing revisions may disambiguate a replacement only when every live
+// Pro-forma is accounted for by the same immutable billing case.
+const resolveBillingRevision = (() => {
+  let rows = [];
+  try {
+    const pages = $('Read Billing Revisions').all().map(i => i.json);
+    const all = []; let total = null, valid = pages.length > 0;
+    for (const p of pages) {
+      const range = String(p.headers?.['content-range'] || p.headers?.['Content-Range'] || '');
+      const match = range.match(/^(\d+)-(\d+)\/(\d+)$/);
+      if (![200,206].includes(p.statusCode) || !Array.isArray(p.body)) { valid = false; break; }
+      if (range === '*/0' && pages.length === 1 && p.body.length === 0) { total = 0; continue; }
+      if (!match || Number(match[1]) !== all.length || Number(match[2]) !== all.length + p.body.length - 1 ||
+          (total !== null && total !== Number(match[3]))) { valid = false; break; }
+      total = Number(match[3]); all.push(...p.body);
+    }
+    if (valid && total === all.length) rows = all;
+  } catch { /* Missing evidence cannot resolve an ambiguous document. */ }
+  return (docs, orderId, orderName) => {
+    if (docs.length < 2 || docs.some(d => d.type !== 'PROFORMA_INVOICE')) return docs;
+    const cases = rows.filter(c => String(c.shopify_order_id).replace(/^gid:\/\/shopify\/Order\//,'') === String(orderId) &&
+      c.shopify_order_name === orderName);
+    if (cases.length !== 1) return docs;
+    const c = cases[0];
+    if (c.status !== 'PAYMENT_PENDING' || c.paid_at || c.cancelled_at || c.refunded_at ||
+        c.tax_review_status === 'REVIEW_REQUIRED' || !Number.isInteger(c.current_revision) || c.current_revision < 1 ||
+        !Array.isArray(c.billing_documents)) return docs;
+    const mapped = docs.map(d => c.billing_documents.filter(b => b.document_type === 'PROFORMA' &&
+      String(b.easybill_document_id) === String(d.id) && b.document_number === d.number &&
+      Number(b.amount_cents) === Number(d.amount) && Number(d.amount) === Number(c.total_gross_cents) &&
+      b.currency === d.currency && d.currency === c.currency &&
+      Number.isInteger(b.revision) && b.revision <= c.current_revision &&
+      ['FINALIZED','SENT'].includes(b.status)));
+    if (mapped.some(a => a.length !== 1)) return docs;
+    const current = docs.filter((d,i) => mapped[i][0].revision === c.current_revision &&
+      mapped[i][0].status === 'SENT' && Number.isFinite(Date.parse(mapped[i][0].sent_at)));
+    return current.length === 1 ? current : docs;
+  };
+})();
+
 
 const src=$('Read Summary').first().json, now=new Date().toISOString();
 function rest(name){const pages=$(name).all().map(i=>i.json);let all=[],total=null;for(const p of pages){if(![200,206].includes(p.statusCode)||!Array.isArray(p.body))throw Error(name+'_HTTP');const range=String(p.headers?.['content-range']||p.headers?.['Content-Range']||'');const t=range.split('/')[1];if(!/^\d+$/.test(t||''))throw Error(name+'_COUNT');if(total!==null&&total!==Number(t))throw Error(name+'_CHANGED');total=Number(t);all.push(...p.body);}if(all.length!==total)throw Error(name+'_INCOMPLETE');return all;}
@@ -39,6 +79,12 @@ const intakeFresh=intakeEnvelope.body[0]?.status==='success'&&intake?.source_com
 const regularCandidateIds=new Set(intakeFresh?intake.candidates.map(c=>String(c.shopify_order_id)):[]);
 const businessDays=(value,days)=>{let out=value;if(!out?.isValid)return out;for(let left=days;left>0;){out=out.plus({days:1});if(out.weekday<=5)left--;}return out;};
 const localInstant=value=>{let d=DateTime.fromISO(String(value||''),{zone:'Europe/Berlin'});return d.isValid?d:DateTime.fromSQL(String(value||''),{zone:'Europe/Berlin'});};
+const effectiveProformas = src.proformas.filter(d => {
+ const order = src.shopify.orders.find(o => norm(o.name) === norm(d.order_number));
+ if (!order) return true;
+ const group = src.proformas.filter(p => norm(p.order_number) === norm(d.order_number) && !p.cancel_id && p.is_draft === false && p.paid_at == null);
+ return !group.includes(d) || resolveBillingRevision(group, order.legacyResourceId, order.name).includes(d);
+});
 const cases=[];
 
 for(const o of src.shopify.open){const key=norm(o.name),digits=String(o.name).replace(/\D/g,'');const state=states.find(s=>norm(s.shopify_order_number)===key);
@@ -57,7 +103,7 @@ const stageSource=stageConflict?'mixed':modernStage>0?'t099':legacyStage>0?'lega
 const labels={0:'Noch keine Nachricht',1:'Kurze Rückfrage',2:'Freundliche Erinnerung',3:'Letzte freundliche Erinnerung',4:'1. Mahnung',5:'2. Mahnung',6:'3. und letzte Mahnung'};
 const stageLabel=stageConflict?'Mahnstufe '+stage+' (Zuordnung prüfen)':stageSource==='legacy'&&stage>=4?'Letzte Mahnstufe (Altbestand, Stufe '+stage+')':labels[stage]||'Mahnstufe '+stage;
 const finalStage=!stageConflict&&(legacyStage>=4||modernStage>=6);
-const docs=[...src.invoices,...src.proformas].filter(d=>norm(d.order_number)===key&&!d.cancel_id&&!d.is_draft);
+const docs=[...src.invoices,...effectiveProformas].filter(d=>norm(d.order_number)===key&&!d.cancel_id&&!d.is_draft);
 const email=String(o.email||'').toLowerCase();
 const candidates=mails.filter(m=>m.sent_at&&m.message_id&&new RegExp('NEON[T]?[ -]?'+digits+'(?![0-9])','i').test(String(m.subject||''))&&(m.to_emails||[]).some(e=>String(e).toLowerCase()===email));
 const reminder=candidates.filter(m=>/mahnung|zahlungserinnerung|offener restbetrag|rechnung.*angekommen|rückfrage.*rechnung/i.test(m.subject||'')).sort((a,b)=>String(b.sent_at).localeCompare(String(a.sent_at)))[0];
@@ -131,7 +177,7 @@ const continuation = (
     if (d.currency !== o.totalPriceSet?.shopMoney?.currencyCode || !/^[A-Z]{3}$/.test(d.currency || '') || !text(d.number) || !text(String(d.customer_id || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate || '') || !instant(o.updatedAt) || !text(d.created_at)) { exclude('DOCUMENT_FIELDS_MISSING'); continue; }
     let recipient = email(o.email);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) { exclude('RECIPIENT_INVALID'); continue; }
-    const outbound = mails.filter(m => m.direction === 'outbound' && m.source === 'outlook' && text(m.message_id) && text(m.internet_message_id) && text(m.conversation_id) && instant(m.sent_at) && m.to_emails?.length === 1 && !(m.cc_emails || []).length && !(m.bcc_emails || []).length);
+    const outbound = mails.filter(m => m.direction === 'outbound' && m.source === 'outlook' && text(m.message_id) && text(m.internet_message_id) && text(m.conversation_id) && instant(m.sent_at) && m.to_emails?.length === 1 && Array.isArray(m.cc_emails || []) && (m.cc_emails || []).length <= 20 && (m.cc_emails || []).every(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email(e))) && !(m.bcc_emails || []).length);
     const changedDocumentProof = proofs.some(p => p.status === 'sent' && String(p.document_id) === c.shopify_order_id && ['dunning.reviewed.reminder.v1','t099.sender.evidence.v1'].includes(p.metadata?.evidence_schema) && String(p.metadata?.easybill_document_id) !== String(d.id));
     if (changedDocumentProof) { exclude('DOCUMENT_CHANGED_SINCE_REMINDER'); continue; }
     const ownProofs = proofs.filter(p => p.status === 'sent' && String(p.document_id) === c.shopify_order_id && String(p.metadata?.easybill_document_id) === String(d.id));
@@ -144,7 +190,7 @@ const continuation = (
       const a = reviewed[0].metadata;
       if (a.live_evidence?.review_ticket !== 'REPAIR-20261014-MAHN-35D' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email(a.recipient))) { exclude('REVIEWED_RECIPIENT_NOT_PROVEN'); continue; }
       recipient = email(a.recipient);
-      const m = outbound.find(m => m.message_id === a.provider_message_id && email(m.to_emails[0]) === recipient);
+      const m = outbound.find(m => m.message_id === a.provider_message_id && email(m.to_emails[0]) === recipient && !(m.cc_emails || []).length);
       const expectedKey = prefix + c.shopify_order_id + ':C-R20261014T35:S1';
       if (!m || a.lock_key !== expectedKey || a.provider_internet_message_id !== m.internet_message_id || a.provider_conversation_id !== m.conversation_id || instant(a.sent_at) !== instant(m.sent_at) || email(a.recipient) !== recipient || a.attachment_verified !== true || !/^[a-f0-9]{64}$/.test(a.pdf_sha256 || '') || a.pdf_sha256 !== a.attachment_content_sha256 || a.pdf_bytes < 1000) { exclude('REVIEWED_SEND_PROOF_INCOMPLETE'); continue; }
       cycleId = 'R20261014T35';
@@ -154,17 +200,17 @@ const continuation = (
       // Legacy stages keep their four-stage model. Never manufacture missing previous stages.
       if (c.stage_source !== 'legacy' || c.stage >= 4 || !instant(state?.last_sent_at)) { exclude('HISTORICAL_STAGE_NOT_PROVEN'); continue; }
       const refs = [c.order.replace(/^#/, ''), String(d.number).replace(/^#/, '')].map(r => r.replace(/[^A-Za-z0-9-]/g,'')).filter(Boolean);
-      const mail = outbound.filter(m => email(m.to_emails[0]) === recipient && Math.abs(Date.parse(m.sent_at) - Date.parse(state.last_sent_at)) <= 60000 && refs.some(ref => new RegExp(ref + '(?![0-9])','i').test(m.subject || '')) && /mahnung|erinnerung|zahlung|rechnung.*angekommen/i.test(m.subject || ''));
+      const mail = outbound.filter(m => email(m.to_emails[0]) === recipient && Math.abs(Date.parse(m.sent_at) - Date.parse(state.last_sent_at)) <= 60000 && (refs.some(ref => new RegExp(ref + '(?![0-9])','i').test(m.subject || '')) && /mahnung|erinnerung|zahlung|rechnung.*angekommen/i.test(m.subject || '') || refs.some(ref => new RegExp('Rechnung\\s+#?' + ref + '(?![A-Z0-9-])\\s+(?:offen(?:\\s+bzw\\.)?\\s*(?:unbezahlt)?|unbezahlt)\\b','i').test(String(m.body_preview || '').split(/\n(?:Von:|From:|Gesendet:|Sent:)/i)[0]))));
       if (mail.length !== 1) { exclude('HISTORICAL_SEND_PROOF_MISSING'); continue; }
       const m = mail[0]; model = 'legacy_4';
-      anchor = { stage: c.stage, sent_at: instant(m.sent_at), message_id: m.message_id, internet_message_id: m.internet_message_id, conversation_id: m.conversation_id, lock_key: null, evidence: 'outlook_legacy' };
+      anchor = { stage: c.stage, sent_at: instant(m.sent_at), message_id: m.message_id, internet_message_id: m.internet_message_id, conversation_id: m.conversation_id, lock_key: null, evidence: 'outlook_legacy', cc_emails: (m.cc_emails || []).map(email).sort() };
     } else if (outbound.some(m => /mahnung|zahlungserinnerung|rückfrage.*rechnung|freundliche erinnerung/i.test(m.subject || '') && String(m.subject).includes(c.order.replace(/^#/, '')))) { exclude('UNASSIGNED_PRIOR_REMINDER'); continue; }
     if (!anchor && Date.parse(o.createdAt) >= Date.parse('2026-08-05T15:30:00Z')) { exclude('REGULAR_INTAKE'); continue; }
     const review = proofs.find(p => p.id === '8a19fc8c-1dbf-4bb2-bdbd-2325a04c179c' && p.action === 'one_time_correspondence_review' && p.status === 'success' && p.metadata?.schema === 'dunning.mailreview.v1' && p.metadata?.provider_mailbox === 'support@neontrip.de');
     const finding = review?.metadata?.findings?.[c.order.replace(/\D/g,'')];
     if (finding?.hold === true || finding?.outcome === 'auto_reply_and_billing_route') { exclude(finding.hold ? 'CORRESPONDENCE_REVIEW_HOLD' : 'BILLING_ROUTE_REVIEW_REQUIRED'); continue; }
     const reviewedAt = instant(review?.created_at);
-    const correspondenceReview = anchor?.evidence === 'reviewed_reminder' && finding?.hold === false && ['billing_recipient_context','delivery_change_answered','auto_reply_and_correct_contact','confirmed_order','no_new_objection','design_wait_resolved'].includes(finding.outcome) && reviewedAt && Date.parse(reviewedAt) >= Date.parse(anchor.sent_at) && Date.parse(reviewedAt) <= now ? {audit_id:review.id,reviewed_at:reviewedAt,outcome:finding.outcome} : null;
+    const correspondenceReview = ['reviewed_reminder','outlook_legacy'].includes(anchor?.evidence) && finding?.hold === false && ['billing_recipient_context','delivery_change_answered','auto_reply_and_correct_contact','confirmed_order','no_new_objection','design_wait_resolved','answered_billing_route'].includes(finding.outcome) && reviewedAt && Date.parse(reviewedAt) >= Date.parse(anchor.sent_at) && Date.parse(reviewedAt) <= now ? {audit_id:review.id,reviewed_at:reviewedAt,outcome:finding.outcome} : null;
     const continuation = { schema: 'dunning.historical.candidate.v1', stage_model: model, cycle_id: cycleId, cycle_prefix: prefix + c.shopify_order_id + ':C-' + cycleId, anchor, observed_at: observedAt, document_type: d.type, original_shopify_email: email(o.email), correspondence_review:correspondenceReview };
     candidates.push({
       candidate_key: 'shopify:' + c.shopify_order_id + '|easybill:' + d.id,
@@ -181,7 +227,7 @@ const continuation = (
   }
   return { schema: 'dunning.historical.snapshot.v1', observed_at: observedAt, fresh_until: new Date(now + 26 * 3600000).toISOString(), candidates, excluded };
 })
-)({ orders:src.shopify.orders, documents:[...src.invoices,...src.proformas], states, logs, mails, proofs:audits, cases, observedAt:now });
+)({ orders:src.shopify.orders, documents:[...src.invoices,...effectiveProformas], states, logs, mails, proofs:audits, cases, observedAt:now });
 for (const row of continuation.candidates) { const date=DateTime.fromFormat(String(row.easybill_document_created_at), 'yyyy-MM-dd HH:mm:ss', {zone:'Europe/Berlin'}); if(date.isValid) row.easybill_document_created_at=date.toUTC().toISO(); }
 for (const c of cases) {
  const candidate=continuation.candidates.find(row=>row.shopify_order_name===c.order);

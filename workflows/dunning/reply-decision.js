@@ -74,7 +74,7 @@ if (!correspondenceBaseline) {
   correspondenceBaseline = validInitialBaselines.length ? validInitialBaselines.reduce((latest, value) => value > latest ? value : latest) : null;
 }
 const correspondenceReview = candidate.continuation?.correspondence_review;
-if (correspondenceReview?.audit_id === '8a19fc8c-1dbf-4bb2-bdbd-2325a04c179c' && historicalAnchor && ['billing_recipient_context','delivery_change_answered','auto_reply_and_correct_contact','confirmed_order','no_new_objection','design_wait_resolved'].includes(correspondenceReview.outcome)) {
+if (correspondenceReview?.audit_id === '8a19fc8c-1dbf-4bb2-bdbd-2325a04c179c' && historicalAnchor && ['billing_recipient_context','delivery_change_answered','auto_reply_and_correct_contact','confirmed_order','no_new_objection','design_wait_resolved','answered_billing_route'].includes(correspondenceReview.outcome)) {
   const reviewedAt = DateTime.fromISO(String(correspondenceReview.reviewed_at || ''),{setZone:true}).toUTC();
   const anchorAt = DateTime.fromISO(String(historicalAnchor.sent_at || ''),{setZone:true}).toUTC();
   if (reviewedAt.isValid && anchorAt.isValid && reviewedAt >= anchorAt && reviewedAt <= $now.toUTC() && (!correspondenceBaseline || reviewedAt > correspondenceBaseline)) correspondenceBaseline = reviewedAt;
@@ -120,12 +120,25 @@ const invoiceNumber = String(candidate.easybill_invoice_number || '').normalize(
 const billingRecipient = email(candidate.mirror_email || candidate.shopify_email_hint);
 const escapedNumber = invoiceNumber.replace(/[\^$.*+?()[\]{}|\\]/g, '\\$&');
 const invoiceSubject = new RegExp('(?:^|[^A-Z0-9])' + escapedNumber + '(?![A-Z0-9-])', 'i');
+// The original billing worker puts the order number in the subject and the
+// exact Pro-forma number on its PDF. Require both instead of guessing a recipient.
+const orderNumber = String(candidate.shopify_order_name || '').trim();
+const orderSubject = new RegExp('(?:^|[^A-Z0-9])' + orderNumber.replace(/[\^$.*+?()[\]{}|\\]/g, '\\$&') + '(?![A-Z0-9-])', 'i');
+const invoicePdf = new RegExp('(?:^|[^A-Z0-9])' + escapedNumber + '(?:-NT-' + orderNumber.replace(/^#/, '').replace(/[\\^$.*+?()[\]{}|\\]/g, '\\$&') + ')?\\.pdf$', 'i');
+let deliveryInvoiceCreated = DateTime.fromISO(String(invoice.created_at || ""), {zone:"Europe/Berlin"});
+if (!deliveryInvoiceCreated.isValid) deliveryInvoiceCreated = DateTime.fromSQL(String(invoice.created_at || ""), {zone:"Europe/Berlin"});
+const originalProformaDelivery = message => invoice.type === 'PROFORMA_INVOICE' &&
+  /^Auftragsbestätigung und Rechnung /i.test(String(message.subject || '')) &&
+  orderNumber && orderSubject.test(String(message.subject || '')) &&
+  deliveryInvoiceCreated.isValid && Date.parse(message.sentDateTime) >= deliveryInvoiceCreated.toMillis() &&
+  Array.isArray(message.attachments) && !message['attachments@odata.nextLink'] &&
+  message.attachments.some(a => a.contentType === 'application/pdf' && a.isInline === false && invoicePdf.test(String(a.name || '')));
 const invoiceDeliveries = invoiceMatches && invoiceNumber ? graphMessages.filter(message => {
   const to = (message.toRecipients || []).map(recipient => email(recipient?.emailAddress?.address));
   return message.isDraft === false && internal(email(message.from?.emailAddress?.address)) && message.internetMessageId &&
     message.hasAttachments === true && validTime(message.sentDateTime) && Date.parse(message.sentDateTime) <= $now.toMillis() &&
     to.length === 1 && to[0] === billingRecipient && !(message.ccRecipients || []).length && !(message.bccRecipients || []).length &&
-    invoiceSubject.test(String(message.subject || ''));
+    (invoiceSubject.test(String(message.subject || '')) || originalProformaDelivery(message));
 }).sort((a,b) => Date.parse(a.sentDateTime) - Date.parse(b.sentDateTime)) : [];
 const delivered = invoiceDeliveries.at(-1);
 const invoiceDelivery = delivered ? {message_id:delivered.id,internet_message_id:delivered.internetMessageId,sent_at:delivered.sentDateTime,recipient:billingRecipient,subject:delivered.subject,has_attachments:true,attachments_complete:Array.isArray(delivered.attachments) && !delivered['attachments@odata.nextLink'],attachments:Array.isArray(delivered.attachments) ? delivered.attachments.map(a=>({name:a.name,content_type:a.contentType,is_inline:a.isInline})) : []} : null;
