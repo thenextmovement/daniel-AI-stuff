@@ -1,7 +1,7 @@
 import fcntl,json,os,threading,time,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
-from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal
+from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,plain_title,ServiceError
 from cloud_ai import generate,validate_spec,Review,drawing_model
 from cloud_exports import artifacts,CUT
 class Jobs:
@@ -11,8 +11,18 @@ class Jobs:
         # User opt-out, 2026-11-04: project/watch errors stay in Studio only.
         # Do not contact the email webhook, even if old credentials remain set.
         self.db.meta('alert_error','')
+    def mark_copy(self,p,prefix):
+        if not p.get('copy') or p['copy']==p['source']:return
+        card=self.t.card(p['copy'])
+        if card['idBoard']!=BOARD or card['idList']!=HOLDING:return
+        name=card['name']
+        if prefix==NEEDS_REVIEW and not name.startswith(PROCESSING):return
+        title=prefix+plain_title(name)
+        if title!=name:self.t.call('PUT',f"cards/{p['copy']}",json={'name':title})
     def fail(self,id,error):
         p=self.db.save(id,{'error':error},status='review');self.alert(p,error)
+        try:self.mark_copy(p,NEEDS_REVIEW)
+        except Exception as exc:print('Review title update failed:',type(exc).__name__,flush=True)
     def ingest(self,source,event):
         card=self.t.card(source)
         source=card['id']
@@ -32,6 +42,7 @@ class Jobs:
             p=self.db.save(id,{'copy':copy['id'],'copy_url':copy['url']},status='generating')
             self.t.verify_copy(source,copy['id'])
         else:
+            self.mark_copy(p,PROCESSING)
             if not p.get('copy_verified'):self.t.verify_copy(source,p['copy'])
             self.db.save(id,{},status='generating')
         self.db.save(id,{'copy_verified':True})
@@ -100,7 +111,7 @@ class Jobs:
                 self.t.comment_once(p['copy'],marker+'\nDrei Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
                 self.t.call('PUT',f"cards/{p['copy']}",json={'name':'🤖 '+p['snapshot']['name']+' 🤖','idList':READY})
                 checked=self.t.card(p['copy'])
-                if checked['idList']!=READY:raise Review('Zielliste nicht bestätigt.')
+                if checked['idList']!=READY or checked['name']!='🤖 '+p['snapshot']['name']+' 🤖':raise Review('Zielliste oder Abschlusstitel nicht bestätigt.')
                 return self.db.save(p['id'],{'published_revision':revision,'error':''},status='ready')
             except Exception:
                 # Preserve intent and IDs for reconciliation. Never repeat an uncertain upload.
@@ -131,7 +142,7 @@ class Jobs:
         while True:
             try:fcntl.flock(lease,fcntl.LOCK_EX|fcntl.LOCK_NB);break
             except BlockingIOError:time.sleep(2)
-        for interrupted in self.db.recover_interrupted():self.alert(interrupted,interrupted['error'])
+        for interrupted in self.db.recover_interrupted():self.fail(interrupted['id'],interrupted['error'])
         threading.Thread(target=self.watch,daemon=True).start()
         while True:
             for p in self.db.pending():
@@ -142,7 +153,11 @@ class Jobs:
                     else:self.process(p)
                 except Exception as e:
                     print('Neon job failed:',type(e).__name__,flush=True)
-                    message=str(e) if isinstance(e,(Review,ValueError)) else 'Verarbeitung nicht bestätigt. Projekt öffnen und den letzten Schritt prüfen.'
+                    if isinstance(e,(ServiceError,Review,ValueError)):
+                        message=str(e)
+                    else:
+                        stage=next((f.name for f in reversed(traceback.extract_tb(e.__traceback__)) if Path(f.filename).name in ('cloud_jobs.py','cloud_ai.py','cloud_trello.py','cloud_exports.py')),'process')
+                        message=f'Verarbeitung angehalten ({stage}, {type(e).__name__}). Bitte den Schritt im Studio prüfen.'
                     self.fail(p['id'],message)
             time.sleep(2)
     def watch(self):

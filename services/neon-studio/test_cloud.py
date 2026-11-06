@@ -107,6 +107,33 @@ class CloudTests(unittest.TestCase):
   for svg in ('<!DOCTYPE svg><svg/>','<svg><image href="http://localhost"/></svg>','<svg onload="alert(1)"><path/></svg>'):
    with self.assertRaises(Review):validate_svg(svg)
   self.assertEqual(validate_svg(SVG),SVG)
+ def test_copy_processing_and_review_titles(self):
+  from unittest.mock import Mock
+  from cloud_trello import HOLDING,PROCESSING,NEEDS_REVIEW
+  t=Mock(spec=Trello)
+  source={'id':'source','name':'LED Neon | Test','desc':'Beschreibung'}
+  Trello.copy(t,source)
+  self.assertEqual(t.call.call_args.kwargs['json']['name'],PROCESSING+source['name'])
+  jobs=Jobs(self.db,None,t)
+  card={'idBoard':BOARD,'idList':HOLDING,'name':PROCESSING+source['name']}
+  t.card.return_value=card
+  jobs.mark_copy({'copy':'copy','source':'source'},NEEDS_REVIEW)
+  self.assertEqual(t.call.call_args.kwargs['json']['name'],NEEDS_REVIEW+source['name'])
+  card['name']=NEEDS_REVIEW+source['name']
+  jobs.mark_copy({'copy':'copy','source':'source'},PROCESSING)
+  self.assertEqual(t.call.call_args.kwargs['json']['name'],PROCESSING+source['name'])
+  self.assertFalse(eligible(card['name']))
+  t.reset_mock()
+  jobs.mark_copy({'copy':'source','source':'source'},PROCESSING)
+  t.card.assert_not_called()
+ def test_lone_customer_image_is_used(self):
+  from unittest.mock import Mock
+  from cloud_ai import generate
+  t=Mock()
+  t.download.side_effect=RuntimeError('selected')
+  with self.assertRaisesRegex(RuntimeError,'selected'):
+   generate(t,{'id':'source','attachments':[{'id':'art','name':'image.png','isUpload':True}]})
+  self.assertEqual(t.download.call_count,1)
  def test_scope(self):
   self.assertTrue(eligible('LED Neon Flex | Anfrage'))
   for title in ('3D Neon | Kunde','Light Box | Kunde','🤖 LED Neon'):self.assertFalse(eligible(title))

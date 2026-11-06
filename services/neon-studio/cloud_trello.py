@@ -11,8 +11,17 @@ FIELDS=[
  ['67ab3fc552ca87d0b4d96044','67989c83b14e7b89fb545dc4','67989cb3c85879336601b578','67ab333c476749520e9e31ec'],
  ['67f4fa9720c565f324c945b8','67f4faad01083793715a3aac','67f4fab7590a76e3d66734ff','67f4fac25f71afb659744bce'],
  ['67f4faf657f304d308f1435b','67f4fb02b7f3aaf40ae0636d','67f4fb0c593bcdebe2a99775','67f4fb1601e710fe13ee8f23']]
+PROCESSING='🕒 Processing 🕒 '
+NEEDS_REVIEW='🔎 Prüfung erforderlich · '
+
+class ServiceError(RuntimeError):
+    """Safe service diagnostics, without request URLs or credentials."""
+
+def plain_title(name):
+    return name.removeprefix(PROCESSING).removeprefix(NEEDS_REVIEW)
+
 def eligible(name):
-    return bool(re.search(r'\b(?:LED|NEON)\b',name,re.I)) and not re.search(r'\b3D\b',name,re.I) and '🤖' not in name
+    return bool(re.search(r'\b(?:LED|NEON)\b',name,re.I)) and not re.search(r'\b3D\b',name,re.I) and '🤖' not in name and name==plain_title(name)
 def card_reference(value):
     value=value.strip()
     if re.fullmatch(r'(?:[a-f0-9]{24}|[A-Za-z0-9]{8})',value):return value
@@ -50,7 +59,7 @@ class Trello:
         # Never retry mutations: an interrupted response may already have succeeded.
         r=requests.request(method,'https://api.trello.com/1/'+path,
             params={'key':self.key,'token':self.token},timeout=(15,90),**kwargs)
-        if not r.ok:raise RuntimeError('Trello bestätigt den Schritt nicht (HTTP %s).'%r.status_code)
+        if not r.ok:raise ServiceError('Trello bestätigt den Schritt nicht (HTTP %s).'%r.status_code)
         return r.json() if r.content else {}
     def fields(self,board,refresh=False):
         if refresh or board not in self._fields:
@@ -64,39 +73,39 @@ class Trello:
     def field(self,id,field,value):
         return self.call('PUT',f'cards/{id}/customField/{field}/item',json=({'value':'','idValue':''} if value=='' else {'value':{'text':str(value)}}))
     def copy(self,source):
-        return self.call('POST','cards',json={'idCardSource':source['id'],'idList':HOLDING,'keepFromSource':'all','name':source['name'],'desc':source['desc'],'dueComplete':False})
+        return self.call('POST','cards',json={'idCardSource':source['id'],'idList':HOLDING,'keepFromSource':'all','name':PROCESSING+source['name'],'desc':source['desc'],'dueComplete':False})
     def verify_copy(self,source,copyid):
         copy=self.card(copyid)
-        if copy['name']!=source['name'] or copy['desc']!=source['desc']:raise RuntimeError('Kopie stimmt nicht mit Titel und Beschreibung überein.')
+        if plain_title(copy['name'])!=source['name'] or copy['desc']!=source['desc']:raise ServiceError('Kopie stimmt nicht mit Titel und Beschreibung überein.')
         src=sorted((a['name'],a.get('bytes',0)) for a in source.get('attachments',[]))
         dst=sorted((a['name'],a.get('bytes',0)) for a in copy.get('attachments',[]))
-        if src!=dst:raise RuntimeError('Anhänge der Kopie sind nicht vollständig.')
+        if src!=dst:raise ServiceError('Anhänge der Kopie sind nicht vollständig.')
         # Trello remaps IDs when Quentin's automation moves the original to another board.
         # Match semantic fields/options, never write a foreign board's ID into this copy.
         source_defs={f['id']:f for f in source.get('field_definitions',[]) or self.fields(source['idBoard'])}
         target_defs=self.fields(copy['idBoard'],refresh=True)
         expected_request=request_id({**source,'field_definitions':list(source_defs.values())})
-        if not expected_request:raise RuntimeError('Request-ID fehlt auf der Originalkarte.')
+        if not expected_request:raise ServiceError('Request-ID fehlt auf der Originalkarte.')
         expected=[]
         for item in source.get('customFieldItems',[]):
             definition=source_defs.get(item['idCustomField'])
-            if not definition:raise RuntimeError('Feld der Originalkarte konnte nicht zugeordnet werden.')
+            if not definition:raise ServiceError('Feld der Originalkarte konnte nicht zugeordnet werden.')
             matches=[f for f in target_defs if (f['name'],f['type'])==(definition['name'],definition['type'])]
-            if len(matches)!=1:raise RuntimeError('Feld der Kopie ist nicht eindeutig zugeordnet.')
+            if len(matches)!=1:raise ServiceError('Feld der Kopie ist nicht eindeutig zugeordnet.')
             target=matches[0];field=target['id']
             if definition['type']=='list':
                 option=next((o for o in definition.get('options',[]) if (o.get('id') or o.get('_id'))==item.get('idValue')),None)
                 choices=[o for o in target.get('options',[]) if option and o['value']==option['value']]
-                if len(choices)!=1:raise RuntimeError('Auswahlwert der Kopie konnte nicht zugeordnet werden.')
+                if len(choices)!=1:raise ServiceError('Auswahlwert der Kopie konnte nicht zugeordnet werden.')
                 body={'idValue':choices[0].get('id') or choices[0]['_id']}
             else:body={'value':item.get('value',{})}
             self.call('PUT',f'cards/{copyid}/customField/{field}/item',json=body)
             expected.append((field,body))
         copy=self.card(copyid)
-        if field_value(copy,REQUEST)!=expected_request:raise RuntimeError('Request-ID konnte nicht bestätigt werden.')
+        if field_value(copy,REQUEST)!=expected_request:raise ServiceError('Request-ID konnte nicht bestätigt werden.')
         for field,body in expected:
             actual=next((i for i in copy.get('customFieldItems',[]) if i['idCustomField']==field),{})
-            if any(actual.get(k)!=v for k,v in body.items()):raise RuntimeError('Felder der Kopie nicht bestätigt.')
+            if any(actual.get(k)!=v for k,v in body.items()):raise ServiceError('Felder der Kopie nicht bestätigt.')
         return copy
     def comment_once(self,id,text,marker):
         comments=self.call('GET',f'cards/{id}/actions?filter=commentCard&limit=1000')

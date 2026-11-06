@@ -1,7 +1,7 @@
 import base64,io,json,os,re,time,xml.etree.ElementTree as ET
 import requests
 from PIL import Image
-from cloud_trello import named_fields
+from cloud_trello import named_fields,ServiceError
 from vector_import import render_pdf_page, _svg_pdf
 class Review(ValueError):pass
 
@@ -89,6 +89,10 @@ def generate(trello,card,selected=None):
     candidates=[a for a in card.get('attachments',[]) if a.get('isUpload') and
         re.search(r'\.(png|jpe?g|webp|pdf|svg)$',a.get('fileName') or a['name'],re.I) and
         not re.search(r'auto_quote|technische.?zeichnung|technical|invoice|rechnung|angebot|mockup\d|^image\.png$',a['name'],re.I)]
+    if not candidates and len(card.get('attachments',[]))==1:
+        only=card['attachments'][0]
+        if only.get('isUpload') and (only.get('fileName') or only['name']).lower()=='image.png':
+            candidates=[only]
     if selected:
         candidates=[a for a in card.get('attachments',[]) if a['id'] in selected and a.get('isUpload')]
     if not candidates or len(candidates)>6:raise Review('Kundenmotiv nicht eindeutig: bitte den gewünschten Anhang im Studio auswählen.')
@@ -137,7 +141,11 @@ Daten der Anfrage: """+json.dumps(context,ensure_ascii=False)
         json={'model':os.getenv('NEON_AI_MODEL','gpt-6-astra'),'reasoning':{'effort':os.getenv('NEON_AI_EFFORT','high')},
             'max_output_tokens':18000,'store':False,'input':[{'role':'user','content':[{'type':'input_text','text':prompt}]+content}]},
         timeout=(20,900))
-    if not r.ok:raise RuntimeError('KI-Dienst bestätigt die Zeichnung nicht (HTTP %s).'%r.status_code)
+    if not r.ok:
+        try:code=r.json().get('error',{}).get('code')
+        except (ValueError,AttributeError):code=None
+        code=code if isinstance(code,str) and re.fullmatch(r'[a-z_0-9]{1,64}',code) else ''
+        raise ServiceError('KI-Dienst bestätigt die Zeichnung nicht (HTTP %s%s).'%(r.status_code,', '+code if code else ''))
     result=r.json()
     if result.get('status')!='completed':raise Review('KI-Zeichnung wurde nicht vollständig erstellt.')
     text=''.join(p.get('text','') for o in result.get('output',[]) for p in o.get('content',[]) if p.get('type')=='output_text')
