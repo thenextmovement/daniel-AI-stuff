@@ -141,3 +141,10 @@ test("fulfillment identity is stable across repeats; separate fulfillments have 
   assert.equal(first.notificationKey, second.notificationKey);
   assert.notEqual(first.notificationKey, selectInstallationDocuments(order(), "457").notificationKey);
 });
+
+test("a standard delivery date does not block a shipped LED sign, while an unrecognized item still does", () => {
+  const service = { id: 2, title: "Liefertermin Standardlieferung", quantity: 1 };
+  assert.deepEqual(selectInstallationDocuments(order([led, service]), "456"), selectInstallationDocuments(order([led]), "456"));
+  const unknown = { ...service, title: "Liefertermin Standardlieferung Sonderprodukt" };
+  assert.deepEqual(selectInstallationDocuments(order([led, unknown]), "456").reviewReasons, ["unknown_product"]);
+});

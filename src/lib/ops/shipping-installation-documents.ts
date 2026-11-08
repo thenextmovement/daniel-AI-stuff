@@ -63,6 +63,7 @@ function classify(item: RecordValue) {
   // Canonical service/surcharge lines are not additional physical products.
   // Match the complete known title so an unknown sign cannot bypass review.
   if (/^3d standardversand ca\. \d+ werktage$/.test(title)
+    || title === "liefertermin standardlieferung"
     || title === "outdoor/ip67 ausfuhrung") return "accessory";
   if (/^(wandmontage|wall.mount|deckenabhang|deckenabhaeng|drahtseil|abhangeset|abhaengeset|hangeset|haengeset|hanging.kit)/.test(title)) return "mounting";
   if (/^(weisses netzteil|schwarzes netzteil|netzteil|dimmer|fernbedienung|verlangerungskabel|verlangerung|versand|lieferung|expressversand)/.test(title)) return "accessory";
