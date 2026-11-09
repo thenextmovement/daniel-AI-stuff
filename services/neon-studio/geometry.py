@@ -1177,7 +1177,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
         from neon_routing import route
         paths=route(paths)
     if sizing_probe:
-        return dict(paths=paths,names=[p['name'] for p in source],pathRoles=[p.get('role','stroke') for p in source],
+        return dict(paths=paths,pathKeys=[p['key'] for p in source],names=[p['name'] for p in source],pathRoles=[p.get('role','stroke') for p in source],
                     pathModes=[p['mode'] for p in source],settings=settings,width=w,neonMeters=sum(map(path_length,paths))/1000,
                     neonMaterialMeters=sum(map(path_length,paths))*.0011)
     # At large physical scales a fixed coarse sampling can shift the acrylic

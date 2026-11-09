@@ -3,7 +3,7 @@ import json
 import math
 
 import numpy as np
-from shapely import STRtree
+from shapely import STRtree, points
 from shapely.geometry import LineString, Polygon
 from shapely.ops import polylabel, unary_union
 
@@ -52,11 +52,19 @@ def measure(drawing):
     span = drawing['width'] - PADDING
     if span <= 0 or not drawing['paths']:
         raise ValueError('Keine messbare Neonzeichnung.')
-    paths = [transform(part, 1000/span, 0, 0) for p in drawing['paths'] for part in subpaths(p)]
-    lines = [LineString(sample_path(p, 128)) for p in paths if list(segments(p))]
+    paths, owners, lines = [], [], []
+    for owner, path in enumerate(drawing['paths']):
+        for part in subpaths(path):
+            scaled = transform(part, 1000/span, 0, 0)
+            if list(segments(scaled)):
+                paths.append(scaled)
+                owners.append(owner)
+                lines.append(LineString(sample_path(scaled, 128)))
     if not lines:
         raise ValueError('Keine messbaren Neonpfade.')
-    gap = min(parallel_gap(p) for p in paths)
+    gaps = [parallel_gap(p) for p in paths]
+    gap = min(gaps)
+    gap_owners = {owners[i] for i,value in enumerate(gaps) if value == gap}
     tree = STRtree(lines)
     for i, line in enumerate(lines):
         # Wider gaps already fit at the smallest supported plate (80 mm).
@@ -67,22 +75,48 @@ def measure(drawing):
             distance = line.distance(other)
             if distance <= 5 and joins(line, other, 1, 5):
                 continue
-            gap = min(gap, distance)
+            if distance < gap:
+                gap_owners = set()
+                gap = distance
+            if distance == gap:
+                gap_owners.update((owners[i], owners[j]))
 
     # Close tracing seams within half a unit per metre of artwork. Restore
     # the offset to measure the diameter between the original centerlines.
     seam = .25
     ink = unary_union(lines).buffer(seam, quad_segs=32)
-    openings = [opening_diameter(Polygon(ring)) + 2*seam
+    openings = [(opening_diameter(Polygon(ring)) + 2*seam, ring, None)
                 for part in getattr(ink, 'geoms', [ink]) for ring in part.interiors]
     # Explicit closed contours remain relevant even below the seam tolerance.
-    for line in lines:
+    for i,line in enumerate(lines):
         if line.is_ring:
-            openings.append(opening_diameter(Polygon(line)))
-    opening = min(openings, default=math.inf)
-    required_span = max(CENTER_SPACING*1000/gap, REFERENCE_DIAMETER*1000/opening)
+            openings.append((opening_diameter(Polygon(line)), None, owners[i]))
+    opening = min((v for v,_,_ in openings), default=math.inf)
+    spacing_span = CENTER_SPACING*1000/gap
+    opening_span = REFERENCE_DIAMETER*1000/opening
+    required_span = max(spacing_span, opening_span)
     minimum = max(80, math.ceil(PADDING + required_span - 1e-8))
-    return dict(recommendedWidth=minimum, currentWidth=drawing['width'],
+    limiting = set()
+    reasons = []
+    if minimum > 80 and spacing_span == required_span:
+        limiting.update(gap_owners)
+        reasons.append('spacing')
+    if minimum > 80 and opening_span == required_span:
+        reasons.append('opening')
+        for value, ring, owner in openings:
+            if value != opening:
+                continue
+            if owner is not None:
+                limiting.add(owner)
+            else:
+                # The ring comes from buffered, joined lines. Trace its boundary
+                # back to the original selectable paths, including compound paths.
+                coords = np.asarray(ring.coords)
+                mids = points((coords[:-1]+coords[1:])/2)
+                limiting.update(owners[i] for i in tree.nearest(mids))
+    keys = drawing.get('pathKeys', [])
+    return dict(recommendedWidth=minimum, limitingKeys=[keys[i] for i in sorted(limiting) if i<len(keys)],
+                limitingReasons=reasons, currentWidth=drawing['width'],
                 minimumSpacing=None if math.isinf(gap) else gap*span/1000,
                 opening=None if math.isinf(opening) else opening*span/1000-6)
 

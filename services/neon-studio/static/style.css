@@ -119,3 +119,7 @@ dialog{background:linear-gradient(145deg,#303538,#242a2e);color:var(--text);bord
 .size-entry input{margin-left:auto}
 .size-entry[hidden],#addSize[hidden]{display:none}
 #addSize{border:1px solid #656b70;border-radius:4px;padding:1px 7px}
+
+#drawing .limit-path{stroke:#bd1e23;stroke-width:4;animation:limit-colour 1.8s ease-in-out infinite alternate}
+@keyframes limit-colour{from{stroke:#bd1e23}to{stroke:#ffd400}}
+@media(prefers-reduced-motion:reduce){#drawing .limit-path{animation:none;stroke:#b91c1c;filter:drop-shadow(0 0 2px #ffd400)}}

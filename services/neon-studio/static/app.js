@@ -264,7 +264,9 @@ function renderDrawing() {
     const color=p.logoColors?((p.glow&&d.pathColors?.[index]?.swatch)||d.pathColors?.[index]?.color||p.neon):p.neon;
     // Contrast halo is display-only: black white-neon ink stays visible on anthracite.
     const effect=p.glow?`drop-shadow(0 0 3px ${d.pathColors?.[index]?.swatch||color})`:color==='#000000'&&!light?'drop-shadow(0 0 1px #ffffff)':'none';
-    return `<path class="neon-path ${state.selectedKeys.includes(d.pathKeys[index])?'selected-path':''}" data-path="${index}" d="${path}" stroke="${color}" style="filter:${effect}" stroke-width="${stroke}" ${p.glow?'':'vector-effect="non-scaling-stroke"'}/>`;
+    const marked=showingLimit&&manufacturingReport?.limitingKeys?.includes(d.pathKeys[index]);
+    const overlay=marked?`<path class="limit-path" d="${path}" fill="none" pointer-events="none" vector-effect="non-scaling-stroke"/>`:'';
+    return `<path class="neon-path ${state.selectedKeys.includes(d.pathKeys[index])?'selected-path':''}" data-path="${index}" d="${path}" stroke="${color}" style="filter:${effect}" stroke-width="${stroke}" ${p.glow?'':'vector-effect="non-scaling-stroke"'}/>${overlay}`;
   }).join('');
   const selections=state.tool==='move'?'':d.parts.filter(part=>state.selectedParts.includes(part.id)).map(part=>{const [a,b,c,e]=part.bounds;return `<rect x="${a}" y="${b}" width="${c-a}" height="${e-b}" class="part-bounds"/>`;}).join('');
   const [bx,by]=d.bounds;const W=d.width,H=d.height;
@@ -310,6 +312,34 @@ function renderDetails() {
   renderStraightenControls();
 }
 let manufacturingTicket=0, manufacturingReport=null;
+let showingLimit=false;
+function updateLimitControls(){
+  const keys=manufacturingReport?.limitingKeys||[];
+  const d=state.drawing;
+  const names=keys.map(key=>d?.pathKeys.indexOf(key)??-1).filter(i=>i>=0)
+    .map(i=>`${d.names[i]} (Linie ${i+1})`);
+  const reasons=(manufacturingReport?.limitingReasons||[]).map(reason=>reason==='spacing'?'Abstand der Neonlinien':'geschlossene Innenöffnung');
+  const message=names.length?`${number(manufacturingReport.recommendedWidth/10,1)} cm geometrische Mindestbreite · ${reasons.join(' und ')} · ${names.join(', ')}`:'';
+  $('limitReason').textContent=message;
+  $('limitReason').hidden=!message;
+  for(const btn of [$('showLimit'),$('cloudShowLimit')].filter(Boolean)){
+    btn.hidden=!message;
+    btn.textContent=showingLimit?'Markierung beenden':'Engstelle zeigen';
+    btn.title=message;
+    btn.setAttribute('aria-pressed',String(showingLimit));
+  }
+}
+function toggleLimit(){
+  if(!manufacturingReport?.limitingKeys?.length)return;
+  showingLimit=!showingLimit;
+  updateLimitControls();
+  if(showingLimit){
+    state.view='vectors';updateViewControls();setTool('select');
+    selectKeys(manufacturingReport.limitingKeys);
+    toast($('limitReason').textContent);
+  }else renderDrawing();
+}
+$('showLimit').onclick=toggleLimit;
 function minimumStatus(message,canCheck){
   $('manufacturingResult').textContent=message;
   const label=$('cloudSizeWarning');
@@ -319,6 +349,7 @@ function minimumStatus(message,canCheck){
 }
 function invalidateManufacturing(){
   manufacturingTicket++;manufacturingReport=null;lastMinimumRequest=null;
+  showingLimit=false;updateLimitControls();
   minimumStatus('Mindestgröße noch nicht geprüft.',false);
   if($('manufacturingApply'))$('manufacturingApply').hidden=true;
 }
@@ -336,13 +367,14 @@ async function checkManufacturing(applyToPreview=false,force=false){
   if(lastMinimumRequest===key&&!applyToPreview&&!force)return;
   lastMinimumRequest=key;
   const ticket=++manufacturingTicket;
-  manufacturingReport=null;
+  manufacturingReport=null;showingLimit=false;updateLimitControls();
+  if(state.drawing)renderDrawing();
   minimumStatus('Mindestgröße wird berechnet …',false);
   $('manufacturingApply').hidden=true;
   try{
     const report=await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings})).json();
     if(ticket!==manufacturingTicket||key!==manufacturingKey())return;
-    manufacturingReport={...report,key};
+    manufacturingReport={...report,key};updateLimitControls();
     window.dispatchEvent(new Event('studio-minimum-ready'));
     const manual=window.studioManualMinimum?.();
     const label=manual?window.studioManualSizeLabel():`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;

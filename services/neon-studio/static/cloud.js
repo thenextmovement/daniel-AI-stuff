@@ -279,7 +279,10 @@ async function cloudBoot(){
     const check=textElement('button','Mindestgröße ermitteln');
     check.id='cloudMinimumCheck';check.disabled=true;
     check.onclick=()=>checkManufacturing(true);
-    bar.append(check);
+    const limit=textElement('button','Engstelle zeigen');
+    limit.id='cloudShowLimit';limit.type='button';limit.hidden=true;
+    limit.onclick=toggleLimit;
+    bar.append(check,limit);
   }
   const savedPrice=cloudSpec.pricing_options;
   if(savedPrice){

@@ -122,9 +122,20 @@ class ManufacturingTests(unittest.TestCase):
   # 10 mm square between centerlines in a 100 mm wide motif.
   loop=[['m',[0,0]],['l',[10,0]],['l',[10,10]],['l',[0,10]],['h']]
   bar=[['m',[10,5]],['l',[100,5]]]
-  r=measure(dict(paths=[loop,bar],width=136))
+  r=measure(dict(paths=[loop,bar],pathKeys=['loop','bar'],width=136))
+  self.assertEqual(r['limitingKeys'],['loop'])
+  self.assertEqual(r['limitingReasons'],['opening'])
   self.assertEqual(r['recommendedWidth'],193)
   self.assertAlmostEqual(r['opening'],4,places=2)
+ def test_spacing_identifies_both_selectable_paths(self):
+  from minimum_size import measure
+  def line(x,y):return [['m',[x,y]],['l',[x+80,y]]]
+  drawing=dict(width=136,paths=[line(0,0)+line(0,35),line(1,2),line(0,60)],pathKeys=['compound','near','far'])
+  report=measure(drawing)
+  self.assertEqual(report['limitingKeys'],['compound','near'])
+  self.assertEqual(report['limitingReasons'],['spacing'])
+  drawing['paths']=drawing['paths'][2:]
+  self.assertEqual(measure(drawing)['limitingKeys'],[])
  def test_cut_layout_resolves_T_and_corner_without_dropping_strokes(self):
   from neon_routing import route,RoutingTooSmall
   paths=[[['m',[0,0]],['l',[100,0]]],[['m',[50,0]],['l',[50,55]],['l',[80,55]]]]
