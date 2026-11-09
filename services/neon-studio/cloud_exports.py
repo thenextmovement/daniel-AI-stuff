@@ -56,10 +56,10 @@ def artifacts(variants,spec):
         if spec.get('auto_minimum_mm') is not None:
             c.setFont('Helvetica',9)
             c.drawString(36,426,'Kleinste geprüfte Breite: '+de(spec['auto_minimum_mm']/10)+' cm')
-        entries=[('Produkt','LED Neon Flex'),('Material','Silikon'),('Zuschnitt',CUT[d['settings']['shape']]),
-                 ('Usage',spec['usage']),('Leuchtfarbe',spec['colors']),('Anzahl',str(spec.get('quantity',1))),
-                 ('Neon-Fahrlänge je Schild',de(d['neonMeters'],3)+' m'),
-                 ('Material je Schild inkl. 10 %',de(d['neonMaterialMeters'],3)+' m'),
+        entries=[('Produktart','LED Neon Flex'),('Material','Silikon'),('Zuschnitt',CUT[d['settings']['shape']]),
+                 ('Einsatz',spec['usage']),('Leuchtfarbe',spec['colors']),('Anzahl',str(spec.get('quantity',1))),
+                 ('Neon-Länge',de(d['neonMeters'],3)+' m'),
+                 ('Endgültige Neonlänge (+10 %)',de(d['neonMaterialMeters'],3)+' m'),
                  ('Randabstand',de(d['settings']['gap'])+' mm'),
                  ('Produktion',de(q['production_usd'])+' USD'),('Versand ca.',de(q['shipping_usd'])+' USD'),('Gesamt EK ca.',de(q['total_usd'])+' USD')]
         for j,(key,value) in enumerate(entries):
@@ -70,7 +70,7 @@ def artifacts(variants,spec):
             if q['items'][0]['controllers']:extra.append(str(q['items'][0]['controllers'])+' Controller je 15 USD je Schild')
             c.setFont('Helvetica',9);c.drawString(36,81,'Enthalten, vorläufig: '+', '.join(extra))
         c.setFont('Helvetica',9);c.drawString(36,58,'Interner Entwurf · Kosten nach hinterlegter Formel geschätzt.')
-        c.drawString(36,43,'Vor Produktion: Pfadführung, Biegeradien und Lieferantenpreis prüfen.')
+        c.drawString(36,43,'Vor Produktion und Freigabe bitte das Design prüfen.')
         c.showPage()
     c.save();pdf=output.getvalue()
     doc=fitz.open(stream=pdf,filetype='pdf')
