@@ -42,7 +42,7 @@ function cloudPriceControls(){
   $$('[data-price-color]').forEach(b=>{const active=b.dataset.priceColor===pricing.color;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
   $$('[data-price-outdoor]').forEach(b=>{const active=(b.dataset.priceOutdoor==='true')===pricing.outdoor;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
   $('pricePsuRow').hidden=!pricing.outdoor;$('priceOutdoorNote').hidden=!pricing.outdoor;
-  const warning=$('cloudSizeWarning');if(warning){
+  const warning=$('cloudSizeWarning');if(warning&&!state.project){
     if(cloudSpec.auto_minimum_mm){
       warning.hidden=false;warning.textContent=`Kleinste geprüfte Breite mit ${cloudSpec.minimum_tube_mm||8}-mm-Neonflex: `+(cloudSpec.auto_minimum_mm/10).toLocaleString('de-DE')+' cm';return;
     }
@@ -152,6 +152,12 @@ async function cloudBoot(){
   cloud=await cloudRequest('project?id='+encodeURIComponent(id));cloudSpec=cloud.spec||{};
   status.textContent=cloud.name;
   const sizeWarning=textElement('span','Vorschaugröße – Mindestgröße noch nicht geprüft');sizeWarning.id='cloudSizeWarning';sizeWarning.hidden=!!cloudSpec.widths_mm?.length;bar.append(sizeWarning);
+  if(cloud.model){
+    const check=textElement('button','Mindestgröße ermitteln');
+    check.id='cloudMinimumCheck';check.disabled=true;
+    check.onclick=()=>{setTab('check');checkManufacturing(true);};
+    bar.append(check);
+  }
   cloudPriceControls();
   const source=textElement('button','Kundenmotiv wählen');
   source.onclick=()=>cloudSources();

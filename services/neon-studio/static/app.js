@@ -310,34 +310,44 @@ function renderDetails() {
   renderStraightenControls();
 }
 let manufacturingTicket=0, manufacturingReport=null;
+function minimumStatus(message,canCheck){
+  $('manufacturingResult').textContent=message;
+  const label=$('cloudSizeWarning');
+  if(label){label.hidden=false;label.textContent=message;}
+  const button=$('cloudMinimumCheck');
+  if(button)button.disabled=!canCheck;
+}
 function invalidateManufacturing(){
   manufacturingTicket++;manufacturingReport=null;lastMinimumRequest=null;
-  if($('manufacturingResult'))$('manufacturingResult').textContent='Nach Änderungen erneut prüfen.';
+  minimumStatus('Mindestgröße noch nicht geprüft.',false);
   if($('manufacturingApply'))$('manufacturingApply').hidden=true;
 }
 
 function manufacturingKey(){return JSON.stringify([state.project?.id,state.settings]);}
 let lastMinimumRequest=null;
-async function checkManufacturing(){
-  if(!state.project||state.busy||!state.drawing?.paths?.length)return;
+async function checkManufacturing(force=false){
+  if(!state.project||state.busy)return;
+  if(!state.drawing?.paths?.length){
+    invalidateManufacturing();
+    minimumStatus('Keine sichtbaren Neonlinien zum Prüfen.',false);
+    return;
+  }
   const key=manufacturingKey();
-  if(lastMinimumRequest===key)return;
+  if(lastMinimumRequest===key&&!force)return;
   lastMinimumRequest=key;
   const ticket=++manufacturingTicket;
-  const result=$('manufacturingResult');
-  result.textContent='Mindestgröße wird berechnet …';
+  manufacturingReport=null;
+  minimumStatus('Mindestgröße wird berechnet …',false);
   $('manufacturingApply').hidden=true;
   try{
     const report=await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings})).json();
     if(ticket!==manufacturingTicket||key!==manufacturingKey())return;
     manufacturingReport={...report,key};
     const label=`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
-    result.textContent=label;
-    const warning=$('cloudSizeWarning');
-    if(warning){warning.hidden=false;warning.textContent=label;}
+    minimumStatus(label,true);
     $('manufacturingApply').hidden=!!state.settings.geometricSizing&&Math.abs(state.drawing.width-report.recommendedWidth)<.01;
   }catch(error){
-    if(ticket===manufacturingTicket){result.textContent=error.message;lastMinimumRequest=null;}
+    if(ticket===manufacturingTicket&&key===manufacturingKey()){minimumStatus(error.message,true);lastMinimumRequest=null;}
   }
 }
 $('manufacturingApply').onclick=()=>{
