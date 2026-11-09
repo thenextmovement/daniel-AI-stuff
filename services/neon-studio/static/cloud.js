@@ -16,7 +16,22 @@ function showSizeFields(){
     ?(cloudSpec.requested_widths_mm??widths)[0]:widths[1];
   $('secondSize').value=extra==null?'':extra/10;
   sizesDirty=false;
+  syncSizePreview();
 }
+function syncSizePreview(){
+  const select=$('previewSize'),widths=cloudSpec.sized_widths_mm||[];
+  const current=state.drawing?.width??state.settings.width;
+  select.replaceChildren(...widths.map((width,i)=>new Option(`Größe ${i+1} · ${Number((width/10).toFixed(2)).toLocaleString('de-DE')} cm`,String(width))));
+  select.selectedIndex=widths.findIndex(width=>Math.abs(width-current)<.1);
+  select.disabled=sizesDirty||cloudSaving||state.busy;
+  $('previewSizeRow').hidden=widths.length<2;
+}
+$('previewSize').onchange=async()=>{
+  const width=Number($('previewSize').value);
+  if(!width||state.busy||sizesDirty||cloudSaving)return;
+  $('previewSize').disabled=true;
+  try{await resizeToMinimum(width);}finally{syncSizePreview();}
+};
 function renderReview(){
   const box=$('cloudReview'),issues=cloudSpec.issues||[];
   box.hidden=!issues.length;
@@ -28,6 +43,7 @@ function renderReview(){
 }
 window.addEventListener('studio-minimum-ready',()=>{
   if(!cloud)return;
+  syncSizePreview();
   cloudSpec.issues=(cloudSpec.issues||[]).filter(issue=>!cloud.size_issues?.includes(issue));
   $('manualSize').placeholder=number(manufacturingReport.recommendedWidth/10,1)+' (autom.)';
   renderReview();
@@ -56,9 +72,11 @@ async function applySizeFields(){
     renderReview();
   }
 }
-for(const id of ['manualSize','secondSize'])$(id).oninput=()=>{sizesDirty=true;};
+for(const id of ['manualSize','secondSize'])$(id).oninput=()=>{sizesDirty=true;$('previewSize').disabled=true;};
 $('setSizes').onclick=async()=>{
-  try{await applySizeFields();await cloudSave();toast('Größen gespeichert.');}catch(e){toast(e.message,true);}
+  $('setSizes').disabled=true;
+  try{await applySizeFields();await cloudSave();toast('Größen übernommen und gespeichert.');}catch(e){toast(e.message,true);}
+  finally{$('setSizes').disabled=false;syncSizePreview();}
 };
 async function cloudSave() {
   if(!cloud||!state.project||state.analyzing||cloudSaving)throw new Error('Bitte die Berechnung abwarten.');
@@ -68,13 +86,13 @@ async function cloudSave() {
     await requestGeometry(true);
     if(state.busy||!state.valid)throw new Error('Die Zeichnung ist noch nicht bereit. Bitte die Einstellungen prüfen.');
     cloudSpec.widths_mm=cloudSpec.widths_mm||[];
-    if(cloudSpec.widths_mm.length&&!cloudSpec.minimum_first)cloudSpec.widths_mm[0]=state.drawing.width;
+    if(cloudSpec.widths_mm.length&&!cloudSpec.minimum_first&&$('previewSize').selectedIndex<=0)cloudSpec.widths_mm[0]=state.drawing.width;
     Object.assign(cloudSpec,{light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',waterproof_psus:pricing.outdoor?Number($('pricePsus').value):0,uv_print:$('priceUv').checked,controllers:Number($('priceControllers').value)});
     cloudSpec.pricing_options=priceOptions();
     cloudSpec.shape=state.settings.shape;
     cloud={...cloud,...await cloudRequest('save',{id:cloud.id,revision:cloud.revision,model:state.project.id,settings:state.settings,spec:cloudSpec})};
     return cloud;
-  } finally {cloudSaving=false;}
+  } finally {cloudSaving=false;syncSizePreview();}
 }
 async function cloudPublish(){
   try{await cloudSave();if(cloudSpec.issues?.length){renderReview();setTab('check');return;}cloud=await cloudRequest('publish',{id:cloud.id,revision:cloud.revision});toast('Die drei Dateien werden in Trello hochgeladen.');cloudPoll();}

@@ -247,7 +247,8 @@
         <div id="cloudSizes" hidden>
           <label>Mindestbreite (cm)<input type="number" id="manualSize" placeholder="Automatisch" min="8" max="2000" step="any"></label>
           <label>2. Größe (cm)<input type="number" id="secondSize" placeholder="Optional" min="8" max="2000" step="any"></label>
-          <button class="button full-width" id="setSizes">Mindestgröße bestimmen</button>
+          <button class="button full-width" id="setSizes">Größen übernehmen</button>
+          <label id="previewSizeRow" hidden>Vorschau<select id="previewSize" aria-label="Größe für Zeichnung und Preis"></select></label>
         </div>
         <p class="length-calculation" id="lengthCalculation">—</p><div class="length-row"><div><h2>Neon-Length</h2><span class="muted-label" id="lengthDetail">ohne Acrylkontur und Kabel</span></div><div class="length-value"><strong id="neonLength">—</strong><span>m</span></div></div>
         <div class="price-summary" aria-live="polite"><button class="text-button" id="priceConfigure">Kalkulation · intern <span>↗</span></button><div><span>Produktion</span><strong id="priceProduction">—</strong></div><div><span>Versand ca.</span><strong id="priceShipping">—</strong></div><div class="price-total"><span>Eure Kosten ca.</span><strong id="priceTotal">—</strong></div><div><span id="priceCustomerLabel">Kunden-Richtpreis · × 2,3</span><strong id="priceCustomer">—</strong></div><small id="priceStatus">Zuerst ein Motiv laden.</small></div>

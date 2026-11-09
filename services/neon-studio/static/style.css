@@ -110,3 +110,5 @@ dialog{background:linear-gradient(145deg,#303538,#242a2e);color:var(--text);bord
 #cloudSizes label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
 #cloudSizes input{width:8em;padding:4px 7px;border:1px solid #656b70;border-radius:5px;background:#272a2d;color:white}
 #cloudReview{margin:8px 0 14px}#cloudReview p{margin:6px 0}
+
+#cloudSizes #previewSizeRow[hidden]{display:none}
