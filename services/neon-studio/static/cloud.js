@@ -75,7 +75,7 @@ window.addEventListener('studio-minimum-ready',()=>{
   updateSizeLabels();
   renderReview();
 });
-async function applySizeFields(){
+async function applySizeFields(resetMinimum=false){
   if(state.busy||state.analyzing)throw Error('Bitte die Berechnung abwarten.');
   for(const id of ['manualSize',...extraInputs]){
     if(!$(id).reportValidity())throw Error('Bitte ein Maß zwischen 8 und 2000 cm eingeben.');
@@ -85,7 +85,7 @@ async function applySizeFields(){
   const extras=extraInputs.filter(id=>$(id).value!=='').map(id=>$(id).valueAsNumber*10);
   const dimensions=manual?[manual,...extras]:extras;
   if(new Set(dimensions).size!==dimensions.length)throw Error('Bitte unterschiedliche Größen eingeben.');
-  if(!manual&&!manufacturingReport)await checkManufacturing(false,true);
+  if(!manual&&(resetMinimum||!manufacturingReport))await checkManufacturing(false,true);
   const automatic=manufacturingReport?.recommendedWidth;
   const generation=state.generation;
   let converted=dimensions;
@@ -96,13 +96,18 @@ async function applySizeFields(){
   }
   const first=manual?converted[0]:automatic;
   if(!first)throw Error('Die automatische Mindestgröße steht noch aus.');
-  const additional=manual?converted.slice(1):converted;
+  let additional=manual?converted.slice(1):converted;
+  let heights=height?dimensions:[];
+  if(resetMinimum){
+    heights=height?dimensions.filter((_,i)=>converted[i]>first):[];
+    additional=additional.filter(w=>w>first);
+  }
   if(additional.some(w=>w<=first))throw Error('Weitere Größen müssen größer als die Mindestgröße sein.');
   await resizeToMinimum(first);
   if(!state.valid||Math.abs(state.drawing.width-first)>.1||
       (height&&manual&&Math.abs(state.drawing.height-manual)>.1))throw Error('Die eingegebene Größe konnte nicht übernommen werden.');
   const widths=[first,...additional];
-  Object.assign(cloudSpec,{size_axis:height?'height':'width',heights_mm:height?dimensions:[],
+  Object.assign(cloudSpec,{size_axis:height?'height':'width',heights_mm:heights,
     manual_height_mm:height&&manual?manual:null,minimum_width_mm:manual?first:null,minimum_first:true,smallest_requested:true,
     requested_widths_mm:additional,widths_mm:widths,sized_widths_mm:widths});
   sizesDirty=false;
@@ -278,7 +283,18 @@ async function cloudBoot(){
   if(cloud.model){
     const check=textElement('button','Mindestgröße ermitteln');
     check.id='cloudMinimumCheck';check.disabled=true;
-    check.onclick=()=>checkManufacturing(true);
+    check.onclick=async()=>{
+      if(!sizesDirty||!window.studioManualMinimum()||$('manualSize').value!==''||$('manualSize').validity.badInput){
+        await checkManufacturing(true);
+        return;
+      }
+      try{
+        await applySizeFields(true);
+        showSizeFields();
+        minimumStatus('Geometrische Mindestbreite: '+number(state.drawing.width/10,1)+' cm',true);
+        toast('Automatische Mindestgröße übernommen.');
+      }catch(error){toast(error.message,true);}
+    };
     const limit=textElement('button','Engstelle zeigen');
     limit.id='cloudShowLimit';limit.type='button';limit.hidden=true;
     limit.onclick=toggleLimit;
