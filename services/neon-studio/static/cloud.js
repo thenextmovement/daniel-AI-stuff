@@ -50,6 +50,28 @@ window.studioManualSizeLabel=()=>cloudSpec.size_axis==='height'&&cloudSpec.manua
   ?'Manuelle Mindesthöhe: '+number(cloudSpec.manual_height_mm/10,1)+' cm'
   :'Manuelle Mindestbreite: '+number(cloudSpec.minimum_width_mm/10,1)+' cm';
 const extraInputs=['secondSize','thirdSize','fourthSize'];
+const sizeInputs=['manualSize',...extraInputs];
+function sizeDraftKey(){return 'neonstudio.sizes.'+cloud.id;}
+function rememberSizeFields(){
+  sizesDirty=true;
+  $('previewSize').disabled=true;
+  $('sizeDraftStatus').hidden=false;
+  try{
+    sessionStorage.setItem(sizeDraftKey(),JSON.stringify({revision:cloud.revision,axis:$('sizeAxis').value,
+      values:sizeInputs.map(id=>$(id).value)}));
+  }catch{/* The fields remain editable if browser storage is unavailable. */}
+}
+function restoreSizeDraft(){
+  let draft;
+  try{draft=JSON.parse(sessionStorage.getItem(sizeDraftKey()));}catch{return;}
+  if(!draft||draft.revision!==cloud.revision||!Array.isArray(draft.values)||draft.values.length!==sizeInputs.length)return;
+  $('sizeAxis').value=draft.axis;
+  sizeInputs.forEach((id,i)=>{
+    $(id).value=draft.values[i];
+    if(draft.values[i])$(id).parentElement.hidden=false;
+  });
+  updateSizeLabels();rememberSizeFields();
+}
 function updateSizeLabels(){
   const height=$('sizeAxis').value==='height';
   $$('[data-size-label]').forEach(label=>label.textContent=label.dataset.sizeLabel+'. '+(height?'Höhe':'Breite')+' (cm)');
@@ -113,7 +135,7 @@ window.addEventListener('studio-minimum-ready',()=>{
   updateSizeLabels();
   renderReview();
 });
-async function applySizeFields(resetMinimum=false){
+async function applySizeFields(resetMinimum=!!cloudSpec.minimum_width_mm && $('manualSize').value===''){
   if(state.busy||state.analyzing)throw Error('Bitte die Berechnung abwarten.');
   for(const id of ['manualSize',...extraInputs]){
     if(!$(id).reportValidity())throw Error('Bitte ein Maß zwischen 8 und 2000 cm eingeben.');
@@ -149,14 +171,15 @@ async function applySizeFields(resetMinimum=false){
     manual_height_mm:height&&manual?manual:null,minimum_width_mm:manual?first:null,minimum_first:true,smallest_requested:true,
     requested_widths_mm:additional,widths_mm:widths,sized_widths_mm:widths});
   sizesDirty=false;
+  if(resetMinimum)showSizeFields();
   if(manual){
     minimumStatus(window.studioManualSizeLabel(),true);
     cloudSpec.issues=(cloudSpec.issues||[]).filter(issue=>!cloud.size_issues?.includes(issue));
     renderReview();
   }
 }
-$('sizeAxis').onchange=()=>{sizesDirty=true;updateSizeLabels();$('previewSize').disabled=true;};
-for(const id of ['manualSize',...extraInputs])$(id).oninput=()=>{sizesDirty=true;$('previewSize').disabled=true;};
+$('sizeAxis').onchange=()=>{updateSizeLabels();rememberSizeFields();};
+for(const id of sizeInputs)$(id).oninput=rememberSizeFields;
 $('setSizes').onclick=async()=>{
   $('setSizes').disabled=true;
   try{await applySizeFields();await cloudSave();toast('Größen übernommen und gespeichert.');}catch(e){toast(e.message,true);}
@@ -175,6 +198,11 @@ async function cloudSave() {
     cloudSpec.pricing_options=priceOptions();
     cloudSpec.shape=state.settings.shape;
     cloud={...cloud,...await cloudRequest('save',{id:cloud.id,revision:cloud.revision,model:state.project.id,settings:state.settings,spec:cloudSpec})};
+    if(sizesDirty)rememberSizeFields();
+    else{
+      try{sessionStorage.removeItem(sizeDraftKey());}catch{}
+      $('sizeDraftStatus').hidden=true;
+    }
     return cloud;
   } finally {cloudSaving=false;syncSizePreview();}
 }
@@ -328,9 +356,9 @@ async function cloudBoot(){
       }
       try{
         await applySizeFields(true);
-        showSizeFields();
         minimumStatus('Geometrische Mindestbreite: '+number(state.drawing.width/10,1)+' cm',true);
-        toast('Automatische Mindestgröße übernommen.');
+        await cloudSave();
+        toast('Automatische Mindestgröße übernommen und gespeichert.');
       }catch(error){toast(error.message,true);}
     };
     const limit=textElement('button','Engstelle zeigen');
@@ -359,7 +387,7 @@ async function cloudBoot(){
   }
   state.project=cloud.model;state.settings={...defaults,...cloud.settings};$('tube').disabled=true;state.analyzing=false;state.history=[];state.historyIndex=-1;
   if(state.settings.geometricSizing||state.settings.autoRoute){$('gapHelp').textContent='Freier Rand zwischen Acrylkante und Außenkante des Neonstreifens.';$('tubeHelp').textContent=`Neonbreite in dieser Zeichnung: ${state.settings.tube} mm.`;}
-  showSizeFields();renderReview();
+  showSizeFields();restoreSizeDraft();renderReview();
   commitHistory();renderProject();updateControls();await requestGeometry(true);
   const plan=document.createElement('div');plan.className='help-text';
   if(cloud.metrics?.model)plan.append(textElement('p','KI-Zeichnung: '+cloud.metrics.model+'. Die Mindestgröße wird aus den Verlegepfaden berechnet.'));
