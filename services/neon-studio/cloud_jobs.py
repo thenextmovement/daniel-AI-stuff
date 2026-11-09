@@ -1,4 +1,4 @@
-import fcntl,json,math,os,threading,time,traceback
+import fcntl,json,math,os,re,threading,time,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,plain_title,ServiceError
@@ -113,7 +113,12 @@ class Jobs:
                 if 'requested_widths_mm' in spec:
                     if measure(d)['recommendedWidth']>width:raise Review('Geometrische Mindestbreite unterschritten.')
                 variants.append(d)
-            files,quotes=artifacts(variants,spec)
+            sources=spec.get('source_attachment_ids') or p.get('selected_attachments') or []
+            filename=next((a['name'] for a in p['snapshot'].get('attachments',[])
+                           if a.get('id') in sources and a.get('name')), '')
+            stem=Path(filename).stem
+            motif=re.sub(r'(?i)[ _-]+logo\d*$', '', stem).replace('_',' ')[:60]
+            files,quotes=artifacts(variants,spec,motif)
             revision=p['revision'];marker='Neon Studio '+p['id']+' Revision '+str(revision)
             p=self.db.save(p['id'],{'publish_revision':revision,'error':'','upload_intent':False},status='publishing')
             new=[]

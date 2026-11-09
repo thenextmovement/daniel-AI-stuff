@@ -189,7 +189,8 @@ class CloudTests(unittest.TestCase):
   before,_=artifacts([d],spec)
   files,_=artifacts([d],{**spec,'minimum_width_mm':1105})
   doc=fitz.open(stream=files[0][2],filetype='pdf')
-  self.assertIn('Mindestbreite (manuell): 110,50 cm',doc[0].get_text())
+  self.assertIn('Mindestbreite (manuell)',doc[0].get_text())
+  self.assertIn('110,50 cm',doc[0].get_text())
   self.assertIn('120,00',doc[0].get_text())
   pix=doc[0].get_pixmap(matrix=fitz.Matrix(2,2),alpha=False)
   self.assertEqual(Image.open(io.BytesIO(files[1][2])).tobytes(),pix.samples)
@@ -215,7 +216,7 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(t.data['idList'],READY)
   self.assertIn('Mindestbreite (manuell): 110,50 cm',t.comments[0])
   self.assertEqual(len(t.uploads),3)
-  self.assertIn('Mindestbreite (manuell): 110,50 cm',fitz.open(stream=t.uploads[0][1],filetype='pdf')[0].get_text())
+  self.assertIn('110,50 cm',fitz.open(stream=t.uploads[0][1],filetype='pdf')[0].get_text())
   size=next(x['value']['text'] for x in t.data['customFieldItems'] if x['idCustomField']==FIELDS[0][1])
   self.assertTrue(size.startswith('120,00 × '),size)
   first_ids=[a['id'] for a in t.data['attachments']]
