@@ -6,15 +6,13 @@ from reportlab.lib.colors import HexColor
 import fitz
 from PIL import Image
 from export_pdf import _paint
-from neon_pricing import calculate
+from neon_pricing import drawing_price
 def de(value,places=2):return f'{float(value):.{places}f}'.replace('.',',')
 CUT={'shape':'Formzuschnitt','rectangle':'Rechteck','bottom':'Nur unten'}
 def price(drawing,spec):
-    q=calculate({'items':[{'width_cm':drawing['width']/10,'height_cm':drawing['height']/10,
-        'neon_m':drawing['neonMeters'],'color':spec.get('light_type','single'),
+    q=drawing_price(drawing,{**spec.get('pricing_options',{}),'color':spec.get('light_type','single'),
         'outdoor':spec['usage']=='Außen','waterproof_psus':spec.get('waterproof_psus',0),
-        'uv_print':bool(drawing.get('uv')) or spec.get('uv_print',False),'controllers':spec.get('controllers',0)}],
-        'packing':'separate','minimum_shipping_usd':45,'additional_cost_usd':0,'sales_factor':2.3})
+        'uv_print':spec.get('uv_print',False),'controllers':spec.get('controllers',0)})
     quantity=spec.get('quantity',1)
     for key in ('production_usd','shipping_usd','total_usd'):
         q[key]=str(int(q[key])*quantity)

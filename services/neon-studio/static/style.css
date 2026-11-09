@@ -100,3 +100,13 @@ dialog{background:linear-gradient(145deg,#303538,#242a2e);color:var(--text);bord
 .neon-node{cursor:grab;stroke:#222;stroke-width:1;vector-effect:non-scaling-stroke}
 #neonScale{width:5em;color:inherit;background:#32373b;border:1px solid #737b81;border-radius:4px}
 #neonSelectionInfo{flex-wrap:wrap}
+
+.view-settings{display:grid;justify-items:center;gap:2px}
+.background-switch{display:flex;background:#191b1d;border-radius:6px;padding:2px}
+.background-switch button{font-size:11px;padding:2px 8px;color:#b7bec3}
+.background-switch button[aria-pressed=true]{background:#50565a;color:white;border-radius:4px}
+#cloudSizes{display:grid;gap:5px;margin-bottom:8px}
+#cloudSizes[hidden]{display:none}
+#cloudSizes label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
+#cloudSizes input{width:8em;padding:4px 7px;border:1px solid #656b70;border-radius:5px;background:#272a2d;color:white}
+#cloudReview{margin:8px 0 14px}#cloudReview p{margin:6px 0}

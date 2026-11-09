@@ -17,6 +17,13 @@ def smallest_title_widths(title):
         suffix=suffix[match.end():]
     return extras
 
+def size_only_issue(issue):
+    # Older projects store individual review points as prose. Keep ambiguous
+    # or mixed requests available for operator review.
+    if not isinstance(issue,str):return False
+    if re.search(r'\d+(?:[,.]\d+)?\s*(?:cm|mm)\b|innen(?!öff)|außen|outdoor|indoor|netzteil|farbe|zuschnitt|versand|stückzahl|motivwahl|material|montage|aber|jedoch|;',issue,re.I):return False
+    return bool(re.search(r'\bsmall(?:est| is)? size\b|kleinstmögliche.{0,25}(?:breite|größe)|(?:mindestgröße|mindestbreite).{0,50}(?:berechnet|ermittelt|geklärt) werden',issue,re.I))
+
 def validate_svg(svg):
     if not isinstance(svg,str) or len(svg)>2000000 or re.search(r'<!|<\?|url\s*\(|javascript:',svg,re.I):raise Review('SVG enthält nicht erlaubte Inhalte.')
     try:root=ET.fromstring(svg)
@@ -166,7 +173,7 @@ Double bedeutet hier echte Umrissgeometrie im SVG, nicht nur ein Etikett im Lini
 i/j-Punkte als separate Pfade kennzeichnen. Sie werden später in Millimetern lokal angepasst:
 Single senkrechter Strich mindestens 20 mm, Double Kreis. Keine anderen Teile dafür skalieren.
 Fehlende Usage: Innen; fehlender Zuschnitt: shape. Randabstand später 15mm.
-Falls verbindliche_titelgroessen vorliegen, sind die Größen vollständig geklärt. Keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei mehreren unterschiedlichen Motiven: issues. Für die Zeichnung immer 6 mm Neonflex annehmen.
+Falls verbindliche_titelgroessen vorliegen, sind die Größen vollständig geklärt. Keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen. Die geometrische Mindestbreite wird immer automatisch berechnet. Fehlende Mindestbreite ist kein issue. Pro offenem Sachverhalt genau ein separates issue. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei mehreren unterschiedlichen Motiven: issues. Für die Zeichnung immer 6 mm Neonflex annehmen.
 Die SVG enthält ausschließlich die tatsächlich benötigten Neonpfade: smooth Mittellinien bei
 Schreibschrift/dünnen Strichen, vorhandene Umrisslinien bei bewusst breiten Outline-Logos.
 Keine Leuchthöfe, Schattierungen, Acrylkontur, Beschriftungen, Bemaßung oder Bildrahmen.

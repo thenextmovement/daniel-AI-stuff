@@ -201,7 +201,9 @@ class CloudTests(unittest.TestCase):
    def __init__(self):
     self.data={'idBoard':BOARD,'idList':HOLDING,'attachments':[],'customFieldItems':[]};self.comments=[];self.uploads=[]
    def card(self,id):return self.data
-   def field(self,id,key,value):self.data['customFieldItems'].append({'idCustomField':key,'value':{'text':value}})
+   def field(self,id,key,value):
+    self.data['customFieldItems']=[f for f in self.data['customFieldItems'] if f['idCustomField']!=key]
+    if value:self.data['customFieldItems'].append({'idCustomField':key,'value':{'text':value}})
    def comment_once(self,id,text,marker):self.comments.append(text)
    def call(self,method,path,**kwargs):
     if method=='POST':
@@ -226,6 +228,36 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(ids[:4],first_ids+['original'])
   self.assertEqual(len(set(ids)),7)
   self.assertEqual([f[0] for f in t.uploads[:3]],[f[0] for f in t.uploads[3:]])
+  self.assertNotIn(' → ',t.comments[-1])
+  saved=self.db.get(p['id'])
+  updated={**saved['spec'],'minimum_first':True,'minimum_width_mm':950,
+           'requested_widths_mm':[1250],'widths_mm':[950,1250],'sized_widths_mm':[950,1250],
+           'pricing_options':{'additional_cost_usd':20}}
+  self.db.save(p['id'],{'spec':updated})
+  result=Jobs(self.db,store,t).publish(p)
+  self.assertIn('Größe 1: 120,00 × ',t.comments[-1])
+  self.assertIn(' → 95,00 × ',t.comments[-1])
+  self.assertIn('Preis 2 (USD): leer → '+result['quotes'][1]['total_usd'],t.comments[-1])
+  self.assertEqual(result['spec']['widths_mm'],[950,1250])
+  self.assertEqual(float(result['quotes'][0]['additional_cost_usd']),20)
+  updated.update(requested_widths_mm=[],widths_mm=[950],sized_widths_mm=[950])
+  self.db.save(p['id'],{'spec':updated})
+  Jobs(self.db,store,t).publish(p)
+  self.assertIn('Größe 2: 125,00 × ',t.comments[-1])
+  self.assertFalse(any(x['idCustomField'] in FIELDS[1] for x in t.data['customFieldItems']))
+
+ def test_smallest_review_keeps_usage_and_overrides_can_be_below_geometry(self):
+  from cloud_ai import size_only_issue
+  from cloud_jobs import size_variants
+  from unittest.mock import patch
+  self.assertTrue(size_only_issue('„Smallest Size“ und „Auf Anfrage“ nennen keine konkrete Breite.'))
+  self.assertFalse(size_only_issue('Smallest Size ohne Maße und Einsatz innen oder außen ungeklärt.'))
+  store=DurableStore(self.db);info=store.add(SVG.encode(),'Test.svg')
+  with patch('cloud_jobs.minimum_size',return_value={'recommendedWidth':1800}):
+   widths,_=size_variants(store,info['id'],{'mode':'single','shape':'rectangle'},
+                          {'widths_mm':[1400],'minimum_first':True,'minimum_width_mm':950})
+  self.assertEqual(widths,[950,1400])
+
  def test_publish_rejects_actual_drawing_below_manual_minimum_before_upload(self):
   from cloud_trello import HOLDING
   from unittest.mock import Mock

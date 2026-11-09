@@ -5,7 +5,7 @@ from http.server import ThreadingHTTPServer
 from server import Handler,ROOT
 from cloud_data import Database,DurableStore,Conflict
 from cloud_jobs import Jobs
-from cloud_ai import Review,validate_spec,manual_minimum_width
+from cloud_ai import Review,validate_spec,manual_minimum_width,size_only_issue
 from cloud_trello import request_id
 
 PREFIX='/api/ops/neon-studio'
@@ -45,6 +45,7 @@ class CloudHandler(Handler):
                 return self.respond(200,{**public(p),'settings':p.get('settings',{}),'spec':p.get('spec',{}),
                     'model':self.server.store.info(p['model']) if p.get('model') else None,
                     'attachments':[{'id':a['id'],'name':a['name']} for a in p.get('snapshot',{}).get('attachments',[]) if a.get('isUpload')],
+                    'size_issues':[i for i in (p.get('spec') or {}).get('issues',[]) if size_only_issue(i)],
                     'selected_attachments':p.get('selected_attachments',[])})
             return super().do_GET()
         except ValueError as e:return self.respond(400,{'error':str(e)})
@@ -73,7 +74,9 @@ class CloudHandler(Handler):
                     p=db.save(p['id'],{'model':model,'settings':settings,'spec':spec},expected=p['revision'],status='draft')
                 elif path=='/cloud/publish':
                     spec=p.get('spec') or {}
-                    if spec.get('smallest_requested') and not spec.get('widths_mm') and p.get('model'):
+                    if p.get('model'):
+                        spec={**spec,'issues':[i for i in spec.get('issues',[]) if not size_only_issue(i)]}
+                    if not spec.get('widths_mm') and p.get('model'):
                         validate_spec({**spec,'widths_mm':[spec.get('minimum_width_mm') or 80]})
                     else:validate_spec(spec)
                     if p.get('upload_intent') or p.get('pending_attachments'):raise Review('Eine frühere Übertragung ist unbestätigt. Anhänge vor Wiederholung abgleichen.')

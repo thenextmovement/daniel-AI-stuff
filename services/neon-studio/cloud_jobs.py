@@ -2,7 +2,7 @@ import fcntl,json,math,os,re,threading,time,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,plain_title,ServiceError
-from cloud_ai import generate,validate_spec,Review,drawing_model,smallest_title_widths
+from cloud_ai import generate,validate_spec,Review,drawing_model,smallest_title_widths,size_only_issue
 from cloud_exports import artifacts,CUT
 from minimum_size import PROFILE, measure, minimum_size
 
@@ -11,8 +11,8 @@ def size_variants(store,model,settings,spec):
     widths=spec.get('widths_mm',[])
     if not isinstance(widths,list) or any(type(w) not in (int,float) or not 80<=w<=20000 for w in widths):
         raise Review('Ungültige Angebotsbreite.')
-    minimum=minimum_size(store,model,settings)['recommendedWidth']
-    floor=max(minimum,spec.get('minimum_width_mm') or 80)
+    manual=spec.get('minimum_width_mm')
+    floor=manual or minimum_size(store,model,settings)['recommendedWidth']
     targets=list(dict.fromkeys(max(w,floor) for w in widths))
     if (spec.get('smallest_requested') or not targets) and floor not in targets:targets.append(floor)
     if spec.get('minimum_first'):
@@ -23,11 +23,11 @@ def size_variants(store,model,settings,spec):
         options={**settings,**PROFILE,'width':width}
         drawing=store.drawing(model,json.dumps(options,sort_keys=True))
         if drawing['width'] < floor-.001:raise Review('Die Zeichnung unterschreitet die Mindestbreite.')
-        report=measure(drawing)
+        report={'recommendedWidth':manual} if manual else measure(drawing)
         if report['recommendedWidth']>width and spec.get('minimum_first') and width>floor:continue
         if report['recommendedWidth']>width:raise Review('Abstand oder Innenöffnung in der Angebotszeichnung zu klein.')
         verified.append(width)
-        reports.append({**report,'recommendedWidth':minimum})
+        reports.append({**report,'recommendedWidth':floor})
     return verified,reports
 
 
@@ -90,7 +90,7 @@ class Jobs:
             spec=dict(p.get('spec') or {})
             from cloud_ai import manual_minimum_width
             manual_minimum_width(spec)
-            if p.get('model') and not spec.get('issues'):
+            if p.get('model'):
                 requested=spec.get('requested_widths_mm',spec.get('widths_mm',[]))
                 # Adopt the title rule for existing smallest-only projects on their next export.
                 if 'minimum_first' not in spec and not requested:
@@ -105,7 +105,8 @@ class Jobs:
                 widths,reports=size_variants(self.store,p['model'],settings,{**spec,'widths_mm':requested})
                 if widths:
                     spec.update(requested_widths_mm=requested,widths_mm=widths,sized_widths_mm=widths)
-                    spec.update(auto_minimum_mm=reports[0]['recommendedWidth'],minimum_tube_mm=6)
+                    spec.update(auto_minimum_mm=None if spec.get('minimum_width_mm') else reports[0]['recommendedWidth'],minimum_tube_mm=6,
+                                issues=[i for i in spec.get('issues',[]) if not size_only_issue(i)])
                     settings['width']=widths[0]
                     p=self.db.save(p['id'],{'spec':spec,'settings':settings,'metrics':{**(p.get('metrics') or {}),'manufacturing':reports[0]}})
             spec=validate_spec(spec)
@@ -120,7 +121,7 @@ class Jobs:
                 d=self.store.drawing(p['model'],json.dumps(options,sort_keys=True))
                 if not d.get('exportable') or not d['paths']:raise Review('Zeichnung enthält noch ungeklärte Pfade.')
                 if spec.get('minimum_width_mm') is not None and d['width']<spec['minimum_width_mm']-.1:raise Review('Die Zeichnung liegt unter der manuell eingetragenen Mindestbreite.')
-                if 'requested_widths_mm' in spec:
+                if 'requested_widths_mm' in spec and not spec.get('minimum_width_mm'):
                     if measure(d)['recommendedWidth']>width:raise Review('Geometrische Mindestbreite unterschritten.')
                 variants.append(d)
             sources=spec.get('source_attachment_ids') or p.get('selected_attachments') or []
@@ -138,28 +139,32 @@ class Jobs:
                     a=self.t.call('POST',f"cards/{p['copy']}/attachments",files={'file':(name,data,mime)},data={'name':name})
                     new.append(a['id'])
                     self.db.save(p['id'],{'pending_attachments':new,'upload_intent':False})
-                for i,(d,q) in enumerate(zip(variants,quotes)):
-                    vals=[q['total_usd'],decimal(d['width']/10)+' × '+decimal(d['height']/10)+' cm',spec['colors'],CUT[spec['shape']]]
-                    for field,value in zip(FIELDS[i],vals):self.t.field(p['copy'],field,value)
-                for fields in FIELDS[len(variants):]:
-                    for field in fields:self.t.field(p['copy'],field,'')
-                self.t.field(p['copy'],USAGE,spec['usage'])
-                # Verify artifacts/fields before moving the card into the review list.
+                desired={USAGE:spec['usage']}
+                labels={USAGE:'Einsatz'}
+                for i,fields in enumerate(FIELDS):
+                    values=['']*4
+                    if i<len(variants):
+                        drawing=variants[i]
+                        values=[quotes[i]['total_usd'],decimal(drawing['width']/10)+' × '+decimal(drawing['height']/10)+' cm',spec['colors'],CUT[spec['shape']]]
+                    desired.update(zip(fields,values))
+                    labels.update(zip(fields,[f'Preis {i+1} (USD)',f'Größe {i+1}',f'Farbe {i+1}',f'Zuschnitt {i+1}']))
+                changes=[]
+                for field,value in desired.items():
+                    before=field_value(card,field)
+                    if before!=value:
+                        changes.append(f"{labels[field]}: {before or 'leer'} → {value or 'leer'}")
+                        self.t.field(p['copy'],field,value)
                 checked=self.t.card(p['copy'])
                 if not set(new).issubset({a['id'] for a in checked.get('attachments',[])}):raise Review('Trello-Anhänge nicht bestätigt.')
-                if field_value(checked,USAGE)!=spec['usage']:raise Review('Usage nicht bestätigt.')
-                for i,(d,q) in enumerate(zip(variants,quotes)):
-                    expected=[q['total_usd'],decimal(d['width']/10)+' × '+decimal(d['height']/10)+' cm',spec['colors'],CUT[spec['shape']]]
-                    if any(field_value(checked,k)!=v for k,v in zip(FIELDS[i],expected)):raise Review('Custom Fields nicht bestätigt.')
-                self.db.save(p['id'],{'generated_attachments':new,'pending_attachments':[],'cleanup_pending':[],'quotes':quotes})
+                if any(field_value(checked,k)!=v for k,v in desired.items()):raise Review('Custom Fields nicht bestätigt.')
                 minimum_note=('\nMindestbreite (manuell): '+decimal(spec['minimum_width_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.') if spec.get('minimum_width_mm') is not None else ''
                 if spec.get('auto_minimum_mm'):
                     minimum_note+='\nKleinste geprüfte Breite mit 6-mm-Neonflex: '+decimal(spec['auto_minimum_mm']/10)+' cm.'
-                self.t.comment_once(p['copy'],marker+'\nDrei Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
+                self.t.comment_once(p['copy'],marker+'\n'+('\n'.join(changes)+'\n' if changes else '')+'Drei Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
                 self.t.call('PUT',f"cards/{p['copy']}",json={'name':'🤖 '+p['snapshot']['name']+' 🤖','idList':READY})
                 checked=self.t.card(p['copy'])
                 if checked['idList']!=READY or checked['name']!='🤖 '+p['snapshot']['name']+' 🤖':raise Review('Zielliste oder Abschlusstitel nicht bestätigt.')
-                return self.db.save(p['id'],{'published_revision':revision,'error':''},status='ready')
+                return self.db.save(p['id'],{'published_revision':revision,'generated_attachments':new,'pending_attachments':[],'cleanup_pending':[],'quotes':quotes,'error':''},status='ready')
             except Exception:
                 # Preserve intent and IDs for reconciliation. Never repeat an uncertain upload.
                 raise

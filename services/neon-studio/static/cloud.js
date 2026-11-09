@@ -6,22 +6,78 @@ async function cloudRequest(path,data) {
   const j=await r.json();if(!r.ok)throw new Error(j.error||'Schritt nicht bestätigt.');return j;
 }
 function cloudLabel(){$('export').querySelector('span:last-child').textContent='In Trello hochladen';$('exportCaption').textContent='PDF · image.png · Technische Zeichnung';}
+let sizesDirty=false;
+window.studioManualMinimum=()=>cloudSpec.minimum_width_mm;
+function showSizeFields(){
+  $('cloudSizes').hidden=false;
+  $('manualSize').value=cloudSpec.minimum_width_mm==null?'':cloudSpec.minimum_width_mm/10;
+  const widths=cloudSpec.widths_mm||[];
+  const extra=cloudSpec.minimum_first&&!cloudSpec.sized_widths_mm
+    ?(cloudSpec.requested_widths_mm??widths)[0]:widths[1];
+  $('secondSize').value=extra==null?'':extra/10;
+  sizesDirty=false;
+}
+function renderReview(){
+  const box=$('cloudReview'),issues=cloudSpec.issues||[];
+  box.hidden=!issues.length;
+  box.replaceChildren();
+  if(!issues.length)return;
+  box.append(textElement('h2','Offene Anfrageangaben'));
+  issues.forEach(issue=>box.append(textElement('p',issue)));
+  const button=textElement('button','Angaben prüfen');button.className='button';button.onclick=cloudDetails;box.append(button);
+}
+window.addEventListener('studio-minimum-ready',()=>{
+  if(!cloud)return;
+  cloudSpec.issues=(cloudSpec.issues||[]).filter(issue=>!cloud.size_issues?.includes(issue));
+  $('manualSize').placeholder=number(manufacturingReport.recommendedWidth/10,1)+' (autom.)';
+  renderReview();
+});
+async function applySizeFields(){
+  if(state.busy||state.analyzing)throw Error('Bitte die Berechnung abwarten.');
+  for(const id of ['manualSize','secondSize']){
+    if(!$(id).reportValidity())throw Error('Bitte eine Breite zwischen 8 und 2000 cm eingeben.');
+  }
+  const manual=$('manualSize').valueAsNumber*10,second=$('secondSize').valueAsNumber*10;
+  if(!manual&&!manufacturingReport)await checkManufacturing(false,true);
+  const first=manual||manufacturingReport?.recommendedWidth;
+  if(!first)throw Error('Die automatische Mindestgröße steht noch aus.');
+  if(second&&second<=first)throw Error('Die zweite Größe muss größer als die Mindestbreite sein.');
+  await resizeToMinimum(first);
+  if(!state.valid||Math.abs(state.drawing.width-first)>.1)throw Error('Die eingegebene Breite konnte nicht übernommen werden.');
+  const previous=cloudSpec.sized_widths_mm||cloudSpec.widths_mm||[];
+  const tail=cloudSpec.minimum_first&&!cloudSpec.sized_widths_mm?previous.slice(1):previous.slice(2);
+  const extras=[second,...tail].filter(w=>w>first);
+  const widths=[first,...new Set(extras)];
+  Object.assign(cloudSpec,{minimum_width_mm:manual||null,minimum_first:true,smallest_requested:true,
+    requested_widths_mm:widths.slice(1),widths_mm:widths,sized_widths_mm:widths});
+  sizesDirty=false;
+  if(manual){
+    cloudSpec.issues=(cloudSpec.issues||[]).filter(issue=>!cloud.size_issues?.includes(issue));
+    renderReview();
+  }
+}
+for(const id of ['manualSize','secondSize'])$(id).oninput=()=>{sizesDirty=true;};
+$('setSizes').onclick=async()=>{
+  try{await applySizeFields();await cloudSave();toast('Größen gespeichert.');}catch(e){toast(e.message,true);}
+};
 async function cloudSave() {
   if(!cloud||!state.project||state.analyzing||cloudSaving)throw new Error('Bitte die Berechnung abwarten.');
   cloudSaving=true;
   try {
+    if(sizesDirty)await applySizeFields();
     await requestGeometry(true);
     if(state.busy||!state.valid)throw new Error('Die Zeichnung ist noch nicht bereit. Bitte die Einstellungen prüfen.');
     cloudSpec.widths_mm=cloudSpec.widths_mm||[];
-    if(cloudSpec.widths_mm.length)cloudSpec.widths_mm[0]=state.drawing.width;
+    if(cloudSpec.widths_mm.length&&!cloudSpec.minimum_first)cloudSpec.widths_mm[0]=state.drawing.width;
     Object.assign(cloudSpec,{light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',waterproof_psus:pricing.outdoor?Number($('pricePsus').value):0,uv_print:$('priceUv').checked,controllers:Number($('priceControllers').value)});
+    cloudSpec.pricing_options=priceOptions();
     cloudSpec.shape=state.settings.shape;
     cloud={...cloud,...await cloudRequest('save',{id:cloud.id,revision:cloud.revision,model:state.project.id,settings:state.settings,spec:cloudSpec})};
     return cloud;
   } finally {cloudSaving=false;}
 }
 async function cloudPublish(){
-  try{await cloudSave();cloud=await cloudRequest('publish',{id:cloud.id,revision:cloud.revision});toast('Die drei Dateien werden in Trello hochgeladen.');cloudPoll();}
+  try{await cloudSave();if(cloudSpec.issues?.length){renderReview();setTab('check');return;}cloud=await cloudRequest('publish',{id:cloud.id,revision:cloud.revision});toast('Die drei Dateien werden in Trello hochgeladen.');cloudPoll();}
   catch(e){toast(e.message,true);}
 }
 function textElement(tag,text){const e=document.createElement(tag);e.textContent=text;return e;}
@@ -30,7 +86,7 @@ async function cloudPoll(){
     await new Promise(r=>setTimeout(r,2000));
     const p=await cloudRequest('project?id='+cloud.id);
     if(!['queued','copying','generating','publishing','publish_queued'].includes(p.status)){
-      cloud=p;toast(p.error||(p.status==='ready'?'In Trello aktualisiert.':'Verarbeitung noch nicht bestätigt. Bitte Projektstatus prüfen.'),!!p.error||p.status!=='ready');return;
+      cloud=p;if(p.status==='ready'){cloudSpec=p.spec;showSizeFields();renderReview();}toast(p.error||(p.status==='ready'?'In Trello aktualisiert.':'Verarbeitung noch nicht bestätigt. Bitte Projektstatus prüfen.'),!!p.error||p.status!=='ready');return;
     }
   }
   toast('Die Verarbeitung läuft weiter. Den Status findest du in der Projektübersicht.');
@@ -68,9 +124,13 @@ function cloudDetails(){
       hint.id='cloudMinimumHint';hint.style.cssText='font-size:12px;line-height:1.4;color:#bbc1c7;margin:4px 0 12px';dialog.append(hint);
     }
   }
+  const reviewed=(cloudSpec.issues||[]).map(issue=>{
+    const label=textElement('label',issue);label.style.display='block';const check=document.createElement('input');check.type='checkbox';label.prepend(check);dialog.append(label);return {issue,check};
+  });
+  if(reviewed.length)dialog.append(textElement('p','Geklärte Punkte bitte abhaken.'));
   const save=textElement('button','Angaben übernehmen');
   save.onclick=async()=>{
-    const next={...cloudSpec,issues:[]};
+    const next={...cloudSpec,issues:reviewed.filter(r=>!r.check.checked).map(r=>r.issue)};
     for(const [key] of fields)next[key]=inputs[key].value.trim();
     next.minimum_width_mm=next.minimum_width_mm===''?null:Number(next.minimum_width_mm.replace(',','.'))*10;
     if(next.minimum_width_mm!==null&&(!Number.isFinite(next.minimum_width_mm)||next.minimum_width_mm<80||next.minimum_width_mm>20000)){toast('Bitte eine Mindestbreite zwischen 8 cm und 20 m eintragen oder das Feld leer lassen.',true);return;}
@@ -78,7 +138,7 @@ function cloudDetails(){
     if(next.widths_mm.length>4||next.widths_mm.some(v=>!Number.isFinite(v)||v<80||v>20000)){toast('Bitte höchstens vier Breiten zwischen 8 cm und 20 m eintragen.',true);return;}
     if(next.minimum_width_mm!==null&&next.widths_mm.some(v=>v<next.minimum_width_mm-.1)){toast('Eine Angebotsbreite liegt unter der manuellen Mindestbreite. Bitte die Breiten anpassen.',true);return;}
     next.quantity=Number(next.quantity||1);next.waterproof_psus=next.waterproof_psus===''?null:Number(next.waterproof_psus);
-    cloudSpec=next;cloudPriceControls();if(next.widths_mm.length){state.settings.width=next.widths_mm[0];state.settings.scale=null;}
+    cloudSpec=next;renderReview();showSizeFields();cloudPriceControls();if(next.widths_mm.length){state.settings.width=next.widths_mm[0];state.settings.scale=null;}
     dialog.close();await requestGeometry(true);try{await cloudSave();toast('Angaben gespeichert.');}catch(e){toast(e.message,true);}
   };
   const cancel=textElement('button','Schließen');cancel.onclick=()=>dialog.close();dialog.append(save,cancel);document.body.append(dialog);dialog.showModal();
@@ -158,6 +218,15 @@ async function cloudBoot(){
     check.onclick=()=>checkManufacturing(true);
     bar.append(check);
   }
+  const savedPrice=cloudSpec.pricing_options;
+  if(savedPrice){
+    for(const [id,key] of [['pricePacking','mode'],['priceMinimum','minimum_shipping_usd'],['priceExtra','additional_cost_usd'],['priceFactor','sales_factor']]){
+      if(savedPrice[key]!=null)$(id).value=savedPrice[key];
+    }
+    if(savedPrice.footprint_cm){[$('priceSplitWidth').value,$('priceSplitHeight').value]=savedPrice.footprint_cm;}
+    $('priceSplit').hidden=$('pricePacking').value!=='split';
+    $('priceFactorValue').textContent=number(Number($('priceFactor').value),1);
+  }
   cloudPriceControls();
   const source=textElement('button','Kundenmotiv wählen');
   source.onclick=()=>cloudSources();
@@ -170,6 +239,7 @@ async function cloudBoot(){
   }
   state.project=cloud.model;state.settings={...defaults,...cloud.settings};$('tube').disabled=true;state.analyzing=false;state.history=[];state.historyIndex=-1;
   if(state.settings.geometricSizing||state.settings.autoRoute){$('gapHelp').textContent='Freier Rand zwischen Acrylkante und Außenkante des Neonstreifens.';$('tubeHelp').textContent=`Neonbreite in dieser Zeichnung: ${state.settings.tube} mm.`;}
+  showSizeFields();renderReview();
   commitHistory();renderProject();updateControls();await requestGeometry(true);
   const plan=document.createElement('div');plan.className='help-text';
   if(cloud.metrics?.model)plan.append(textElement('p','KI-Zeichnung: '+cloud.metrics.model+'. Die Mindestgröße wird aus den Verlegepfaden berechnet.'));
@@ -181,7 +251,7 @@ async function cloudBoot(){
   const details=textElement('button','Anfrageangaben');details.onclick=cloudDetails;
   bar.append(save,details);
   if(cloud.copy_url){const a=textElement('a','Trello-Karte');a.href=cloud.copy_url;a.target='_blank';a.rel='noopener';bar.append(a);}
-  if(cloud.error)toast(cloud.error,true);
+  if(cloud.error&&!cloud.error.startsWith('Bitte prüfen:'))toast(cloud.error,true);
   window.addEventListener('beforeunload',event=>{if(state.historyIndex>0){event.preventDefault();event.returnValue='';}});
 }
 cloudBoot().catch(error=>toast(error.message,true));

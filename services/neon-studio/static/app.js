@@ -256,7 +256,7 @@ function renderProject() {
 function renderDrawing() {
   const d=state.drawing;if(!d)return;
   const p=state.prefs;document.documentElement.style.setProperty('--canvas',p.background);
-  const light=p.background===presets.light.background;
+  const light=isLightBackground(p.background);
   const edge=light?'#505d65':'#e1e7eb';const dim=light?'#53616a':'#bac5cc';
   const [x,y,w,h]=d.imageBox;
   const stroke=p.glow?Math.max(1,state.settings.tube):1.45;
@@ -325,7 +325,7 @@ function invalidateManufacturing(){
 
 function manufacturingKey(){return JSON.stringify([state.project?.id,state.settings]);}
 let lastMinimumRequest=null;
-async function checkManufacturing(applyToPreview=false){
+async function checkManufacturing(applyToPreview=false,force=false){
   if(!state.project||state.busy)return;
   if(!state.drawing?.paths?.length){
     invalidateManufacturing();
@@ -333,7 +333,7 @@ async function checkManufacturing(applyToPreview=false){
     return;
   }
   const key=manufacturingKey();
-  if(lastMinimumRequest===key&&!applyToPreview)return;
+  if(lastMinimumRequest===key&&!applyToPreview&&!force)return;
   lastMinimumRequest=key;
   const ticket=++manufacturingTicket;
   manufacturingReport=null;
@@ -343,19 +343,31 @@ async function checkManufacturing(applyToPreview=false){
     const report=await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings})).json();
     if(ticket!==manufacturingTicket||key!==manufacturingKey())return;
     manufacturingReport={...report,key};
-    const label=`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
+    window.dispatchEvent(new Event('studio-minimum-ready'));
+    const manual=window.studioManualMinimum?.();
+    const label=manual?`Manuelle Mindestbreite: ${number(manual/10,1)} cm`:`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
     minimumStatus(label,true);
-    $('manufacturingApply').hidden=!!state.settings.geometricSizing&&Math.abs(state.drawing.width-report.recommendedWidth)<.01;
+    $('manufacturingApply').hidden=!!state.settings.geometricSizing&&Math.abs(state.drawing.width-(manual||report.recommendedWidth))<.01;
     if(applyToPreview&&!$('manufacturingApply').hidden)applyMinimumToPreview();
   }catch(error){
-    if(ticket===manufacturingTicket&&key===manufacturingKey()){minimumStatus(error.message,true);lastMinimumRequest=null;}
+    if(ticket!==manufacturingTicket||key!==manufacturingKey())return;
+    lastMinimumRequest=null;
+    const manual=window.studioManualMinimum?.();
+    if(manual){
+      minimumStatus(`Manuelle Mindestbreite: ${number(manual/10,1)} cm`,true);
+      $('manufacturingResult').textContent+=' · Automatische Prüfung: '+error.message;
+      if(applyToPreview)await resizeToMinimum(manual);
+    }else minimumStatus(error.message,true);
   }
 }
 function applyMinimumToPreview(){
   const report=manufacturingReport;
   if(!report?.recommendedWidth||report.key!==manufacturingKey()||state.busy)return;
-  Object.assign(state.settings,{geometricSizing:true,autoRoute:false,tube:6,gap:15,gapSides:{},scale:null,width:report.recommendedWidth});
-  updateControls();commitHistory();requestGeometry(true);
+  return resizeToMinimum(window.studioManualMinimum?.()||report.recommendedWidth);
+}
+function resizeToMinimum(width){
+  Object.assign(state.settings,{geometricSizing:true,autoRoute:false,tube:6,gap:15,gapSides:{},scale:null,width});
+  updateControls();commitHistory();return requestGeometry(true);
 }
 $('manufacturingApply').onclick=applyMinimumToPreview;
 function uvLayer() {
@@ -1139,7 +1151,17 @@ async function exportPDF() {
 }
 
 function showSettings(){syncPrefsControls();renderCustomPresets();$('settingsDialog').showModal();}
-function syncPrefsControls(){const p=state.prefs;$('neonColor').value=p.neon;$('acrylicColor').value=p.acrylic;$('backgroundColor').value=p.background;$('acrylicOpacity').value=p.opacity;$('opacityValue').textContent=p.opacity+' %';$('glow').checked=p.glow;$('logoColors').checked=p.logoColors;}
+function isLightBackground(color){
+  const [r,g,b]=color.slice(1).match(/../g).map(v=>parseInt(v,16));
+  return .299*r+.587*g+.114*b>150;
+}
+function syncBackgroundSwitch(){
+  const light=isLightBackground(state.prefs.background);
+  $$('[data-background]').forEach(button=>button.setAttribute('aria-pressed',String(light===(button.dataset.background==='light'))));
+}
+$$('[data-background]').forEach(button=>button.onclick=()=>applyPrefs({...state.prefs,background:presets[button.dataset.background].background}));
+syncBackgroundSwitch();
+function syncPrefsControls(){syncBackgroundSwitch();const p=state.prefs;$('neonColor').value=p.neon;$('acrylicColor').value=p.acrylic;$('backgroundColor').value=p.background;$('acrylicOpacity').value=p.opacity;$('opacityValue').textContent=p.opacity+' %';$('glow').checked=p.glow;$('logoColors').checked=p.logoColors;}
 function applyPrefs(p){state.prefs=validPrefs(p);saveLocal('neonstudio.view.v1',state.prefs);syncPrefsControls();document.documentElement.style.setProperty('--canvas',state.prefs.background);renderDrawing();}
 function renderCustomPresets(){
   $('customPresets').replaceChildren();
@@ -1649,13 +1671,16 @@ function invalidatePrice(message='Berechne …') {
   for(const id of ['priceProduction','priceShipping','priceTotal','priceCustomer'])$(id).textContent='—';
   $('priceStatus').textContent=message;
 }
+function priceOptions(){
+  return {...pricing,uv_print:$('priceUv').checked,controllers:$('priceControllers').value,waterproof_psus:pricing.outdoor?$('pricePsus').value:0,mode:$('pricePacking').value,
+    footprint_cm:[$('priceSplitWidth').value,$('priceSplitHeight').value],sales_factor:$('priceFactor').value,
+    minimum_shipping_usd:$('priceMinimum').value,additional_cost_usd:$('priceExtra').value};
+}
 async function updatePrice() {
   invalidatePrice();
   if(!state.project||!state.drawing||state.busy){$('priceStatus').textContent=state.busy?'Geometrie wird berechnet …':'Zuerst ein Motiv laden.';return;}
   const ticket=priceTicket;
-  const options={...pricing,uv_print:$('priceUv').checked,controllers:$('priceControllers').value,waterproof_psus:pricing.outdoor?$('pricePsus').value:0,mode:$('pricePacking').value,
-    footprint_cm:[$('priceSplitWidth').value,$('priceSplitHeight').value],sales_factor:$('priceFactor').value,
-    minimum_shipping_usd:$('priceMinimum').value,additional_cost_usd:$('priceExtra').value};
+  const options=priceOptions();
   try {
     const response=await api('/api/pricing',{id:state.project.id,settings:state.settings,pricing:options});
     const q=await response.json();if(ticket!==priceTicket)return;

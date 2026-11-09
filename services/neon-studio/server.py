@@ -24,7 +24,7 @@ from tracing import analyze_image, prepare_image, selected_image, selection_mask
 from vector_import import analyze_vector, is_vector, vector_preview, select_vector, render_pdf_page, VectorPreviewRequired
 from geometry import build_geometry
 from export_pdf import make_pdf
-from neon_pricing import calculate as calculate_price
+from neon_pricing import drawing_price
 from recovery import recovery_source, recover
 
 
@@ -238,19 +238,7 @@ class Handler(BaseHTTPRequestHandler):
                 drawing=self.server.store.drawing(str(payload.get('id','')),json.dumps(settings,sort_keys=True))
                 options=payload.get('pricing',{})
                 if not isinstance(options,dict):raise ValueError('Ungültige Preiseinstellungen.')
-                item={'width_cm':drawing['width']/10,'height_cm':drawing['height']/10,
-                      'neon_m':drawing['neonMeters'],'color':options.get('color','single'),
-                      'outdoor':options.get('outdoor',False),'waterproof_psus':options.get('waterproof_psus',0),
-                      'uv_print':bool(drawing.get('uv')) or options.get('uv_print',False),'controllers':options.get('controllers',0)}
-                mode=options.get('mode','single')
-                if mode not in ('single','pair','split'):raise ValueError('Unbekannte Paketoption.')
-                request={'items':[item,item.copy()] if mode=='pair' else [item],
-                         'packing':'stacked' if mode=='pair' else 'split' if mode=='split' else 'separate',
-                         'sales_factor':options.get('sales_factor','2.3'),
-                         'minimum_shipping_usd':options.get('minimum_shipping_usd',45),
-                         'additional_cost_usd':options.get('additional_cost_usd',0)}
-                if mode=='split':request['footprint_cm']=options.get('footprint_cm')
-                quote=calculate_price(request)
+                quote=drawing_price(drawing,options)
                 return self.respond(200,quote)
             if path=='/api/split-paths':
                 return self.respond(200,self.server.store.split_paths(str(payload.get('id','')),payload.get('keys'),payload.get('settings',{})))

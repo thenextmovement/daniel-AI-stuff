@@ -24,6 +24,21 @@ def money(value):return str(value.quantize(Decimal('.01'),rounding=ROUND_HALF_UP
 def whole(value):return value.to_integral_value(rounding=ROUND_CEILING)
 def number(value):return format(value.normalize(),'f')
 
+def drawing_price(drawing,options):
+    item={'width_cm':drawing['width']/10,'height_cm':drawing['height']/10,
+          'neon_m':drawing['neonMeters'],'color':options.get('color','single'),
+          'outdoor':options.get('outdoor',False),'waterproof_psus':options.get('waterproof_psus',0),
+          'uv_print':bool(drawing.get('uv')) or options.get('uv_print',False),'controllers':options.get('controllers',0)}
+    mode=options.get('mode','single')
+    if mode not in ('single','pair','split'):raise ValueError('Unbekannte Paketoption.')
+    request={'items':[item,item.copy()] if mode=='pair' else [item],
+             'packing':'stacked' if mode=='pair' else 'split' if mode=='split' else 'separate',
+             'sales_factor':options.get('sales_factor','2.3'),
+             'minimum_shipping_usd':options.get('minimum_shipping_usd',45),
+             'additional_cost_usd':options.get('additional_cost_usd',0)}
+    if mode=='split':request['footprint_cm']=options.get('footprint_cm')
+    return calculate(request)
+
 def calculate(request):
     allowed={'items','packing','footprint_cm','minimum_shipping_usd','additional_cost_usd','sales_factor'}
     if not isinstance(request,dict) or set(request)-allowed:raise ValueError('Unbekannte Kalkulationsfelder.')
