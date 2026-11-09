@@ -10,11 +10,11 @@ function setupDownloads(){
   const toggle=$('exportDropdown'),menu=$('exportMenu');
   toggle.hidden=false;toggle.textContent='Download ▾';toggle.setAttribute('aria-label','Download auswählen');
   toggle.parentElement.classList.add('cloud-exports');
-  menu.replaceChildren(textElement('div','Dateien der aktuellen Vorschau'));
+  menu.replaceChildren(textElement('div','Dateien auswählen'));
   const formats=[['svg','Vektordatei (SVG)'],['drawing','Maßzeichnung (PDF)'],
     ['custom','PDF mit eigenen Angaben'],['cnc','CNC-Zeichnung 1:1 (PDF)'],['uv','UV-Druck 1:1 (PDF)'],
-    ['technical','Technische Zeichnung (JPG)'],['quote','Auto Quote mit Preisen (PDF)'],
-    ['preview','Auto Quote mit Preisen (PNG)']];
+    ['technical','Technische Zeichnung (JPG)'],['quote','Auto Quote · alle Größen mit Preisen (PDF)'],
+    ['preview','Auto Quote · aktuelle Vorschau (PNG)']];
   const checks=formats.map(([value,name])=>{
     const row=document.createElement('label'),box=document.createElement('input');
     box.type='checkbox';box.value=value;box.checked=['technical','quote','preview'].includes(value);
@@ -31,6 +31,7 @@ function setupDownloads(){
     if(!formats.length)return;
     submit.disabled=true;state.exporting=true;exportState();
     try{
+      if(sizesDirty&&formats.includes('quote'))await applySizeFields();
       const spec={...cloudSpec,auto_minimum_mm:window.studioManualMinimum()?null:manufacturingReport?.recommendedWidth,
         light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',pricing_options:priceOptions(),
         controllers:Number($('priceControllers').value),uv_print:$('priceUv').checked,

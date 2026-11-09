@@ -1,5 +1,5 @@
 """All three quote artifacts derive from the same measured drawing."""
-import io,re
+import io,json,re
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
@@ -105,7 +105,7 @@ def product_rows(d,spec):
         ('Final neon length / Endgültige Neonlänge (+10 %)',de(d['neonMaterialMeters'],1)+' m'),
         ('Acrylic margin / Acrylrand',de(d['settings']['gap'])+' mm')]
 
-def artifacts(variants,spec,motif=None):
+def quote_pdf(variants,spec,motif=None):
     output=io.BytesIO();c=Canvas(output,pagesize=(600,760))
     quotes=[]
     for i,d in enumerate(variants):
@@ -136,7 +136,12 @@ def artifacts(variants,spec,motif=None):
         c.setFont('Helvetica',9)
         c.drawString(36,44,'Please review the design before production and approval. / Vor Produktion und Freigabe bitte das Design prüfen.')
         c.showPage()
-    c.save();pdf=output.getvalue()
+    c.save()
+    name=re.sub(r'[^\w-]+','_',spec['customer_name'],flags=re.U).strip('_')[:80] or 'Kunde'
+    return ('auto_quote_'+name+'.pdf','application/pdf',output.getvalue()),quotes
+
+
+def quote_image(pdf):
     doc=fitz.open(stream=pdf,filetype='pdf')
     pages=[]
     for page in doc:
@@ -145,8 +150,12 @@ def artifacts(variants,spec,motif=None):
     combined=Image.new('RGB',(max(p.width for p in pages),sum(p.height for p in pages)),'white');y=0
     for p in pages:combined.paste(p,(0,y));y+=p.height
     image=io.BytesIO();combined.save(image,'PNG')
-    name=re.sub(r'[^\w-]+','_',spec['customer_name'],flags=re.U).strip('_')[:80] or 'Kunde'
-    return [('auto_quote_'+name+'.pdf','application/pdf',pdf),('image.png','image/png',image.getvalue()),('technische_zeichnung.jpg','image/jpeg',technical_image(variants[0]))],quotes
+    return ('image.png','image/png',image.getvalue())
+
+
+def artifacts(variants,spec,motif=None):
+    pdf,quotes=quote_pdf(variants,spec,motif)
+    return [pdf,quote_image(pdf[2]),('technische_zeichnung.jpg','image/jpeg',technical_image(variants[0]))],quotes
 
 
 def technical_image(d):
@@ -159,7 +168,7 @@ def technical_image(d):
     return jpeg.getvalue()
 
 
-def selected_download(drawing,options):
+def selected_download(drawing,options,store,model,settings):
     from zipfile import ZipFile, ZIP_DEFLATED
     from xml.etree import ElementTree as ET
     from geometry import path_d
@@ -192,13 +201,28 @@ def selected_download(drawing,options):
         # A download documents the current preview, including provisional choices.
         # Publishing still validates outstanding review items on the project.
         source=options['spec']
-        spec=validate_spec({**source,'issues':[],'widths_mm':[drawing['width']]})
+        widths=(source.get('widths_mm') or [drawing['width']]) if 'quote' in formats else [drawing['width']]
+        spec=validate_spec({**source,'issues':[],'widths_mm':widths})
         spec['download_draft']=bool(source.get('issues'))
-        bundle,_=artifacts([drawing],spec,options.get('motif'))
-        if 'quote' in formats:files.append(bundle[0])
-        if 'preview' in formats:files.append(bundle[1])
-        if 'technical' in formats:files.append(bundle[2])
-    elif 'technical' in formats:
+        if 'quote' in formats:
+            from minimum_size import PROFILE
+            variants=[]
+            for width in widths:
+                if abs(width-drawing['width'])<.001:
+                    variant=drawing
+                else:
+                    options_at_width={**settings,**PROFILE,'width':width}
+                    variant=store.drawing(model,json.dumps(options_at_width,sort_keys=True))
+                if not variant['exportable'] or abs(variant['width']-width)>.1:
+                    raise ValueError('Eine Angebotsgröße konnte nicht gezeichnet werden.')
+                variants.append(variant)
+            pdf,_=quote_pdf(variants,spec,options.get('motif'))
+            files.append(pdf)
+        if 'preview' in formats:
+            if 'quote' not in formats or len(widths)!=1 or abs(widths[0]-drawing['width'])>=.001:
+                pdf,_=quote_pdf([drawing],spec,options.get('motif'))
+            files.append(quote_image(pdf[2]))
+    if 'technical' in formats:
         files.append(('technische_zeichnung.jpg','image/jpeg',technical_image(drawing)))
     if len(files)==1:return files[0]
     output=io.BytesIO()
