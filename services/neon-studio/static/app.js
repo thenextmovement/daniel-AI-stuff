@@ -325,7 +325,7 @@ function invalidateManufacturing(){
 
 function manufacturingKey(){return JSON.stringify([state.project?.id,state.settings]);}
 let lastMinimumRequest=null;
-async function checkManufacturing(force=false){
+async function checkManufacturing(applyToPreview=false){
   if(!state.project||state.busy)return;
   if(!state.drawing?.paths?.length){
     invalidateManufacturing();
@@ -333,7 +333,7 @@ async function checkManufacturing(force=false){
     return;
   }
   const key=manufacturingKey();
-  if(lastMinimumRequest===key&&!force)return;
+  if(lastMinimumRequest===key&&!applyToPreview)return;
   lastMinimumRequest=key;
   const ticket=++manufacturingTicket;
   manufacturingReport=null;
@@ -346,16 +346,18 @@ async function checkManufacturing(force=false){
     const label=`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
     minimumStatus(label,true);
     $('manufacturingApply').hidden=!!state.settings.geometricSizing&&Math.abs(state.drawing.width-report.recommendedWidth)<.01;
+    if(applyToPreview&&!$('manufacturingApply').hidden)applyMinimumToPreview();
   }catch(error){
     if(ticket===manufacturingTicket&&key===manufacturingKey()){minimumStatus(error.message,true);lastMinimumRequest=null;}
   }
 }
-$('manufacturingApply').onclick=()=>{
+function applyMinimumToPreview(){
   const report=manufacturingReport;
   if(!report?.recommendedWidth||report.key!==manufacturingKey()||state.busy)return;
   Object.assign(state.settings,{geometricSizing:true,autoRoute:false,tube:6,gap:15,gapSides:{},scale:null,width:report.recommendedWidth});
   updateControls();commitHistory();requestGeometry(true);
-};
+}
+$('manufacturingApply').onclick=applyMinimumToPreview;
 function uvLayer() {
   const d=state.drawing;if(state.view!=='vectors'||!d?.uv)return '';
   const [x,y,w,h]=d.imageBox;

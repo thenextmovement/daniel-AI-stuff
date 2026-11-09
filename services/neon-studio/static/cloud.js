@@ -153,9 +153,9 @@ async function cloudBoot(){
   status.textContent=cloud.name;
   const sizeWarning=textElement('span','Vorschaugröße – Mindestgröße noch nicht geprüft');sizeWarning.id='cloudSizeWarning';sizeWarning.hidden=!!cloudSpec.widths_mm?.length;bar.append(sizeWarning);
   if(cloud.model){
-    const check=textElement('button','Mindestgröße ermitteln');
+    const check=textElement('button','Mindestgröße übernehmen');
     check.id='cloudMinimumCheck';check.disabled=true;
-    check.onclick=()=>{setTab('check');checkManufacturing(true);};
+    check.onclick=()=>checkManufacturing(true);
     bar.append(check);
   }
   cloudPriceControls();
