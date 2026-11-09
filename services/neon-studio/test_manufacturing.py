@@ -101,6 +101,22 @@ class ManufacturingTests(unittest.TestCase):
   widths,reports=size_variants(Store(),'model',{},dict(widths_mm=[600],smallest_requested=True))
   self.assertEqual(widths,[600,196])
   self.assertEqual(reports[1]['minimumSpacing'],8)
+ def test_smallest_title_adds_only_distinct_feasible_absolute_widths(self):
+  import json
+  from cloud_ai import smallest_title_widths
+  from cloud_jobs import size_variants
+  from unittest.mock import Mock,patch
+  store=Mock()
+  store.drawing.side_effect=lambda model,options: {'width':json.loads(options)['width']}
+  def measure(d):return {'recommendedWidth':1200 if d['width']==1100 else 830}
+  with patch('cloud_jobs.minimum_size',return_value={'recommendedWidth':830}),patch('cloud_jobs.measure',side_effect=measure):
+   for title,expected in [
+    ('Smallest Size',[830]),('SMALL IS SIZE + 100 cm',[830,1000]),
+    ('Small Size + 30 cm',[830]),('Smallest Size + 83 cm',[830]),
+    ('LED | Smallest Size + 100,5 cm + 100,5 cm + 110 cm | acrylic + 150 cm',[830,1005])]:
+    extras=smallest_title_widths(title)
+    self.assertEqual(size_variants(store,'id',{},dict(minimum_first=True,smallest_requested=True,widths_mm=extras))[0],expected)
+  self.assertIsNone(smallest_title_widths('LED | 100 cm'))
  def test_geometric_minimum_uses_opening_and_ignores_attached_bar(self):
   from minimum_size import measure
   # 10 mm square between centerlines in a 100 mm wide motif.

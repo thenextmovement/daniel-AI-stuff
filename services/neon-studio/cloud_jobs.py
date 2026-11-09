@@ -2,7 +2,7 @@ import fcntl,json,math,os,re,threading,time,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,plain_title,ServiceError
-from cloud_ai import generate,validate_spec,Review,drawing_model
+from cloud_ai import generate,validate_spec,Review,drawing_model,smallest_title_widths
 from cloud_exports import artifacts,CUT
 from minimum_size import PROFILE, measure, minimum_size
 
@@ -15,16 +15,20 @@ def size_variants(store,model,settings,spec):
     floor=max(minimum,spec.get('minimum_width_mm') or 80)
     targets=list(dict.fromkeys(max(w,floor) for w in widths))
     if (spec.get('smallest_requested') or not targets) and floor not in targets:targets.append(floor)
+    if spec.get('minimum_first'):
+        targets=[floor,*[w for w in targets if w>floor]]
     if len(targets)>4:raise Review('Es sind mehr als vier Angebotsvarianten angefragt.')
-    reports=[]
+    verified=[];reports=[]
     for width in targets:
         options={**settings,**PROFILE,'width':width}
         drawing=store.drawing(model,json.dumps(options,sort_keys=True))
         if drawing['width'] < floor-.001:raise Review('Die Zeichnung unterschreitet die Mindestbreite.')
         report=measure(drawing)
+        if report['recommendedWidth']>width and spec.get('minimum_first') and width>floor:continue
         if report['recommendedWidth']>width:raise Review('Abstand oder Innenöffnung in der Angebotszeichnung zu klein.')
+        verified.append(width)
         reports.append({**report,'recommendedWidth':minimum})
-    return targets,reports
+    return verified,reports
 
 
 class Jobs:
@@ -88,6 +92,12 @@ class Jobs:
             manual_minimum_width(spec)
             if p.get('model') and not spec.get('issues'):
                 requested=spec.get('requested_widths_mm',spec.get('widths_mm',[]))
+                # Adopt the title rule for existing smallest-only projects on their next export.
+                if 'minimum_first' not in spec and not requested:
+                    extras=smallest_title_widths(p['snapshot']['name'])
+                    if extras is not None:
+                        requested=extras
+                        spec.update(minimum_first=True,smallest_requested=True)
                 # Preserve deliberate edits to previously sized variants.
                 if spec.get('sized_widths_mm')!=spec.get('widths_mm') and 'sized_widths_mm' in spec:
                     requested=spec['widths_mm']
