@@ -84,10 +84,35 @@ def validate_spec(spec):
     if spec['usage']=='Innen':spec['waterproof_psus']=0
     return spec
 
+def eps_pdf(raw):
+    import shutil,struct,subprocess,tempfile
+    from pathlib import Path
+    # Windows EPS can wrap the PostScript with a binary TIFF preview.
+    if raw.startswith(bytes.fromhex('c5d0d3c6')) and len(raw)>=30:
+        offset,size=struct.unpack_from('<II',raw,4)
+        if offset<30 or offset+size>len(raw):raise Review('Beschädigter EPS-Dateikopf. Bitte Vektor-PDF verwenden.')
+        raw=raw[offset:offset+size]
+    if len(raw)>32*1024*1024 or not raw.startswith(b'%!PS'):
+        raise Review('EPS-Inhalt nicht erkannt. Bitte eine Vektor-PDF exportieren.')
+    gs=shutil.which('gs')
+    if not gs:raise Review('EPS-Konverter fehlt. Bitte eine Vektor-PDF verwenden.')
+    with tempfile.TemporaryDirectory() as tmp:
+        out=Path(tmp)/'motif.pdf'
+        args=[gs,'-q','-dSAFER','-dBATCH','-dNOPAUSE','-dEPSCrop','-sDEVICE=pdfwrite','-sOutputFile='+str(out),'-']
+        if os.sys.platform.startswith('linux'):
+            args=['prlimit','--as=1073741824','--cpu=25','--fsize=67108864','--']+args
+        try:
+            subprocess.run(args,input=raw,cwd=tmp,env={'TMPDIR':tmp},stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL,timeout=30,check=True)
+            if not out.is_file() or not 0<out.stat().st_size<=64*1024*1024:raise ValueError
+            return out.read_bytes()
+        except (ValueError,OSError,subprocess.SubprocessError):
+            raise Review('EPS konnte nicht in eine PDF umgewandelt werden. Bitte Vektor-PDF verwenden.') from None
+
 def generate(trello,card,selected=None):
     # All attachments remain on the copy. Only raster/PDF customer art is sent for analysis.
     candidates=[a for a in card.get('attachments',[]) if a.get('isUpload') and
-        re.search(r'\.(png|jpe?g|webp|pdf|svg)$',a.get('fileName') or a['name'],re.I) and
+        re.search(r'\.(png|jpe?g|webp|pdf|svg|eps)$',a.get('fileName') or a['name'],re.I) and
         not re.search(r'auto_quote|technische.?zeichnung|technical|invoice|rechnung|angebot|mockup\d|^image\.png$',a['name'],re.I)]
     if not candidates and len(card.get('attachments',[]))==1:
         only=card['attachments'][0]
@@ -99,6 +124,7 @@ def generate(trello,card,selected=None):
     content=[]
     for a in candidates:
         raw=trello.download(card['id'],a)
+        if (a.get('fileName') or a['name']).lower().endswith('.eps'):raw=eps_pdf(raw)
         if (a.get('fileName') or a['name']).lower().endswith('.svg'):raw=_svg_pdf(raw)
         if raw.startswith(b'%PDF'):raw=render_pdf_page(raw,0)[0]
         image=Image.open(io.BytesIO(raw)).convert('RGB');image.thumbnail((2400,2400))
@@ -125,7 +151,7 @@ Double bedeutet hier echte Umrissgeometrie im SVG, nicht nur ein Etikett im Lini
 i/j-Punkte als separate Pfade kennzeichnen. Sie werden später in Millimetern lokal angepasst:
 Single senkrechter Strich mindestens 20 mm, Double Kreis. Keine anderen Teile dafür skalieren.
 Fehlende Usage: Innen; fehlender Zuschnitt: shape. Randabstand später 15mm.
-Keine Größe erfinden. Bei 'kleinstmöglich' oder mehreren unterschiedlichen Motiven: issues.
+Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei mehreren unterschiedlichen Motiven: issues. tube_mm ist die ausdrücklich bestellte Schlauchbreite (6 oder 8), sonst 6.
 Die SVG enthält ausschließlich die tatsächlich benötigten Neonpfade: smooth Mittellinien bei
 Schreibschrift/dünnen Strichen, vorhandene Umrisslinien bei bewusst breiten Outline-Logos.
 Keine Leuchthöfe, Schattierungen, Acrylkontur, Beschriftungen, Bemaßung oder Bildrahmen.

@@ -4,6 +4,31 @@ from pathlib import Path
 from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,plain_title,ServiceError
 from cloud_ai import generate,validate_spec,Review,drawing_model
 from cloud_exports import artifacts,CUT
+def size_variants(store,model,settings,spec):
+    from manufacturing import inspect
+    widths=spec.get('widths_mm',[])
+    if not isinstance(widths,list) or any(type(w) not in (int,float) or not 80<=w<=20000 for w in widths):
+        raise Review('Ungültige Angebotsbreite.')
+    targets=list(widths)
+    if spec.get('smallest_requested') is True:targets.append(80)
+    results=[];reports=[]
+    for target in targets:
+        width=target
+        for _ in range(4):
+            d=store.drawing(model,json.dumps({**settings,'width':width,'scale':None},sort_keys=True))
+            report=inspect(d)
+            if report['needsLocalCorrection']:
+                details=[w for w in report['warnings'][2:] if not w.startswith(('Zuerst','Zeichnung und'))]
+                raise Review('Neonführung lokal prüfen: '+' '.join(details)[:480])
+            if not report['reasons']:break
+            proposed=report['recommendedWidth']
+            if not proposed or proposed<=width:raise Review('Größenanpassung nicht möglich: '+' '.join(report['reasons']))
+            width=proposed
+        else:raise Review('Neonabstände oder Stücklängen nach Größenanpassung nicht bestätigt.')
+        if width not in results:results.append(width);reports.append(report)
+    if len(results)>4:raise Review('Es sind mehr als vier Angebotsvarianten angefragt.')
+    return results,reports
+
 class Jobs:
     def __init__(self,db,store,trello=None):
         self.db=db;self.store=store;self.t=trello or Trello();self.lock=threading.RLock()
@@ -53,11 +78,14 @@ class Jobs:
         model,part_modes=drawing_model(data)
         info=self.store.add_model(model,'KI-Zeichnung.svg')
         spec={k:v for k,v in data.items() if k!='svg'}
-        settings={'mode':'single','partModes':part_modes,'shape':spec.get('shape') or 'shape','width':(spec.get('widths_mm') or [600])[0],'gap':15,'tube':6,'radius':3,'depth':20,'reserve':.1,'scale':None}
-        from manufacturing import inspect
-        drawing=self.store.drawing(info['id'],json.dumps(settings,sort_keys=True))
-        metrics['manufacturing']=inspect(drawing)
+        settings={'mode':'single','partModes':part_modes,'shape':spec.get('shape') or 'shape','width':(spec.get('widths_mm') or [600])[0],'gap':15,'tube':8 if spec.get('tube_mm')==8 else 6,'radius':3,'depth':20,'reserve':.1,'scale':None}
         p=self.db.save(id,{'model':info['id'],'spec':spec,'metrics':metrics,'settings':settings},status='draft')
+        widths,reports=size_variants(self.store,info['id'],settings,spec)
+        if widths:
+            spec={**spec,'requested_widths_mm':spec.get('widths_mm',[]),'widths_mm':widths}
+            settings={**settings,'width':widths[0]}
+            metrics['manufacturing']=reports[0]
+            p=self.db.save(id,{'spec':spec,'metrics':metrics,'settings':settings},status='draft')
         self.publish(p)
     def publish(self,p):
         with self.lock:
@@ -75,6 +103,12 @@ class Jobs:
                 d=self.store.drawing(p['model'],json.dumps(options,sort_keys=True))
                 if not d.get('exportable') or not d['paths']:raise Review('Zeichnung enthält noch ungeklärte Pfade.')
                 if spec.get('minimum_width_mm') is not None and d['width']<spec['minimum_width_mm']-.1:raise Review('Die Zeichnung liegt unter der manuell eingetragenen Mindestbreite.')
+                if 'requested_widths_mm' in spec:
+                    from manufacturing import inspect
+                    report=inspect(d)
+                    if report['needsLocalCorrection'] or report['reasons']:
+                        details=report['reasons']+report['warnings'][2:]
+                        raise Review('Angebotszeichnung erneut prüfen: '+' '.join(details)[:480])
                 variants.append(d)
             files,quotes=artifacts(variants,spec)
             revision=p['revision'];marker='Neon Studio '+p['id']+' Revision '+str(revision)

@@ -22,12 +22,30 @@ def normalize_dot(item, scale):
     return {**item,'commands':commands,'length':path_length(commands)}
 
 
+def facing_gap(line, required):
+    """Opposing runs, e.g. the sides of one closed outline, excluding joined neighbours."""
+    coords=np.asarray(line.simplify(.02).coords)
+    sections=[LineString([a,b]) for a,b in zip(coords,coords[1:]) if np.linalg.norm(b-a)>1e-8]
+    tree=STRtree(sections);best=None
+    for i,a in enumerate(sections):
+        start,end=np.asarray(a.coords);axis=(end-start)/a.length
+        for j in tree.query(a,predicate='dwithin',distance=required):
+            if j<=i+1 or (i==0 and j==len(sections)-1 and line.is_closed):continue
+            b=sections[j];u,v=np.asarray(b.coords)
+            if abs(np.dot(axis,(v-u)/b.length))<.94:continue
+            lo,hi=sorted((np.dot(u-start,axis),np.dot(v-start,axis)))
+            if min(hi,a.length)-max(lo,0)<=1e-6:continue
+            distance=a.distance(b)
+            if best is None or distance<best:best=distance
+    return best
+
+
 def inspect(drawing, profile=None):
     from geometry import segments, sample_path, path_length
     from uv_print import subpaths
     supplied=profile or {}
     values={}
-    for key,default,low,high in [('bendRadius',25,1,200),('spacing',2,0,30),('cutLength',20,1,200)]:
+    for key,default,low,high in [('bendRadius',25,1,200),('spacing',2,0,30),('cutLength',10,10,200)]:
         value=supplied.get(key,default)
         if type(value) not in (int,float) or not math.isfinite(value) or not low<=value<=high:
             raise ValueError('Ungültiger Fertigungswert: '+key)
@@ -39,7 +57,7 @@ def inspect(drawing, profile=None):
         dot=drawing.get('pathRoles',['stroke']*len(drawing['paths']))[i]=='dot'
         for part in subpaths(path):
             length=path_length(part)
-            if length<values['cutLength']-.01:short.append({'name':name,'length':round(length,2)})
+            if 0<length<values['cutLength']-1e-7:short.append({'name':name,'length':length})
             if length<.0001:continue
             line=LineString(sample_path(part,96));lines.append(line);names.append(name);dots.append(dot)
             curves=list(segments(part));tangents=[]
@@ -68,10 +86,15 @@ def inspect(drawing, profile=None):
     spacing=[];junctions=0
     tree=STRtree(lines)
     for i,line in enumerate(lines):
+        if not dots[i]:
+            distance=facing_gap(line,required)
+            if distance is not None:
+                if distance<=1e-7:junctions+=1
+                else:spacing.append((distance,names[i]+' (innerhalb der Kontur)'))
         for j in tree.query(line.buffer(required)):
             if int(j)<=i:continue
             distance=line.distance(lines[int(j)])
-            if distance<.1:junctions+=1
+            if distance<=1e-7:junctions+=1
             elif dots[i] or dots[int(j)]:
                 if distance<required:local.append('Punktabstand lokal prüfen: '+names[i]+' / '+names[int(j)]+f' ({distance:.2f} mm Mitte–Mitte).')
             else:spacing.append((distance,names[i]+' / '+names[int(j)]))
@@ -84,19 +107,23 @@ def inspect(drawing, profile=None):
     if minimum_spacing[0] is not None and minimum_spacing[0]<required:
         factors.append(required/minimum_spacing[0])
         reasons.append('Engster Linienabstand: '+minimum_spacing[1]+f' ({minimum_spacing[0]:.2f} mm Mitte–Mitte).')
+    if short:
+        piece=min(short,key=lambda p:p['length'])
+        factors.append(values['cutLength']/piece['length'])
+        reasons.append(f"Kürzestes Neonstück: {piece['name']} ({piece['length']:.2f} mm; benötigt {values['cutLength']:g} mm).")
     # Acrylic padding stays fixed while the motif scales. Never scale padding.
     s=drawing['settings'];gaps=s.get('gapSides',{});padding=gaps.get('left',s['gap'])+gaps.get('right',s['gap'])
     proposed=math.ceil(((drawing['width']-padding)*max(factors)+padding)/50)*50
     spacing_factor=max(1,required/minimum_spacing[0]) if minimum_spacing[0] is not None else 1
     spacing_width=math.ceil(((drawing['width']-padding)*spacing_factor+padding)/50)*50
     warnings=['Profilwerte sind Annahmen, keine bestätigte Lieferantenvorgabe. Mindestgröße ist eine geometrische Orientierung, keine Fertigungsfreigabe.',
-              'Abstand wird zwischen getrennten Pfaden geprüft. Selbstannäherungen innerhalb eines Pfads und Anschlüsse müssen zusätzlich geprüft werden.']
+              'Geprüft werden getrennte Pfade und nebeneinander verlaufende Konturabschnitte. Anschlüsse separat prüfen.']
     if corners:warnings.append(f'{corners} scharfe Richtungswechsel: abrunden oder als getrennte Neonstücke planen. Größer skalieren allein löst diese Ecken nicht.')
     if junctions:warnings.append(f'{junctions} Berührungen/Kreuzungen: Anschlussführung und getrennte Stücke prüfen.')
-    if short:warnings.append(f'{len(short)} Pfadstücke kürzer als {values["cutLength"]:g} mm. Lokale Verlängerung oder Anpassung nötig; nicht das ganze Motiv dafür vergrößern.')
+    if short:warnings.append(f'{len(short)} Pfadstücke kürzer als {values["cutLength"]:g} mm. Mindestbreite berücksichtigt die Länge entlang der Kurve.')
     # An unchanged-path scale calculation is not a minimum manufacturable size
     # when corners, junctions or local details still require reconstruction.
-    needs_local=bool(corners or junctions or short or local)
+    needs_local=bool(corners or junctions or local)
     if needs_local:warnings.append('Zuerst die genannten Details lokal bearbeiten. Reines Hochskalieren ist hier keine verlässliche Mindestgrößenempfehlung.')
     if proposed>20000:warnings.append('Zeichnung und enge Verbindungen zuerst korrigieren; reines Skalieren würde mehr als 20 m Breite benötigen.')
     return dict(profile=values,tube=tube,requiredSpacing=required,minimumRadius=minimum_radius[0],

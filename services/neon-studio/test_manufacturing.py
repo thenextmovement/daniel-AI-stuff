@@ -54,7 +54,7 @@ class ManufacturingTests(unittest.TestCase):
   self.assertFalse(r['approved'])
  def test_spacing_size_separate_from_tight_curve_and_local_corners(self):
   d=self.drawing([[['m',[0,0]],['l',[100,0]]],[['m',[0,4]],['l',[100,4]]],
-   [['m',[0,50]],['c',[0,51],[1,51],[1,50]],['l',[100,50]]]])
+   [['m',[0,50]],['c',[0,50.55],[.45,51],[1,51]],['l',[1,90]]]])
   r=inspect(d)
   self.assertEqual(r['spacingWidth'],250)
   self.assertGreater(r['unchangedPathWidth'],1000)
@@ -69,8 +69,47 @@ class ManufacturingTests(unittest.TestCase):
   self.assertEqual(inspect(d)['corners'],1)
  def test_crossings_and_short_paths_are_not_global_scale_demands(self):
   d=self.drawing([[['m',[0,0]],['l',[100,0]]],[['m',[50,-5]],['l',[50,5]]]])
-  r=inspect(d);self.assertEqual(r['junctions'],1);self.assertEqual(len(r['shortPaths']),1);self.assertIsNone(r['recommendedWidth'])
+  r=inspect(d);self.assertEqual(r['junctions'],1);self.assertEqual(len(r['shortPaths']),0);self.assertIsNone(r['recommendedWidth'])
   self.assertEqual(r['unchangedPathWidth'],150);self.assertTrue(r['needsLocalCorrection'])
+ def test_cut_is_per_piece_not_per_command(self):
+  d=self.drawing([[['m',[0,0]],['l',[6,0]],['l',[12,0]],['m',[0,30]],['l',[4,30]]]])
+  r=inspect(d)
+  self.assertEqual([p['length'] for p in r['shortPaths']],[4])
+  self.assertEqual(r['recommendedWidth'],300)
+  with self.assertRaises(ValueError):inspect(d,{'cutLength':9})
+ def test_parallel_sides_of_one_closed_i_and_neighbouring_letters(self):
+  outline=[['m',[0,0]],['l',[0,40]],['l',[7,40]],['l',[7,0]],['h']]
+  d=self.drawing([outline])
+  for tube in (6,8):
+   d['settings']['tube']=tube
+   r=inspect(d)
+   self.assertEqual(r['minimumSpacing'],7)
+   self.assertEqual(r['requiredSpacing'],tube+2)
+   self.assertTrue(any('innerhalb der Kontur' in reason for reason in r['reasons']))
+  d=self.drawing([outline,[['m',[13,0]],['l',[13,40]]]])
+  self.assertEqual(inspect(d)['minimumSpacing'],6)
+ def test_size_variants_rebuilds_and_verifies_grown_motif(self):
+  from cloud_jobs import size_variants
+  import json
+  case=self
+  class Store:
+   def drawing(self,model,options):
+    width=json.loads(options)['width'];size=(width-30)/20
+    d=case.drawing([[['m',[0,0]],['l',[size,0]]]]);d['width']=width
+    return d
+  widths,reports=size_variants(Store(),'model',{},dict(widths_mm=[600],smallest_requested=True))
+  self.assertEqual(widths,[600,250])
+  self.assertFalse(any(r['shortPaths'] for r in reports))
+ def test_eps_windows_preview_is_not_used_as_artwork(self):
+  import shutil,struct
+  from cloud_ai import eps_pdf
+  from vector_import import render_pdf_page
+  if not shutil.which('gs'):self.skipTest('Ghostscript fehlt')
+  ps=b'%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 50 50\n0 0 moveto 50 50 lineto stroke showpage\n'
+  header=bytes.fromhex('c5d0d3c6')+struct.pack('<II',30,len(ps))+bytes(18)
+  pdf=eps_pdf(header+ps+b'preview')
+  self.assertTrue(pdf.startswith(b'%PDF'));self.assertEqual(render_pdf_page(pdf)[1],1)
+  with self.assertRaises(Review):eps_pdf(header+ps[:10])
  def test_invalid_profile(self):
   for value in (float('nan'),0,'25',True):
    with self.assertRaises(ValueError):inspect(self.drawing([]),{'bendRadius':value})
