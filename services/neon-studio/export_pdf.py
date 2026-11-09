@@ -129,6 +129,9 @@ def make_pdf(drawing,options=None):
         color=drawing['pathColors'][index]['color'] if drawing.get('pathColors') else '#1748bd'
         _paint(c,path,ox,oy,color)
     if kind!='uv':_paint(c,drawing['outer'],ox,oy,'#111111')
+    if kind!='uv' and drawing.get('acrylicSplit'):
+        for seam in drawing['acrylicSplit']['seams']:
+            _paint(c,seam,ox,oy,'#555555')
     if annotated:
         def text(x,y,value,size=12,bold=False):
             c.setFillColor(HexColor('#26313b'));c.setFont('Helvetica-Bold' if bold else 'Helvetica',size*label_scale)

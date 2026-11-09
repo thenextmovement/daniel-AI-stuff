@@ -128,7 +128,7 @@ async function cloudSave() {
     if(state.busy||!state.valid)throw new Error('Die Zeichnung ist noch nicht bereit. Bitte die Einstellungen prüfen.');
     cloudSpec.widths_mm=cloudSpec.widths_mm||[];
     if(cloudSpec.widths_mm.length&&!cloudSpec.minimum_first&&$('previewSize').selectedIndex<=0)cloudSpec.widths_mm[0]=state.drawing.width;
-    Object.assign(cloudSpec,{light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',waterproof_psus:pricing.outdoor?Number($('pricePsus').value):0,uv_print:$('priceUv').checked,controllers:Number($('priceControllers').value)});
+    Object.assign(cloudSpec,{light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',waterproof_psus:pricing.outdoor?Number($('pricePsus').value):0,uv_print:$('priceUv').checked,controllers:Math.max(1,Number($('priceControllers').value))});
     cloudSpec.pricing_options=priceOptions();
     cloudSpec.shape=state.settings.shape;
     cloud={...cloud,...await cloudRequest('save',{id:cloud.id,revision:cloud.revision,model:state.project.id,settings:state.settings,spec:cloudSpec})};
@@ -152,7 +152,7 @@ async function cloudPoll(){
 }
 function cloudPriceControls(){
   pricing.color=cloudSpec.light_type||'single';pricing.outdoor=cloudSpec.usage==='Außen';
-  $('priceUv').checked=cloudSpec.uv_print===true;$('priceControllers').value=cloudSpec.controllers||0;
+  $('priceUv').checked=cloudSpec.uv_print===true;$('priceControllers').value=cloudSpec.controllers||1;
   $('pricePsus').value=cloudSpec.waterproof_psus??1;
   $$('[data-price-color]').forEach(b=>{const active=b.dataset.priceColor===pricing.color;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
   $$('[data-price-outdoor]').forEach(b=>{const active=(b.dataset.priceOutdoor==='true')===pricing.outdoor;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});

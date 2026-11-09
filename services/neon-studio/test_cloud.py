@@ -307,6 +307,33 @@ class CloudTests(unittest.TestCase):
    def card(self,id):return source
    def fields(self,board,refresh=False):return []
   with self.assertRaisesRegex(RuntimeError,'Request-ID'):Fake().verify_copy(source,'copy')
+ def test_acrylic_sheet_sizes_and_single_package(self):
+  from geometry import acrylic_split
+  from neon_pricing import drawing_price
+  for w,h,n in [(2400,1200,1),(1200,2400,1),(2401,1200,2),(1201,2400,2),(5000,1000,3),(4000,2000,4),(3000,2500,6)]:
+   outline=[['m',[0,0]],['l',[w,0]],['l',[w,h]],['l',[0,h]],['h']]
+   split=acrylic_split(outline,[0,0,w,h])
+   self.assertEqual(len(split['pieces']) if split else 1,n)
+   if split:
+    self.assertTrue(split['seams'])
+    for dims in split['pieces']:
+     self.assertLessEqual(max(dims),2400.000001)
+     self.assertLessEqual(min(dims),1200.000001)
+   drawing={'width':w,'height':h,'acrylicSplit':split,'neonMeters':5}
+   for options,count in [({},1),({'controllers':0},1),({'controllers':3},3)]:
+    q=drawing_price(drawing,options)
+    self.assertEqual(q['items'][0]['controllers'],count)
+    self.assertEqual(len(q['packages']),1)
+    self.assertEqual(q['packages'][0]['dimensions_cm'][2],str(6+4*(n-1)))
+ def test_split_appears_in_offer(self):
+  store=DurableStore(self.db);info=store.add(SVG.encode(),'Test.svg')
+  d=store.drawing(info['id'],json.dumps({'mode':'single','width':3000,'gap':15,'shape':'shape'}))
+  spec=validate_spec({'customer_name':'Test','colors':'Pink','widths_mm':[3000],'controllers':0})
+  files,quotes=artifacts([d],spec)
+  self.assertTrue(d['acrylicSplit']['seams'])
+  self.assertEqual(len(quotes[0]['packages']),1)
+  self.assertEqual(quotes[0]['items'][0]['controllers'],1)
+  self.assertIn('Acrylteile',fitz.open(stream=files[0][2],filetype='pdf')[0].get_text())
  def test_three_outputs_and_durable_model(self):
   store=DurableStore(self.db);info=store.add(SVG.encode(),'Test.svg')
   store=DurableStore(Database(self.tmp.name))

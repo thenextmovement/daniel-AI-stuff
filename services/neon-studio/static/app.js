@@ -275,7 +275,7 @@ function renderDrawing() {
     <text class="dimension-text" style="fill:${dim}" x="${(x0+x1)/2}" y="${y0-offset-label*.45}" font-size="${label}" text-anchor="middle" stroke="none">${number(W/(state.dimensionUnit==='cm'?10:1),2)} ${state.dimensionUnit}</text>
     <text class="dimension-text" style="fill:${dim}" transform="translate(${x0-offset-label*.55} ${(y0+y1)/2}) rotate(-90)" font-size="${label}" text-anchor="middle" stroke="none">${number(H/(state.dimensionUnit==='cm'?10:1),2)} ${state.dimensionUnit}</text></g>`:'';
   $('drawing').innerHTML=`<path d="${state.outlineDraft?.kind==='point'&&state.outlineDraft.drawing?state.outlineDraft.drawing.outerData:d.outerData}" fill="${p.acrylic}" fill-opacity="${p.opacity/100}" stroke="${edge}" stroke-width="1.4" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-    ${state.view==='original'?`<image href="${state.project.image}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="none"/>`:`<g fill="none" stroke-linejoin="round" stroke-linecap="round">${paths}</g>`}${recoveryImageLayer()}${uvLayer()}${selections}${dimensions}${straightenOverlay()}${outlineStraightenOverlay()}${depthRegionOverlay()}<g id="uvLiveOverlay" pointer-events="none"></g>`;
+    ${state.view==='original'?`<image href="${state.project.image}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="none"/>`:`<g fill="none" stroke-linejoin="round" stroke-linecap="round">${paths}</g>`}${recoveryImageLayer()}${uvLayer()}${(d.acrylicSplit?.seams||[]).map(([[,start],[,end]])=>{return `<line x1="${start[0]}" y1="${start[1]}" x2="${end[0]}" y2="${end[1]}" stroke="${edge}" stroke-dasharray="5 4" vector-effect="non-scaling-stroke" pointer-events="none"/>`;}).join('')}${selections}${dimensions}${straightenOverlay()}${outlineStraightenOverlay()}${depthRegionOverlay()}<g id="uvLiveOverlay" pointer-events="none"></g>`;
   renderMoveBounds();updateNeonSelection();updateViewBox();
   renderVisibilityControls();renderUvControls();renderUvOverlay();renderRecoveryOverlay();
   $('selectionLabel').textContent=state.tool==='move'&&state.selectedKeys.length?'Ziehen · Pfeile: 1 mm · Shift + Pfeile: 10 mm':state.selectedKeys.length>1?`${state.selectedKeys.length} Pfade ausgewählt`:state.selection>=0?d.names[state.selection]:'';
@@ -1695,10 +1695,11 @@ async function updatePrice() {
     $('priceProduction').textContent=dollars(q.production_usd);$('priceShipping').textContent=dollars(q.shipping_usd);
     $('priceTotal').textContent=dollars(q.total_usd);$('priceCustomer').textContent=euros(q.customer_price.amount_eur);
     $('priceCustomerLabel').textContent=`Kunden-Richtpreis · × ${number(Number(q.customer_price.factor),1)}`;
-    $('priceStatus').textContent='Unverbindliche Schätzung · offene Annahmen unter Preis';
+    const pieces=state.drawing.acrylicSplit?.pieces.length;
+    $('priceStatus').textContent=pieces?`Acryl automatisch geteilt · ${pieces} Teile je Schild`:'Unverbindliche Schätzung · offene Annahmen unter Preis';
     const p=q.packages[0],item=q.items[0];
-    $('priceFormula').textContent=`${number(Number(item.neon_m),1)} m × 1,1 × ${item.rate_usd_m} $/m${item.outdoor?' × 1,2':''}${item.waterproof_psus?' + Netzteile':''}${item.uv_print?' + 30 $ UV-Druck (vorläufig)':''}${item.controllers?' + '+item.controllers+' × 15 $ Controller (vorläufig)':''}${q.items.length===2?' · zweimal Produktion':''}. Paket: ${p.dimensions_cm.map(v=>number(Number(v),2)).join(' × ')} cm; ${number(Number(p.volume_kg),3)} kg Volumengewicht × ca. 12 $, mindestens ${dollars(p.minimum_usd)} je Paket${Number(p.oversize_usd)?' + 20 $ Überlänge':''}.`;
-    $('priceWarnings').textContent=[Number(q.additional_cost_usd)?`In Gesamtkosten enthalten: ${dollars(q.additional_cost_usd)} manuelle Zusatzkosten.`:'',pricing.outdoor?'Netzteilanzahl und technische Outdoor-Eignung separat prüfen.':'',q.assumptions.includes('uv_print_rate_provisional')?'UV-Druck mit vorläufig 30 $ je Schild enthalten.':'',q.assumptions.includes('controller_rate_provisional')?'Controller mit vorläufig 15 $ pro Stück enthalten.':''].filter(Boolean).join(' ');
+    $('priceFormula').textContent=`${number(Number(item.neon_m),1)} m × 1,1 × ${item.rate_usd_m} $/m${item.outdoor?' × 1,2':''}${item.waterproof_psus?' + Netzteile':''}${item.uv_print?' + 30 $ UV-Druck (vorläufig)':''}${item.controllers?' + '+item.controllers+' × 15 $ Controller (vorläufig)':''}${q.items.length===2?' · zweimal Produktion':''}. ${q.packages.length>1?q.packages.length+' Pakete · erstes Paket':'Paket'}: ${p.dimensions_cm.map(v=>number(Number(v),2)).join(' × ')} cm; ${number(Number(p.volume_kg),3)} kg Volumengewicht × ca. 12 $, mindestens ${dollars(p.minimum_usd)} je Paket${Number(p.oversize_usd)?' + 20 $ Überlänge':''}.`;
+    $('priceWarnings').textContent=[Number(q.additional_cost_usd)?`In Gesamtkosten enthalten: ${dollars(q.additional_cost_usd)} manuelle Zusatzkosten.`:'',pricing.outdoor?'Netzteilanzahl und technische Outdoor-Eignung separat prüfen.':'',q.assumptions.includes('stack_depth_estimated')?'Ein Paket für alle Acrylteile. Geschätzte Stapeltiefe: 6 cm für das erste Teil, je 4 cm für jedes weitere.':'',q.assumptions.includes('uv_print_rate_provisional')?'UV-Druck mit vorläufig 30 $ je Schild enthalten.':'',q.assumptions.includes('controller_rate_provisional')?'Controller mit vorläufig 15 $ pro Stück enthalten.':''].filter(Boolean).join(' ');
   }catch(error){if(ticket===priceTicket){invalidatePrice('Kalkulation nicht verfügbar');$('priceWarnings').textContent=error.message;}}
 }
 $('priceConfigure').onclick=()=>setTab('pricing');
@@ -1710,6 +1711,9 @@ $$('[data-price-outdoor]').forEach(button=>button.onclick=()=>{
   pricing.outdoor=button.dataset.priceOutdoor==='true';
   $$('[data-price-outdoor]').forEach(b=>{const active=b===button;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
   $('pricePsuRow').hidden=!pricing.outdoor;$('priceOutdoorNote').hidden=!pricing.outdoor;updatePrice();
+});
+$('priceControllers').addEventListener('change',()=>{
+  if(!$('priceControllers').value||Number($('priceControllers').value)<1){$('priceControllers').value='1';updatePrice();}
 });
 for(const id of ['priceUv','priceControllers','pricePsus','pricePacking','priceSplitWidth','priceSplitHeight','priceFactor','priceMinimum','priceExtra']){
   $(id).addEventListener('input',()=>{$('priceSplit').hidden=$('pricePacking').value!=='split';$('priceFactorValue').textContent=number(Number($('priceFactor').value),1);updatePrice();});

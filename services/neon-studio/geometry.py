@@ -16,6 +16,40 @@ DEFAULTS = dict(mode='double', shape='bottom', width=600, gap=15, tube=6,
 KAPPA = 4 * (math.sqrt(2) - 1) / 3
 
 
+def acrylic_split(outer, bounds):
+    x, y, right, bottom = bounds
+    width, height = right-x, bottom-y
+    def grid(sheet_width, sheet_height):
+        return (max(1, math.ceil((width-1e-7)/sheet_width)),
+                max(1, math.ceil((height-1e-7)/sheet_height)))
+    cols, rows = min((grid(2400,1200), grid(1200,2400)), key=lambda g: g[0]*g[1])
+    if cols*rows == 1:
+        return None
+    polygon = Polygon(sample_path(outer, 120))
+    def components(shape, kind):
+        if shape.geom_type == kind and not shape.is_empty:
+            yield shape
+        elif hasattr(shape, 'geoms'):
+            for child in shape.geoms:
+                yield from components(child, kind)
+    xs = np.linspace(x, right, cols+1)
+    ys = np.linspace(y, bottom, rows+1)
+    pieces = []
+    for left, end in zip(xs, xs[1:]):
+        for top, base in zip(ys, ys[1:]):
+            clipped = polygon.intersection(box(left, top, end, base))
+            for piece in components(clipped, 'Polygon'):
+                a,b,c,d = piece.bounds
+                pieces.append([c-a, d-b])
+    cuts = [((v,y),(v,bottom)) for v in xs[1:-1]] + [((x,v),(right,v)) for v in ys[1:-1]]
+    seams = []
+    for cut in cuts:
+        inside = polygon.intersection(LineString(cut)).difference(polygon.boundary)
+        for segment in components(inside, 'LineString'):
+            seams.append([['m', list(segment.coords[0])], ['l', list(segment.coords[-1])]])
+    return {'pieces': pieces, 'seams': seams}
+
+
 def segments(path):
     start = prev = None
     for op, *points in path:
@@ -1233,8 +1267,9 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
             boxes=[box for item,box in zip(source,path_boxes) if item['partId']==part['id']]
             if boxes:
                 boxes=np.asarray(boxes);part['bounds']=[*boxes[:,:2].min(axis=0),*boxes[:,2:].max(axis=0)]
+    split=acrylic_split(outer,bbox)
     checks=[
-        {'ok':True,'label':'Eine geschlossene Acrylkontur'},
+        {'ok':True,'label':f'Acryl automatisch geteilt: {len(split["pieces"])} Teile' if split else 'Eine geschlossene Acrylkontur'},
         {'ok':True,'label':'Neon und UV-Druck innerhalb der Platte' if uv_support else 'Neon innerhalb der Platte'},
         {'ok':center_gap>=min(side_gaps.values())-.1,
          'label':f'Min. Abstand zum {"Motiv (Neon/UV)" if uv_support else "Neonpfad"}: {center_gap:.2f} mm'},
@@ -1249,7 +1284,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
                           'originalStrokeWidth':item.get('originalStrokeWidth',0)*scale}
                          for item in model.get('artwork',model['modes']['double'])] if model['sourceKind']=='vector' else None)
         notices.append('UV-Druck: Originaldarstellung, ohne Neonmeter. Die Druckflächen werden bei der Acrylkontur berücksichtigt.')
-    return dict(pathBoundsMm=path_boxes,pathLengthsMm=lengths,pathEditSources=edit_paths,outlineVisibleControls=transform(visible_path,1,shift_x,shift_y),outlineControls=outline_controls,uv=uv,paths=paths, names=[p['name'] for p in source], outer=outer,
+    return dict(acrylicSplit=split,pathBoundsMm=path_boxes,pathLengthsMm=lengths,pathEditSources=edit_paths,outlineVisibleControls=transform(visible_path,1,shift_x,shift_y),outlineControls=outline_controls,uv=uv,paths=paths, names=[p['name'] for p in source], outer=outer,
                 pathColors=[resolved_colors[p['key']] for p in source],colorSources=color_sources,neonPalette=NEON_COLORS,
                 pathPartIds=[p['partId'] for p in source],pathModes=[p['mode'] for p in source],pathRoles=[p.get('role','stroke') for p in source],pathKeys=[p['key'] for p in source],
                 parts=parts,modeLabel=mode_label,exportable=not missing,hiddenPaths=hidden_paths,

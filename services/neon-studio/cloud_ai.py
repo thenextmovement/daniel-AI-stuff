@@ -100,6 +100,7 @@ def validate_spec(spec):
     if type(spec.get('quantity',1)) is not int or not 1<=spec.get('quantity',1)<=100:raise Review('Stückzahl unklar.')
     if type(spec.get('uv_print',False)) is not bool:raise Review('UV-Druck unklar.')
     if type(spec.get('controllers',0)) is not int or not 0<=spec.get('controllers',0)<=100:raise Review('Controlleranzahl unklar.')
+    spec['controllers']=max(1,spec.get('controllers',1))
     if spec['usage']=='Innen':spec['waterproof_psus']=0
     return spec
 
@@ -160,7 +161,7 @@ Antworte NUR als JSON-Objekt mit svg (vollständiger SVG-Quelltext), source_atta
 customer_name, widths_mm (bis 4 explizit bestellte Breiten in mm), colors (ein String mit deutschen Farbnamen, z.B. Pink + Eisblau),
 usage (Innen/Außen), shape (shape/rectangle/bottom), quantity, light_type (single/rgb/chasing_rgb),
 waterproof_psus (nur explizit bekannt bei Außen), uv_print (nur bei explizit gewünschtem UV-Druck true),
-controllers (nur explizit bestellte Anzahl, sonst 0), issues (Liste ungeklärter Widersprüche),
+controllers (mindestens 1 je Schild, höhere bestellte Anzahl übernehmen), issues (Liste ungeklärter Widersprüche),
 evidence (kurze wörtliche Belege für bestellte Größen und Materialwünsche),
 line_plan (Liste pro Schriftzeile/Logobereich mit name, mode: single oder double,
 reason: deutsche Begründung anhand der Vorlage, path_ids: alle zugehörigen SVG-Pfad-IDs,

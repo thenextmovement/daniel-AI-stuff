@@ -218,10 +218,10 @@
           <label class="field-row" id="pricePsuRow" hidden>Wasserdichte Netzteile je Schild<div class="number-field"><input id="pricePsus" aria-label="Wasserdichte Netzteile je Schild" type="number" min="0" max="100" step="1" value="1"></div></label>
           <p class="help-text" id="priceOutdoorNote" hidden>Outdoor: Neonanteil × 1,2, dazu 25 $ je wasserdichtem Netzteil inklusive Anschlüssen. Benötigte Anzahl prüfen.</p>
           <label class="check-row"><input id="priceUv" type="checkbox"> UV-Druck je Schild · ca. 30 $</label>
-          <label class="field-row">Controller je Schild<div class="number-field"><input id="priceControllers" aria-label="Controller je Schild" type="number" min="0" max="100" step="1" value="0"><span>× 15 $</span></div></label>
+          <label class="field-row">Controller je Schild<div class="number-field"><input id="priceControllers" aria-label="Controller je Schild" type="number" min="1" max="100" step="1" value="1"><span>× 15 $</span></div></label>
           <p class="help-text">UV- und Controllerpreise sind vorläufige Richtwerte. Nur benötigte Extras auswählen; Lieferantenpreis noch bestätigen.</p>
           <div class="section-divider"></div><h2>Verpackung</h2>
-          <label class="field-row" for="pricePacking">Versandart<select id="pricePacking"><option value="single">Ein Schild · 6 cm dick</option><option value="pair">Zwei identische · 10 cm dick</option><option value="split">Ein Schild in zwei Teilen · 10 cm dick</option></select></label>
+          <label class="field-row" for="pricePacking">Versandart<select id="pricePacking"><option value="single">Ein Schild · automatische Teilung</option><option value="pair">Zwei identische · ein Paket</option><option value="split">Ein Schild in zwei Teilen · 10 cm dick</option></select></label>
           <div id="priceSplit" hidden><p class="help-text">Tatsächliche Grundfläche des Stapels vor Verpackungszugabe. Nicht automatisch aus dem Gesamtmaß ableiten.</p><label class="field-row">Stapelbreite<div class="number-field"><input id="priceSplitWidth" aria-label="Stapelbreite" type="number" min=".01" step="any"><span>cm</span></div></label><label class="field-row">Stapelhöhe<div class="number-field"><input id="priceSplitHeight" aria-label="Stapelhöhe" type="number" min=".01" step="any"><span>cm</span></div></label></div>
           <p class="help-text" id="priceFormula">Zuerst ein Motiv laden.</p>
           <div class="section-divider"></div><h2>Kunden-Richtpreis</h2>

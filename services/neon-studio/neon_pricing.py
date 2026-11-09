@@ -25,10 +25,12 @@ def whole(value):return value.to_integral_value(rounding=ROUND_CEILING)
 def number(value):return format(value.normalize(),'f')
 
 def drawing_price(drawing,options):
+    controllers=decimal(options.get('controllers',1),'Controller',0,100)
+    if controllers!=controllers.to_integral_value():raise ValueError('Controller: ganze Anzahl erforderlich.')
     item={'width_cm':drawing['width']/10,'height_cm':drawing['height']/10,
           'neon_m':drawing['neonMeters'],'color':options.get('color','single'),
           'outdoor':options.get('outdoor',False),'waterproof_psus':options.get('waterproof_psus',0),
-          'uv_print':bool(drawing.get('uv')) or options.get('uv_print',False),'controllers':options.get('controllers',0)}
+          'uv_print':bool(drawing.get('uv')) or options.get('uv_print',False),'controllers':max(1,controllers)}
     mode=options.get('mode','single')
     if mode not in ('single','pair','split'):raise ValueError('Unbekannte Paketoption.')
     request={'items':[item,item.copy()] if mode=='pair' else [item],
@@ -37,9 +39,17 @@ def drawing_price(drawing,options):
              'minimum_shipping_usd':options.get('minimum_shipping_usd',45),
              'additional_cost_usd':options.get('additional_cost_usd',0)}
     if mode=='split':request['footprint_cm']=options.get('footprint_cm')
+    split=drawing.get('acrylicSplit')
+    if split:
+        # A manually supplied stack footprint only describes a two-piece sign.
+        pieces=split['pieces']
+        if len(pieces)==2 and mode=='split' and options.get('footprint_cm') and all(options['footprint_cm']):
+            return calculate(request)
+        request.pop('footprint_cm',None)
+        return calculate(request,acrylic_parts=pieces)
     return calculate(request)
 
-def calculate(request):
+def calculate(request, *, acrylic_parts=None):
     allowed={'items','packing','footprint_cm','minimum_shipping_usd','additional_cost_usd','sales_factor'}
     if not isinstance(request,dict) or set(request)-allowed:raise ValueError('Unbekannte Kalkulationsfelder.')
     items=request.get('items')
@@ -84,7 +94,7 @@ def calculate(request):
                      'flex_usd':money(flex),'psu_usd':money(supply),'uv_print':uv,'uv_print_usd':money(uv_cost),
                      'controllers':int(controllers),'controller_usd':money(controller_cost),'production_usd':money(cost)})
     override=request.get('footprint_cm')
-    if packing=='split' and override is None:raise ValueError('Bei Teilung die tatsächlichen Stapelmaße angeben.')
+    if packing=='split' and override is None and not acrylic_parts:raise ValueError('Bei Teilung die tatsächlichen Stapelmaße angeben.')
     if override is not None:
         if packing=='separate' or not isinstance(override,list) or len(override)!=2:raise ValueError('Stapel-Grundfläche: Breite und Höhe in cm.')
         footprint=tuple(decimal(v,'Stapelmaß',Decimal('.01'),2000) for v in override)
@@ -93,8 +103,16 @@ def calculate(request):
     else:footprint=tuple(max(d[n] for d in dims) for n in (0,1))
     bases=dims if packing=='separate' else [footprint]
     thickness=Decimal(6 if packing=='separate' else 10)
+    parcels=[(w,h,thickness) for w,h in bases]
+    if acrylic_parts:
+        # One stack per shipment. Existing estimates use 6 cm for one layer
+        # and 10 cm for two; apply the same 4 cm increment for further layers.
+        stack_width,stack_height=(max(Decimal(str(piece[i])) for piece in acrylic_parts)/10 for i in (0,1))
+        layers=len(acrylic_parts)*len(items)
+        parcels=[(stack_width,stack_height,Decimal(6+4*(layers-1)))]
+        if layers>2:assumptions.append('stack_depth_estimated')
     packages=[];shipping=Decimal(0)
-    for w,h in bases:
+    for w,h,thickness in parcels:
         dimensions=(w+10,h+10,thickness)
         weight=dimensions[0]*dimensions[1]*dimensions[2]/5000
         base=weight*12

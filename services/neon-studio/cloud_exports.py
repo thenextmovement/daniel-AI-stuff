@@ -12,7 +12,7 @@ CUT={'shape':'Formzuschnitt','rectangle':'Rechteck','bottom':'Nur unten'}
 def price(drawing,spec):
     q=drawing_price(drawing,{**spec.get('pricing_options',{}),'color':spec.get('light_type','single'),
         'outdoor':spec['usage']=='Außen','waterproof_psus':spec.get('waterproof_psus',0),
-        'uv_print':spec.get('uv_print',False),'controllers':spec.get('controllers',0)})
+        'uv_print':spec.get('uv_print',False),'controllers':spec.get('controllers',1)})
     quantity=spec.get('quantity',1)
     for key in ('production_usd','shipping_usd','total_usd'):
         q[key]=str(int(q[key])*quantity)
@@ -24,6 +24,8 @@ def artwork(c,d,x,y,width,height,technical=False):
     c.saveState();c.translate(x,y);c.scale(scale,scale)
     bx,by=d['bounds'][:2]
     _paint(c,d['outer'],-bx,d['height']+by,'#333333',max(.12,.3/scale/mm))
+    for seam in (d.get('acrylicSplit') or {}).get('seams',[]):
+        _paint(c,seam,-bx,d['height']+by,'#777777',max(.12,.3/scale/mm))
     for path,color in zip(d['paths'],d['pathColors']):
         _paint(c,path,-bx,d['height']+by,color['color'],d['settings']['tube'] if technical else max(.35,1/scale/mm))
     c.restoreState()
@@ -90,6 +92,8 @@ def product_rows(d,spec):
             rows.append(('Manual minimum height / Mindesthöhe (manuell)',de(spec['manual_height_mm']/10)+' cm'))
         elif spec.get(key) is not None:
             rows.append((label,de(spec[key]/10)+' cm'))
+    if d.get('acrylicSplit'):
+        rows.append(('Acrylic parts / Acrylteile',str(len(d['acrylicSplit']['pieces']))))
     return rows+[
         ('Product type / Produktart','LED Neon Flex'),
         ('Material','Silicone / Silikon'),
