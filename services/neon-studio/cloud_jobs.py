@@ -129,7 +129,7 @@ class Jobs:
                     new.append(a['id'])
                     self.db.save(p['id'],{'pending_attachments':new,'upload_intent':False})
                 for i,(d,q) in enumerate(zip(variants,quotes)):
-                    vals=[decimal(q['total_usd']),decimal(d['width']/10)+' × '+decimal(d['height']/10)+' cm',spec['colors'],CUT[spec['shape']]]
+                    vals=[q['total_usd'],decimal(d['width']/10)+' × '+decimal(d['height']/10)+' cm',spec['colors'],CUT[spec['shape']]]
                     for field,value in zip(FIELDS[i],vals):self.t.field(p['copy'],field,value)
                 for fields in FIELDS[len(variants):]:
                     for field in fields:self.t.field(p['copy'],field,'')
@@ -139,7 +139,7 @@ class Jobs:
                 if not set(new).issubset({a['id'] for a in checked.get('attachments',[])}):raise Review('Trello-Anhänge nicht bestätigt.')
                 if field_value(checked,USAGE)!=spec['usage']:raise Review('Usage nicht bestätigt.')
                 for i,(d,q) in enumerate(zip(variants,quotes)):
-                    expected=[decimal(q['total_usd']),decimal(d['width']/10)+' × '+decimal(d['height']/10)+' cm',spec['colors'],CUT[spec['shape']]]
+                    expected=[q['total_usd'],decimal(d['width']/10)+' × '+decimal(d['height']/10)+' cm',spec['colors'],CUT[spec['shape']]]
                     if any(field_value(checked,k)!=v for k,v in zip(FIELDS[i],expected)):raise Review('Custom Fields nicht bestätigt.')
                 self.db.save(p['id'],{'generated_attachments':new,'pending_attachments':[],'cleanup_pending':[],'quotes':quotes})
                 minimum_note=('\nMindestbreite (manuell): '+decimal(spec['minimum_width_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.') if spec.get('minimum_width_mm') is not None else ''

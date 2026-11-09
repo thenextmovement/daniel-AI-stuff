@@ -291,9 +291,9 @@ function updateViewBox() {
 function renderDetails() {
   checkManufacturing();
   const d=state.drawing;
-  $('height').textContent=number(d.height/(state.dimensionUnit==='cm'?10:1),2);$('neonLength').textContent=number(d.neonMaterialMeters,2);
+  $('height').textContent=number(d.height/(state.dimensionUnit==='cm'?10:1),2);$('neonLength').textContent=number(d.neonMaterialMeters,1);
   updatePrice();
-  $('lengthCalculation').textContent=`(${number(d.neonMeters,2)} m +10 %)`;
+  $('lengthCalculation').textContent=`(${number(d.neonMeters,1)} m +10 %)`;
   $('pathCount').textContent=d.paths.length;$('checkPaths').textContent=d.paths.length;$('checkOpen').textContent=d.openPaths;
   $('canvasMeta').replaceChildren();
   for (const [index,text] of [state.project.sourceKind==='master'?'B-KITE · Vektorvorlage':state.project.sourceKind==='vector'?'Original-Vektorpfade':'Automatischer Entwurf',`${d.paths.length} Neonpfade`,d.modeLabel].entries()){
@@ -1519,8 +1519,8 @@ $('dropzone').addEventListener('drop',event=>{event.preventDefault();dragDepth=0
 // Private pricing state never enters drawing settings or PDF export options.
 let priceTicket=0;
 const pricing={color:'single',outdoor:false};
-const dollars=v=>`${number(Number(v),2)} $`;
-const euros=v=>`${number(Number(v),2)} €`;
+const dollars=v=>`${number(Math.ceil(Number(v)),0)} $`;
+const euros=v=>`${number(Math.ceil(Number(v)),0)} €`;
 function invalidatePrice(message='Berechne …') {
   ++priceTicket;
   for(const id of ['priceProduction','priceShipping','priceTotal','priceCustomer'])$(id).textContent='—';
@@ -1541,7 +1541,7 @@ async function updatePrice() {
     $('priceCustomerLabel').textContent=`Kunden-Richtpreis · × ${number(Number(q.customer_price.factor),1)}`;
     $('priceStatus').textContent='Unverbindliche Schätzung · offene Annahmen unter Preis';
     const p=q.packages[0],item=q.items[0];
-    $('priceFormula').textContent=`${number(Number(item.neon_m),2)} m × 1,1 × ${item.rate_usd_m} $/m${item.outdoor?' × 1,2':''}${item.waterproof_psus?' + Netzteile':''}${item.uv_print?' + 30 $ UV-Druck (vorläufig)':''}${item.controllers?' + '+item.controllers+' × 15 $ Controller (vorläufig)':''}${q.items.length===2?' · zweimal Produktion':''}. Paket: ${p.dimensions_cm.map(v=>number(Number(v),2)).join(' × ')} cm; ${number(Number(p.volume_kg),3)} kg Volumengewicht × ca. 12 $, mindestens ${p.minimum_usd} $ je Paket${Number(p.oversize_usd)?' + 20 $ Überlänge':''}.`;
+    $('priceFormula').textContent=`${number(Number(item.neon_m),1)} m × 1,1 × ${item.rate_usd_m} $/m${item.outdoor?' × 1,2':''}${item.waterproof_psus?' + Netzteile':''}${item.uv_print?' + 30 $ UV-Druck (vorläufig)':''}${item.controllers?' + '+item.controllers+' × 15 $ Controller (vorläufig)':''}${q.items.length===2?' · zweimal Produktion':''}. Paket: ${p.dimensions_cm.map(v=>number(Number(v),2)).join(' × ')} cm; ${number(Number(p.volume_kg),3)} kg Volumengewicht × ca. 12 $, mindestens ${dollars(p.minimum_usd)} je Paket${Number(p.oversize_usd)?' + 20 $ Überlänge':''}.`;
     $('priceWarnings').textContent=[Number(q.additional_cost_usd)?`In Gesamtkosten enthalten: ${dollars(q.additional_cost_usd)} manuelle Zusatzkosten.`:'',pricing.outdoor?'Netzteilanzahl und technische Outdoor-Eignung separat prüfen.':'',q.assumptions.includes('uv_print_rate_provisional')?'UV-Druck mit vorläufig 30 $ je Schild enthalten.':'',q.assumptions.includes('controller_rate_provisional')?'Controller mit vorläufig 15 $ pro Stück enthalten.':''].filter(Boolean).join(' ');
   }catch(error){if(ticket===priceTicket){invalidatePrice('Kalkulation nicht verfügbar');$('priceWarnings').textContent=error.message;}}
 }

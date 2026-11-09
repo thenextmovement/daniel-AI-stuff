@@ -4,11 +4,11 @@ Pure standard-library calculator shared verbatim with local Neon Studio.
 Inputs are raw installed neon meters, NEVER the displayed length including reserve.
 Includes an internal retail indication by owner-approved nominal factor; no quotation, FX conversion or communication side effect.
 """
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 import json
 import sys
 
-VERSION = '2026-11-04.1'
+VERSION = '2026-11-09.1'
 MINIMUM_SHIPPING_USD = Decimal(45)
 RATES = {'single':Decimal(14), 'rgb':Decimal(20), 'chasing_rgb':Decimal(28)}
 
@@ -21,6 +21,7 @@ def decimal(value, name, minimum=0, maximum=100000):
     return d
 
 def money(value):return str(value.quantize(Decimal('.01'),rounding=ROUND_HALF_UP))
+def whole(value):return value.to_integral_value(rounding=ROUND_CEILING)
 def number(value):return format(value.normalize(),'f')
 
 def calculate(request):
@@ -61,7 +62,7 @@ def calculate(request):
         uv_cost=Decimal(30 if uv else 0);controller_cost=controllers*15
         if uv:assumptions.append('uv_print_rate_provisional')
         if controllers:assumptions.append('controller_rate_provisional')
-        cost=flex+supply+uv_cost+controller_cost;production+=Decimal(money(cost));dims.append((width,height))
+        cost=flex+supply+uv_cost+controller_cost;production+=cost;dims.append((width,height))
         rows.append({'item':i+1,'width_cm':number(width),'height_cm':number(height),'neon_m':number(meters),
                      'material_m':number(material),'color':color,'rate_usd_m':number(RATES[color]),
                      'outdoor':outdoor,'outdoor_factor':number(factor),'waterproof_psus':int(psus),
@@ -83,15 +84,19 @@ def calculate(request):
         weight=dimensions[0]*dimensions[1]*dimensions[2]/5000
         base=weight*12
         oversize=Decimal(20 if max(dimensions)>120 else 0)
-        charge=max(base,minimum)+oversize;shipping+=Decimal(money(charge))
+        charge=max(base,minimum)+oversize;shipping+=charge
         packages.append({'dimensions_cm':[number(v) for v in dimensions],'volume_kg':number(weight),
                          'freight_usd':money(base),'minimum_usd':money(minimum),'oversize_usd':money(oversize),
                          'shipping_usd':money(charge)})
+    production=whole(production)
+    shipping=whole(shipping)
+    extra=whole(extra)
+    total=production+shipping+extra
     return {'version':VERSION,'classification':'confidential_internal','estimate':True,'currency':'USD',
-            'items':rows,'packing':packing,'packages':packages,'production_usd':money(production),
-            'shipping_usd':money(shipping),'additional_cost_usd':money(extra),
-            'total_usd':money(production+shipping+extra),
-            'customer_price':{'amount_eur':money(Decimal(money(production+shipping+extra))*sales_factor),
+            'items':rows,'packing':packing,'packages':packages,'production_usd':str(production),
+            'shipping_usd':str(shipping),'additional_cost_usd':str(extra),
+            'total_usd':str(total),
+            'customer_price':{'amount_eur':str(whole(total*sales_factor)),
                               'factor':number(sales_factor),'method':'USD-Zahlenwert × Faktor = EUR-Richtpreis; keine Wechselkursumrechnung',
                               'tax_status':'nicht festgelegt','binding':False},
             'assumptions':list(dict.fromkeys(assumptions)),

@@ -92,8 +92,8 @@ def make_pdf(drawing,options=None):
             footer_lines.append((line,size,bold))
     if dimensions:footer_line(f'Overall size: {width/10:.2f} x {height/10:.2f} cm',15)
     if meters:
-        footer_line(f'({drawing["neonMeters"]:.2f} m +10%)',14)
-        footer_line(f'Neon-Length: {drawing["neonMaterialMeters"]:.2f} m',22,True)
+        footer_line(f'({drawing["neonMeters"]:.1f} m +10%)',14)
+        footer_line(f'Neon-Length: {drawing["neonMaterialMeters"]:.1f} m',22,True)
         footer_line('Excludes backing outline, cables and UV print.' if drawing.get('uv') else 'Excludes backing outline and cables.',13)
     if annotated and drawing.get('uv'):footer_line('UV print: original artwork, excluded from neon length.',14)
     if annotated:

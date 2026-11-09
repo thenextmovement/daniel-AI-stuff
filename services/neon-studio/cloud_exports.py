@@ -1,6 +1,5 @@
 """All three quote artifacts derive from the same measured drawing."""
 import io,re
-from decimal import Decimal
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
@@ -18,7 +17,7 @@ def price(drawing,spec):
         'packing':'separate','minimum_shipping_usd':45,'additional_cost_usd':0,'sales_factor':2.3})
     quantity=spec.get('quantity',1)
     for key in ('production_usd','shipping_usd','total_usd'):
-        q[key]=format(Decimal(q[key])*quantity,'.2f')
+        q[key]=str(int(q[key])*quantity)
     q['quantity']=quantity
     if quantity>1:q['assumptions'].append('quantity_separate_packages')
     return q
@@ -118,7 +117,7 @@ def artifacts(variants,spec,motif=None):
         artwork(c,d,left,403,476/mm,248/mm)
         dimensions(c,d,left,403,476/mm,248/mm)
         quote_table(c,36,375,[193,130],'Product Details / Produkt Details',product_rows(d,spec))
-        costs=[(label,de(q[key])+' USD') for label,key in [
+        costs=[(label,q[key]+' USD') for label,key in [
             ('Production / Produktion','production_usd'),('Shipping / Versand','shipping_usd'),
             ('Total / Gesamt','total_usd')]]
         bottom=quote_table(c,385,375,[112,67],'Costs (Kosten)',costs,True)
