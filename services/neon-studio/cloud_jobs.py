@@ -1,8 +1,9 @@
 import fcntl,json,math,os,re,threading,time,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
-from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,plain_title,ServiceError
+from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,copy_title,ServiceError
 from cloud_ai import generate,validate_spec,Review,drawing_model,smallest_title_widths,size_only_issue
+from colors import artwork_neon_color
 from cloud_exports import artifacts,CUT
 from minimum_size import PROFILE, measure, minimum_size, widths_for_heights
 
@@ -38,17 +39,22 @@ class Jobs:
         # User opt-out, 2026-11-04: project/watch errors stay in Studio only.
         # Do not contact the email webhook, even if old credentials remain set.
         self.db.meta('alert_error','')
-    def mark_copy(self,p,prefix):
+    def mark_copy(self,p,prefix,comment=None):
         if not p.get('copy') or p['copy']==p['source']:return
         card=self.t.card(p['copy'])
         if card['idBoard']!=BOARD or card['idList']!=HOLDING:return
         name=card['name']
-        if prefix==NEEDS_REVIEW and not name.startswith(PROCESSING):return
-        title=prefix+plain_title(name)
+        if prefix==NEEDS_REVIEW and not name.removeprefix('🤖 ').startswith((PROCESSING,NEEDS_REVIEW)):return
+        title=copy_title(name,prefix)
         if title!=name:self.t.call('PUT',f"cards/{p['copy']}",json={'name':title})
+        if comment:self.t.comment_once(p['copy'],comment,comment)
     def fail(self,id,error):
         p=self.db.save(id,{'error':error},status='review');self.alert(p,error)
-        try:self.mark_copy(p,NEEDS_REVIEW)
+        comment=None
+        if error.startswith('Bitte prüfen: ') and p.get('copy_verified'):
+            issues=p.get('spec',{}).get('issues',[])
+            if issues:comment='Noch zu klären\n'+'\n'.join('• '+str(i) for i in issues)
+        try:self.mark_copy(p,NEEDS_REVIEW,comment)
         except Exception as exc:print('Review title update failed:',type(exc).__name__,flush=True)
     def ingest(self,source,event):
         card=self.t.card(source)
@@ -81,6 +87,11 @@ class Jobs:
         info=self.store.add_model(model,'KI-Zeichnung.svg')
         spec={k:v for k,v in data.items() if k!='svg'}
         settings={'mode':'single','partModes':part_modes,'shape':spec.get('shape') or 'shape','width':(spec.get('widths_mm') or [600])[0],'gap':15,'tube':6,'radius':3,'depth':20,'reserve':.1,'scale':None}
+        if spec.get('colors_from_artwork') is True:
+            drawing=self.store.drawing(info['id'],json.dumps(settings,sort_keys=True))
+            assigned={key:artwork_neon_color(source) for key,source in drawing['colorSources'].items()}
+            settings['pathColors']={key:color['id'] for key,color in assigned.items()}
+            spec['colors']=' + '.join(dict.fromkeys(assigned[key]['name'] for key in drawing['pathKeys']))
         p=self.db.save(id,{'model':info['id'],'spec':spec,'metrics':metrics,'settings':settings},status='draft')
         self.publish(p)
     def publish(self,p):
@@ -169,9 +180,9 @@ class Jobs:
                 if spec.get('auto_minimum_mm'):
                     minimum_note+='\nKleinste geprüfte Breite mit 6-mm-Neonflex: '+decimal(spec['auto_minimum_mm']/10)+' cm.'
                 self.t.comment_once(p['copy'],marker+'\n'+('\n'.join(changes)+'\n' if changes else '')+'Drei Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
-                self.t.call('PUT',f"cards/{p['copy']}",json={'name':'🤖 '+p['snapshot']['name']+' 🤖','idList':READY})
+                self.t.call('PUT',f"cards/{p['copy']}",json={'name':copy_title(p['snapshot']['name']),'idList':READY})
                 checked=self.t.card(p['copy'])
-                if checked['idList']!=READY or checked['name']!='🤖 '+p['snapshot']['name']+' 🤖':raise Review('Zielliste oder Abschlusstitel nicht bestätigt.')
+                if checked['idList']!=READY or checked['name']!=copy_title(p['snapshot']['name']):raise Review('Zielliste oder Abschlusstitel nicht bestätigt.')
                 return self.db.save(p['id'],{'published_revision':revision,'generated_attachments':new,'pending_attachments':[],'cleanup_pending':[],'quotes':quotes,'error':''},status='ready')
             except Exception:
                 # Preserve intent and IDs for reconciliation. Never repeat an uncertain upload.

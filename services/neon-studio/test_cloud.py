@@ -113,19 +113,33 @@ class CloudTests(unittest.TestCase):
   t=Mock(spec=Trello)
   source={'id':'source','name':'LED Neon | Test','desc':'Beschreibung'}
   Trello.copy(t,source)
-  self.assertEqual(t.call.call_args.kwargs['json']['name'],PROCESSING+source['name'])
+  self.assertEqual(t.call.call_args.kwargs['json']['name'],'🤖 '+PROCESSING+source['name']+' 🤖')
   jobs=Jobs(self.db,None,t)
   card={'idBoard':BOARD,'idList':HOLDING,'name':PROCESSING+source['name']}
   t.card.return_value=card
   jobs.mark_copy({'copy':'copy','source':'source'},NEEDS_REVIEW)
-  self.assertEqual(t.call.call_args.kwargs['json']['name'],NEEDS_REVIEW+source['name'])
-  card['name']=NEEDS_REVIEW+source['name']
+  self.assertEqual(t.call.call_args.kwargs['json']['name'],'🤖 '+NEEDS_REVIEW+source['name']+' 🤖')
+  card['name']='🤖 '+NEEDS_REVIEW+source['name']+' 🤖'
   jobs.mark_copy({'copy':'copy','source':'source'},PROCESSING)
-  self.assertEqual(t.call.call_args.kwargs['json']['name'],PROCESSING+source['name'])
+  self.assertEqual(t.call.call_args.kwargs['json']['name'],'🤖 '+PROCESSING+source['name']+' 🤖')
   self.assertFalse(eligible(card['name']))
   t.reset_mock()
   jobs.mark_copy({'copy':'source','source':'source'},PROCESSING)
   t.card.assert_not_called()
+ def test_default_artwork_colours(self):
+  from colors import artwork_neon_color
+  for source,expected in [('#171916','cold-white'),('#83dc45','light-green'),('#079b55','dark-green'),('#ef3038','red')]:
+   self.assertEqual(artwork_neon_color(source)['id'],expected)
+ def test_review_comment_on_verified_copy(self):
+  from unittest.mock import Mock
+  from cloud_trello import PROCESSING,HOLDING
+  t=Mock(spec=Trello);jobs=Jobs(self.db,None,t)
+  p=self.db.enqueue('source','event',{})
+  self.db.save(p['id'],{'copy':'copy','copy_verified':True,'spec':{'issues':['Welche Zeile? Zwei wurden genannt.']}})
+  t.card.return_value={'idBoard':BOARD,'idList':HOLDING,'name':'🤖 '+PROCESSING+'LED Test 🤖'}
+  jobs.fail(p['id'],'Bitte prüfen: Welche Zeile? Zwei wurden genannt.')
+  msg='Noch zu klären\n• Welche Zeile? Zwei wurden genannt.'
+  t.comment_once.assert_called_once_with('copy',msg,msg)
  def test_lone_customer_image_is_used(self):
   from unittest.mock import Mock
   from cloud_ai import generate

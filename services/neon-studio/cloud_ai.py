@@ -167,12 +167,19 @@ line_plan (Liste pro Schriftzeile/Logobereich mit name, mode: single oder double
 reason: deutsche Begründung anhand der Vorlage, path_ids: alle zugehörigen SVG-Pfad-IDs,
 dot_ids: IDs ausschließlich von i/j-Punkten, keine dekorativen Logopunkte/-quadrate).
 Jeder SVG-Pfad braucht eine eindeutige ID und genau eine Zuordnung im line_plan.
-Prüfe die Strichstärke jedes Bereichs getrennt: Fette/flächige Schrift erhält ihre Innen-
+Wenn die Kartenbeschreibung einem eindeutig benannten Motivbereich Single Line oder Double Line zuordnet, setze diese
+Produktvorgabe in SVG und line_plan um und nenne die Vorgabe in reason. Bei widersprüchlicher oder nicht zuordenbarer
+Linienvorgabe benenne die konkrete Rückfrage in issues. Ohne explizite Vorgabe prüfe die Strichstärke jedes Bereichs getrennt: Fette/flächige Schrift erhält ihre Innen-
 und Außenumrisse als Double Line; dünne Schrift und Schreibschrift werden zu Single-Line-
 Mittellinien. Gemischte Logos brauchen gemischte Linienarten, niemals pauschal alles Single.
 Double bedeutet hier echte Umrissgeometrie im SVG, nicht nur ein Etikett im Linienplan.
 i/j-Punkte als separate Pfade kennzeichnen. Sie werden später in Millimetern lokal angepasst:
 Single senkrechter Strich mindestens 20 mm, Double Kreis. Keine anderen Teile dafür skalieren.
+Gib colors_from_artwork als true an, wenn keine konkrete Leuchtfarbe bestellt ist oder die Farbe zum Design passen soll.
+In diesem Fall erhalte die Motivfarben im SVG. Schwarze Schrift und schwarze Motivelemente erhalten standardmäßig Kaltweiß,
+alle anderen automatisch die nächstpassende verfügbare Neonfarbe. Diese Farbzuordnung benötigt keine Rückfrage und kein issue.
+Ausdrücklich bestellte Leuchtfarben haben Vorrang. Formuliere jede tatsächlich offene Entscheidung als kurze Frage:
+Benenne den betroffenen Motivteil und erkläre in einem zweiten Satz, welche Angabe fehlt oder welche Angaben sich widersprechen.
 Fehlende Usage: Innen; fehlender Zuschnitt: shape. Randabstand später 15mm.
 Falls verbindliche_titelgroessen vorliegen, sind die Größen vollständig geklärt. Keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen. Die geometrische Mindestbreite wird immer automatisch berechnet. Fehlende Mindestbreite ist kein issue. Pro offenem Sachverhalt genau ein separates issue. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei mehreren unterschiedlichen Motiven: issues. Für die Zeichnung immer 6 mm Neonflex annehmen.
 Die SVG enthält ausschließlich die tatsächlich benötigten Neonpfade: smooth Mittellinien bei

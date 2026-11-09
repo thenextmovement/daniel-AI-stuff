@@ -18,7 +18,10 @@ class ServiceError(RuntimeError):
     """Safe service diagnostics, without request URLs or credentials."""
 
 def plain_title(name):
-    return name.removeprefix(PROCESSING).removeprefix(NEEDS_REVIEW)
+    return name.removeprefix('🤖 ').removesuffix(' 🤖').removeprefix(PROCESSING).removeprefix(NEEDS_REVIEW)
+
+def copy_title(name,status=''):
+    return '🤖 '+status+plain_title(name)+' 🤖'
 
 def eligible(name):
     return bool(re.search(r'\b(?:LED|NEON)\b',name,re.I)) and not re.search(r'\b3D\b',name,re.I) and '🤖' not in name and name==plain_title(name)
@@ -73,7 +76,7 @@ class Trello:
     def field(self,id,field,value):
         return self.call('PUT',f'cards/{id}/customField/{field}/item',json=({'value':'','idValue':''} if value=='' else {'value':{'text':str(value)}}))
     def copy(self,source):
-        return self.call('POST','cards',json={'idCardSource':source['id'],'idList':HOLDING,'keepFromSource':'all','name':PROCESSING+source['name'],'desc':source['desc'],'dueComplete':False})
+        return self.call('POST','cards',json={'idCardSource':source['id'],'idList':HOLDING,'keepFromSource':'all','name':copy_title(source['name'],PROCESSING),'desc':source['desc'],'dueComplete':False})
     def verify_copy(self,source,copyid):
         copy=self.card(copyid)
         if plain_title(copy['name'])!=source['name'] or copy['desc']!=source['desc']:raise ServiceError('Kopie stimmt nicht mit Titel und Beschreibung überein.')

@@ -36,3 +36,18 @@ def line_color(source='#1748bd', override=None):
     return dict(id=value, name=('Original ' if override is None else 'Eigene Farbe ') + value.upper(),
                 english=('Original ' if override is None else 'Custom ') + value.upper(),
                 color=value, source=source, automatic=override is None)
+
+def artwork_neon_color(source):
+    """Pick the closest stocked swatch for a motif without a specified light colour."""
+    resolved = line_color(source)
+    if resolved['id'] in PALETTE:
+        return PALETTE[resolved['id']]
+    from colorsys import rgb_to_hls
+    def hls(hex_color):
+        return rgb_to_hls(*(int(hex_color[i:i+2], 16)/255 for i in (1, 3, 5)))
+    hue, light, saturation = hls(source)
+    def distance(item):
+        h, l, s = hls(item.get('swatch', item['color']))
+        delta = abs(hue - h)
+        return (2 * min(delta, 1 - delta) * min(saturation, s))**2 + (light-l)**2 + (saturation-s)**2 / 4
+    return min(NEON_COLORS, key=distance)
