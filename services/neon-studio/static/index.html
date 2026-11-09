@@ -245,9 +245,11 @@
       </div>
       <footer class="export-panel">
         <div id="cloudSizes" hidden>
-          <label>Mindestbreite (cm)<input type="number" id="manualSize" placeholder="Automatisch" min="8" max="2000" step="any"></label>
-          <label>2. Größe (cm)<input type="number" id="secondSize" placeholder="Optional" min="8" max="2000" step="any"></label>
-          <button class="button full-width" id="setSizes">Größen übernehmen</button>
+          <div class="size-entry"><select id="sizeAxis" aria-label="Maß für die Größen"><option value="width">Mindestbreite (cm)</option><option value="height">Mindesthöhe (cm)</option></select><input id="manualSize" aria-label="Mindestbreite in cm" type="number" placeholder="Automatisch" min="8" max="2000" step="any"></div>
+          <div class="size-entry"><label for="secondSize" data-size-label="2">2. Breite (cm)</label><button type="button" id="addSize" aria-label="Weitere Größe hinzufügen">+</button><input id="secondSize" type="number" placeholder="Optional" min="8" max="2000" step="any"></div>
+          <div class="size-entry" hidden><label for="thirdSize" data-size-label="3">3. Breite (cm)</label><input id="thirdSize" type="number" placeholder="Optional" min="8" max="2000" step="any"></div>
+          <div class="size-entry" hidden><label for="fourthSize" data-size-label="4">4. Breite (cm)</label><input id="fourthSize" type="number" placeholder="Optional" min="8" max="2000" step="any"></div>
+          <button class="button full-width" id="setSizes">Größen manuell bestimmen</button>
           <label id="previewSizeRow" hidden>Vorschau<select id="previewSize" aria-label="Größe für Zeichnung und Preis"></select></label>
         </div>
         <p class="length-calculation" id="lengthCalculation">—</p><div class="length-row"><div><h2>Neon-Length</h2><span class="muted-label" id="lengthDetail">ohne Acrylkontur und Kabel</span></div><div class="length-value"><strong id="neonLength">—</strong><span>m</span></div></div>

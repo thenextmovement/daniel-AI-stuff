@@ -4,7 +4,7 @@ from pathlib import Path
 from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,plain_title,ServiceError
 from cloud_ai import generate,validate_spec,Review,drawing_model,smallest_title_widths,size_only_issue
 from cloud_exports import artifacts,CUT
-from minimum_size import PROFILE, measure, minimum_size
+from minimum_size import PROFILE, measure, minimum_size, widths_for_heights
 
 
 def size_variants(store,model,settings,spec):
@@ -102,6 +102,12 @@ class Jobs:
                 if spec.get('sized_widths_mm')!=spec.get('widths_mm') and 'sized_widths_mm' in spec:
                     requested=spec['widths_mm']
                 settings={**p['settings'],**PROFILE}
+                if spec.get('size_axis')=='height' and spec.get('heights_mm'):
+                    converted=widths_for_heights(self.store,p['model'],settings,spec['heights_mm'])
+                    if spec.get('manual_height_mm') is not None:
+                        spec['minimum_width_mm']=converted[0]
+                        requested=converted[1:]
+                    else:requested=converted
                 widths,reports=size_variants(self.store,p['model'],settings,{**spec,'widths_mm':requested})
                 if widths:
                     spec.update(requested_widths_mm=requested,widths_mm=widths,sized_widths_mm=widths)
@@ -158,6 +164,8 @@ class Jobs:
                 if not set(new).issubset({a['id'] for a in checked.get('attachments',[])}):raise Review('Trello-Anhänge nicht bestätigt.')
                 if any(field_value(checked,k)!=v for k,v in desired.items()):raise Review('Custom Fields nicht bestätigt.')
                 minimum_note=('\nMindestbreite (manuell): '+decimal(spec['minimum_width_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.') if spec.get('minimum_width_mm') is not None else ''
+                if spec.get('size_axis')=='height' and spec.get('manual_height_mm') is not None:
+                    minimum_note='\nMindesthöhe (manuell): '+decimal(spec['manual_height_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.'
                 if spec.get('auto_minimum_mm'):
                     minimum_note+='\nKleinste geprüfte Breite mit 6-mm-Neonflex: '+decimal(spec['auto_minimum_mm']/10)+' cm.'
                 self.t.comment_once(p['copy'],marker+'\n'+('\n'.join(changes)+'\n' if changes else '')+'Drei Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)

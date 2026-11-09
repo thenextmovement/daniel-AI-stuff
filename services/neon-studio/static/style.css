@@ -114,3 +114,8 @@ dialog{background:linear-gradient(145deg,#303538,#242a2e);color:var(--text);bord
 #cloudSizes #previewSizeRow[hidden]{display:none}
 
 #neonSelectionBounds{display:block}
+
+.size-entry{display:flex;align-items:center;gap:6px}
+.size-entry input{margin-left:auto}
+.size-entry[hidden],#addSize[hidden]{display:none}
+#addSize{border:1px solid #656b70;border-radius:4px;padding:1px 7px}

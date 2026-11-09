@@ -8,20 +8,47 @@ async function cloudRequest(path,data) {
 function cloudLabel(){$('export').querySelector('span:last-child').textContent='In Trello hochladen';$('exportCaption').textContent='PDF · image.png · Technische Zeichnung';}
 let sizesDirty=false;
 window.studioManualMinimum=()=>cloudSpec.minimum_width_mm;
+window.studioManualSizeLabel=()=>cloudSpec.size_axis==='height'&&cloudSpec.manual_height_mm
+  ?'Manuelle Mindesthöhe: '+number(cloudSpec.manual_height_mm/10,1)+' cm'
+  :'Manuelle Mindestbreite: '+number(cloudSpec.minimum_width_mm/10,1)+' cm';
+const extraInputs=['secondSize','thirdSize','fourthSize'];
+function updateSizeLabels(){
+  const height=$('sizeAxis').value==='height';
+  $$('[data-size-label]').forEach(label=>label.textContent=label.dataset.sizeLabel+'. '+(height?'Höhe':'Breite')+' (cm)');
+  $('manualSize').setAttribute('aria-label',(height?'Mindesthöhe':'Mindestbreite')+' in cm');
+  $('manualSize').placeholder=!height&&manufacturingReport?number(manufacturingReport.recommendedWidth/10,1)+' (autom.)':'Automatisch';
+  $('addSize').hidden=!$('fourthSize').parentElement.hidden;
+}
+$('addSize').onclick=()=>{
+  const id=extraInputs.find(id=>$(id).parentElement.hidden);
+  if(id){$(id).parentElement.hidden=false;updateSizeLabels();$(id).focus();}
+};
 function showSizeFields(){
   $('cloudSizes').hidden=false;
-  $('manualSize').value=cloudSpec.minimum_width_mm==null?'':cloudSpec.minimum_width_mm/10;
+  const byHeight=cloudSpec.size_axis==='height';
+  $('sizeAxis').value=byHeight?'height':'width';
+  const manual=byHeight?cloudSpec.manual_height_mm:cloudSpec.minimum_width_mm;
+  $('manualSize').value=manual==null?'':manual/10;
   const widths=cloudSpec.widths_mm||[];
-  const extra=cloudSpec.minimum_first&&!cloudSpec.sized_widths_mm
-    ?(cloudSpec.requested_widths_mm??widths)[0]:widths[1];
-  $('secondSize').value=extra==null?'':extra/10;
+  const extras=byHeight?(cloudSpec.heights_mm||[]).slice(manual==null?0:1)
+    :cloudSpec.minimum_first&&!cloudSpec.sized_widths_mm?(cloudSpec.requested_widths_mm??widths):widths.slice(1);
+  extraInputs.forEach((id,i)=>{
+    $(id).value=extras[i]==null?'':extras[i]/10;
+    $(id).parentElement.hidden=i>0&&i>=extras.length;
+  });
+  updateSizeLabels();
   sizesDirty=false;
   syncSizePreview();
 }
 function syncSizePreview(){
   const select=$('previewSize'),widths=cloudSpec.sized_widths_mm||[];
   const current=state.drawing?.width??state.settings.width;
-  select.replaceChildren(...widths.map((width,i)=>new Option(`Größe ${i+1} · ${Number((width/10).toFixed(2)).toLocaleString('de-DE')} cm`,String(width))));
+  select.replaceChildren(...widths.map((width,i)=>{
+    const index=cloudSpec.manual_height_mm==null?i-1:i;
+    const height=cloudSpec.size_axis==='height'?cloudSpec.heights_mm?.[index]:null;
+    const cm=Number(((height??width)/10).toFixed(2)).toLocaleString('de-DE');
+    return new Option(`Größe ${i+1} · ${height==null?'Breite':'Höhe'} ${cm} cm`,String(width));
+  }));
   select.selectedIndex=widths.findIndex(width=>Math.abs(width-current)<.1);
   select.disabled=sizesDirty||cloudSaving||state.busy;
   $('previewSizeRow').hidden=widths.length<2;
@@ -45,34 +72,48 @@ window.addEventListener('studio-minimum-ready',()=>{
   if(!cloud)return;
   syncSizePreview();
   cloudSpec.issues=(cloudSpec.issues||[]).filter(issue=>!cloud.size_issues?.includes(issue));
-  $('manualSize').placeholder=number(manufacturingReport.recommendedWidth/10,1)+' (autom.)';
+  updateSizeLabels();
   renderReview();
 });
 async function applySizeFields(){
   if(state.busy||state.analyzing)throw Error('Bitte die Berechnung abwarten.');
-  for(const id of ['manualSize','secondSize']){
-    if(!$(id).reportValidity())throw Error('Bitte eine Breite zwischen 8 und 2000 cm eingeben.');
+  for(const id of ['manualSize',...extraInputs]){
+    if(!$(id).reportValidity())throw Error('Bitte ein Maß zwischen 8 und 2000 cm eingeben.');
   }
-  const manual=$('manualSize').valueAsNumber*10,second=$('secondSize').valueAsNumber*10;
+  const height=$('sizeAxis').value==='height';
+  const manual=$('manualSize').valueAsNumber*10;
+  const extras=extraInputs.filter(id=>$(id).value!=='').map(id=>$(id).valueAsNumber*10);
+  const dimensions=manual?[manual,...extras]:extras;
+  if(new Set(dimensions).size!==dimensions.length)throw Error('Bitte unterschiedliche Größen eingeben.');
   if(!manual&&!manufacturingReport)await checkManufacturing(false,true);
-  const first=manual||manufacturingReport?.recommendedWidth;
+  const automatic=manufacturingReport?.recommendedWidth;
+  const generation=state.generation;
+  let converted=dimensions;
+  if(height&&dimensions.length){
+    const response=await api('/api/manufacturing',{id:state.project.id,settings:state.settings,heights_mm:dimensions});
+    converted=(await response.json()).widths_mm;
+    if(state.generation!==generation)throw Error('Die Zeichnung wurde geändert. Bitte die Größen erneut bestimmen.');
+  }
+  const first=manual?converted[0]:automatic;
   if(!first)throw Error('Die automatische Mindestgröße steht noch aus.');
-  if(second&&second<=first)throw Error('Die zweite Größe muss größer als die Mindestbreite sein.');
+  const additional=manual?converted.slice(1):converted;
+  if(additional.some(w=>w<=first))throw Error('Weitere Größen müssen größer als die Mindestgröße sein.');
   await resizeToMinimum(first);
-  if(!state.valid||Math.abs(state.drawing.width-first)>.1)throw Error('Die eingegebene Breite konnte nicht übernommen werden.');
-  const previous=cloudSpec.sized_widths_mm||cloudSpec.widths_mm||[];
-  const tail=cloudSpec.minimum_first&&!cloudSpec.sized_widths_mm?previous.slice(1):previous.slice(2);
-  const extras=[second,...tail].filter(w=>w>first);
-  const widths=[first,...new Set(extras)];
-  Object.assign(cloudSpec,{minimum_width_mm:manual||null,minimum_first:true,smallest_requested:true,
-    requested_widths_mm:widths.slice(1),widths_mm:widths,sized_widths_mm:widths});
+  if(!state.valid||Math.abs(state.drawing.width-first)>.1||
+      (height&&manual&&Math.abs(state.drawing.height-manual)>.1))throw Error('Die eingegebene Größe konnte nicht übernommen werden.');
+  const widths=[first,...additional];
+  Object.assign(cloudSpec,{size_axis:height?'height':'width',heights_mm:height?dimensions:[],
+    manual_height_mm:height&&manual?manual:null,minimum_width_mm:manual?first:null,minimum_first:true,smallest_requested:true,
+    requested_widths_mm:additional,widths_mm:widths,sized_widths_mm:widths});
   sizesDirty=false;
   if(manual){
+    minimumStatus(window.studioManualSizeLabel(),true);
     cloudSpec.issues=(cloudSpec.issues||[]).filter(issue=>!cloud.size_issues?.includes(issue));
     renderReview();
   }
 }
-for(const id of ['manualSize','secondSize'])$(id).oninput=()=>{sizesDirty=true;$('previewSize').disabled=true;};
+$('sizeAxis').onchange=()=>{sizesDirty=true;updateSizeLabels();$('previewSize').disabled=true;};
+for(const id of ['manualSize',...extraInputs])$(id).oninput=()=>{sizesDirty=true;$('previewSize').disabled=true;};
 $('setSizes').onclick=async()=>{
   $('setSizes').disabled=true;
   try{await applySizeFields();await cloudSave();toast('Größen übernommen und gespeichert.');}catch(e){toast(e.message,true);}
@@ -130,8 +171,10 @@ function cloudDetails(){
   Object.assign(dialog.style,{maxWidth:'520px',width:'90%',padding:'24px',borderRadius:'16px',background:'#25292c',color:'white',border:'1px solid #555'});
   dialog.append(textElement('h2','Anfrageangaben'));
   const fields=[['customer_name','Kundenname'],['colors','Leuchtfarbe (Deutsch)'],['widths_mm','Breiten in cm, getrennt mit Semikolon'],['minimum_width_mm','Mindestbreite in cm (manuell, optional)'],['usage','Innen oder Außen'],['quantity','Stückzahl'],['waterproof_psus','Wasserdichte Netzteile (bei Außen)']];
+  if(cloudSpec.size_axis==='height')dialog.append(textElement('p','Die Höhen kannst du über „Größen manuell bestimmen“ ändern.'));
   const inputs={};
   for(const [key,label] of fields){
+    if(cloudSpec.size_axis==='height'&&['widths_mm','minimum_width_mm'].includes(key))continue;
     const wrap=textElement('label',label);wrap.style.display='block';wrap.style.margin='12px 0';
     const input=document.createElement('input');input.style.width='100%';
     input.value=key==='widths_mm'?(cloudSpec[key]||[]).map(v=>Number((v/10).toFixed(2))).join('; '):key==='minimum_width_mm'?(cloudSpec[key]==null?'':String(cloudSpec[key]/10).replace('.',',')):String(cloudSpec[key]??'');
@@ -149,14 +192,16 @@ function cloudDetails(){
   const save=textElement('button','Angaben übernehmen');
   save.onclick=async()=>{
     const next={...cloudSpec,issues:reviewed.filter(r=>!r.check.checked).map(r=>r.issue)};
-    for(const [key] of fields)next[key]=inputs[key].value.trim();
-    next.minimum_width_mm=next.minimum_width_mm===''?null:Number(next.minimum_width_mm.replace(',','.'))*10;
-    if(next.minimum_width_mm!==null&&(!Number.isFinite(next.minimum_width_mm)||next.minimum_width_mm<80||next.minimum_width_mm>20000)){toast('Bitte eine Mindestbreite zwischen 8 cm und 20 m eintragen oder das Feld leer lassen.',true);return;}
-    next.widths_mm=next.widths_mm===''?(next.minimum_width_mm===null?[]:[next.minimum_width_mm]):next.widths_mm.split(';').map(v=>Number(v.trim().replace(',','.'))*10);
-    if(next.widths_mm.length>4||next.widths_mm.some(v=>!Number.isFinite(v)||v<80||v>20000)){toast('Bitte höchstens vier Breiten zwischen 8 cm und 20 m eintragen.',true);return;}
-    if(next.minimum_width_mm!==null&&next.widths_mm.some(v=>v<next.minimum_width_mm-.1)){toast('Eine Angebotsbreite liegt unter der manuellen Mindestbreite. Bitte die Breiten anpassen.',true);return;}
+    for(const [key,input] of Object.entries(inputs))next[key]=input.value.trim();
+    if(inputs.widths_mm){
+      next.minimum_width_mm=next.minimum_width_mm===''?null:Number(next.minimum_width_mm.replace(',','.'))*10;
+      if(next.minimum_width_mm!==null&&(!Number.isFinite(next.minimum_width_mm)||next.minimum_width_mm<80||next.minimum_width_mm>20000)){toast('Bitte eine Mindestbreite zwischen 8 cm und 20 m eintragen oder das Feld leer lassen.',true);return;}
+      next.widths_mm=next.widths_mm===''?(next.minimum_width_mm===null?[]:[next.minimum_width_mm]):next.widths_mm.split(';').map(v=>Number(v.trim().replace(',','.'))*10);
+      if(next.widths_mm.length>4||next.widths_mm.some(v=>!Number.isFinite(v)||v<80||v>20000)){toast('Bitte höchstens vier Breiten zwischen 8 cm und 20 m eintragen.',true);return;}
+      if(next.minimum_width_mm!==null&&next.widths_mm.some(v=>v<next.minimum_width_mm-.1)){toast('Eine Angebotsbreite liegt unter der manuellen Mindestbreite. Bitte die Breiten anpassen.',true);return;}
+    }
     next.quantity=Number(next.quantity||1);next.waterproof_psus=next.waterproof_psus===''?null:Number(next.waterproof_psus);
-    cloudSpec=next;renderReview();showSizeFields();cloudPriceControls();if(next.widths_mm.length){state.settings.width=next.widths_mm[0];state.settings.scale=null;}
+    cloudSpec=next;renderReview();showSizeFields();cloudPriceControls();if(inputs.widths_mm&&next.widths_mm.length){state.settings.width=next.widths_mm[0];state.settings.scale=null;}
     dialog.close();await requestGeometry(true);try{await cloudSave();toast('Angaben gespeichert.');}catch(e){toast(e.message,true);}
   };
   const cancel=textElement('button','Schließen');cancel.onclick=()=>dialog.close();dialog.append(save,cancel);document.body.append(dialog);dialog.showModal();

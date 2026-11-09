@@ -228,9 +228,12 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(payload,dict):raise ValueError('Ungültige Anfrage.')
             path=urlparse(self.path).path
             if path=='/api/manufacturing':
-                from minimum_size import minimum_size
+                from minimum_size import minimum_size,widths_for_heights
                 settings=payload.get('settings',{})
                 if not isinstance(settings,dict):raise ValueError('Ungültige Einstellungen.')
+                if 'heights_mm' in payload:
+                    widths=widths_for_heights(self.server.store,str(payload.get('id','')),settings,payload['heights_mm'])
+                    return self.respond(200,{'widths_mm':widths})
                 return self.respond(200,minimum_size(self.server.store,str(payload.get('id','')),settings))
             if path=='/api/pricing':
                 settings=payload.get('settings',{})

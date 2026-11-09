@@ -1,4 +1,5 @@
 """Geometric size of a motif with fixed-width neon on the drawn centerlines."""
+import json
 import math
 
 import numpy as np
@@ -103,3 +104,38 @@ def minimum_size(store, model, settings):
     if report['recommendedWidth'] > 20000:
         raise ValueError('Die geometrische Mindestbreite überschreitet 20 m.')
     return report
+
+def widths_for_heights(store, model, settings, heights):
+    """Invert the measured acrylic outline, including fixed gaps and shape edits."""
+    if (not isinstance(heights,list) or not 1<=len(heights)<=4 or
+        any(type(h) not in (int,float) or not 80<=h<=20000 for h in heights)):
+        raise ValueError('Eine bis vier Höhen zwischen 8 und 2000 cm eingeben.')
+    result=[]
+    for target in heights:
+        lo,hi=80.,20000.
+        width=lo
+        previous=None
+        for _ in range(28):
+            options={**settings,**PROFILE,'width':width}
+            try:
+                height=store.drawing(model,json.dumps(options,sort_keys=True),editable=False)['height']
+            except ValueError as error:
+                if 'höher als 20.000' not in str(error):raise
+                height=None
+            if height is not None and abs(height-target)<.02:
+                result.append(width)
+                break
+            if height is None or height>target:hi=width
+            else:lo=width
+            if hi-lo<.00001:raise ValueError('Die Höhe ist für dieses Motiv im verfügbaren Breitenbereich nicht erreichbar.')
+            estimate=(hi+lo)/2
+            if height is not None:
+                if previous and abs(height-previous[1])>.00001:
+                    estimate=width+(target-height)*(width-previous[0])/(height-previous[1])
+                elif height>PADDING:
+                    estimate=PADDING+(target-PADDING)*(width-PADDING)/(height-PADDING)
+                previous=(width,height)
+            width=min(hi,max(lo,estimate))
+            if width==(previous or (None,))[0]:width=(hi+lo)/2
+        else:raise ValueError('Die gewünschte Acrylhöhe konnte nicht bestätigt werden.')
+    return result

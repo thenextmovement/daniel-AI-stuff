@@ -345,7 +345,7 @@ async function checkManufacturing(applyToPreview=false,force=false){
     manufacturingReport={...report,key};
     window.dispatchEvent(new Event('studio-minimum-ready'));
     const manual=window.studioManualMinimum?.();
-    const label=manual?`Manuelle Mindestbreite: ${number(manual/10,1)} cm`:`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
+    const label=manual?window.studioManualSizeLabel():`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
     minimumStatus(label,true);
     $('manufacturingApply').hidden=!!state.settings.geometricSizing&&Math.abs(state.drawing.width-(manual||report.recommendedWidth))<.01;
     if(applyToPreview&&!$('manufacturingApply').hidden)applyMinimumToPreview();
@@ -354,7 +354,7 @@ async function checkManufacturing(applyToPreview=false,force=false){
     lastMinimumRequest=null;
     const manual=window.studioManualMinimum?.();
     if(manual){
-      minimumStatus(`Manuelle Mindestbreite: ${number(manual/10,1)} cm`,true);
+      minimumStatus(window.studioManualSizeLabel(),true);
       $('manufacturingResult').textContent+=' · Automatische Prüfung: '+error.message;
       if(applyToPreview)await resizeToMinimum(manual);
     }else minimumStatus(error.message,true);
@@ -828,15 +828,16 @@ function neonSource(){
   if(state.view!=='vectors'||state.tool!=='select'||state.selectedKeys.length!==1||state.selectedKeys[0]!==editingNeonKey)return null;
   return state.drawing.pathEditSources?.[i];
 }
+function selectionMeasure(mm){return `${number(mm,1)} mm (${number(mm/10,2)} cm)`;}
 function updateNeonSelection(){
   const d=state.drawing;
   const selected=new Set(state.selectedKeys);
   const mm=d.pathKeys.reduce((sum,key,i)=>sum+(selected.has(key)?d.pathLengthsMm[i]:0),0);
   $('neonSelectionInfo').hidden=!selected.size;
-  $('neonSelectionLength').textContent=`${selected.size} ${selected.size===1?'Linie':'Linien'} · ${number(mm,1)} mm (${number(mm/10,2)} cm)`;
+  $('neonSelectionLength').textContent=`${selected.size} ${selected.size===1?'Linie':'Linien'} · ${selectionMeasure(mm)}`;
   const boxes=d.pathBoundsMm.filter((box,i)=>selected.has(d.pathKeys[i]));
   const span=(min,max)=>Math.max(...boxes.map(box=>box[max]))-Math.min(...boxes.map(box=>box[min]));
-  $('neonSelectionBounds').textContent=boxes.length?`Breite × Höhe: ${number(span(0,2),1)} × ${number(span(1,3),1)} mm`:'';
+  $('neonSelectionBounds').textContent=boxes.length?`Breite × Höhe: ${selectionMeasure(span(0,2))} × ${selectionMeasure(span(1,3))}`:'';
   const editable=selected.size===1&&state.tool==='select'&&state.view==='vectors'&&!!d.pathEditSources?.[state.selection];
   $('editNeonPath').hidden=!editable;
   if(!editable||!selected.has(editingNeonKey))editingNeonKey=null;

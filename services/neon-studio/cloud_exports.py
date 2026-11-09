@@ -86,7 +86,9 @@ def product_rows(d,spec):
     rows=[]
     for key,label in [('auto_minimum_mm','Minimum checked width / Kleinste geprüfte Breite'),
                       ('minimum_width_mm','Manual minimum / Mindestbreite (manuell)')]:
-        if spec.get(key) is not None:
+        if key=='minimum_width_mm' and spec.get('manual_height_mm') is not None:
+            rows.append(('Manual minimum height / Mindesthöhe (manuell)',de(spec['manual_height_mm']/10)+' cm'))
+        elif spec.get(key) is not None:
             rows.append((label,de(spec[key]/10)+' cm'))
     return rows+[
         ('Product type / Produktart','LED Neon Flex'),
