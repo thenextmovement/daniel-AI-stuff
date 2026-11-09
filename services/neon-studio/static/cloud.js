@@ -375,7 +375,7 @@ async function cloudBoot(){
       }catch(error){toast(error.message,true);}
     };
     const limit=textElement('button','Engstelle zeigen');
-    limit.id='cloudShowLimit';limit.type='button';limit.hidden=true;
+    limit.id='cloudShowLimit';limit.type='button';limit.disabled=true;
     limit.onclick=toggleLimit;
     bar.append(check,limit);
   }

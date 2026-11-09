@@ -264,7 +264,7 @@ function renderDrawing() {
     const color=p.logoColors?((p.glow&&d.pathColors?.[index]?.swatch)||d.pathColors?.[index]?.color||p.neon):p.neon;
     // Contrast halo is display-only: black white-neon ink stays visible on anthracite.
     const effect=p.glow?`drop-shadow(0 0 3px ${d.pathColors?.[index]?.swatch||color})`:color==='#000000'&&!light?'drop-shadow(0 0 1px #ffffff)':'none';
-    const marked=targetKeys.includes(d.pathKeys[index])||(showingLimit&&manufacturingReport?.limitingKeys?.includes(d.pathKeys[index]));
+    const marked=targetKeys.includes(d.pathKeys[index])||(showingLimit&&(manufacturingReport||previewLimit)?.limitingKeys?.includes(d.pathKeys[index]));
     const overlay=marked?`<path class="limit-path" d="${path}" fill="none" pointer-events="none" vector-effect="non-scaling-stroke"/>`:'';
     return `<path class="neon-path ${state.selectedKeys.includes(d.pathKeys[index])?'selected-path':''}" data-path="${index}" d="${path}" stroke="${color}" style="filter:${effect}" stroke-width="${stroke}" ${p.glow?'':'vector-effect="non-scaling-stroke"'}/>${overlay}`;
   }).join('');
@@ -312,7 +312,7 @@ function renderDetails() {
   renderStraightenControls();
 }
 let manufacturingTicket=0, manufacturingReport=null;
-let showingLimit=false;
+let showingLimit=false, previewLimit=null, previewLimitTicket=null;
 let targetTicket=0,targetKeys=[];
 function resetTarget(){
   targetTicket++;targetKeys=[];
@@ -364,28 +364,42 @@ $('targetForm').onsubmit=async event=>{
   }catch(error){if(current())$('targetStatus').textContent=error.message;}
 };
 function updateLimitControls(){
-  const keys=manufacturingReport?.limitingKeys||[];
+  const report=manufacturingReport||previewLimit;
+  const keys=report?.limitingKeys||[];
   const d=state.drawing;
   const names=keys.map(key=>d?.pathKeys.indexOf(key)??-1).filter(i=>i>=0)
     .map(i=>`${d.names[i]} (Linie ${i+1})`);
-  const reasons=(manufacturingReport?.limitingReasons||[]).map(reason=>reason==='spacing'?'Abstand der Neonlinien':'geschlossene Innenöffnung');
-  const message=names.length?`${number(manufacturingReport.recommendedWidth/10,1)} cm geometrische Mindestbreite · ${reasons.join(' und ')} · ${names.join(', ')}`:'';
+  const reasons=(report?.limitingReasons||[]).map(reason=>reason==='spacing'?'Abstand der Neonlinien':'geschlossene Innenöffnung');
+  const label=manufacturingReport?`${number(manufacturingReport.recommendedWidth/10,1)} cm geometrische Mindestbreite`:`Vorschau bei ${number((d?.width||0)/10,1)} cm`;
+  const message=names.length?`${label} · ${reasons.join(' und ')} · ${names.join(', ')}`:'';
   $('limitReason').textContent=message;
   $('limitReason').hidden=!message;
   for(const btn of [$('showLimit'),$('cloudShowLimit')].filter(Boolean)){
-    btn.hidden=!message;
+    btn.hidden=false;
+    btn.disabled=!state.valid||state.busy||!d?.paths?.length||previewLimitTicket!==null||!!report&&!names.length;
     btn.textContent=showingLimit?'Markierung beenden':'Engstelle zeigen';
-    btn.title=message;
+    btn.title=message||(report?'Keine begrenzende Linie ermittelt.':'Engstelle der aktuellen Vorschau prüfen');
     btn.setAttribute('aria-pressed',String(showingLimit));
   }
 }
-function toggleLimit(){
-  if(!manufacturingReport?.limitingKeys?.length)return;
+async function toggleLimit(){
+  if(!manufacturingReport&&!previewLimit){
+    const ticket=manufacturingTicket,key=manufacturingKey();
+    previewLimitTicket=ticket;updateLimitControls();
+    try{
+      const report=await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings,preview_limit:true})).json();
+      if(ticket!==manufacturingTicket||key!==manufacturingKey())return;
+      previewLimit=report;
+    }catch(error){if(ticket===manufacturingTicket)toast(error.message,true);return;}
+    finally{if(previewLimitTicket===ticket){previewLimitTicket=null;updateLimitControls();}}
+  }
+  const keys=(manufacturingReport||previewLimit)?.limitingKeys;
+  if(!keys?.length){toast('Keine begrenzende Linie ermittelt.');return;}
   targetKeys=[];showingLimit=!showingLimit;
   updateLimitControls();
   if(showingLimit){
     state.view='vectors';updateViewControls();setTool('select');
-    selectKeys(manufacturingReport.limitingKeys);
+    selectKeys(keys);
     toast($('limitReason').textContent);
   }else renderDrawing();
 }
@@ -398,7 +412,7 @@ function minimumStatus(message,canCheck){
   if(button)button.disabled=!canCheck;
 }
 function invalidateManufacturing(){
-  resetTarget();manufacturingTicket++;manufacturingReport=null;lastMinimumRequest=null;
+  resetTarget();manufacturingTicket++;manufacturingReport=null;previewLimit=null;previewLimitTicket=null;lastMinimumRequest=null;
   showingLimit=false;updateLimitControls();
   minimumStatus('Mindestgröße noch nicht geprüft.',false);
   if($('manufacturingApply'))$('manufacturingApply').hidden=true;
@@ -417,14 +431,16 @@ async function checkManufacturing(applyToPreview=false,force=false){
   if(lastMinimumRequest===key&&!applyToPreview&&!force)return;
   lastMinimumRequest=key;
   const ticket=++manufacturingTicket;
-  manufacturingReport=null;showingLimit=false;updateLimitControls();
+  manufacturingReport=null;previewLimit=null;previewLimitTicket=null;showingLimit=false;updateLimitControls();
   if(state.drawing)renderDrawing();
   minimumStatus('Mindestgröße wird berechnet …',false);
   $('manufacturingApply').hidden=true;
   try{
     const report=await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings})).json();
     if(ticket!==manufacturingTicket||key!==manufacturingKey())return;
-    manufacturingReport={...report,key};updateLimitControls();
+    manufacturingReport={...report,key};
+    if(showingLimit){showingLimit=!!report.limitingKeys?.length;selectKeys(report.limitingKeys||[]);}
+    updateLimitControls();
     window.dispatchEvent(new Event('studio-minimum-ready'));
     const manual=window.studioManualMinimum?.();
     const label=manual?window.studioManualSizeLabel():`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;

@@ -228,9 +228,12 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(payload,dict):raise ValueError('Ungültige Anfrage.')
             path=urlparse(self.path).path
             if path=='/api/manufacturing':
-                from minimum_size import minimum_size,widths_for_heights,target_width
+                from minimum_size import measure,minimum_size,widths_for_heights,target_width
                 settings=payload.get('settings',{})
                 if not isinstance(settings,dict):raise ValueError('Ungültige Einstellungen.')
+                if payload.get('preview_limit') is True:
+                    drawing=self.server.store.drawing(str(payload.get('id','')),json.dumps(settings,sort_keys=True))
+                    return self.respond(200,measure(drawing))
                 if 'target_width_mm' in payload:
                     return self.respond(200,target_width(self.server.store,str(payload.get('id','')),settings,payload['target_width_mm']))
                 if 'heights_mm' in payload:
