@@ -1023,7 +1023,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     if not source and not uv_support:
         # Keep the original viewport and recovery list when the last path is hidden.
         empty=build_geometry(model,{**settings,'hiddenPaths':[],'uvStrokes':[]})
-        empty.update(pathLengthsMm=[],pathEditSources=[],paths=[],names=[],pathPartIds=[],pathModes=[],pathKeys=[],pathData=[],pathColors=[],
+        empty.update(pathBoundsMm=[],pathLengthsMm=[],pathEditSources=[],paths=[],names=[],pathPartIds=[],pathModes=[],pathKeys=[],pathData=[],pathColors=[],
                      outer=[],outerData='',neonMeters=0,neonMaterialMeters=0,openPaths=0,minGap=None,checks=[],
                      hiddenPaths=hidden_paths,exportable=False,
                      notices=['Alle Linien sind ausgeblendet. Stelle mindestens eine Linie wieder her.'])
@@ -1227,9 +1227,10 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
             'bounds':[(p['bounds'][0]-reference[0])*scale,(p['bounds'][1]-reference[1])*scale,
                       (p['bounds'][2]-reference[0])*scale,(p['bounds'][3]-reference[1])*scale]}
            for p in model['parts']]
+    path_boxes=[path_bounds(path) for path in paths]
     if settings.get('pathOffsets'):
         for part in parts:
-            boxes=[path_bounds(path) for item,path in zip(source,paths) if item['partId']==part['id']]
+            boxes=[box for item,box in zip(source,path_boxes) if item['partId']==part['id']]
             if boxes:
                 boxes=np.asarray(boxes);part['bounds']=[*boxes[:,:2].min(axis=0),*boxes[:,2:].max(axis=0)]
     checks=[
@@ -1248,7 +1249,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
                           'originalStrokeWidth':item.get('originalStrokeWidth',0)*scale}
                          for item in model.get('artwork',model['modes']['double'])] if model['sourceKind']=='vector' else None)
         notices.append('UV-Druck: Originaldarstellung, ohne Neonmeter. Die Druckflächen werden bei der Acrylkontur berücksichtigt.')
-    return dict(pathLengthsMm=lengths,pathEditSources=edit_paths,outlineVisibleControls=transform(visible_path,1,shift_x,shift_y),outlineControls=outline_controls,uv=uv,paths=paths, names=[p['name'] for p in source], outer=outer,
+    return dict(pathBoundsMm=path_boxes,pathLengthsMm=lengths,pathEditSources=edit_paths,outlineVisibleControls=transform(visible_path,1,shift_x,shift_y),outlineControls=outline_controls,uv=uv,paths=paths, names=[p['name'] for p in source], outer=outer,
                 pathColors=[resolved_colors[p['key']] for p in source],colorSources=color_sources,neonPalette=NEON_COLORS,
                 pathPartIds=[p['partId'] for p in source],pathModes=[p['mode'] for p in source],pathRoles=[p.get('role','stroke') for p in source],pathKeys=[p['key'] for p in source],
                 parts=parts,modeLabel=mode_label,exportable=not missing,hiddenPaths=hidden_paths,

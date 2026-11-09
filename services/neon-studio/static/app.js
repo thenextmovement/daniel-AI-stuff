@@ -834,6 +834,9 @@ function updateNeonSelection(){
   const mm=d.pathKeys.reduce((sum,key,i)=>sum+(selected.has(key)?d.pathLengthsMm[i]:0),0);
   $('neonSelectionInfo').hidden=!selected.size;
   $('neonSelectionLength').textContent=`${selected.size} ${selected.size===1?'Linie':'Linien'} · ${number(mm,1)} mm (${number(mm/10,2)} cm)`;
+  const boxes=d.pathBoundsMm.filter((box,i)=>selected.has(d.pathKeys[i]));
+  const span=(min,max)=>Math.max(...boxes.map(box=>box[max]))-Math.min(...boxes.map(box=>box[min]));
+  $('neonSelectionBounds').textContent=boxes.length?`Breite × Höhe: ${number(span(0,2),1)} × ${number(span(1,3),1)} mm`:'';
   const editable=selected.size===1&&state.tool==='select'&&state.view==='vectors'&&!!d.pathEditSources?.[state.selection];
   $('editNeonPath').hidden=!editable;
   if(!editable||!selected.has(editingNeonKey))editingNeonKey=null;

@@ -112,3 +112,5 @@ dialog{background:linear-gradient(145deg,#303538,#242a2e);color:var(--text);bord
 #cloudReview{margin:8px 0 14px}#cloudReview p{margin:6px 0}
 
 #cloudSizes #previewSizeRow[hidden]{display:none}
+
+#neonSelectionBounds{display:block}
