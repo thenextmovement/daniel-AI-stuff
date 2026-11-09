@@ -233,7 +233,9 @@ class CloudTests(unittest.TestCase):
    def comment_once(self,id,text,marker):self.comments.append(text)
    def call(self,method,path,**kwargs):
     if method=='POST':
-     item={'id':str(len(self.uploads)+1)};self.data['attachments'].append(item);self.uploads.append(kwargs['files']['file']);return item
+     item={'id':str(len(self.uploads)+1)};self.data['attachments'].append(item);self.uploads.append(kwargs['files']['file'])
+     if path.endswith('?setCover=true'):self.data['idAttachmentCover']=item['id']
+     return item
     if method=='PUT':self.data.update(kwargs['json']);return self.data
     raise AssertionError((method,path))
   store=DurableStore(self.db);info=store.add(SVG.encode(),'Test.svg');t=Fake()
@@ -248,9 +250,12 @@ class CloudTests(unittest.TestCase):
   size=next(x['value']['text'] for x in t.data['customFieldItems'] if x['idCustomField']==FIELDS[0][1])
   self.assertTrue(size.startswith('120,00 × '),size)
   first_ids=[a['id'] for a in t.data['attachments']]
+  self.assertEqual(t.uploads[int(t.data['idAttachmentCover'])-1][0],'technische_zeichnung.jpg')
   t.data['attachments'].append({'id':'original'})
   Jobs(self.db,store,t).publish(self.db.get(p['id']))
   ids=[a['id'] for a in t.data['attachments']]
+  self.assertIn(t.data['idAttachmentCover'],ids[4:])
+  self.assertEqual(t.uploads[int(t.data['idAttachmentCover'])-1][0],'technische_zeichnung.jpg')
   self.assertEqual(ids[:4],first_ids+['original'])
   self.assertEqual(len(set(ids)),7)
   self.assertEqual([f[0] for f in t.uploads[:3]],[f[0] for f in t.uploads[3:]])

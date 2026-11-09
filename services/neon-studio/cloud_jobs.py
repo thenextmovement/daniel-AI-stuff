@@ -150,10 +150,14 @@ class Jobs:
             revision=p['revision'];marker='Neon Studio '+p['id']+' Revision '+str(revision)
             p=self.db.save(p['id'],{'publish_revision':revision,'error':'','upload_intent':False},status='publishing')
             new=[]
+            cover_id=None
             try:
                 for name,mime,data in files:
                     self.db.save(p['id'],{'upload_intent':True})
-                    a=self.t.call('POST',f"cards/{p['copy']}/attachments",files={'file':(name,data,mime)},data={'name':name})
+                    technical=Path(name).stem=='technische_zeichnung' and mime in ('image/jpeg','image/png')
+                    endpoint=f"cards/{p['copy']}/attachments"
+                    a=self.t.call('POST',endpoint+('?setCover=true' if technical else ''),files={'file':(name,data,mime)},data={'name':name})
+                    if technical:cover_id=a['id']
                     new.append(a['id'])
                     self.db.save(p['id'],{'pending_attachments':new,'upload_intent':False})
                 desired={USAGE:spec['usage']}
@@ -172,6 +176,7 @@ class Jobs:
                         changes.append(f"{labels[field]}: {before or 'leer'} → {value or 'leer'}")
                         self.t.field(p['copy'],field,value)
                 checked=self.t.card(p['copy'])
+                if not cover_id or checked.get('idAttachmentCover')!=cover_id:raise Review('Technische Zeichnung als Trello-Titelbild nicht bestätigt.')
                 if not set(new).issubset({a['id'] for a in checked.get('attachments',[])}):raise Review('Trello-Anhänge nicht bestätigt.')
                 if any(field_value(checked,k)!=v for k,v in desired.items()):raise Review('Custom Fields nicht bestätigt.')
                 minimum_note=('\nMindestbreite (manuell): '+decimal(spec['minimum_width_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.') if spec.get('minimum_width_mm') is not None else ''
