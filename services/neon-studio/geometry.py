@@ -1056,7 +1056,10 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
         return dict(paths=paths,names=[p['name'] for p in source],pathRoles=[p.get('role','stroke') for p in source],
                     pathModes=[p['mode'] for p in source],settings=settings,width=w,neonMeters=sum(map(path_length,paths))/1000,
                     neonMaterialMeters=sum(map(path_length,paths))*.0011)
-    lines=[LineString(sample_path(transform(path,scale,dx,dy),40)) for path in support_paths]
+    # At large physical scales a fixed coarse sampling can shift the acrylic
+    # outline away from the true curve extrema during dimension anchoring.
+    steps=max(40,math.ceil(math.sqrt(max(w,h)))) if settings.get('autoRoute') else 40
+    lines=[LineString(sample_path(transform(path,scale,dx,dy),steps)) for path in support_paths]
     clearance=unary_union([_directional_buffer(line,paddings) for line in lines]) if asymmetric else None
     def has_clearance(poly,tolerance):
         if asymmetric:return poly.buffer(tolerance).covers(clearance)

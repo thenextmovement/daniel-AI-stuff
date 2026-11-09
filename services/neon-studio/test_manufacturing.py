@@ -118,6 +118,21 @@ class ManufacturingTests(unittest.TestCase):
   from neon_routing import route
   paths=[[['m',[0,0]],['l',[1000,0]]],[['m',[100,.2]],['l',[250,.2]]]]
   self.assertEqual(route(paths),paths)
+ def test_approaching_endpoint_is_trimmed_but_offset_parallel_stroke_is_preserved(self):
+  from neon_routing import route
+  base=[['m',[0,0]],['l',[1000,0]]]
+  approach=[['m',[500,4]],['l',[570,34]]]
+  parallel=[['m',[200,4]],['l',[280,4]]]
+  routed=route([base,approach,parallel])
+  self.assertEqual(routed[0],base)
+  self.assertEqual(routed[2],parallel)
+  self.assertGreaterEqual(routed[1][0][1][1],10.)
+  self.assertEqual(routed[1][-1],approach[-1])
+ def test_collapsed_curved_handle_creates_a_cut_at_tangent_join(self):
+  from neon_routing import corner_runs
+  start=[['m',[0,0]],['l',[50,0]]]
+  self.assertEqual(len(corner_runs(start+[['c',[50,0],[60,0],[90,10]]])),2)
+  self.assertEqual(len(corner_runs(start+[['c',[50,0],[60,0],[90,0]]])),1)
  def test_corner_shares_clearance_between_short_arms(self):
   from neon_routing import route
   from uv_print import subpaths

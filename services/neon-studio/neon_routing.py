@@ -13,6 +13,14 @@ class RoutingTooSmall(ValueError):
     pass
 
 
+def zero_radius_end(points):
+    # With a collapsed end handle a non-collinear cubic has limiting
+    # radius zero, even when its tangent matches the adjoining line.
+    if len(points)!=4 or not np.array_equal(points[0],points[1]):return False
+    a,b=points[2]-points[0],points[3]-points[0]
+    return abs(a[0]*b[1]-a[1]*b[0])>1e-10*np.linalg.norm(a)*np.linalg.norm(b)
+
+
 def corner_runs(part):
     segments=list(curve_segments(part))
     joins=list(zip(segments,segments[1:]))
@@ -22,7 +30,8 @@ def corner_runs(part):
     for (index,a),(_,b) in joins:
         before=next(v for v in reversed(np.diff(a,axis=0)) if np.linalg.norm(v)>1e-10)
         after=next(v for v in np.diff(b,axis=0) if np.linalg.norm(v)>1e-10)
-        if np.dot(before,after)<math.cos(math.radians(.1))*np.linalg.norm(before)*np.linalg.norm(after):
+        if (zero_radius_end(a[::-1]) or zero_radius_end(b) or
+            np.dot(before,after)<math.cos(math.radians(.1))*np.linalg.norm(before)*np.linalg.norm(after)):
             cuts.append([index,1.])
     return split_commands(part,cuts) if cuts else [part]
 
@@ -63,17 +72,30 @@ def endpoint_directions(line):
     return tangents
 
 
-def joins(a,b,tolerance):
+def joins(a,b,tolerance,search_distance):
     intersection=a.intersection(b)
     if not intersection.is_empty:
         if intersection.length>1e-6:
             raise ValueError('Deckungsgleiche Neonstrecken: gemeinsame Linie im Motiv eindeutig zuordnen.')
         return True
+    # Multiple arms can end at the same digitized node even if their
+    # tangents point away from it. Parallel adjacent arms stay independent.
+    for a_end,u in endpoint_directions(a):
+        for b_end,v in endpoint_directions(b):
+            if a_end.distance(b_end)<=tolerance*.05 and np.dot(u,v)<.94:
+                return True
     # A close parallel stroke remains a separate strip. Snap only a transverse
     # endpoint to another run, using a scale-independent artwork tolerance.
     for first,other in ((a,b),(b,a)):
         for endpoint,tangent in endpoint_directions(first):
-            if endpoint.distance(other)>tolerance:continue
+            gap=endpoint.distance(other)
+            # A drawn end may stop just before the receiving stroke. Look
+            # along its outgoing tangent; parallel offsets do not converge.
+            if 0<gap<=min(search_distance,first.length*.4):
+                start=np.asarray(endpoint.coords[0])
+                extension=LineString([start,start-tangent*4*gap])
+                if extension.distance(other)<gap*.2:return True
+            if gap>tolerance:continue
             # A tangent connector can terminate at a loop. Over its interior
             # it must leave the loop; parallel offsets remain independent.
             if other.is_closed:
@@ -97,10 +119,11 @@ def layout(paths):
     runs.sort(key=lambda item:-item[2].length)
     lines=[item[2] for item in runs];tree=STRtree(lines)
     tolerance=max(1e-8,(max(x.bounds[2] for x in lines)-min(x.bounds[0] for x in lines))*.001)
+    search_distance=tolerance*5
     contacts=[set() for _ in runs];ends=[[] for _ in runs]
     for i,line in enumerate(lines):
-        for j in tree.query(line,predicate='dwithin',distance=tolerance):
-            if j>=i or not joins(line,lines[j],tolerance):continue
+        for j in tree.query(line,predicate='dwithin',distance=search_distance):
+            if j>=i or not joins(line,lines[j],tolerance,search_distance):continue
             contacts[i].add(j)
             # At corners of the same source path, share the gap equally.
             if runs[i][0]!=runs[j][0]:continue
@@ -137,6 +160,14 @@ def size_lower_bound(drawing, reference_width, padding, floor):
     runs,contacts,ends=layout(drawing['paths'])
     span=reference_width-padding
     factor=max((floor-padding)/span,10/min(path_length(run) for _,run,_ in runs))
+    # A circular end trim consumes at least its radius in arc length.
+    # Keep the largest trim per end if several branches share that end.
+    for (_,run,line),trims in zip(runs,ends):
+        if not trims or line.is_closed:continue
+        start=Point(line.coords[0])
+        start_trim=max((r for p,r in trims if p.equals(start)),default=0.)
+        end_trim=max((r for p,r in trims if not p.equals(start)),default=0.)
+        factor=max(factor,(10+start_trim+end_trim)/path_length(run))
     fixed=[(run,line) for i,(_,run,line) in enumerate(runs) if not contacts[i] and not ends[i]]
     if fixed:
         paths=[run for run,_ in fixed]
