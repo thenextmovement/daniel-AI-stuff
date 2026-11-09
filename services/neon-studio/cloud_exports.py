@@ -109,7 +109,8 @@ def artifacts(variants,spec,motif=None):
         c.setFillColor(HexColor('#21374A'))
         c.setFont('Helvetica-Bold',18)
         c.drawString(36,720,'Auto Quote')
-        title=' · '.join(filter(None,[spec['customer_name'][:70],motif,'Option '+str(i+1)]))
+        option=f'Option {i+1}' if len(variants)>1 else None
+        title=' · '.join(filter(None,[spec['customer_name'][:70],motif,option]))
         c.setFont('Helvetica',min(12,528*12/max(1,c.stringWidth(title,'Helvetica',12))))
         c.drawString(36,698,title)
         scale=min(476/d['width'],248/d['height'])

@@ -284,6 +284,12 @@ class CloudTests(unittest.TestCase):
   self.assertEqual([f[0] for f in files],['auto_quote_Test_Kunde.pdf','image.png','technische_zeichnung.jpg'])
   text=fitz.open(stream=files[0][2],filetype='pdf')[0].get_text()
   self.assertIn('70,00',text);self.assertIn('USD',text)
+  self.assertNotIn('Option 1',text)
+  second=store.drawing(info['id'],json.dumps({'mode':'single','width':1000,'gap':15,'shape':'shape','radius':3}))
+  multiple,_=artifacts([d,second],{**spec,'widths_mm':[700,1000]},'Motiv')
+  with fitz.open(stream=multiple[0][2],filetype='pdf') as doc:
+   self.assertEqual([page.get_text().splitlines()[1] for page in doc],
+                    ['Test Kunde · Motiv · Option 1','Test Kunde · Motiv · Option 2'])
   self.assertGreater(Image.open(io.BytesIO(files[1][2])).width,1000)
   self.assertGreater(Image.open(io.BytesIO(files[2][2])).width,1500)
   self.assertGreaterEqual(float(quotes[0]['shipping_usd']),45)
