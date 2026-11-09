@@ -112,7 +112,7 @@ def artifacts(variants,spec,motif=None):
         q=price(d,spec);quotes.append(q)
         c.setFillColor(HexColor('#21374A'))
         c.setFont('Helvetica-Bold',18)
-        c.drawString(36,720,'Auto Quote')
+        c.drawString(36,720,'Auto Quote · Entwurf' if spec.get('download_draft') else 'Auto Quote')
         option=f'Option {i+1}' if len(variants)>1 else None
         title=' · '.join(filter(None,[spec['customer_name'][:70],motif,option]))
         c.setFont('Helvetica',min(12,528*12/max(1,c.stringWidth(title,'Helvetica',12))))
@@ -189,7 +189,11 @@ def selected_download(drawing,options):
             files.append((label+'.pdf','application/pdf',make_pdf(drawing,{**(options.get('pdfOptions',{}) if kind=='custom' else {}),'kind':kind})))
     if 'quote' in formats or 'preview' in formats:
         from cloud_ai import validate_spec
-        spec=validate_spec({**options['spec'],'widths_mm':[drawing['width']]})
+        # A download documents the current preview, including provisional choices.
+        # Publishing still validates outstanding review items on the project.
+        source=options['spec']
+        spec=validate_spec({**source,'issues':[],'widths_mm':[drawing['width']]})
+        spec['download_draft']=bool(source.get('issues'))
         bundle,_=artifacts([drawing],spec,options.get('motif'))
         if 'quote' in formats:files.append(bundle[0])
         if 'preview' in formats:files.append(bundle[1])
