@@ -11,7 +11,7 @@ from shapely import multipoints, convex_hull, STRtree, linestrings, points as sh
 from colors import NEON_COLORS, line_color, valid_color
 
 
-DEFAULTS = dict(mode='double', shape='bottom', width=600, gap=15, tube=6,
+DEFAULTS = dict(mode='double', shape='bottom', width=600, gap=15, tube=8,
                 depth=20, radius=3)
 KAPPA = 4 * (math.sqrt(2) - 1) / 3
 
@@ -906,8 +906,9 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None):
     return path
 
 
-def build_geometry(model, options=None, *, editable=True):
+def build_geometry(model, options=None, *, editable=True, sizing_probe=False):
     settings={**DEFAULTS, 'reserve':.1, **(options or {})}
+    if settings.get('autoRoute'):settings['tube']=8
     if settings['mode'] not in ('single','double') or settings['shape'] not in ('rectangle','bottom','shape'):
         raise ValueError('Unbekannter Linienmodus oder Plattenform.')
     limits={'width':(80,20000),'gap':(2,100),'tube':(1,30),'depth':(0,20000),'radius':(.5,40),'reserve':(.001,20)}
@@ -1047,6 +1048,13 @@ def build_geometry(model, options=None, *, editable=True):
         raise ValueError('Das Motiv wird breiter als 20.000 mm. Bitte Abstand oder Größe reduzieren.')
     dx=left-x0*scale; dy=top-y0*scale
     paths=[transform(item['commands'],scale,dx,dy) for item in source]
+    if settings.get('autoRoute'):
+        from neon_routing import route
+        paths=route(paths)
+    if sizing_probe:
+        return dict(paths=paths,names=[p['name'] for p in source],pathRoles=[p.get('role','stroke') for p in source],
+                    pathModes=[p['mode'] for p in source],settings=settings,width=w,neonMeters=sum(map(path_length,paths))/1000,
+                    neonMaterialMeters=sum(map(path_length,paths))*.0011)
     lines=[LineString(sample_path(transform(path,scale,dx,dy),40)) for path in support_paths]
     clearance=unary_union([_directional_buffer(line,paddings) for line in lines]) if asymmetric else None
     def has_clearance(poly,tolerance):
@@ -1180,6 +1188,7 @@ def build_geometry(model, options=None, *, editable=True):
     settings['width']=float(bbox[2]-bbox[0])
     raw_box=model['imageBounds']
     neon_length=sum(item['length'] for item in source)*scale/1000
+    if settings.get('autoRoute'):neon_length=sum(map(path_length,paths))/1000
     missing=[p for p in model['parts'] if not p[part_modes.get(p['id'],settings['mode'])]]
     if missing:
         notices.append('Für '+', '.join(p['name'] for p in missing)+' fehlen Linien. Bitte die andere Linienart zuweisen.')

@@ -168,6 +168,9 @@ class Store:
         drawing=build_geometry(model,changed)
         return dict(drawing=drawing,count=len(drawing['paths'])-len(before['paths']))
 
+    def size_probe(self,token,options):
+        return build_geometry(self.model(token),options,editable=False,sizing_probe=True)
+
     @lru_cache(maxsize=48)
     def drawing(self,token,serialized,editable=True):
         return build_geometry(self.model(token),json.loads(serialized),editable=editable)

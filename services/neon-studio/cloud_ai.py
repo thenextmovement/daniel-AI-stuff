@@ -151,7 +151,7 @@ Double bedeutet hier echte Umrissgeometrie im SVG, nicht nur ein Etikett im Lini
 i/j-Punkte als separate Pfade kennzeichnen. Sie werden später in Millimetern lokal angepasst:
 Single senkrechter Strich mindestens 20 mm, Double Kreis. Keine anderen Teile dafür skalieren.
 Fehlende Usage: Innen; fehlender Zuschnitt: shape. Randabstand später 15mm.
-Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei mehreren unterschiedlichen Motiven: issues. tube_mm ist die ausdrücklich bestellte Schlauchbreite (6 oder 8), sonst 6.
+Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei mehreren unterschiedlichen Motiven: issues. Für die Zeichnung immer 8 mm Neonflex annehmen.
 Die SVG enthält ausschließlich die tatsächlich benötigten Neonpfade: smooth Mittellinien bei
 Schreibschrift/dünnen Strichen, vorhandene Umrisslinien bei bewusst breiten Outline-Logos.
 Keine Leuchthöfe, Schattierungen, Acrylkontur, Beschriftungen, Bemaßung oder Bildrahmen.

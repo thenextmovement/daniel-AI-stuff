@@ -1,4 +1,4 @@
-import fcntl,json,os,threading,time,traceback
+import fcntl,json,math,os,threading,time,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,plain_title,ServiceError
@@ -6,25 +6,27 @@ from cloud_ai import generate,validate_spec,Review,drawing_model
 from cloud_exports import artifacts,CUT
 def size_variants(store,model,settings,spec):
     from manufacturing import inspect
+    from neon_routing import RoutingTooSmall
     widths=spec.get('widths_mm',[])
     if not isinstance(widths,list) or any(type(w) not in (int,float) or not 80<=w<=20000 for w in widths):
         raise Review('Ungültige Angebotsbreite.')
     targets=list(widths)
-    if spec.get('smallest_requested') is True:targets.append(80)
+    if spec.get('smallest_requested') is True:targets.append(spec.get('minimum_width_mm') or 80)
     results=[];reports=[]
     for target in targets:
-        width=target
-        for _ in range(4):
-            d=store.drawing(model,json.dumps({**settings,'width':width,'scale':None},sort_keys=True))
+        first_grid=(math.floor(target/50)+1)*50
+        for width in [target,*range(first_grid,20001,50)]:
+            try:
+                options={**settings,'tube':8,'autoRoute':True,'width':width,'scale':None}
+                d=store.size_probe(model,options)
+            except RoutingTooSmall:
+                continue
             report=inspect(d)
-            if report['needsLocalCorrection']:
-                details=[w for w in report['warnings'][2:] if not w.startswith(('Zuerst','Zeichnung und'))]
-                raise Review('Neonführung lokal prüfen: '+' '.join(details)[:480])
-            if not report['reasons']:break
-            proposed=report['recommendedWidth']
-            if not proposed or proposed<=width:raise Review('Größenanpassung nicht möglich: '+' '.join(report['reasons']))
-            width=proposed
-        else:raise Review('Neonabstände oder Stücklängen nach Größenanpassung nicht bestätigt.')
+            if not report['needsLocalCorrection'] and not report['reasons']:
+                actual=store.drawing(model,json.dumps(options,sort_keys=True))
+                report=inspect(actual)
+                if actual['paths'] and not report['needsLocalCorrection'] and not report['reasons']:break
+        else:raise Review('Bis 20 m wurde keine passende Breite für 8-mm-Neonflex gefunden. Linienführung prüfen.')
         if width not in results:results.append(width);reports.append(report)
     if len(results)>4:raise Review('Es sind mehr als vier Angebotsvarianten angefragt.')
     return results,reports
@@ -78,27 +80,36 @@ class Jobs:
         model,part_modes=drawing_model(data)
         info=self.store.add_model(model,'KI-Zeichnung.svg')
         spec={k:v for k,v in data.items() if k!='svg'}
-        settings={'mode':'single','partModes':part_modes,'shape':spec.get('shape') or 'shape','width':(spec.get('widths_mm') or [600])[0],'gap':15,'tube':8 if spec.get('tube_mm')==8 else 6,'radius':3,'depth':20,'reserve':.1,'scale':None}
+        settings={'mode':'single','partModes':part_modes,'shape':spec.get('shape') or 'shape','width':(spec.get('widths_mm') or [600])[0],'gap':15,'tube':8,'radius':3,'depth':20,'reserve':.1,'scale':None}
         p=self.db.save(id,{'model':info['id'],'spec':spec,'metrics':metrics,'settings':settings},status='draft')
-        widths,reports=size_variants(self.store,info['id'],settings,spec)
-        if widths:
-            spec={**spec,'requested_widths_mm':spec.get('widths_mm',[]),'widths_mm':widths}
-            settings={**settings,'width':widths[0]}
-            metrics['manufacturing']=reports[0]
-            p=self.db.save(id,{'spec':spec,'metrics':metrics,'settings':settings},status='draft')
         self.publish(p)
     def publish(self,p):
         with self.lock:
             p=self.db.get(p['id'])
             if p['status'] in ('publishing','generating','copying','queued'):raise Review('Projekt wird bereits verarbeitet.')
-            spec=validate_spec(p.get('spec'))
+            spec=dict(p.get('spec') or {})
+            from cloud_ai import manual_minimum_width
+            manual_minimum_width(spec)
+            if p.get('model') and (spec.get('smallest_requested') or 'line_plan' in spec) and not spec.get('issues'):
+                requested=spec.get('requested_widths_mm',spec.get('widths_mm',[]))
+                # Preserve deliberate edits to previously sized variants.
+                if spec.get('sized_widths_mm')!=spec.get('widths_mm') and 'sized_widths_mm' in spec:
+                    requested=spec['widths_mm']
+                settings={**p['settings'],'autoRoute':True,'scale':None,'tube':8}
+                widths,reports=size_variants(self.store,p['model'],settings,{**spec,'widths_mm':requested})
+                if widths:
+                    spec.update(requested_widths_mm=requested,widths_mm=widths,sized_widths_mm=widths)
+                    if spec.get('smallest_requested'):spec['auto_minimum_mm']=min(r['currentWidth'] for r in reports)
+                    settings['width']=widths[0]
+                    p=self.db.save(p['id'],{'spec':spec,'settings':settings,'metrics':{**(p.get('metrics') or {}),'manufacturing':reports[0]}})
+            spec=validate_spec(spec)
             if not p.get('copy') or not p.get('model'):raise Review('Kopie oder Zeichnung fehlt.')
             card=self.t.card(p['copy'])
             if card['idBoard']!=BOARD or card['idList'] not in (HOLDING,READY):raise Review('Karte wurde weiterbearbeitet. Veröffentlichung hier gesperrt.')
             widths=spec['widths_mm'];settings=dict(p['settings'])
             variants=[]
             for i,width in enumerate(widths):
-                options={**settings,'width':width,'shape':spec['shape']}
+                options={**settings,'width':width,'tube':8,'shape':spec['shape']}
                 if i>0 or abs(float(settings.get('width',0))-width)>.1:options['scale']=None
                 d=self.store.drawing(p['model'],json.dumps(options,sort_keys=True))
                 if not d.get('exportable') or not d['paths']:raise Review('Zeichnung enthält noch ungeklärte Pfade.')
@@ -142,6 +153,8 @@ class Jobs:
                     old.remove(attachment)
                     self.db.save(p['id'],{'cleanup_pending':list(old)})
                 minimum_note=('\nMindestbreite (manuell): '+decimal(spec['minimum_width_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.') if spec.get('minimum_width_mm') is not None else ''
+                if spec.get('auto_minimum_mm'):
+                    minimum_note+='\nKleinste geprüfte Breite mit 8-mm-Neonflex: '+decimal(spec['auto_minimum_mm']/10)+' cm. Trennstellen sind in der Zeichnung berücksichtigt.'
                 self.t.comment_once(p['copy'],marker+'\nDrei Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
                 self.t.call('PUT',f"cards/{p['copy']}",json={'name':'🤖 '+p['snapshot']['name']+' 🤖','idList':READY})
                 checked=self.t.card(p['copy'])

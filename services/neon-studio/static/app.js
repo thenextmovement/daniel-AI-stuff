@@ -40,7 +40,7 @@ function icon(name) { return `<svg viewBox="0 0 24 24" aria-hidden="true">${icon
 function paintIcons(root=document) { root.querySelectorAll('[data-icon]').forEach(el => {el.innerHTML=icon(el.dataset.icon);}); }
 paintIcons();
 
-const defaults = {mode:'double',shape:'bottom',width:600,gap:15,gapSides:{},tube:6,depth:20,depthSides:{},radius:3,reserve:.1,scale:null,partModes:{},straightened:{},pathSplits:{},pathOffsets:{},outlineEdits:[],depthRegions:[],uvStrokes:[],uvMode:'original',hiddenPaths:[],pathColors:{}};
+const defaults = {mode:'double',shape:'bottom',width:600,gap:15,gapSides:{},tube:8,depth:20,depthSides:{},radius:3,reserve:.1,scale:null,partModes:{},straightened:{},pathSplits:{},pathOffsets:{},outlineEdits:[],depthRegions:[],uvStrokes:[],uvMode:'original',hiddenPaths:[],pathColors:{}};
 const presets = {
   technical:{neon:'#79c6ff',acrylic:'#aab4be',background:'#222527',opacity:8,glow:false},
   glow:{neon:'#fc7249',acrylic:'#aab4be',background:'#202224',opacity:4,glow:true},

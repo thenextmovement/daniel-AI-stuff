@@ -93,6 +93,7 @@ class ManufacturingTests(unittest.TestCase):
   import json
   case=self
   class Store:
+   def size_probe(self,model,options):return self.drawing(model,json.dumps(options))
    def drawing(self,model,options):
     width=json.loads(options)['width'];size=(width-30)/20
     d=case.drawing([[['m',[0,0]],['l',[size,0]]]]);d['width']=width
@@ -100,6 +101,14 @@ class ManufacturingTests(unittest.TestCase):
   widths,reports=size_variants(Store(),'model',{},dict(widths_mm=[600],smallest_requested=True))
   self.assertEqual(widths,[600,250])
   self.assertFalse(any(r['shortPaths'] for r in reports))
+ def test_cut_layout_resolves_T_and_corner_without_dropping_strokes(self):
+  from neon_routing import route,RoutingTooSmall
+  paths=[[['m',[0,0]],['l',[100,0]]],[['m',[50,0]],['l',[50,55]],['l',[80,55]]]]
+  routed=route(paths);d=self.drawing(routed);d['settings']['tube']=8
+  report=inspect(d)
+  self.assertFalse(report['needsLocalCorrection']);self.assertFalse(report['reasons'])
+  self.assertEqual(len(routed),2);self.assertLess(path_length(routed[1]),85)
+  with self.assertRaises(RoutingTooSmall):route([paths[0],[['m',[50,0]],['l',[50,4]]]])
  def test_eps_windows_preview_is_not_used_as_artwork(self):
   import shutil,struct
   from cloud_ai import eps_pdf

@@ -43,6 +43,9 @@ function cloudPriceControls(){
   $$('[data-price-outdoor]').forEach(b=>{const active=(b.dataset.priceOutdoor==='true')===pricing.outdoor;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
   $('pricePsuRow').hidden=!pricing.outdoor;$('priceOutdoorNote').hidden=!pricing.outdoor;
   const warning=$('cloudSizeWarning');if(warning){
+    if(cloudSpec.auto_minimum_mm){
+      warning.hidden=false;warning.textContent='Kleinste geprüfte Breite mit 8-mm-Neonflex: '+(cloudSpec.auto_minimum_mm/10).toLocaleString('de-DE')+' cm';return;
+    }
     warning.hidden=cloudSpec.minimum_width_mm==null&&!!cloudSpec.widths_mm?.length;
     warning.textContent=cloudSpec.minimum_width_mm!=null?'Mindestbreite: '+(cloudSpec.minimum_width_mm/10).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' cm · manuell':'Vorschaugröße – Mindestgröße noch nicht geprüft';
   }
@@ -159,7 +162,7 @@ async function cloudBoot(){
     if(['queued','copying','generating'].includes(cloud.status))setTimeout(()=>location.reload(),10000);
     return;
   }
-  state.project=cloud.model;state.settings={...defaults,...cloud.settings};state.analyzing=false;state.history=[];state.historyIndex=-1;
+  state.project=cloud.model;state.settings={...defaults,...cloud.settings,tube:8};$('tube').disabled=true;state.analyzing=false;state.history=[];state.historyIndex=-1;
   commitHistory();renderProject();updateControls();await requestGeometry(true);
   const plan=document.createElement('div');plan.className='help-text';
   if(cloud.metrics?.model)plan.append(textElement('p','KI-Zeichnung: '+cloud.metrics.model+'. Die Fertigungsprüfung berechnet Kurven und Abstände separat.'));

@@ -72,7 +72,10 @@ class CloudHandler(Handler):
                     self.server.store.drawing(model,json.dumps(settings,sort_keys=True))
                     p=db.save(p['id'],{'model':model,'settings':settings,'spec':spec},expected=p['revision'],status='draft')
                 elif path=='/cloud/publish':
-                    validate_spec(p.get('spec'))
+                    spec=p.get('spec') or {}
+                    if spec.get('smallest_requested') and not spec.get('widths_mm') and p.get('model'):
+                        validate_spec({**spec,'widths_mm':[spec.get('minimum_width_mm') or 80]})
+                    else:validate_spec(spec)
                     if p.get('upload_intent') or p.get('pending_attachments'):raise Review('Eine frühere Übertragung ist unbestätigt. Anhänge vor Wiederholung abgleichen.')
                     p=db.save(p['id'],{},expected=p['revision'],status='publish_queued')
                 elif path=='/cloud/retry':
