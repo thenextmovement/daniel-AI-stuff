@@ -195,6 +195,90 @@ class MonitorTests(unittest.TestCase):
             self.assertEqual(sql(f"select has_function_privilege('{role}','shipping_claim_notification_monitor_alert(timestamptz)','EXECUTE');"),'f')
         self.assertEqual(sql("select has_function_privilege('service_role','shipping_claim_notification_monitor_alert(timestamptz)','EXECUTE');"),'t')
 
+class DeliveryWarningTests(unittest.TestCase):
+    @classmethod
+    def tearDownClass(cls):
+        # The existing MonitorTests deliberately test the historical v2 migration.
+        sql((ROOT/'supabase/migrations/20261103090555_shipping_monitor_case_dedup.sql').read_text())
+    def setUp(self):
+        sql("truncate shipping_shipments cascade;")
+        sql((ROOT/'supabase/migrations/20260606161935_shipping_recent_window_and_problem_scope.sql').read_text())
+        sql((ROOT/'supabase/migrations/20261109121935_shipping_customer_delivery_warning.sql').read_text())
+        self.sid=sql("insert into shipping_shipments(shipment_key,carrier,tracking_number,status,customer_email) values('warning-fixture','dhl','parcel-1','delivery_failed','customer@example.test') returning id;")
+        self.iid=sql(f"insert into shipping_incidents(shipment_id,incident_key,incident_type,severity,title,rule_version) values('{self.sid}','warning-incident','delivery_failed','urgent','fixture','fixture') returning id;")
+    def enqueue(self):
+        sql("select * from shipping_enqueue_notifications();")
+        return sql("select id from shipping_notifications where kind='internal_delivery_problem';")
+    def claim(self): return sql("select recipient_type || ':' || recipient_email from shipping_claim_pending_notifications();")
+    def test_routes_customer_once_and_preserves_legacy_key(self):
+        self.enqueue(); self.enqueue()
+        self.assertEqual(sql("select count(*) from shipping_notifications;"),'1')
+        self.assertEqual(sql("select notification_key from shipping_notifications;"),'internal:delivery_problem:'+self.iid)
+        self.assertEqual(self.claim(),'customer:customer@example.test'); self.assertEqual(self.claim(),'')
+    def test_already_sent_internal_warning_is_not_resent_or_rewritten(self):
+        nid=self.enqueue()
+        sql(f"update shipping_notifications set status='sent',recipient_type='internal',recipient_email='info@neontrip.de',attempts=1,sent_at=now() where id='{nid}';")
+        before=sql("select row_to_json(n) from shipping_notifications n;")
+        self.enqueue(); self.assertEqual(self.claim(),'')
+        self.assertEqual(sql("select row_to_json(n) from shipping_notifications n;"),before)
+    def test_parallel_claims_have_one_winner(self):
+        self.enqueue()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool: results=list(pool.map(lambda _: self.claim(),range(4)))
+        self.assertEqual(sum(bool(x) for x in results),1)
+    def test_unknown_sending_and_failed_are_never_automatically_reclaimed(self):
+        self.enqueue(); self.claim()
+        for status in ['sending','failed','pending']:
+            sql(f"update shipping_notifications set status='{status}',claimed_at=now()-interval '1 day',updated_at=now()-interval '1 day';")
+            self.assertEqual(self.claim(),'')
+            self.assertEqual(sql("select attempts from shipping_notifications;"),'1')
+    def test_invalid_or_internal_email_stays_pending_for_existing_monitor(self):
+        self.enqueue()
+        for email in ['', 'broken', 'info@neontrip.de','test@neontrip.test','a,b@example.test','a;b@example.test','a@example.test.']:
+            sql(f"update shipping_shipments set customer_email='{email}';")
+            self.assertEqual(self.claim(),'')
+            self.assertEqual(sql("select status || ':' || attempts from shipping_notifications;"),'pending:0')
+    def test_unattempted_recipient_is_refreshed_from_database(self):
+        self.enqueue(); sql("update shipping_shipments set customer_email='corrected@example.test';")
+        self.assertEqual(self.claim(),'customer:corrected@example.test')
+        self.assertEqual(sql("select recipient_email from shipping_notifications;"),'corrected@example.test')
+    def test_resolved_or_superseded_problem_is_not_sent(self):
+        for update in ["update shipping_incidents set status='resolved';", "update shipping_shipments set status='delivered';", "update shipping_shipments set status='returning';"]:
+            self.setUp(); self.enqueue(); sql(update)
+            self.assertEqual(self.claim(),''); self.assertEqual(sql("select status from shipping_notifications;"),'skipped')
+    def test_return_states_must_match_the_current_incident(self):
+        for incident,status in [('return_to_sender','returning'),('returned','returned')]:
+            self.setUp()
+            sql(f"update shipping_incidents set incident_type='{incident}'; update shipping_shipments set status='{status}';")
+            self.enqueue(); self.assertEqual(self.claim(),'customer:customer@example.test')
+    def test_old_shipment_and_missing_tracking_are_not_sent(self):
+        self.enqueue(); sql("update shipping_shipments set shipped_at=now()-interval '70 days';")
+        self.assertEqual(self.claim(),'')
+        sql("update shipping_shipments set shipped_at=now(),tracking_number=null;")
+        self.assertEqual(self.claim(),'')
+    def test_pickup_retry_and_installation_exclusion_are_unchanged(self):
+        sql("delete from shipping_incidents;")
+        nid=sql(f"insert into shipping_notifications(notification_key,shipment_id,kind,recipient_type,recipient_email,status,attempts,claimed_at) values('pickup','{self.sid}','customer_pickup_available','customer','customer@example.test','sending',1,now()-interval '1 day') returning id;")
+        self.assertEqual(sql("select notification_id from shipping_claim_pending_notifications();"),nid)
+        sql(f"insert into shipping_notifications(notification_key,shipment_id,kind,recipient_type,recipient_email) values('installation','{self.sid}','customer_installation_documents','customer','customer@example.test');")
+        self.assertEqual(self.claim(),'')
+    def test_first_failed_warning_is_reported_without_retry(self):
+        self.enqueue(); self.claim()
+        sql("update shipping_notifications set status='failed',last_error='fixture-provider-error';")
+        self.assertEqual(self.claim(),'')
+        self.assertEqual(sql("select issue_count from shipping_claim_notification_monitor_alert();"),'1')
+        self.assertEqual(sql("select attempts from shipping_notifications;"),'1')
+    def test_service_role_only_and_rollback(self):
+        for role in ['anon','authenticated']:
+            for fn in ['shipping_enqueue_notifications(timestamptz)','shipping_claim_pending_notifications(integer,timestamptz)']:
+                self.assertEqual(sql(f"select has_function_privilege('{role}','{fn}','EXECUTE');"),'f')
+        sql((ROOT/'supabase/rollbacks/20261109121935_shipping_customer_delivery_warning.sql').read_text())
+        self.enqueue(); self.assertEqual(self.claim(),'internal:info@neontrip.de')
+    def test_rollback_never_sends_internal_template_to_customer_rows(self):
+        self.enqueue()
+        sql((ROOT/'supabase/rollbacks/20261109121935_shipping_customer_delivery_warning.sql').read_text())
+        self.assertEqual(self.claim(),'')
+        self.assertEqual(sql("select status || ':' || recipient_email from shipping_notifications;"),'pending:customer@example.test')
+
 if __name__=='__main__':
     try:
         run(['docker','run','--pull=never','--name',CONTAINER,'--network','none','--tmpfs','/var/lib/postgresql/data','-e','POSTGRES_HOST_AUTH_METHOD=trust','-d','postgres:17-alpine'])

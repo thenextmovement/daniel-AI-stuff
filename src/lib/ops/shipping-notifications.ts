@@ -1,6 +1,7 @@
 import { isValidEmail, normalizeEmail } from "@/lib/quotes/customer";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
+import { MIKA_INSTALLATION_SIGNATURE_HTML } from "@/lib/ops/shipping-installation-signature";
 
 export type ShippingNotificationKind = "customer_pickup_available" | "internal_delivery_problem";
 export type ShippingNotificationStatus = "pending" | "sending" | "sent" | "failed" | "skipped";
@@ -233,10 +234,57 @@ export function buildInternalDeliveryProblemEmail(row: ClaimedShippingNotificati
   return { recipientEmail, subject, bodyHtml };
 }
 
+// Keep the legacy kind/key so previously sent internal warnings are never resent.
+// The database now records the actual customer recipient before claiming this mail.
+export function buildDeliveryProblemCustomerEmail(row: ClaimedShippingNotificationRow) {
+  if (!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>.]+$/.test(String(row.recipient_email || "").trim())) {
+    throw new QuoteValidationError("Shipping-Warnung braucht genau eine gültige E-Mail-Adresse.", [], 422);
+  }
+  const recipientEmail = assertValidCustomerRecipient(row.recipient_email);
+  if (row.recipient_type !== "customer" || recipientEmail !== assertValidCustomerRecipient(row.customer_email)) {
+    throw new QuoteValidationError("Shipping-Warnung braucht den bestätigten Kundenempfänger.", [], 422);
+  }
+  const expectedStatus: Record<string, string> = { delivery_failed: "delivery_failed", return_to_sender: "returning", returned: "returned" };
+  if (!row.incident_type || expectedStatus[row.incident_type] !== row.status || row.attempts !== 1) {
+    throw new QuoteValidationError("Shipping-Warnung ist veraltet oder wurde bereits versucht.", [], 422);
+  }
+  const trackingNumber = trimNullable(row.tracking_number);
+  if (!trackingNumber || /[\r\n]/.test(trackingNumber)) {
+    throw new QuoteValidationError("Shipping-Warnung braucht eine eindeutige Sendungsnummer.", [], 422);
+  }
+  const carrier = row.carrier === "dhl" ? "DHL" : row.carrier === "dpd" ? "DPD" : "Ihrem Versanddienstleister";
+  const order = trimNullable(row.shopify_order_number)?.replace(/[\r\n]/g, " ");
+  const returned = row.incident_type === "returned";
+  const returning = row.incident_type === "return_to_sender";
+  const subject = (returned ? "Ihre NEONTRIP Sendung wurde zurückgesendet" : returning ? "Dringend: Rücksendung Ihrer NEONTRIP Sendung" : "Dringend: Ihr NEONTRIP Paket konnte nicht zugestellt werden") + (order ? ` (${order})` : "");
+  const candidateUrl = trimNullable(row.tracking_url);
+  const safeTrackingUrl = candidateUrl && /^https:\/\/(?:[a-z0-9-]+\.)*(?:dhl\.com|logistics\.dhl|dpd\.com|dpd\.de|mydpd\.de)(?:[/?#][^\s<>"\\]*)?$/i.test(candidateUrl) ? candidateUrl : null;
+  const bodyHtml = [
+    paragraph(greeting(row)),
+    paragraph(returned
+      ? "laut Sendungsverfolgung wurde Ihre NEONTRIP Sendung an den Absender zurückgesendet."
+      : returning
+        ? "laut Sendungsverfolgung befindet sich Ihre NEONTRIP Sendung auf dem Rückweg zum Absender."
+        : "laut Sendungsverfolgung konnte Ihr NEONTRIP Paket nicht zugestellt werden."),
+    paragraph(returned
+      ? "<strong>Bitte antworten Sie zeitnah auf diese E-Mail, damit wir die Lieferadresse und das weitere Vorgehen mit Ihnen klären können.</strong>"
+      : returning
+        ? `<strong>Bitte rufen Sie umgehend beim Kundenservice von ${escapeHtml(carrier)} an und klären Sie, ob die Rücksendung noch gestoppt werden kann.</strong> Geben Sie uns anschließend bitte kurz Rückmeldung.`
+        : `<strong>Bitte rufen Sie möglichst noch heute beim Kundenservice von ${escapeHtml(carrier)} an und klären Sie die erneute Zustellung oder eine mögliche Abholung.</strong> Halten Sie dafür die unten stehende Sendungsnummer bereit und beachten Sie eine gegebenenfalls hinterlassene Benachrichtigung.`),
+    paragraph("Eine Rücksendung und der anschließende erneute Versand verursachen zusätzliche Transportkosten und verzögern Ihre Lieferung. Bitte kümmern Sie sich deshalb umgehend darum."),
+    "<ul>" + (order ? `<li><strong>Bestellung:</strong> ${escapeHtml(order)}</li>` : "") + `<li><strong>Sendungsnummer:</strong> ${escapeHtml(trackingNumber)}</li>` + (row.carrier === "dhl" || row.carrier === "dpd" ? `<li><strong>Versanddienstleister:</strong> ${escapeHtml(carrier)}</li>` : "") + "</ul>",
+    trackingLink(safeTrackingUrl, "Sendungsverfolgung öffnen"),
+    paragraph(returned ? "Sobald der Rücklauf und die weiteren Schritte geklärt sind, stimmen wir das weitere Vorgehen mit Ihnen ab." : "Geben Sie uns bitte kurz Bescheid, sobald Sie die Zustellung geklärt haben. Wenn Sie Unterstützung benötigen, antworten Sie einfach auf diese E-Mail."),
+    paragraph("Freundliche Grüße"),
+    MIKA_INSTALLATION_SIGNATURE_HTML,
+  ].filter(Boolean).join("\n");
+  return { recipientEmail, subject, bodyHtml };
+}
+
 export function buildShippingNotificationEmail(row: ClaimedShippingNotificationRow): ShippingPreparedNotification {
   const email = row.kind === "customer_pickup_available"
     ? buildPickupAvailableCustomerEmail(row)
-    : buildInternalDeliveryProblemEmail(row);
+    : buildDeliveryProblemCustomerEmail(row);
 
   return {
     notificationId: row.notification_id,

@@ -1491,13 +1491,13 @@ test("generateInboundDeliveryNotePdf survives optional Shopify enrichment failur
   }
 });
 
-test("buildShippingNotificationEmail routes return and failed delivery as internal warnings", () => {
+test("buildShippingNotificationEmail routes return problems to the customer with Mika's signature", () => {
   const notification = buildShippingNotificationEmail({
     notification_id: "notification-2",
     notification_key: "internal:delivery_problem:incident-2",
     kind: "internal_delivery_problem",
-    recipient_type: "internal",
-    recipient_email: "info@neontrip.de",
+    recipient_type: "customer",
+    recipient_email: "max@example.com",
     attempts: 1,
     shipment_id: "shipment-2",
     incident_id: "incident-2",
@@ -1519,8 +1519,8 @@ test("buildShippingNotificationEmail routes return and failed delivery as intern
     latest_event_status_text: "Zurueck an Absender",
   } as ClaimedShippingNotificationRow);
 
-  assert.equal(notification.recipientEmail, "info@neontrip.de");
-  assert.match(notification.subject, /Shipping Warnung/);
-  assert.match(notification.bodyHtml, /intern pruefen/);
+  assert.equal(notification.recipientEmail, "max@example.com");
+  assert.match(notification.subject, /Rücksendung/);
+  assert.match(notification.bodyHtml, /Mika Zangane/);
   assert.match(notification.bodyHtml, /TRACK-2/);
 });

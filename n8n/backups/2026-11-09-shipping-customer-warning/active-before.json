@@ -1,0 +1,1794 @@
+{
+  "id": "QtG2XHw7DsvOEPtQ",
+  "name": "NEONTRIP Shipping Agent v0.1",
+  "active": true,
+  "isArchived": false,
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "executionTimeout": 600,
+    "errorWorkflow": "ArT3LN25Mb1PAuBE",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "createdAt": "2026-06-05T11:17:58.077Z",
+  "updatedAt": "2026-11-05T10:17:25.945Z",
+  "activeVersionId": "d8426ca3-d643-43fd-93e8-0db787bba6d8",
+  "versionCreatedAt": "2026-11-05T10:17:25.946Z",
+  "versionName": null,
+  "nodes": [
+    {
+      "id": "shipping-agent-notes",
+      "name": "Shipping Agent Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -120
+      ],
+      "parameters": {
+        "content": "Inactive draft. Imports Shopify fulfilled orders, records Shopify and Shopify Fulfillment Events through Supabase RPC shipping_record_tracking_event, then evaluates active shipments through shipping_evaluate_shipment. Supabase is source of truth; dashboard/API is not required for the agent run. DPD/DHL direct carrier polling remains Phase 2 after credentials and rate limits are verified.",
+        "height": 220,
+        "width": 440
+      }
+    },
+    {
+      "id": "fetch-shopify-orders",
+      "name": "Shopify: Recent Fulfilled Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        260,
+        120
+      ],
+      "parameters": {
+        "url": "=https://galaxybuzzdk.myshopify.com/admin/api/2024-01/orders.json?status=any&limit=250&updated_at_min={{ $now.minus({ days: 21 }).toISO() }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "fullResponse": true
+            }
+          },
+          "timeout": 30000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ (function nextShopifyPage(link = '') {\n  const next = String(link).match(/<([^>]+)>;\\s*rel=\"next\"/)?.[1];\n  if (next && !/^https:\\/\\/galaxybuzzdk\\.myshopify\\.com\\/admin\\/api\\/[0-9-]+\\/orders\\.json\\?/.test(next)) throw new Error('unexpected_shopify_next_url');\n  return next || '';\n})($response.headers.link || $response.headers.Link || \"\") }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !/<([^>]+)>;\\s*rel=\"?next\"?/.test($response.headers.link || $response.headers.Link || \"\") }}",
+              "limitPagesFetched": false,
+              "requestInterval": 500
+            }
+          }
+        }
+      },
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "build-shipment-records",
+      "name": "Build Shipment Records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        120
+      ],
+      "parameters": {
+        "jsCode": "const orders = $input.all().flatMap(item => { const body = item.json.body || item.json; if (!Array.isArray(body.orders)) throw new Error('shopify_orders_missing'); return body.orders; });\nconst out = [];\n\nfunction compact(value) {\n  const text = String(value ?? '').trim();\n  return text || null;\n}\n\nfunction carrierFrom(company) {\n  const text = String(company || '').toLowerCase();\n  if (text.includes('dpd')) return 'dpd';\n  if (text.includes('dhl') || text.includes('deutsche post')) return 'dhl';\n  return text ? 'other' : 'unknown';\n}\n\nfor (const order of orders) {\n  const fulfillments = Array.isArray(order.fulfillments) ? order.fulfillments : [];\n  for (const fulfillment of fulfillments) {\n    const trackingNumbers = Array.isArray(fulfillment.tracking_numbers) && fulfillment.tracking_numbers.length\n      ? fulfillment.tracking_numbers\n      : [fulfillment.tracking_number].filter(Boolean);\n    const trackingUrls = Array.isArray(fulfillment.tracking_urls) ? fulfillment.tracking_urls : [];\n    for (let index = 0; index < trackingNumbers.length; index += 1) {\n      const trackingNumber = compact(trackingNumbers[index]);\n      if (!trackingNumber) continue;\n      const carrier = carrierFrom(fulfillment.tracking_company);\n      const customerName = compact(String(order.customer?.first_name || '') + ' ' + String(order.customer?.last_name || '')) || compact(order.billing_address?.name);\n      const shipment = {\n        shipmentKey: 'shopify:' + order.id + ':' + fulfillment.id + ':' + carrier + ':' + trackingNumber,\n        source: 'shopify',\n        shopifyOrderId: String(order.id || ''),\n        shopifyOrderNumber: compact(order.name),\n        shopifyFulfillmentId: String(fulfillment.id || ''),\n        requestId: compact(order.note_attributes?.find?.((entry) => entry?.name === 'request_id')?.value),\n        customerName,\n        customerEmail: compact(order.email),\n        customerPhone: compact(order.phone || order.customer?.phone || order.billing_address?.phone || order.shipping_address?.phone),\n        carrier,\n        trackingNumber,\n        trackingUrl: compact(trackingUrls[index] || fulfillment.tracking_url),\n        destinationCountry: compact(order.shipping_address?.country_code || order.billing_address?.country_code),\n        shippedAt: compact(fulfillment.created_at || order.updated_at),\n        rawShopify: {\n          orderId: order.id || null,\n          orderName: order.name || null,\n          fulfillmentId: fulfillment.id || null,\n          trackingCompany: fulfillment.tracking_company || null,\n          fulfillmentStatus: order.fulfillment_status || null\n        }\n      };\n\n      out.push({\n        json: {\n          shipment,\n          initialEvent: {\n            carrier,\n            trackingNumber,\n            carrierEventId: 'shopify:' + order.id + ':' + fulfillment.id + ':' + trackingNumber,\n            statusCode: 'LABEL_PRINTED',\n            statusText: 'Sendungsdaten aus Shopify erfasst',\n            eventTime: compact(fulfillment.created_at || order.updated_at || order.created_at),\n            eventLocation: compact(order.shipping_address?.country_code || order.billing_address?.country_code),\n            rawEvent: { source: 'shopify', orderId: order.id || null, fulfillmentId: fulfillment.id || null }\n          }\n        }\n      });\n    }\n  }\n}\n\nreturn out;"
+      }
+    },
+    {
+      "id": "record-shopify-shipment-rpc",
+      "name": "Supabase RPC: Record Shopify Shipment Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        780,
+        120
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/shipping_record_tracking_event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_payload: { shipment: $json.shipment, event: $json.initialEvent } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "shopify-graphql-fulfillment-events",
+      "name": "Shopify GraphQL: Fulfillment Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1040,
+        120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://galaxybuzzdk.myshopify.com/admin/api/2026-04/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: `query ShippingFulfillmentEvents($id: ID!) { fulfillment(id: $id) { id status displayStatus deliveredAt inTransitAt estimatedDeliveryAt trackingInfo(first: 10) { company number url } events(first: 20, reverse: true) { edges { node { id status message happenedAt createdAt estimatedDeliveryAt address1 city province country zip latitude longitude } } } } }`, variables: { id: 'gid://shopify/Fulfillment/' + $('Build Shipment Records').item.json.shipment.shopifyFulfillmentId } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "shopifyAccessTokenApi": {
+          "id": "WZah58udMOwKiRR3",
+          "name": "Shopify Access Token account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "build-shopify-event-records",
+      "name": "Build Shopify Event Records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        120
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().flatMap((input, inputIndex) => {\nconst graph = input.json || {};\nif (graph.errors?.length) throw new Error('shopify_fulfillment_events_failed');\nconst source = $('Build Shipment Records').itemMatching(inputIndex).json || {};\nconst shipment = source.shipment || {};\nconst fulfillment = graph.data?.fulfillment || null;\nif (!fulfillment) return [];\n\nconst events = Array.isArray(fulfillment.events?.edges)\n  ? fulfillment.events.edges.map((edge) => edge?.node).filter(Boolean)\n  : [];\nconst trackingInfo = Array.isArray(fulfillment.trackingInfo) ? fulfillment.trackingInfo : [];\nconst primaryTracking = trackingInfo.find((entry) => entry?.number === shipment.trackingNumber) || trackingInfo[0] || {};\nconst carrier = shipment.carrier || primaryTracking.company || 'unknown';\nconst trackingNumber = shipment.trackingNumber || primaryTracking.number;\nif (!trackingNumber) return [];\n\nfunction compact(value) {\n  const text = String(value ?? '').trim();\n  return text || null;\n}\n\nconst eventItems = events.length\n  ? events\n  : [{\n      id: fulfillment.id,\n      status: fulfillment.status || fulfillment.displayStatus || 'CONFIRMED',\n      message: fulfillment.displayStatus || fulfillment.status || 'Shopify Fulfillment Status',\n      happenedAt: fulfillment.deliveredAt || fulfillment.inTransitAt || fulfillment.estimatedDeliveryAt || new Date().toISOString(),\n      country: shipment.destinationCountry || null\n    }];\n\nreturn eventItems.map((event) => ({\n  pairedItem: { item: inputIndex },\n  json: {\n    shipment,\n    event: {\n      carrier,\n      trackingNumber,\n      carrierEventId: compact(event.id) || ('shopify-fulfillment:' + shipment.shopifyFulfillmentId + ':' + event.status + ':' + (event.happenedAt || event.createdAt)),\n      statusCode: compact(event.status),\n      statusText: compact(event.message || event.status || fulfillment.displayStatus),\n      eventTime: compact(event.happenedAt || event.createdAt || fulfillment.deliveredAt || fulfillment.inTransitAt || new Date().toISOString()),\n      eventLocation: [event.city, event.province, event.country, event.zip].map(compact).filter(Boolean).join(', ') || null,\n      rawEvent: {\n        source: 'shopify_fulfillment_event',\n        fulfillmentId: shipment.shopifyFulfillmentId || null,\n        fulfillmentGid: fulfillment.id || null,\n        displayStatus: fulfillment.displayStatus || null,\n        estimatedDeliveryAt: event.estimatedDeliveryAt || fulfillment.estimatedDeliveryAt || null,\n        latitude: event.latitude || null,\n        longitude: event.longitude || null\n      }\n    }\n  }\n}));\n});"
+      }
+    },
+    {
+      "id": "record-shopify-fulfillment-event-rpc",
+      "name": "Supabase RPC: Record Shopify Fulfillment Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1560,
+        120
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/shipping_record_tracking_event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_payload: { shipment: $json.shipment, event: $json.event } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "schedule-hourly",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        260
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "get-active-shipments",
+      "name": "Supabase: Active Shipments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        260,
+        420
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "method": "GET",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/shipping_shipments?select=id,status,last_event_at,updated_at&status=not.in.(delivered,returned,closed)&order=updated_at.desc&limit=250",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "build-evaluation-requests",
+      "name": "Build Evaluation Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        420
+      ],
+      "parameters": {
+        "jsCode": "const rows = $input.all()\n  .flatMap((item) => Array.isArray(item.json) ? item.json : [item.json])\n  .filter(Boolean);\n\nreturn rows\n  .map((row) => row.id)\n  .filter(Boolean)\n  .map((shipmentId) => ({ json: { p_shipment_id: shipmentId } }));"
+      }
+    },
+    {
+      "id": "evaluate-shipment-rpc",
+      "name": "Supabase RPC: Evaluate Shipment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        780,
+        420
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/shipping_evaluate_shipment",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_shipment_id: $json.p_shipment_id }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "outlook-send-pickup-notice",
+      "name": "Outlook: Send Pickup Notice",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        580
+      ],
+      "parameters": {
+        "toRecipients": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.bodyHtml }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "6f98ab00-da72-49f1-a4cc-df8345a1af73"
+    },
+    {
+      "id": "mark-pickup-notice-sent",
+      "name": "Supabase RPC: Mark Pickup Notice Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1820,
+        580
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/shipping_mark_notification_sent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_notification_id: $(\"Build Shipping Notification Emails\").item.json.notificationId, p_provider_message_id: $json.id || null, p_metadata: { kind: $(\"Build Shipping Notification Emails\").item.json.kind, subject: $(\"Build Shipping Notification Emails\").item.json.subject, recipient: $(\"Build Shipping Notification Emails\").item.json.to } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "wait-for-notification-evaluation",
+      "name": "Wait for Notification Evaluation",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        260,
+        680
+      ],
+      "parameters": {
+        "amount": 30
+      },
+      "webhookId": "d01542e9-c08d-4e40-bd59-7e34e4b0cbb6"
+    },
+    {
+      "id": "enqueue-shipping-notifications",
+      "name": "Supabase RPC: Enqueue Shipping Notifications",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        520,
+        680
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/shipping_enqueue_notifications",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "claim-shipping-notifications",
+      "name": "Supabase RPC: Claim Shipping Notifications",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        780,
+        680
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/shipping_claim_pending_notifications",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_limit: 20 }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "build-shipping-notification-emails",
+      "name": "Build Shipping Notification Emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        680
+      ],
+      "parameters": {
+        "jsCode": "const rows = $input.all()\n  .flatMap((item) => Array.isArray(item.json) ? item.json : [item.json])\n  .filter(Boolean);\n\nfunction compact(value) {\n  const text = String(value ?? '').trim();\n  return text || null;\n}\nfunction normalizeEmail(value) {\n  return String(value || '').trim().toLowerCase().replace(/\\.+$/, '');\n}\nfunction isValidEmail(value) {\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(normalizeEmail(value));\n}\nfunction escapeHtml(value) {\n  return String(value || '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\nfunction p(value) { return '<p>' + value + '</p>'; }\nfunction firstName(name) {\n  const first = compact(name)?.split(/\\s+/)[0] || null;\n  return first && first.length >= 2 ? first : null;\n}\nfunction trackingLink(url, label) {\n  if (!url) return '';\n  return '<p><a href=\"' + escapeHtml(url) + '\">' + escapeHtml(label || 'Sendungsverfolgung oeffnen') + '</a></p>';\n}\nconst fabienneSignatureHtml = [\n  '<br><br>',\n  '<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"font-family: Arial, Helvetica, sans-serif; color:#111111;\">',\n  '  <tbody><tr><td style=\"padding:0;\">',\n  '    <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"max-width:600px; width:100%;\"><tbody>',\n  '      <tr><td style=\"padding:16px 0;\">',\n  '        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\"><tbody><tr>',\n  '          <td valign=\"top\" style=\"width:140px; padding-right:16px;\">',\n  '            <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/fabienne123.jpg?v=1764000653\" alt=\"Fabienne Trapp\" width=\"120\" height=\"120\" style=\"display:block; width:120px; height:120px; border-radius:60px; border:2px solid #111111; object-fit:cover;\">',\n  '          </td>',\n  '          <td valign=\"top\" style=\"padding-top:2px;\">',\n  '            <div style=\"font-size:16px; font-weight:700; color:#111111; margin:0 0 4px 0;\">Fabienne Trapp</div>',\n  '            <div style=\"font-size:12px; color:#6b7280; margin:0 0 10px 0;\">Beratung &amp; Realisierung</div>',\n  '            <div style=\"font-size:13px; font-weight:700; color:#111111; margin:0 0 8px 0;\">NEONTRIP&reg;</div>',\n  '            <div style=\"font-size:13px; line-height:1.6; color:#111111;\">',\n  '              Tel: <a href=\"tel:+4921154257240\" style=\"color:#111111; text-decoration:none;\">+49 211 54257240</a><br>',\n  '              E-Mail: <a href=\"mailto:support@neontrip.de\" style=\"color:#111111; text-decoration:none;\">support@neontrip.de</a><br>',\n  '              Web: <a href=\"https://www.neontrip.de\" style=\"color:#111111; text-decoration:none;\">www.neontrip.de</a><br>',\n  '              Adresse: Bilker Allee 29, 40219 D&uuml;sseldorf',\n  '            </div>',\n  '          </td>',\n  '        </tr></tbody></table>',\n  '      </td></tr>',\n  '      <tr><td style=\"padding:0;\">',\n  '        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color:#121212; border-radius:10px;\"><tbody><tr>',\n  '          <td align=\"center\" style=\"padding:18px 16px;\">',\n  '            <img src=\"https://cdn.shopify.com/s/files/1/0534/7819/5350/files/weiss_logo_NEONTRIP.png?v=1764003450\" alt=\"NEONTRIP\" width=\"420\" style=\"display:block; width:100%; max-width:420px; height:auto; border:0; outline:none; text-decoration:none;\">',\n  '            <div style=\"margin-top:8px; font-size:11px; font-weight:700; letter-spacing:0.6px; color:#ffffff;\">UNIQUE LIGHTING AND BRANDING</div>',\n  '          </td>',\n  '        </tr></tbody></table>',\n  '      </td></tr>',\n  '    </tbody></table>',\n  '  </td></tr></tbody>',\n  '</table>'\n].join('\\n');\nfunction customerPickup(row) {\n  const email = normalizeEmail(row.recipient_email || row.customer_email || '');\n  if (!isValidEmail(email) || email.endsWith('@neontrip.de') || email.endsWith('@neontrip.test')) {\n    return internalWarning({ ...row, incident_title: 'Pickup-Kundenmail blockiert', incident_severity: 'high', latest_event_status_text: 'Ungueltige oder interne Kunden-E-Mail: ' + email });\n  }\n  const name = firstName(row.customer_name);\n  const carrier = compact(row.carrier)?.toUpperCase() || 'Versanddienstleister';\n  const tracking = compact(row.tracking_number);\n  const location = compact(row.latest_event_location);\n  const statusText = compact(row.latest_event_status_text);\n  const order = compact(row.shopify_order_number);\n  const reminder = String(row.notification_key || '').includes(':reminder:');\n  const subjectPrefix = reminder ? 'Erinnerung: Ihr NEONTRIP Paket liegt zur Abholung bereit' : 'Ihr NEONTRIP Paket liegt zur Abholung bereit';\n  const subject = order ? subjectPrefix + ' (' + order + ')' : subjectPrefix;\n  const details = [\n    tracking ? '<li><strong>Sendungsnummer:</strong> ' + escapeHtml(tracking) + '</li>' : null,\n    carrier ? '<li><strong>Versanddienstleister:</strong> ' + escapeHtml(carrier) + '</li>' : null,\n    location ? '<li><strong>Ort laut Sendungsverfolgung:</strong> ' + escapeHtml(location) + '</li>' : null,\n    statusText ? '<li><strong>Status:</strong> ' + escapeHtml(statusText) + '</li>' : null,\n  ].filter(Boolean).join('');\n  const body = [\n    p(name ? 'Guten Tag ' + escapeHtml(name) + ',' : 'Guten Tag,'),\n    p(reminder ? 'wir moechten Sie kurz daran erinnern, dass Ihr NEONTRIP Paket laut Sendungsverfolgung weiterhin zur Abholung bereitliegt.' : 'laut Sendungsverfolgung liegt Ihr NEONTRIP Paket aktuell zur Abholung bereit.'),\n    p('Bitte holen Sie die Sendung zeitnah ab, damit sie nicht an uns zurueckgeschickt wird.'),\n    details ? '<ul>' + details + '</ul>' : '',\n    trackingLink(row.tracking_url),\n    p('Falls Sie dazu Fragen haben, antworten Sie einfach auf diese E-Mail.'),\n    p('Viele Gruesse'),\n    fabienneSignatureHtml\n  ].filter(Boolean).join('\\n');\n  return { ...base(row), to: email, subject, bodyHtml: body, route: 'customer' };\n}\nfunction internalWarning(row) {\n  const to = normalizeEmail(row.recipient_type === 'internal' ? row.recipient_email : 'info@neontrip.de') || 'info@neontrip.de';\n  const tracking = compact(row.tracking_number) || 'ohne Trackingnummer';\n  const title = compact(row.incident_title) || 'Shipping-Problem';\n  const facts = [\n    ['Incident', title],\n    ['Severity', compact(row.incident_severity) || '-'],\n    ['Status', compact(row.status) || '-'],\n    ['Carrier', compact(row.carrier)?.toUpperCase() || '-'],\n    ['Tracking', tracking],\n    ['Shopify', compact(row.shopify_order_number) || '-'],\n    ['Request-ID', compact(row.request_id) || '-'],\n    ['Kunde', compact(row.customer_name) || 'Unbekannt'],\n    ['Kunden-E-Mail', compact(row.customer_email) || '-'],\n    ['Letztes Event', compact(row.latest_event_status_text) || '-'],\n    ['Ort', compact(row.latest_event_location) || '-']\n  ];\n  const rowsHtml = facts.map(([label, value]) => '<tr><td><strong>' + escapeHtml(label) + '</strong></td><td>' + escapeHtml(value) + '</td></tr>').join('');\n  const body = [\n    '<p><strong>Shipping-Fruehwarnung</strong></p>',\n    p('Diese Sendung hat ein Zustell- oder Ruecklaufproblem. Bitte intern pruefen, bevor der Kunde kontaktiert wird.'),\n    '<table>' + rowsHtml + '</table>',\n    trackingLink(row.tracking_url, 'Carrier-Tracking oeffnen'),\n    row.request_id ? trackingLink('https://ops.neontrip.de/ops/customer-records/shipping?requestId=' + encodeURIComponent(row.request_id), 'Shipping Board oeffnen') : ''\n  ].filter(Boolean).join('\\n');\n  return { ...base(row), to, subject: 'Shipping Warnung: ' + title + ' (' + tracking + ')', bodyHtml: body, route: 'internal' };\n}\nfunction base(row) {\n  return {\n    notificationId: row.notification_id,\n    notificationKey: row.notification_key,\n    kind: row.kind,\n    attempts: row.attempts,\n    shipmentId: row.shipment_id,\n    incidentId: row.incident_id || null\n  };\n}\n\nreturn rows.map((row) => ({ json: row.kind === 'customer_pickup_available' ? customerPickup(row) : internalWarning(row) }));"
+      }
+    },
+    {
+      "id": "if-customer-pickup-notice",
+      "name": "IF Customer Pickup Notice",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        680
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-customer",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "customer",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "outlook-send-internal-shipping-warning",
+      "name": "Outlook: Send Internal Shipping Warning",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        780
+      ],
+      "parameters": {
+        "toRecipients": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.bodyHtml }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "c81b3c1e-d638-4e97-83bf-894f80ce491d"
+    },
+    {
+      "id": "mark-internal-warning-sent",
+      "name": "Supabase RPC: Mark Internal Warning Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1820,
+        780
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/shipping_mark_notification_sent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_notification_id: $(\"Build Shipping Notification Emails\").item.json.notificationId, p_provider_message_id: $json.id || null, p_metadata: { kind: $(\"Build Shipping Notification Emails\").item.json.kind, subject: $(\"Build Shipping Notification Emails\").item.json.subject, recipient: $(\"Build Shipping Notification Emails\").item.json.to } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "claim-shipping-monitor-alert",
+      "name": "Supabase RPC: Claim Shipping Monitor Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        520,
+        940
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/shipping_claim_notification_monitor_alert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "build-shipping-monitor-alert",
+      "name": "Build Shipping Monitor Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        940
+      ],
+      "parameters": {
+        "jsCode": "const rows = $input.all()\n  .flatMap((item) => Array.isArray(item.json) ? item.json : [item.json])\n  .filter((row) => row && row.alert_key);\n\nreturn rows.map((row) => ({ json: {\n  alertKey: row.alert_key,\n  to: row.recipient_email || 'info@neontrip.de',\n  subject: row.subject || 'Shipping Monitor: Benachrichtigungen pruefen',\n  bodyHtml: row.body_html || '<p>Shipping Monitor Alert ohne Details.</p>',\n  issueCount: row.issue_count || 0,\n  route: 'internal_monitor'\n} }));"
+      }
+    },
+    {
+      "id": "if-shipping-monitor-alert",
+      "name": "IF Shipping Monitor Alert",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        940
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-alert-key",
+              "leftValue": "={{ $json.alertKey }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "outlook-send-shipping-monitor-alert",
+      "name": "Outlook: Send Shipping Monitor Alert",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        940
+      ],
+      "parameters": {
+        "toRecipients": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.bodyHtml }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "webhookId": "702bd9e3-3c4d-452e-b855-79c0f7885cc0"
+    },
+    {
+      "id": "register-outbound-17track-shipments",
+      "name": "17TRACK: Register Outbound Shipments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        260,
+        1100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://coolify-proxy/api/internal/shipping/17track-register",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Host",
+              "value": "ops.neontrip.de"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-internal-key",
+              "value": "={{ $env.OPS_INTERNAL_API_KEY || $env.QUOTE_INTERNAL_API_TOKEN || $env.INTERNAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ limit: 20 }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000,
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "disabled": true
+    },
+    {
+      "id": "sync-outbound-17track-tracking",
+      "name": "17TRACK: Sync Outbound Tracking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        520,
+        1100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://coolify-proxy/api/internal/shipping/17track-sync",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Host",
+              "value": "ops.neontrip.de"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-internal-key",
+              "value": "={{ $env.OPS_INTERNAL_API_KEY || $env.QUOTE_INTERNAL_API_TOKEN || $env.INTERNAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ limit: 20 }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000,
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "disabled": true
+    },
+    {
+      "id": "seventeen-track-gate-09-11-13",
+      "name": "17TRACK: Gate 09/11/13",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        520
+      ],
+      "parameters": {
+        "jsCode": "const hourText = new Intl.DateTimeFormat('en-GB', {\n  timeZone: 'Europe/Berlin',\n  hour: '2-digit',\n  hour12: false,\n}).format(new Date());\n\nconst hour = Number(hourText);\nif (![9, 11, 13].includes(hour)) {\n  return [];\n}\n\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "installation-mailbox",
+      "name": "Installation: Mailbox",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        260,
+        1400
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/me?$select=id,mail,userPrincipalName",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\""
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "executeOnce": true
+    },
+    {
+      "id": "installation-sent-folder",
+      "name": "Installation: Sent Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        540,
+        1400
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/me/mailFolders/sentitems?$select=id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\""
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "executeOnce": true
+    },
+    {
+      "id": "installation-fulfillments",
+      "name": "Installation: Fulfillments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        820,
+        1400
+      ],
+      "parameters": {
+        "jsCode": "const profile = $('Installation: Mailbox').first().json;\nconst folder = $input.first().json;\nif(profile.id !== '4d977ed3-c401-43e5-ad00-b171a294e787' || String(profile.mail || profile.userPrincipalName).toLowerCase() !== 'support@neontrip.de' || !folder.id) throw new Error('installation_mailbox_mismatch');\nconst out = []; const seen = new Set();\nfor (const page of $('Shopify: Recent Fulfilled Orders').all()) {\n  const body = page.json.body || page.json;\n  if (!Array.isArray(body.orders)) throw new Error('shopify_orders_missing');\n  for (const o of body.orders) {\n    if (o.cancelled_at) continue;\n    for (const f of o.fulfillments || []) {\n      const key = String(o.id) + ':' + String(f.id);\n      if (f.status !== 'success' || seen.has(key)) continue;\n      seen.add(key);\n      out.push({ json: { action: 'reserve', order: { id: o.id, name: o.name, email: o.email, cancelled_at: o.cancelled_at, line_items: o.line_items, fulfillments: [f] }, fulfillmentId: String(f.id), mailboxProfile: profile, sentFolderId: folder.id }, pairedItem: { item: 0 } });\n    }\n  }\n}\nreturn out;"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "installation-reserve",
+      "name": "Installation: Reserve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1100,
+        1400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://coolify-proxy/api/internal/shipping/installation-documents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Host",
+              "value": "ops.neontrip.de"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-internal-key",
+              "value": "={{ $env.OPS_INTERNAL_API_KEY || $env.QUOTE_INTERNAL_API_TOKEN || $env.INTERNAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000,
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "installation-ready-drafts",
+      "name": "Installation: Ready Drafts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1380,
+        1400
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().flatMap((item, index) => item.json.ready === true ? [{json:item.json,pairedItem:{item:index}}] : []);"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "installation-create-draft",
+      "name": "Installation: Create Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        260,
+        1640
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/me/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\""
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.graphDraft) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "installation-read-draft",
+      "name": "Installation: Read Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        540,
+        1640
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://graph.microsoft.com/v1.0/me/messages/' + encodeURIComponent($json.id) + '?$select=id,isDraft,subject,body,toRecipients,ccRecipients,bccRecipients,replyTo,internetMessageHeaders,from,sender,sentDateTime,internetMessageId,parentFolderId&$expand=attachments' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\""
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "installation-authorize",
+      "name": "Installation: Authorize",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        820,
+        1640
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://coolify-proxy/api/internal/shipping/installation-documents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Host",
+              "value": "ops.neontrip.de"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-internal-key",
+              "value": "={{ $env.OPS_INTERNAL_API_KEY || $env.QUOTE_INTERNAL_API_TOKEN || $env.INTERNAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({action:'authorize',notificationId:$('Installation: Ready Drafts').item.json.notificationId,owner:$('Installation: Ready Drafts').item.json.owner,message:$json}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000,
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "installation-ready-sends",
+      "name": "Installation: Ready Sends",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        1640
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().flatMap((item, index) => item.json.ready === true ? [{json:item.json,pairedItem:{item:index}}] : []);"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "installation-send-draft",
+      "name": "Installation: Send Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1380,
+        1640
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://graph.microsoft.com/v1.0/me/messages/' + encodeURIComponent($json.draftId) + '/send' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\""
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "autodetect",
+              "fullResponse": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "installation-wait-for-sent-copy",
+      "name": "Installation: Wait for Sent Copy",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        260,
+        1880
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "9a821624-9b26-43c9-a346-d58b3ee44f24"
+    },
+    {
+      "id": "installation-read-sent-copy",
+      "name": "Installation: Read Sent Copy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        540,
+        1880
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://graph.microsoft.com/v1.0/me/messages/' + encodeURIComponent($('Installation: Ready Sends').item.json.draftId) + '?$select=id,isDraft,subject,body,toRecipients,ccRecipients,bccRecipients,replyTo,internetMessageHeaders,from,sender,sentDateTime,internetMessageId,parentFolderId&$expand=attachments' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\""
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "CTEmJD5CjYu9hawu",
+          "name": "Microsoft Outlook support@neontrip.de"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "installation-complete",
+      "name": "Installation: Complete",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        820,
+        1880
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://coolify-proxy/api/internal/shipping/installation-documents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Host",
+              "value": "ops.neontrip.de"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-neontrip-internal-key",
+              "value": "={{ $env.OPS_INTERNAL_API_KEY || $env.QUOTE_INTERNAL_API_TOKEN || $env.INTERNAL_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({action:'complete',notificationId:$('Installation: Ready Sends').item.json.notificationId,owner:$('Installation: Ready Sends').item.json.owner,message:$json}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000,
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Shopify: Recent Fulfilled Orders",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase: Active Shipments",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Wait for Notification Evaluation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase RPC: Claim Shipping Monitor Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify: Recent Fulfilled Orders": {
+      "main": [
+        [
+          {
+            "node": "Build Shipment Records",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Installation: Mailbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Shipment Records": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC: Record Shopify Shipment Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC: Record Shopify Shipment Event": {
+      "main": [
+        [
+          {
+            "node": "Shopify GraphQL: Fulfillment Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify GraphQL: Fulfillment Events": {
+      "main": [
+        [
+          {
+            "node": "Build Shopify Event Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Shopify Event Records": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC: Record Shopify Fulfillment Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Active Shipments": {
+      "main": [
+        [
+          {
+            "node": "Build Evaluation Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Evaluation Requests": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC: Evaluate Shipment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Notification Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC: Enqueue Shipping Notifications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC: Enqueue Shipping Notifications": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC: Claim Shipping Notifications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC: Claim Shipping Notifications": {
+      "main": [
+        [
+          {
+            "node": "Build Shipping Notification Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Shipping Notification Emails": {
+      "main": [
+        [
+          {
+            "node": "IF Customer Pickup Notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Customer Pickup Notice": {
+      "main": [
+        [
+          {
+            "node": "Outlook: Send Pickup Notice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Outlook: Send Internal Shipping Warning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outlook: Send Pickup Notice": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC: Mark Pickup Notice Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outlook: Send Internal Shipping Warning": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC: Mark Internal Warning Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC: Claim Shipping Monitor Alert": {
+      "main": [
+        [
+          {
+            "node": "Build Shipping Monitor Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Shipping Monitor Alert": {
+      "main": [
+        [
+          {
+            "node": "IF Shipping Monitor Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Shipping Monitor Alert": {
+      "main": [
+        [
+          {
+            "node": "Outlook: Send Shipping Monitor Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17TRACK: Register Outbound Shipments": {
+      "main": [
+        [
+          {
+            "node": "17TRACK: Sync Outbound Tracking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17TRACK: Gate 09/11/13": {
+      "main": [
+        [
+          {
+            "node": "17TRACK: Register Outbound Shipments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Mailbox": {
+      "main": [
+        [
+          {
+            "node": "Installation: Sent Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Sent Folder": {
+      "main": [
+        [
+          {
+            "node": "Installation: Fulfillments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Fulfillments": {
+      "main": [
+        [
+          {
+            "node": "Installation: Reserve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Reserve": {
+      "main": [
+        [
+          {
+            "node": "Installation: Ready Drafts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Ready Drafts": {
+      "main": [
+        [
+          {
+            "node": "Installation: Create Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Create Draft": {
+      "main": [
+        [
+          {
+            "node": "Installation: Read Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Read Draft": {
+      "main": [
+        [
+          {
+            "node": "Installation: Authorize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Authorize": {
+      "main": [
+        [
+          {
+            "node": "Installation: Ready Sends",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Ready Sends": {
+      "main": [
+        [
+          {
+            "node": "Installation: Send Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Send Draft": {
+      "main": [
+        [
+          {
+            "node": "Installation: Wait for Sent Copy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Wait for Sent Copy": {
+      "main": [
+        [
+          {
+            "node": "Installation: Read Sent Copy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Installation: Read Sent Copy": {
+      "main": [
+        [
+          {
+            "node": "Installation: Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
