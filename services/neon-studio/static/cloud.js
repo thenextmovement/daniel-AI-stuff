@@ -6,6 +6,44 @@ async function cloudRequest(path,data) {
   const j=await r.json();if(!r.ok)throw new Error(j.error||'Schritt nicht bestätigt.');return j;
 }
 function cloudLabel(){$('export').querySelector('span:last-child').textContent='In Trello hochladen';$('exportCaption').textContent='PDF · image.png · Technische Zeichnung';}
+function setupDownloads(){
+  const toggle=$('exportDropdown'),menu=$('exportMenu');
+  toggle.hidden=false;toggle.textContent='Download ▾';toggle.setAttribute('aria-label','Download auswählen');
+  toggle.parentElement.classList.add('cloud-exports');
+  menu.replaceChildren(textElement('div','Dateien der aktuellen Vorschau'));
+  const formats=[['svg','Vektordatei (SVG)'],['drawing','Maßzeichnung (PDF)'],
+    ['custom','PDF mit eigenen Angaben'],['cnc','CNC-Zeichnung 1:1 (PDF)'],['uv','UV-Druck 1:1 (PDF)'],
+    ['technical','Technische Zeichnung (JPG)'],['quote','Auto Quote mit Preisen (PDF)'],
+    ['preview','Auto Quote mit Preisen (PNG)']];
+  const checks=formats.map(([value,name])=>{
+    const row=document.createElement('label'),box=document.createElement('input');
+    box.type='checkbox';box.value=value;box.checked=['technical','quote','preview'].includes(value);
+    row.append(box,document.createTextNode(name));menu.append(row);return box;
+  });
+  const customize=textElement('button','PDF-Angaben bearbeiten');
+  customize.type='button';customize.hidden=true;customize.onclick=()=>$('exportDialog').showModal();menu.append(customize);
+  menu.classList.add('cloud-downloads');
+  const submit=textElement('button','Auswahl herunterladen');submit.type='button';menu.append(submit);
+  menu.onchange=()=>{submit.disabled=!checks.some(b=>b.checked);customize.hidden=!checks.find(b=>b.value==='custom').checked;};
+  submit.onclick=async()=>{
+    if($('export').disabled){toast('Bitte die Bearbeitung abschließen und die Vorschau abwarten.',true);return;}
+    const formats=checks.filter(b=>b.checked).map(b=>b.value);
+    if(!formats.length)return;
+    submit.disabled=true;state.exporting=true;exportState();
+    try{
+      const spec={...cloudSpec,auto_minimum_mm:window.studioManualMinimum()?null:manufacturingReport?.recommendedWidth,
+        light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',pricing_options:priceOptions(),
+        controllers:Number($('priceControllers').value),uv_print:$('priceUv').checked,
+        waterproof_psus:pricing.outdoor?Number($('pricePsus').value):0,shape:state.settings.shape};
+      const response=await api('/api/export',{id:state.project.id,settings:state.settings,options:{kind:'download',formats,spec,pdfOptions:state.exportOptions}});
+      const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');
+      link.href=url;link.download=response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]||'Neon_Studio.zip';
+      document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+      toggleExportMenu(false);
+    }catch(error){toast(error.message,true);}
+    finally{state.exporting=false;exportState();submit.disabled=!checks.some(b=>b.checked);}
+  };
+}
 let sizesDirty=false;
 window.studioManualMinimum=()=>cloudSpec.minimum_width_mm;
 window.studioManualSizeLabel=()=>cloudSpec.size_axis==='height'&&cloudSpec.manual_height_mm
@@ -328,7 +366,7 @@ async function cloudBoot(){
   for(const region of cloudSpec.line_plan||[])plan.append(textElement('p',region.name+' · '+(region.mode==='double'?'Double Line':'Single Line')+': '+region.reason));
   $('manufacturingResult').before(plan);
   await checkManufacturing();
-  $('export').onclick=cloudPublish;cloudLabel();$('exportDropdown').hidden=true;
+  $('export').onclick=cloudPublish;cloudLabel();setupDownloads();
   const save=textElement('button','Entwurf speichern');save.onclick=async()=>{try{await cloudSave();toast('Entwurf gespeichert.');}catch(e){toast(e.message,true);}};
   const details=textElement('button','Anfrageangaben');details.onclick=cloudDetails;
   bar.append(save,details);

@@ -275,6 +275,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self.respond(200,{**drawing,'renderMs':round((time.perf_counter()-started)*1000,1)})
                 options=payload.get('options',{})
                 if not isinstance(options,dict):raise ValueError('Ungültige PDF-Einstellungen.')
+                if options.get('kind')=='download':
+                    from cloud_exports import selected_download
+                    name,mime,data=selected_download(drawing,options)
+                    return self.respond(200,data,mime,name if name.isascii() else 'Auto_Quote.pdf')
                 pdf=make_pdf(drawing,options)
                 filename='Neon_Studio_'+drawing['settings']['mode']+'_'+('CNC' if options.get('kind','cnc')=='cnc' else 'Zeichnung')+'.pdf'
                 return self.respond(200,pdf,'application/pdf',filename)

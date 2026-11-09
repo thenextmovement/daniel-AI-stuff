@@ -145,11 +145,59 @@ def artifacts(variants,spec,motif=None):
     combined=Image.new('RGB',(max(p.width for p in pages),sum(p.height for p in pages)),'white');y=0
     for p in pages:combined.paste(p,(0,y));y+=p.height
     image=io.BytesIO();combined.save(image,'PNG')
-    d=variants[0];w=1600;h=max(500,min(2300,round(w*d['height']/d['width']+160)))
+    name=re.sub(r'[^\w-]+','_',spec['customer_name'],flags=re.U).strip('_')[:80] or 'Kunde'
+    return [('auto_quote_'+name+'.pdf','application/pdf',pdf),('image.png','image/png',image.getvalue()),('technische_zeichnung.jpg','image/jpeg',technical_image(variants[0]))],quotes
+
+
+def technical_image(d):
+    w=1600;h=max(500,min(2300,round(w*d['height']/d['width']+160)))
     out=io.BytesIO();c=Canvas(out,pagesize=(w,h))
     c.setFont('Helvetica',48);c.drawCentredString(w/2,h-66,'Technische Zeichnung')
     artwork(c,d,45,40,(w-90)/mm,(h-160)/mm,True);c.showPage();c.save()
     technical=fitz.open(stream=out.getvalue(),filetype='pdf')[0].get_pixmap(alpha=False)
     jpeg=io.BytesIO();Image.frombytes('RGB',[technical.width,technical.height],technical.samples).save(jpeg,'JPEG',quality=95,subsampling=0)
-    name=re.sub(r'[^\w-]+','_',spec['customer_name'],flags=re.U).strip('_')[:80] or 'Kunde'
-    return [('auto_quote_'+name+'.pdf','application/pdf',pdf),('image.png','image/png',image.getvalue()),('technische_zeichnung.jpg','image/jpeg',jpeg.getvalue())],quotes
+    return jpeg.getvalue()
+
+
+def selected_download(drawing,options):
+    from zipfile import ZipFile, ZIP_DEFLATED
+    from xml.etree import ElementTree as ET
+    from geometry import path_d
+    from export_pdf import make_pdf
+
+    formats=options.get('formats')
+    allowed={'svg','drawing','custom','cnc','uv','technical','quote','preview'}
+    if not isinstance(formats,list) or not formats or not all(isinstance(k,str) and k in allowed for k in formats) or len(set(formats))!=len(formats):
+        raise ValueError('Bitte die gewünschten Dateien auswählen.')
+    if not drawing['exportable']:
+        raise ValueError('Die Zeichnung ist noch nicht bereit.')
+    files=[]
+    if 'svg' in formats:
+        w,h=drawing['width'],drawing['height']
+        x,y=drawing['bounds'][:2]
+        svg=ET.Element('svg',xmlns='http://www.w3.org/2000/svg',width=f'{w}mm',height=f'{h}mm',viewBox=f'{x} {y} {w} {h}',fill='none')
+        acrylic=ET.SubElement(svg,'g',id='Acryl',stroke='#555555')
+        ET.SubElement(acrylic,'path',d=drawing['outerData'])
+        for seam in (drawing.get('acrylicSplit') or {}).get('seams',[]):
+            ET.SubElement(acrylic,'path',d=path_d(seam))
+        neon=ET.SubElement(svg,'g',id='Neon')
+        for path,color in zip(drawing['pathData'],drawing['pathColors']):
+            ET.SubElement(neon,'path',d=path,stroke=color['color'])
+        files.append(('Zeichnung.svg','image/svg+xml',ET.tostring(svg,encoding='utf-8',xml_declaration=True)))
+    for kind,label in [('drawing','Masszeichnung'),('custom','Zeichnung_mit_Angaben'),('cnc','CNC'),('uv','UV-Druck')]:
+        if kind in formats:
+            files.append((label+'.pdf','application/pdf',make_pdf(drawing,{**(options.get('pdfOptions',{}) if kind=='custom' else {}),'kind':kind})))
+    if 'quote' in formats or 'preview' in formats:
+        from cloud_ai import validate_spec
+        spec=validate_spec({**options['spec'],'widths_mm':[drawing['width']]})
+        bundle,_=artifacts([drawing],spec,options.get('motif'))
+        if 'quote' in formats:files.append(bundle[0])
+        if 'preview' in formats:files.append(bundle[1])
+        if 'technical' in formats:files.append(bundle[2])
+    elif 'technical' in formats:
+        files.append(('technische_zeichnung.jpg','image/jpeg',technical_image(drawing)))
+    if len(files)==1:return files[0]
+    output=io.BytesIO()
+    with ZipFile(output,'w',compression=ZIP_DEFLATED) as archive:
+        for name,_,data in files:archive.writestr(name,data)
+    return 'Neon_Studio.zip','application/zip',output.getvalue()
