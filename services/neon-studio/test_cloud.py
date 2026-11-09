@@ -218,6 +218,13 @@ class CloudTests(unittest.TestCase):
   self.assertIn('Mindestbreite (manuell): 110,50 cm',fitz.open(stream=t.uploads[0][1],filetype='pdf')[0].get_text())
   size=next(x['value']['text'] for x in t.data['customFieldItems'] if x['idCustomField']==FIELDS[0][1])
   self.assertTrue(size.startswith('120,00 × '),size)
+  first_ids=[a['id'] for a in t.data['attachments']]
+  t.data['attachments'].append({'id':'original'})
+  Jobs(self.db,store,t).publish(self.db.get(p['id']))
+  ids=[a['id'] for a in t.data['attachments']]
+  self.assertEqual(ids[:4],first_ids+['original'])
+  self.assertEqual(len(set(ids)),7)
+  self.assertEqual([f[0] for f in t.uploads[:3]],[f[0] for f in t.uploads[3:]])
  def test_publish_rejects_actual_drawing_below_manual_minimum_before_upload(self):
   from cloud_trello import HOLDING
   from unittest.mock import Mock

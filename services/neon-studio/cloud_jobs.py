@@ -116,9 +116,8 @@ class Jobs:
             files,quotes=artifacts(variants,spec)
             revision=p['revision'];marker='Neon Studio '+p['id']+' Revision '+str(revision)
             p=self.db.save(p['id'],{'publish_revision':revision,'error':'','upload_intent':False},status='publishing')
-            old=list(dict.fromkeys(p.get('generated_attachments',[])+p.get('cleanup_pending',[])+p.get('pending_attachments',[])));new=[]
+            new=[]
             try:
-                # Upload first. Existing customer and supplier attachments are never deleted.
                 for name,mime,data in files:
                     self.db.save(p['id'],{'upload_intent':True})
                     a=self.t.call('POST',f"cards/{p['copy']}/attachments",files={'file':(name,data,mime)},data={'name':name})
@@ -137,13 +136,7 @@ class Jobs:
                 for i,(d,q) in enumerate(zip(variants,quotes)):
                     expected=[decimal(q['total_usd']),decimal(d['width']/10)+' × '+decimal(d['height']/10)+' cm',spec['colors'],CUT[spec['shape']]]
                     if any(field_value(checked,k)!=v for k,v in zip(FIELDS[i],expected)):raise Review('Custom Fields nicht bestätigt.')
-                self.db.save(p['id'],{'generated_attachments':new,'pending_attachments':[],'cleanup_pending':old,'quotes':quotes})
-                for attachment in list(old):
-                    current=self.t.card(p['copy'])
-                    if attachment in {a['id'] for a in current.get('attachments',[])}:
-                        self.t.call('DELETE',f"cards/{p['copy']}/attachments/{attachment}")
-                    old.remove(attachment)
-                    self.db.save(p['id'],{'cleanup_pending':list(old)})
+                self.db.save(p['id'],{'generated_attachments':new,'pending_attachments':[],'cleanup_pending':[],'quotes':quotes})
                 minimum_note=('\nMindestbreite (manuell): '+decimal(spec['minimum_width_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.') if spec.get('minimum_width_mm') is not None else ''
                 if spec.get('auto_minimum_mm'):
                     minimum_note+='\nKleinste geprüfte Breite mit 6-mm-Neonflex: '+decimal(spec['auto_minimum_mm']/10)+' cm.'
