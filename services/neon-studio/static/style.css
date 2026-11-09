@@ -92,3 +92,11 @@ dialog{background:linear-gradient(145deg,#303538,#242a2e);color:var(--text);bord
 #toolTooltip{position:fixed;z-index:60;width:max-content;max-width:min(250px,calc(100vw - 24px));padding:9px 11px;border:1px solid #50595f;border-radius:9px;background:#303639;color:#e3e9ed;box-shadow:0 5px 18px #0003;font-size:11px;line-height:1.5;pointer-events:none}
 @media(max-height:720px){.tool-dock{gap:2px;padding:5px}.tool-dock .icon-button{width:32px;height:30px}.tool-dock .dock-divider{margin:3px 0}}
 @media(max-width:760px){.canvas-tool-menu{left:12px;right:12px;top:80px;bottom:45px}.canvas-bottom{left:76px;right:12px;bottom:17px}.canvas-meta{flex-wrap:wrap;justify-content:center;text-align:center;gap:4px}}
+
+#neonSelectionInfo{align-self:flex-start;display:flex;align-items:center;gap:9px;background:#25292c;color:white;border-radius:8px;padding:6px 10px;font-size:12px}
+#neonSelectionInfo[hidden],#editNeonPath[hidden]{display:none}
+#editNeonPath{color:inherit;text-decoration:underline}
+#editNeonPath[aria-pressed="true"]{color:#ffcf81}
+.neon-node{cursor:grab;stroke:#222;stroke-width:1;vector-effect:non-scaling-stroke}
+#neonScale{width:5em;color:inherit;background:#32373b;border:1px solid #737b81;border-radius:4px}
+#neonSelectionInfo{flex-wrap:wrap}

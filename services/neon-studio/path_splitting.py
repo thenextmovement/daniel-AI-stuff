@@ -158,8 +158,23 @@ def path_catalog(model, settings):
     if not isinstance(edits,dict) or not isinstance(divisions,dict) or len(divisions)>1000:
         raise ValueError('Ungültige Linienkorrektur.')
 
+    shapes=settings.get('pathShapes',{})
+    if not isinstance(shapes,dict):raise ValueError('Ungültige Neonpfad-Bearbeitung.')
+
     def straighten(key):
         item=catalog[key]; indices=edits.get(key,[])
+        if key in shapes:
+            commands=shapes[key]
+            counts={'m':1,'l':1,'c':3,'h':0}
+            if (not isinstance(commands,list) or not 2<=len(commands)<=50000 or
+                any(not isinstance(c,list) or not c or not isinstance(c[0],str) or counts.get(c[0])!=len(c)-1 or
+                    any(not isinstance(p,list) or len(p)!=2 or
+                        any(type(v) not in (int,float) or not math.isfinite(v) or abs(v)>1e7 for v in p) for p in c[1:])
+                    for c in commands) or commands[0][0]!='m' or not any(c[0] in ('l','c') for c in commands)):
+                raise ValueError('Ungültige Neonpfad-Koordinaten.')
+            length=path_length(commands)
+            if length<=1e-8:raise ValueError('Die Neonlinie ist zu kurz.')
+            catalog[key]=item={**item,'commands':commands,'length':length,'role':'stroke'}
         if not isinstance(indices,list) or any(type(i) is not int or i<1 or i>=len(item['commands']) or item['commands'][i][0]!='c' for i in indices):
             raise ValueError('Ungültiger Kurvenabschnitt für die Begradigung.')
         if indices:
@@ -178,7 +193,7 @@ def path_catalog(model, settings):
             straighten(child)
         base=key.split('~')[0]
         expanded[base]=[child for old in expanded[base] for child in (children if old==key else [old])]
-    if any(key not in catalog for key in edits):raise ValueError('Ungültige Linienkorrektur.')
+    if any(key not in catalog for key in set(edits)|set(shapes)):raise ValueError('Ungültige Linienkorrektur.')
     offsets=settings.get('pathOffsets',{})
     if not isinstance(offsets,dict) or any(key not in catalog for key in offsets):
         raise ValueError('Ungültige Pfadauswahl zum Verschieben.')

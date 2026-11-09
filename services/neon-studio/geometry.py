@@ -996,7 +996,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     for key in bases:
         leaves=expanded[key]
         unchanged=all(leaf in visible_keys for leaf in leaves) and not any(
-            a in settings['straightened'] for leaf in leaves for a in ancestors(leaf) if a!=key) and all(
+            (a in settings['straightened'] or a in settings.get('pathShapes',{})) for leaf in leaves for a in ancestors(leaf) if a!=key) and all(
             catalog[leaf]['offset']==catalog[key]['offset'] for leaf in leaves)
         support_source.extend([catalog[key]] if unchanged else [catalog[leaf] for leaf in leaves if leaf in visible_keys])
     # Fixed physical dot dimensions are applied before the acrylic and length
@@ -1009,6 +1009,8 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
         support_source=[normalize_dot(item,dot_scale) for item in support_source]
     reference=np.asarray(model['sourceOrigin']) if 'sourceOrigin' in model else np.array([path_bounds(p['commands']) for p in model['modes']['double']])[:,:2].min(axis=0)
     from uv_print import uv_geometry, subtract_mask, polygon_commands, subpaths
+    # Keep editable source curves independent of UV clipping and physical routing.
+    edit_sources={item['key']:item for item in source} if editable and not sizing_probe else {}
     uv_mask,uv_shape,uv_clip=uv_geometry(model,settings.get('uvStrokes',[]),reference,settings.get('uvMode','original'),hidden)
     if not uv_mask.is_empty:
         clipped=[]
@@ -1021,7 +1023,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     if not source and not uv_support:
         # Keep the original viewport and recovery list when the last path is hidden.
         empty=build_geometry(model,{**settings,'hiddenPaths':[],'uvStrokes':[]})
-        empty.update(paths=[],names=[],pathPartIds=[],pathModes=[],pathKeys=[],pathData=[],pathColors=[],
+        empty.update(pathLengthsMm=[],pathEditSources=[],paths=[],names=[],pathPartIds=[],pathModes=[],pathKeys=[],pathData=[],pathColors=[],
                      outer=[],outerData='',neonMeters=0,neonMaterialMeters=0,openPaths=0,minGap=None,checks=[],
                      hiddenPaths=hidden_paths,exportable=False,
                      notices=['Alle Linien sind ausgeblendet. Stelle mindestens eine Linie wieder her.'])
@@ -1038,6 +1040,9 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     left,right,top,bottom=(paddings[side] for side in sides)
     asymmetric=len(set(paddings.values()))>1
     w=settings['width']
+    if settings.get('geometricSizing') and settings.get('scale') is None:
+        # A minimum is a target width for the remaining, positioned artwork.
+        scale_width=x1-x0
     if settings.get('scale') is None and (w<=left+right+20 or scale_width<1):
         raise ValueError('Breite ist für den Randabstand zu klein.')
     scale=float(settings['scale']) if settings.get('scale') is not None else (w-left-right)/scale_width
@@ -1202,8 +1207,15 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     bbox=path_bounds(outer)
     settings['width']=float(bbox[2]-bbox[0])
     raw_box=model['imageBounds']
-    neon_length=sum(item['length'] for item in source)*scale/1000
-    if settings.get('autoRoute'):neon_length=sum(map(path_length,paths))/1000
+    lengths=list(map(path_length,paths)) if settings.get('autoRoute') else [item['length']*scale for item in source]
+    neon_length=sum(lengths)/1000
+    edit_paths=[]
+    if edit_sources:
+        for item in source:
+            original=edit_sources[item['key']]
+            origin=(np.asarray(original['offset'])-reference)*scale
+            edit_paths.append(dict(commands=original['commands'],origin=origin.tolist()))
+
     missing=[p for p in model['parts'] if not p[part_modes.get(p['id'],settings['mode'])]]
     if missing:
         notices.append('Für '+', '.join(p['name'] for p in missing)+' fehlen Linien. Bitte die andere Linienart zuweisen.')
@@ -1236,7 +1248,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
                           'originalStrokeWidth':item.get('originalStrokeWidth',0)*scale}
                          for item in model.get('artwork',model['modes']['double'])] if model['sourceKind']=='vector' else None)
         notices.append('UV-Druck: Originaldarstellung, ohne Neonmeter. Die Druckflächen werden bei der Acrylkontur berücksichtigt.')
-    return dict(outlineVisibleControls=transform(visible_path,1,shift_x,shift_y),outlineControls=outline_controls,uv=uv,paths=paths, names=[p['name'] for p in source], outer=outer,
+    return dict(pathLengthsMm=lengths,pathEditSources=edit_paths,outlineVisibleControls=transform(visible_path,1,shift_x,shift_y),outlineControls=outline_controls,uv=uv,paths=paths, names=[p['name'] for p in source], outer=outer,
                 pathColors=[resolved_colors[p['key']] for p in source],colorSources=color_sources,neonPalette=NEON_COLORS,
                 pathPartIds=[p['partId'] for p in source],pathModes=[p['mode'] for p in source],pathRoles=[p.get('role','stroke') for p in source],pathKeys=[p['key'] for p in source],
                 parts=parts,modeLabel=mode_label,exportable=not missing,hiddenPaths=hidden_paths,

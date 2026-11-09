@@ -69,6 +69,23 @@ class MoveTests(unittest.TestCase):
         self.assertIn('double:2~1', result['drawing']['pathKeys'])
         self.assertAlmostEqual(result['drawing']['neonMeters'], self.draw(settings)['neonMeters'])
 
+    def test_edited_curves_and_lengths_survive_reopening(self):
+        before = self.before
+        commands = deepcopy(before['pathEditSources'][0]['commands'])
+        commands[1][-1][0] += 12
+        settings = {**before['settings'], 'pathShapes': {before['pathKeys'][0]: commands}}
+        edited = self.draw(settings)
+        self.assertNotEqual(edited['pathLengthsMm'][0], before['pathLengthsMm'][0])
+        self.assertEqual(edited['pathLengthsMm'][1:], before['pathLengthsMm'][1:])
+        self.assertAlmostEqual(sum(edited['pathLengthsMm']), edited['neonMeters']*1000)
+        self.assertEqual(self.draw(edited['settings'])['pathEditSources'][0]['commands'], commands)
+        self.assertEqual(self.draw(before['settings']), before)
+
+    def test_target_width_after_hiding_outermost_line(self):
+        edited = self.draw({**self.before['settings'], 'hiddenPaths':['double:2'],
+                            'geometricSizing':True, 'scale':None, 'width':400, 'shape':'rectangle'})
+        self.assertAlmostEqual(edited['width'], 400)
+
     def test_invalid_offsets_are_rejected(self):
         for offsets in ([], {'missing':[0,0]}, {'double:0':[1]}, {'double:0':[float('nan'),0]}, {'double:0':['4',0]}):
             with self.subTest(offsets=offsets), self.assertRaises(ValueError):

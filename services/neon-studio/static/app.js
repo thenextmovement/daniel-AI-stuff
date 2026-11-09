@@ -79,7 +79,7 @@ function setLive(text,status='') {
   $('liveStatus').className='live-indicator '+status;$('liveStatus').querySelector('span').textContent=text;
 }
 function exportState() { $('export').disabled=!state.project||!state.valid||state.busy||state.exporting||!!state.straightenSelection||!!state.outlineDraft||state.outlineBusy||!!uvDraft||!!moveDraft||!!recoverySession; }
-function markPending() {invalidateManufacturing();cancelMoveSelection();closeRecovery(false);invalidatePrice();clearOutlineDraft();state.outlineSelection=[];state.outlineSelected=null;state.busy=true;state.valid=false;state.straightenSelection=null;renderStraightenControls();renderVisibilityControls();exportState();setLive('Berechne …','busy');}
+function markPending() {neonDrag=null;invalidateManufacturing();cancelMoveSelection();closeRecovery(false);invalidatePrice();clearOutlineDraft();state.outlineSelection=[];state.outlineSelected=null;state.busy=true;state.valid=false;state.straightenSelection=null;renderStraightenControls();renderVisibilityControls();exportState();setLive('Berechne …','busy');}
 
 async function loadImage(file=null, suppliedData=null, suppliedName=null, cropSource=null) {
   if(file && file.size>100*1024*1024) return toast('Bitte eine Datei mit höchstens 100 MB auswählen.',true);
@@ -114,7 +114,7 @@ async function loadImage(file=null, suppliedData=null, suppliedName=null, cropSo
     // Keep the full raster separate from the traced motif and any later crops.
     if(project.sourceKind!=='vector')project.cropSource=cropSource||{data:project.image,name:project.name};
     state.project=project;state.selection=-1;state.selectedParts=[];state.selectedKeys=[];closePathColor();state.pan={x:0,y:0};state.zoom=100;
-    state.settings.scale=null;state.settings.partModes={};state.settings.straightened={};state.settings.pathSplits={};state.settings.pathOffsets={};state.settings.outlineEdits=[];state.settings.depthRegions=[];state.settings.uvStrokes=[];state.settings.hiddenPaths=[];state.settings.pathColors={};setTool('select');
+    state.settings.scale=null;state.settings.partModes={};state.settings.straightened={};state.settings.pathSplits={};state.settings.pathShapes={};state.settings.pathOffsets={};state.settings.outlineEdits=[];state.settings.depthRegions=[];state.settings.uvStrokes=[];state.settings.hiddenPaths=[];state.settings.pathColors={};setTool('select');
     if(project.sourceKind==='vector'){
       state.settings.mode=importMode||(project.vectorHasFills?'double':'single');
       state.settings.scale=1;
@@ -276,7 +276,7 @@ function renderDrawing() {
     <text class="dimension-text" style="fill:${dim}" transform="translate(${x0-offset-label*.55} ${(y0+y1)/2}) rotate(-90)" font-size="${label}" text-anchor="middle" stroke="none">${number(H/(state.dimensionUnit==='cm'?10:1),2)} ${state.dimensionUnit}</text></g>`:'';
   $('drawing').innerHTML=`<path d="${state.outlineDraft?.kind==='point'&&state.outlineDraft.drawing?state.outlineDraft.drawing.outerData:d.outerData}" fill="${p.acrylic}" fill-opacity="${p.opacity/100}" stroke="${edge}" stroke-width="1.4" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
     ${state.view==='original'?`<image href="${state.project.image}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="none"/>`:`<g fill="none" stroke-linejoin="round" stroke-linecap="round">${paths}</g>`}${recoveryImageLayer()}${uvLayer()}${selections}${dimensions}${straightenOverlay()}${outlineStraightenOverlay()}${depthRegionOverlay()}<g id="uvLiveOverlay" pointer-events="none"></g>`;
-  renderMoveBounds();updateViewBox();
+  renderMoveBounds();updateNeonSelection();updateViewBox();
   renderVisibilityControls();renderUvControls();renderUvOverlay();renderRecoveryOverlay();
   $('selectionLabel').textContent=state.tool==='move'&&state.selectedKeys.length?'Ziehen · Pfeile: 1 mm · Shift + Pfeile: 10 mm':state.selectedKeys.length>1?`${state.selectedKeys.length} Pfade ausgewählt`:state.selection>=0?d.names[state.selection]:'';
 }
@@ -286,7 +286,7 @@ function updateViewBox() {
   const w=(d.width+2*margin)/(state.zoom/100),h=(d.height+2*margin)/(state.zoom/100);
   const cx=d.bounds[0]+d.width/2+state.pan.x,cy=d.bounds[1]+d.height/2+state.pan.y;
   $('drawing').setAttribute('viewBox',`${cx-w/2} ${cy-h/2} ${w} ${h}`);
-  renderOutlinePoints();
+  renderOutlinePoints();paintNeonNodes();
 }
 function renderDetails() {
   checkManufacturing();
@@ -810,6 +810,104 @@ function renderPathList() {
 function canMoveSelection() {
   return state.tool==='move'&&state.view==='vectors'&&state.project&&state.drawing&&state.valid&&!state.busy&&!state.analyzing&&state.selectedKeys.length>0;
 }
+let editingNeonKey=null,neonDrag=null;
+function neonSource(){
+  const i=state.drawing?.pathKeys.indexOf(editingNeonKey);
+  if(state.view!=='vectors'||state.tool!=='select'||state.selectedKeys.length!==1||state.selectedKeys[0]!==editingNeonKey)return null;
+  return state.drawing.pathEditSources?.[i];
+}
+function updateNeonSelection(){
+  const d=state.drawing;
+  const selected=new Set(state.selectedKeys);
+  const mm=d.pathKeys.reduce((sum,key,i)=>sum+(selected.has(key)?d.pathLengthsMm[i]:0),0);
+  $('neonSelectionInfo').hidden=!selected.size;
+  $('neonSelectionLength').textContent=`${selected.size} ${selected.size===1?'Linie':'Linien'} · ${number(mm/1000,3)} m (${number(mm,1)} mm)`;
+  const editable=selected.size===1&&state.tool==='select'&&state.view==='vectors'&&!!d.pathEditSources?.[state.selection];
+  $('editNeonPath').hidden=!editable;
+  if(!editable||!selected.has(editingNeonKey))editingNeonKey=null;
+  $('editNeonPath').setAttribute('aria-pressed',String(!!editingNeonKey));
+  $('neonScaleLabel').hidden=$('applyNeonScale').hidden=!editingNeonKey;
+}
+function paintNeonNodes(){
+  $('neonNodes')?.remove();
+  const src=neonSource();if(!src)return;
+  const commands=neonDrag?.commands||src.commands;
+  const scale=state.drawing.settings.scale;
+  const svg=$('drawing'),radius=4/Math.max(.00001,svg.getScreenCTM().a*scale);
+  const d=commands.map(([op,...pts])=>op==='h'?'Z':op.toUpperCase()+' '+pts.flat().join(' ')).join(' ');
+  const guides=[],nodes=[];
+  let previous;
+  commands.forEach(([op,...pts],i)=>{
+    if(op==='c'){
+      guides.push(`M ${previous} L ${pts[0]} M ${pts[1]} L ${pts[2]}`);
+    }
+    pts.forEach(([x,y],j)=>{
+      const handle=j<pts.length-1;
+      nodes.push(`<circle class="neon-node" data-node="${i},${j+1}" cx="${x}" cy="${y}" r="${radius*(handle ? .8 : 1)}" fill="${handle?'#ffe3a1':'#fff'}"/>`);
+    });
+    if(pts.length)previous=pts.at(-1);
+  });
+  svg.insertAdjacentHTML('beforeend',`<g id="neonNodes" transform="translate(${src.origin}) scale(${scale})"><path d="${d}" fill="none" stroke="#d59135" vector-effect="non-scaling-stroke" pointer-events="none"/><path d="${guides.join(' ')}" fill="none" stroke="#888" vector-effect="non-scaling-stroke" pointer-events="none"/>${nodes.join('')}</g>`);
+}
+function dragNeonNode(event){
+  const drag=neonDrag;
+  const point=svgPoint(event),scale=state.drawing.settings.scale;
+  const dx=(point.x-drag.start.x)/scale,dy=(point.y-drag.start.y)/scale;
+  const cmd=drag.original[drag.i];
+  const commands=structuredClone(drag.original);
+  const move=(i,j)=>{const [x,y]=drag.original[i][j];commands[i][j]=[x+dx,y+dy];};
+  move(drag.i,drag.j);
+  if(drag.j===cmd.length-1){
+    if(cmd[0]==='c')move(drag.i,2);
+    if(commands[drag.i+1]?.[0]==='c')move(drag.i+1,1);
+    // A closed Bezier often repeats its first anchor immediately before Z.
+    let start=drag.i,end=drag.i;
+    while(start>0&&commands[start][0]!=='m')start--;
+    while(commands[end+1]&&!['m','h'].includes(commands[end+1][0]))end++;
+    if(commands[end+1]?.[0]==='h'&&end>start&&String(drag.original[start][1])===String(drag.original[end].at(-1))){
+      if(drag.i===start){move(end,commands[end].length-1);if(commands[end][0]==='c')move(end,2);}
+      if(drag.i===end){move(start,1);if(commands[start+1][0]==='c')move(start+1,1);}
+    }
+  }
+  drag.commands=commands;
+  paintNeonNodes();
+}
+async function applyNeonShape(commands){
+  const key=editingNeonKey;
+  if(!neonSource()||state.busy)return;
+  const before=state.drawing,generation=state.generation,project=state.project;
+  const straightened={...state.settings.straightened};delete straightened[key];
+  const settings={...state.settings,straightened,pathShapes:{...state.settings.pathShapes,[key]:commands}};
+  state.busy=true;exportState();setLive('Linie wird geprüft …','busy');
+  try{
+    const drawing=await (await api('/api/geometry',{id:project.id,settings})).json();
+    if(project!==state.project||generation!==state.generation)return;
+    if(!drawing.exportable)throw new Error('Diese Bearbeitung ergibt keine exportierbare Zeichnung.');
+    state.settings=drawing.settings;state.drawing=drawing;state.valid=true;
+    preserveMoveView(before,drawing);commitHistory();updateControls();
+  }catch(error){if(project===state.project&&generation===state.generation)toast(error.message,true);}
+  finally{
+    if(project===state.project&&generation===state.generation){
+      state.busy=false;renderDrawing();renderDetails();exportState();setLive('Live');
+    }
+  }
+}
+$('editNeonPath').onclick=()=>{
+  if(state.busy||state.selectedKeys.length!==1)return;
+  editingNeonKey=editingNeonKey?null:state.selectedKeys[0];
+  $('neonScale').value=100;renderDrawing();
+};
+$('applyNeonScale').onclick=()=>{
+  const src=neonSource(),input=$('neonScale');
+  if(!src||!input.reportValidity()||!input.value)return;
+  const factor=Number(input.value)/100;
+  if(factor===1)return;
+  const box=$('neonNodes').querySelector('path').getBBox();
+  const cx=box.x+box.width/2,cy=box.y+box.height/2;
+  input.value=100;
+  applyNeonShape(src.commands.map(([op,...pts])=>[op,...pts.map(([x,y])=>[cx+(x-cx)*factor,cy+(y-cy)*factor])]));
+};
+
 function renderMoveBounds() {
   if(state.tool!=='move'||state.view!=='vectors')return;
   const boxes=$$('.selected-path').map(path=>path.getBBox());if(!boxes.length)return;
@@ -1017,7 +1115,7 @@ function setZoom(value) {
   if(![...select.options].some(option=>Number(option.value)===state.zoom)){const option=new Option(`${Math.round(state.zoom)} %`,String(state.zoom));option.dataset.custom='true';select.add(option);}
   select.value=String(state.zoom);updateViewBox();
 }
-function setTool(tool) {cancelMoveSelection();if(tool!=='recover')closeRecovery(false);closePathColor();state.outlineSelection=[];state.outlineSelected=null;state.outlineAdding=false;uvDraft=null;clearOutlineDraft();state.tool=tool;state.straightenSelection=null;for(const [id,value] of [['selectTool','select'],['moveTool','move'],['panTool','pan'],['regionTool','region'],['straightenTool','straighten'],['outlineStraightenTool','outline-straighten'],['depthRegionTool','depth-region'],['outlinePointTool','outline-points'],['recoveryTool','recover']]){$(id).classList.toggle('active',tool===value);$(id).setAttribute('aria-pressed',tool===value);}$('drawing').classList.toggle('uv-mode',tool==='uv-brush'||tool==='uv-erase');$('drawing').classList.toggle('pan-mode',tool==='pan');$('drawing').classList.toggle('move-mode',tool==='move');$('drawing').classList.toggle('region-mode',['region','outline-straighten','depth-region'].includes(tool));renderDrawing();renderStraightenControls();renderVisibilityControls();exportState();}
+function setTool(tool) {neonDrag=null;cancelMoveSelection();if(tool!=='recover')closeRecovery(false);closePathColor();state.outlineSelection=[];state.outlineSelected=null;state.outlineAdding=false;uvDraft=null;clearOutlineDraft();state.tool=tool;state.straightenSelection=null;for(const [id,value] of [['selectTool','select'],['moveTool','move'],['panTool','pan'],['regionTool','region'],['straightenTool','straighten'],['outlineStraightenTool','outline-straighten'],['depthRegionTool','depth-region'],['outlinePointTool','outline-points'],['recoveryTool','recover']]){$(id).classList.toggle('active',tool===value);$(id).setAttribute('aria-pressed',tool===value);}$('drawing').classList.toggle('uv-mode',tool==='uv-brush'||tool==='uv-erase');$('drawing').classList.toggle('pan-mode',tool==='pan');$('drawing').classList.toggle('move-mode',tool==='move');$('drawing').classList.toggle('region-mode',['region','outline-straighten','depth-region'].includes(tool));renderDrawing();renderStraightenControls();renderVisibilityControls();exportState();}
 
 function toggleExportMenu(force) {const open=force ?? $('exportMenu').hidden;$('exportMenu').hidden=!open;$('exportDropdown').setAttribute('aria-expanded',open);}
 function setExportKind(kind) {
@@ -1391,6 +1489,11 @@ $('drawing').addEventListener('click',event=>{
  });
 $('drawing').addEventListener('pointerdown',event=>{
   if(event.button!==0||!state.drawing)return;
+  if(!state.busy&&event.target.dataset.node&&neonSource()){
+    const [i,j]=event.target.dataset.node.split(',').map(Number);
+    neonDrag={i,j,start:svgPoint(event),original:neonSource().commands,pointer:event.pointerId};
+    $('drawing').setPointerCapture(event.pointerId);event.preventDefault();return;
+  }
   if(state.tool==='recover'){recoveryPointerDown(event);return;}
   if(state.tool==='outline-points'){
     if(state.outlineAdding&&event.target.classList.contains('outline-point-hit')){
@@ -1419,6 +1522,7 @@ $('drawing').addEventListener('pointerdown',event=>{
   dragInfo={point,pan:{...state.pan},matrix};
 });
 $('drawing').addEventListener('pointermove',event=>{
+  if(neonDrag?.pointer===event.pointerId){dragNeonNode(event);return;}
   if(moveDraft?.pointerId!==undefined){previewMovePointer(event);return;}
   if(state.tool==='recover'){recoveryPointerMove(event);return;}
   if(state.outlineDraft?.kind==='point'&&state.outlineDraft.dragging){moveOutlinePoint(event);return;}
@@ -1437,6 +1541,13 @@ $('drawing').addEventListener('pointermove',event=>{
   if(!dragInfo)return;const point=new DOMPoint(event.clientX,event.clientY).matrixTransform(dragInfo.matrix);state.pan={x:dragInfo.pan.x-(point.x-dragInfo.point.x),y:dragInfo.pan.y-(point.y-dragInfo.point.y)};updateViewBox();
 });
 for(const name of ['pointerup','pointercancel'])$('drawing').addEventListener(name,event=>{
+  if(neonDrag?.pointer===event.pointerId){
+    const drag=neonDrag;
+    if(name==='pointerup'&&drag.commands)dragNeonNode(event);
+    neonDrag=null;paintNeonNodes();
+    if(name==='pointerup'&&drag.commands)applyNeonShape(drag.commands);
+    return;
+  }
   if(moveDraft?.pointerId===event.pointerId){if(name==='pointercancel')cancelMoveSelection();else{previewMovePointer(event);finishMoveSelection();}return;}
   if(state.tool==='recover'){recoveryPointerEnd(event,name==='pointercancel');return;}
   if(state.outlineDraft?.kind==='point'&&state.outlineDraft.dragging){
@@ -1514,7 +1625,7 @@ document.addEventListener('keydown',event=>{
     event.preventDefault();$('colorSelected').click();
   }
   if(!editing&&state.tool==='outline-points'&&['Delete','Backspace'].includes(event.key)){event.preventDefault();deleteOutlineSelection();}
-  if(event.key==='Escape'){cancelMoveSelection();closePathColor();toggleExportMenu(false);if(['straighten','outline-straighten','depth-region','outline-points','recover'].includes(state.tool))setTool('select');}
+  if(event.key==='Escape'){neonDrag=null;editingNeonKey=null;renderDrawing();cancelMoveSelection();closePathColor();toggleExportMenu(false);if(['straighten','outline-straighten','depth-region','outline-points','recover'].includes(state.tool))setTool('select');}
 });
 document.addEventListener('keyup',moveKeyUp);
 window.addEventListener('blur',cancelMoveSelection);
