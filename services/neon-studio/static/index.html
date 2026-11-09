@@ -234,6 +234,10 @@
         </section>
         <section class="tab-panel" id="panel-check" role="tabpanel" hidden>
           <div class="section-heading"><h2>Zeichnung prüfen</h2><span class="muted-label">04</span></div>
+          <form id="targetForm"><label class="field-row" for="targetWidth">Wunschbreite<div class="number-field"><input id="targetWidth" type="number" min="8" max="2000" step="any" required><span>cm</span></div></label>
+            <button class="button full-width">Wunschgröße prüfen</button></form>
+          <div id="targetStatus" class="help-text" role="status"></div>
+          <div id="targetIssues"></div>
           <div id="cloudReview" hidden></div><div class="check-list" id="checkList"><p class="help-text">Zuerst ein Motiv laden.</p></div>
           <div class="section-divider"></div><div class="check-detail"><span>Neonpfade</span><strong id="checkPaths">—</strong></div><div class="check-detail"><span>Offene Neonpfade</span><strong id="checkOpen">—</strong></div><p class="help-text">Offene Enden sind bei Single Line häufig beabsichtigt.</p>
           <div class="section-divider"></div><h2>Fertigung &amp; Größenorientierung</h2>

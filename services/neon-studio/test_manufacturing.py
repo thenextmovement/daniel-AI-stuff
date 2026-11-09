@@ -136,6 +136,14 @@ class ManufacturingTests(unittest.TestCase):
   self.assertEqual(report['limitingReasons'],['spacing'])
   drawing['paths']=drawing['paths'][2:]
   self.assertEqual(measure(drawing)['limitingKeys'],[])
+ def test_target_reports_other_tight_pairs_and_accepts_exact_clearance(self):
+  from minimum_size import measure
+  lines=[[['m',[0,y]],['l',[100,y]]] for y in (0,2,8,16)]
+  drawing=dict(width=136,paths=lines,pathKeys=['a','b','c','d'])
+  issues={}
+  measure(drawing,issues)
+  self.assertEqual(set(issues),{('spacing',('a','b')),('spacing',('b','c'))})
+  self.assertAlmostEqual(issues['spacing',('b','c')]['actual'],6)
  def test_cut_layout_resolves_T_and_corner_without_dropping_strokes(self):
   from neon_routing import route,RoutingTooSmall
   paths=[[['m',[0,0]],['l',[100,0]]],[['m',[50,0]],['l',[50,55]],['l',[80,55]]]]

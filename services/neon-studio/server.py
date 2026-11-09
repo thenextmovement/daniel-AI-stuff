@@ -228,9 +228,11 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(payload,dict):raise ValueError('Ungültige Anfrage.')
             path=urlparse(self.path).path
             if path=='/api/manufacturing':
-                from minimum_size import minimum_size,widths_for_heights
+                from minimum_size import minimum_size,widths_for_heights,target_width
                 settings=payload.get('settings',{})
                 if not isinstance(settings,dict):raise ValueError('Ungültige Einstellungen.')
+                if 'target_width_mm' in payload:
+                    return self.respond(200,target_width(self.server.store,str(payload.get('id','')),settings,payload['target_width_mm']))
                 if 'heights_mm' in payload:
                     widths=widths_for_heights(self.server.store,str(payload.get('id','')),settings,payload['heights_mm'])
                     return self.respond(200,{'widths_mm':widths})

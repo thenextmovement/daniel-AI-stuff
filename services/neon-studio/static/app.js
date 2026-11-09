@@ -264,7 +264,7 @@ function renderDrawing() {
     const color=p.logoColors?((p.glow&&d.pathColors?.[index]?.swatch)||d.pathColors?.[index]?.color||p.neon):p.neon;
     // Contrast halo is display-only: black white-neon ink stays visible on anthracite.
     const effect=p.glow?`drop-shadow(0 0 3px ${d.pathColors?.[index]?.swatch||color})`:color==='#000000'&&!light?'drop-shadow(0 0 1px #ffffff)':'none';
-    const marked=showingLimit&&manufacturingReport?.limitingKeys?.includes(d.pathKeys[index]);
+    const marked=targetKeys.includes(d.pathKeys[index])||(showingLimit&&manufacturingReport?.limitingKeys?.includes(d.pathKeys[index]));
     const overlay=marked?`<path class="limit-path" d="${path}" fill="none" pointer-events="none" vector-effect="non-scaling-stroke"/>`:'';
     return `<path class="neon-path ${state.selectedKeys.includes(d.pathKeys[index])?'selected-path':''}" data-path="${index}" d="${path}" stroke="${color}" style="filter:${effect}" stroke-width="${stroke}" ${p.glow?'':'vector-effect="non-scaling-stroke"'}/>${overlay}`;
   }).join('');
@@ -313,6 +313,56 @@ function renderDetails() {
 }
 let manufacturingTicket=0, manufacturingReport=null;
 let showingLimit=false;
+let targetTicket=0,targetKeys=[];
+function resetTarget(){
+  targetTicket++;targetKeys=[];
+  $('targetIssues').replaceChildren();$('targetStatus').textContent='';
+}
+$('targetWidth').oninput=()=>{resetTarget();if(state.drawing)renderDrawing();};
+$('targetForm').onsubmit=async event=>{
+  event.preventDefault();resetTarget();
+  if(!state.project||state.busy){$('targetStatus').textContent='Bitte ein geladenes Motiv abwarten.';return;}
+  showingLimit=false;updateLimitControls();renderDrawing();
+  const ticket=targetTicket,key=manufacturingKey(),width=$('targetWidth').valueAsNumber*10;
+  const current=()=>ticket===targetTicket&&key===manufacturingKey()&&!state.busy;
+  const names=keys=>keys.map(k=>{
+    const i=state.drawing.pathKeys.indexOf(k);
+    return i<0?k:`${state.drawing.names[i]} (Linie ${i+1})`;
+  }).join(', ');
+  function button(label,click){
+    const b=document.createElement('button');b.type='button';b.className='button full-width';
+    b.textContent=label;b.onclick=()=>{if(current())click();};$('targetIssues').append(b);
+  }
+  $('targetStatus').textContent='Abstände und Innenöffnungen werden geprüft …';
+  try{
+    const report=await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings,target_width_mm:width})).json();
+    if(!current())return;
+    $('targetStatus').textContent=`${number(width/10,1)} cm · ${report.issues.length?report.issues.length+' Engstellen':'Alle geprüften Abstände und Innenöffnungen passen.'}`;
+    for(const issue of report.issues){
+      const detail=document.createElement('p');detail.className='help-text';
+      const opening=issue.kind==='opening';
+      detail.textContent=`${opening?'Freie Innenöffnung':'Abstand der Mittellinien'}: ${number(issue.actual,2)} mm (Soll ${number(issue.required,2)} mm). ${opening?'Öffnung vergrößern':'Abstand vergrößern'} um ${number(issue.required-issue.actual,2)} mm.`;
+      $('targetIssues').append(detail);
+      button(names(issue.keys)+' zeigen',()=>{
+        showingLimit=false;updateLimitControls();targetKeys=issue.keys;state.view='vectors';
+        updateViewControls();setTool('select');selectKeys(issue.keys);
+      });
+    }
+    const proposal=report.proposal;
+    if(proposal){
+      const detail=document.createElement('p');detail.className='help-text';
+      detail.textContent=`Vorschlag für ${names(proposal.keys)}: ${number(Math.abs(proposal.dx),2)} mm ${proposal.dx<0?'links':'rechts'}, ${number(Math.abs(proposal.dy),2)} mm ${proposal.dy<0?'oben':'unten'}. Verbleibende Engstellen: ${proposal.remaining}.`;
+      $('targetIssues').append(detail);
+      button('Verschiebung und Wunschbreite übernehmen',async()=>{
+        state.settings.pathOffsets=proposal.offsets;await resizeToMinimum(width);
+        if(!state.busy&&$('targetWidth').valueAsNumber*10===width)$('targetForm').requestSubmit();
+      });
+    }else if(report.issues.length){
+      const note=document.createElement('p');note.className='help-text';
+      note.textContent='Bitte die markierten Pfade manuell bearbeiten und erneut prüfen.';$('targetIssues').append(note);
+    }
+  }catch(error){if(current())$('targetStatus').textContent=error.message;}
+};
 function updateLimitControls(){
   const keys=manufacturingReport?.limitingKeys||[];
   const d=state.drawing;
@@ -331,7 +381,7 @@ function updateLimitControls(){
 }
 function toggleLimit(){
   if(!manufacturingReport?.limitingKeys?.length)return;
-  showingLimit=!showingLimit;
+  targetKeys=[];showingLimit=!showingLimit;
   updateLimitControls();
   if(showingLimit){
     state.view='vectors';updateViewControls();setTool('select');
@@ -348,7 +398,7 @@ function minimumStatus(message,canCheck){
   if(button)button.disabled=!canCheck;
 }
 function invalidateManufacturing(){
-  manufacturingTicket++;manufacturingReport=null;lastMinimumRequest=null;
+  resetTarget();manufacturingTicket++;manufacturingReport=null;lastMinimumRequest=null;
   showingLimit=false;updateLimitControls();
   minimumStatus('Mindestgröße noch nicht geprüft.',false);
   if($('manufacturingApply'))$('manufacturingApply').hidden=true;
