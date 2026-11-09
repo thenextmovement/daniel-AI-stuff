@@ -103,6 +103,18 @@ class CloudTests(unittest.TestCase):
   p=self.db.enqueue('card','event',{});self.db.save(p['id'],{'copy_intent':True},status='copying')
   with self.assertRaises(Conflict):self.db.save(p['id'],{},expected=0)
   restarted=Database(self.tmp.name);restarted.recover_interrupted();reloaded=restarted.get(p['id']);self.assertEqual(reloaded['status'],'review');self.assertTrue(reloaded['copy_intent'])
+ def test_restart_resumes_generation_only_with_known_copy_and_no_pending_upload(self):
+  cases=[({'copy':'copy1'},'queued'),({},'review'),({'copy':'copy2','upload_intent':True},'review'),
+         ({'copy':'copy3','pending_attachments':['file']},'review')]
+  projects=[]
+  for i,(data,status) in enumerate(cases):
+   p=self.db.enqueue('source'+str(i),'event'+str(i),{})
+   self.db.save(p['id'],data,status='generating')
+   projects.append(p['id'])
+  interruptions=self.db.recover_interrupted()
+  self.assertEqual({p['id'] for p in interruptions},set(projects[1:]))
+  self.assertEqual([self.db.get(key)['status'] for key in projects],[status for _,status in cases])
+  self.assertEqual(self.db.get(projects[0])['copy'],'copy1')
  def test_svg_external_rejected(self):
   for svg in ('<!DOCTYPE svg><svg/>','<svg><image href="http://localhost"/></svg>','<svg onload="alert(1)"><path/></svg>'):
    with self.assertRaises(Review):validate_svg(svg)

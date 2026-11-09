@@ -50,8 +50,8 @@ def drawing_model(data):
     plan=data.get('line_plan');assignments={}
     if not isinstance(plan,list) or not plan:raise Review('Linienarten je Motivbereich fehlen.')
     for region in plan:
-        if not isinstance(region,dict) or region.get('mode') not in ('single','double') or not isinstance(region.get('name'),str) or not region['name'].strip() or not isinstance(region.get('reason'),str) or not region['reason'].strip():
-            raise Review('Linienart oder Begründung für einen Motivbereich fehlt.')
+        if not isinstance(region,dict) or region.get('mode') not in ('single','double') or not isinstance(region.get('name'),str) or not region['name'].strip():
+            raise Review('Linienart oder Name für einen Motivbereich fehlt.')
         paths=region.get('path_ids');dots=region.get('dot_ids',[])
         if not isinstance(paths,list) or not paths or not isinstance(dots,list) or any(not isinstance(x,str) for x in paths+dots) or not set(dots)<=set(paths):
             raise Review('Ungültige Pfadzuordnung im Linienplan.')
@@ -181,7 +181,7 @@ alle anderen automatisch die nächstpassende verfügbare Neonfarbe. Diese Farbzu
 Ausdrücklich bestellte Leuchtfarben haben Vorrang. Formuliere jede tatsächlich offene Entscheidung als kurze Frage:
 Benenne den betroffenen Motivteil und erkläre in einem zweiten Satz, welche Angabe fehlt oder welche Angaben sich widersprechen.
 Fehlende Usage: Innen; fehlender Zuschnitt: shape. Randabstand später 15mm.
-Falls verbindliche_titelgroessen vorliegen, sind die Größen vollständig geklärt. Keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen. Die geometrische Mindestbreite wird immer automatisch berechnet. Fehlende Mindestbreite ist kein issue. Pro offenem Sachverhalt genau ein separates issue. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei mehreren unterschiedlichen Motiven: issues. Für die Zeichnung immer 6 mm Neonflex annehmen.
+Falls verbindliche_titelgroessen vorliegen, sind die Größen vollständig geklärt. Keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen. Die geometrische Mindestbreite wird immer automatisch berechnet. Fehlende Mindestbreite ist kein issue. Nur Rückfragen, deren Antwort Zeichnung oder Kalkulation tatsächlich verändert und die weder durch die Vorlage noch durch die vereinbarten Standardwerte geklärt sind, gehören in issues. Reine Erläuterungen, Bestätigungswünsche und allgemeine Produktionshinweise sind keine issues. Pro offenem Sachverhalt genau ein separates issue. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei mehreren unterschiedlichen Motiven: issues. Für die Zeichnung immer 6 mm Neonflex annehmen.
 Die SVG enthält ausschließlich die tatsächlich benötigten Neonpfade: smooth Mittellinien bei
 Schreibschrift/dünnen Strichen, vorhandene Umrisslinien bei bewusst breiten Outline-Logos.
 Keine Leuchthöfe, Schattierungen, Acrylkontur, Beschriftungen, Bemaßung oder Bildrahmen.

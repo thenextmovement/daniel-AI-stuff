@@ -19,6 +19,13 @@ class Database:
             """)
     def recover_interrupted(self):
         with self.connect() as c:
+            # The copy already exists; replaying generation only recomputes the drawing.
+            c.execute("""UPDATE projects SET status='queued', revision=revision+1, updated=?,
+                        data=json_set(data,'$.error','')
+                        WHERE status='generating' AND length(json_extract(data,'$.copy'))>0
+                        AND json_extract(data,'$.copy')<>source
+                        AND NOT coalesce(json_extract(data,'$.upload_intent'),0)
+                        AND coalesce(json_array_length(data,'$.pending_attachments'),0)=0""",(time.time(),))
             ids=[r[0] for r in c.execute("SELECT id FROM projects WHERE status IN ('copying','generating','publishing')")]
             c.execute("UPDATE projects SET status='review', data=json_set(data,'$.error','Verarbeitung durch Neustart unterbrochen. Zustand vor erneutem Start prüfen.') WHERE status IN ('copying','generating','publishing')")
         return [self.get(id) for id in ids]
