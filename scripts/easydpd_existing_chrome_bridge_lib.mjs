@@ -324,6 +324,7 @@ export async function handleNativeRequest(config, rawMessage) {
     const state = active ? "active_job_pending" : config.liveEnabled ? "live_ready" : "dry_run_ready";
     await writeStatus(config, state, {
       ...verifiedExtension,
+      authorizationPending: message.authorizationPending === true,
       activeJobId: active?.job?.id || null,
       activeJobState: active?.state || null,
       purchaseClicked: false,

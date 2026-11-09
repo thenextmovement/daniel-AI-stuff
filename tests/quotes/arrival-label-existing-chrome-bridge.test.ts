@@ -627,3 +627,50 @@ test("a definite no-click rejection never recovers a concurrently added external
   assert.equal(recovered, 0);
   assert.equal(uploaded, 0);
 });
+
+test("a Shopify authorization screen pauses claims until the affected order history loads in a fresh tab", async () => {
+  const source = await readFile("deploy/local-easydpd-existing-chrome/extension/service_worker.mjs", "utf8");
+  const state: Record<string, any> = {};
+  const calls: string[] = [];
+  let frameReady = false;
+  const original = job();
+  const context: any = {
+    CONSENT_HOLD: "hold", CONSENT_ERROR: "consent", cycleRunning: false, validateOrderUrl,
+    createNativeSession: () => ({
+      send: async (message: any) => {
+        calls.push(message.authorizationPending ? "status:held" : message.type);
+        return { mode: "live", liveEnabled: true, job: null };
+      }, close() {},
+    }),
+    record: async () => {}, waitForTabComplete: async () => {},
+    createFreshEasyDpdTab: async (hold: any) => {
+      assert.equal(hold.orderUrl, original.orderUrl);
+      return { id: 7 };
+    },
+    easyDpdFrameId: async () => { if (!frameReady) throw Error("frame_timeout"); return 3; },
+    frameMessageWhenReady: async (_tab: number, _frame: number, request: any) => {
+      assert.equal(request.action, "inspect_history");
+      assert.equal(request.job.orderName, original.orderName);
+      calls.push("history");
+      return { labelCount: 0 };
+    },
+    chrome: {
+      tabs: { get: async () => ({ url: original.orderUrl, title: "NEONTRIP · Authorize easyDPD · Shopify" }),
+        remove: async () => { calls.push("close"); } },
+      storage: { local: { get: async () => state, set: async (item: any) => Object.assign(state, item),
+        remove: async (key: string) => { delete state[key]; } } },
+    },
+  };
+  const helpers = source.slice(source.indexOf("async function orderFrameBeforePurchase"), source.indexOf("async function validateAndPrepareFrame"));
+  const cycle = source.slice(source.indexOf("async function runCycle("), source.indexOf("async function ensureAlarm("));
+  runInNewContext(helpers + cycle + "\nglobalThis.frame = orderFrameBeforePurchase;globalThis.cycle = runCycle;", context);
+  await assert.rejects(context.frame(1, original), /consent/);
+  await context.cycle("alarm");
+  await context.cycle("alarm");
+  assert.deepEqual(calls, ["status:held", "close", "status:held", "close"]);
+  frameReady = true;
+  await context.cycle("alarm");
+  assert.deepEqual(calls.slice(-4), ["status:held", "history", "close", "claim"]);
+  assert.equal(state.hold, undefined);
+  assert.equal(state["consentRetry:" + original.id], true);
+});
