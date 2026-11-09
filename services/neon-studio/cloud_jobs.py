@@ -6,16 +6,25 @@ from cloud_ai import generate,validate_spec,Review,drawing_model
 from cloud_exports import artifacts,CUT
 def size_variants(store,model,settings,spec):
     from manufacturing import inspect
-    from neon_routing import RoutingTooSmall
+    from neon_routing import RoutingTooSmall,size_lower_bound
     widths=spec.get('widths_mm',[])
     if not isinstance(widths,list) or any(type(w) not in (int,float) or not 80<=w<=20000 for w in widths):
         raise Review('Ungültige Angebotsbreite.')
     targets=list(widths)
     if spec.get('smallest_requested') is True:targets.append(spec.get('minimum_width_mm') or 80)
+    if not targets:return [],[]
+    options={**settings,'tube':8,'autoRoute':True,'scale':None}
+    gap=settings.get('gap',15);sides=settings.get('gapSides',{})
+    padding=sides.get('left',gap)+sides.get('right',gap)+8
+    floor=max(80,math.floor(padding+20)+1)
+    reference=max(floor,600)
+    uncut=store.size_probe(model,{**options,'width':reference},uncut=True)
+    lower=size_lower_bound(uncut,reference,padding,floor)
     results=[];reports=[]
     for target in targets:
-        first_grid=(math.floor(target/50)+1)*50
-        for width in [target,*range(first_grid,20001,50)]:
+        start=max(target,lower)
+        from itertools import chain
+        for width in chain([start] if start<=20000 else [],range(math.floor(start)+1,20001)):
             try:
                 options={**settings,'tube':8,'autoRoute':True,'width':width,'scale':None}
                 d=store.size_probe(model,options)

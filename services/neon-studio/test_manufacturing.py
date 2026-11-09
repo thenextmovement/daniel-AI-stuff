@@ -93,13 +93,13 @@ class ManufacturingTests(unittest.TestCase):
   import json
   case=self
   class Store:
-   def size_probe(self,model,options):return self.drawing(model,json.dumps(options))
+   def size_probe(self,model,options,*,uncut=False):return self.drawing(model,json.dumps(options))
    def drawing(self,model,options):
-    width=json.loads(options)['width'];size=(width-30)/20
+    width=json.loads(options)['width'];size=(width-38)/20
     d=case.drawing([[['m',[0,0]],['l',[size,0]]]]);d['width']=width
     return d
   widths,reports=size_variants(Store(),'model',{},dict(widths_mm=[600],smallest_requested=True))
-  self.assertEqual(widths,[600,250])
+  self.assertEqual(widths,[600,238])
   self.assertFalse(any(r['shortPaths'] for r in reports))
  def test_cut_layout_resolves_T_and_corner_without_dropping_strokes(self):
   from neon_routing import route,RoutingTooSmall
@@ -109,6 +109,11 @@ class ManufacturingTests(unittest.TestCase):
   self.assertFalse(report['needsLocalCorrection']);self.assertFalse(report['reasons'])
   self.assertEqual(len(routed),2);self.assertLess(path_length(routed[1]),85)
   with self.assertRaises(RoutingTooSmall):route([paths[0],[['m',[50,0]],['l',[50,4]]]])
+ def test_fixed_parallel_runs_bound_uses_free_acrylic_margin(self):
+  from neon_routing import size_lower_bound
+  d=self.drawing([[['m',[0,0]],['l',[570,0]]],[['m',[0,5]],['l',[570,5]]]])
+  # 15 mm free margin + 4 mm half tube at each edge; centerline span doubles.
+  self.assertEqual(size_lower_bound(d,608,38,120),1178)
  def test_eps_windows_preview_is_not_used_as_artwork(self):
   import shutil,struct
   from cloud_ai import eps_pdf

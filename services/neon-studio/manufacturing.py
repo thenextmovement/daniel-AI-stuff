@@ -113,6 +113,7 @@ def inspect(drawing, profile=None):
         reasons.append(f"Kürzestes Neonstück: {piece['name']} ({piece['length']:.2f} mm; benötigt {values['cutLength']:g} mm).")
     # Acrylic padding stays fixed while the motif scales. Never scale padding.
     s=drawing['settings'];gaps=s.get('gapSides',{});padding=gaps.get('left',s['gap'])+gaps.get('right',s['gap'])
+    if s.get('autoRoute'):padding+=tube
     proposed=math.ceil(((drawing['width']-padding)*max(factors)+padding)/50)*50
     spacing_factor=max(1,required/minimum_spacing[0]) if minimum_spacing[0] is not None else 1
     spacing_width=math.ceil(((drawing['width']-padding)*spacing_factor+padding)/50)*50

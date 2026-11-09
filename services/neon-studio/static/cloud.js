@@ -163,6 +163,7 @@ async function cloudBoot(){
     return;
   }
   state.project=cloud.model;state.settings={...defaults,...cloud.settings,tube:8};$('tube').disabled=true;state.analyzing=false;state.history=[];state.historyIndex=-1;
+  if(state.settings.autoRoute){$('gapHelp').textContent='Freier Rand zwischen Acrylkante und Außenkante des Neonstreifens.';$('tubeHelp').textContent='Die Größenberechnung verwendet 8 mm Neonflex.';}
   commitHistory();renderProject();updateControls();await requestGeometry(true);
   const plan=document.createElement('div');plan.className='help-text';
   if(cloud.metrics?.model)plan.append(textElement('p','KI-Zeichnung: '+cloud.metrics.model+'. Die Fertigungsprüfung berechnet Kurven und Abstände separat.'));

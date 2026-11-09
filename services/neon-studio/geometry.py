@@ -906,7 +906,7 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None):
     return path
 
 
-def build_geometry(model, options=None, *, editable=True, sizing_probe=False):
+def build_geometry(model, options=None, *, editable=True, sizing_probe=False, uncut_probe=False):
     settings={**DEFAULTS, 'reserve':.1, **(options or {})}
     if settings.get('autoRoute'):settings['tube']=8
     if settings['mode'] not in ('single','double') or settings['shape'] not in ('rectangle','bottom','shape'):
@@ -953,7 +953,8 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False):
     if any(not math.isfinite(value) or not 2<=value<=100 for value in gaps.values()):
         raise ValueError('Randabstand je Seite: Wert zwischen 2 und 100 mm erforderlich.')
     settings['gapSides']=gaps
-    side_gaps={side:gaps.get(side,settings['gap']) for side in sides}
+    edge_allowance=settings['tube']/2 if settings.get('autoRoute') else 0
+    side_gaps={side:gaps.get(side,settings['gap'])+edge_allowance for side in sides}
     part_modes=settings.get('partModes',{})
     part_ids={p['id'] for p in model['parts']}
     if not isinstance(part_modes,dict) or any(key not in part_ids or mode not in ('single','double') for key,mode in part_modes.items()):
@@ -1048,7 +1049,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False):
         raise ValueError('Das Motiv wird breiter als 20.000 mm. Bitte Abstand oder Größe reduzieren.')
     dx=left-x0*scale; dy=top-y0*scale
     paths=[transform(item['commands'],scale,dx,dy) for item in source]
-    if settings.get('autoRoute'):
+    if settings.get('autoRoute') and not uncut_probe:
         from neon_routing import route
         paths=route(paths)
     if sizing_probe:

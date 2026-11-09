@@ -153,7 +153,7 @@
           <p class="notice" id="traceWarning" hidden>Automatischer Entwurf: Bei ausgefüllten Flächen und Verzweigungen kann Single Line vom gewünschten Neonverlauf abweichen. Mit dem Original vergleichen.</p>
           <div class="section-divider"></div>
           <label class="field-row" for="tube"><span>Neonbreite</span><div class="number-field"><input id="tube" type="number" data-setting="tube" min="1" max="30" step=".5" value="8"><span>mm</span></div></label>
-          <p class="help-text">Schlauchbreite für die Leuchtvorschau. Der Randabstand wird bis zur gezeichneten Neonlinie gemessen und bleibt davon unabhängig.</p>
+          <p class="help-text" id="tubeHelp">Schlauchbreite für die Leuchtvorschau. Der Randabstand wird bis zur gezeichneten Neonlinie gemessen und bleibt davon unabhängig.</p>
           <div class="section-divider"></div><h2 id="pathOverview">Pfadübersicht <span class="count" id="pathCount">0</span></h2>
           <p class="help-text">Das Auge schaltet den Pfad ein oder aus. Ausgeblendete Pfade bleiben hier und zählen nicht zu Neonmetern, Außenkontur oder PDF. Die Auswahl gilt je Linienmodus.</p><div class="path-list" id="pathList"></div>
 
@@ -165,7 +165,7 @@
           <div class="sliders">
             <div class="side-control" id="gapRow">
               <div class="slider-row"><div class="side-heading"><button class="side-toggle" data-side-toggle="gap" aria-label="Randabstand pro Seite" aria-controls="gapSides" aria-expanded="false"><span data-icon="chevron"></span></button><label for="gap">Randabstand</label></div><input id="gapRange" aria-label="Randabstand Regler" type="range" data-setting="gap" min="2" max="100" step=".5" value="15"><div class="number-field"><input id="gap" aria-label="Randabstand" type="number" data-setting="gap" min="2" max="100" step=".5" value="15"><span>mm</span></div></div>
-              <p class="help-text compact">Von der Acrylkontur bis zur gezeichneten Neonlinie.</p>
+              <p class="help-text compact" id="gapHelp">Von der Acrylkontur bis zur gezeichneten Neonlinie.</p>
               <div class="side-settings" id="gapSides" hidden>
                 <p>Einzeln anpassen. Der Hauptregler setzt wieder alle Seiten.</p>
                 <div class="side-slider-row"><label for="gapLeftRange">Links</label><input id="gapLeftRange" aria-label="Randabstand links Regler" type="range" data-side-setting="gap" data-side="left" min="2" max="100" step=".5"><div class="number-field"><input aria-label="Randabstand links" type="number" data-side-setting="gap" data-side="left" min="2" max="100" step=".5"><span>mm</span></div></div>

@@ -68,3 +68,31 @@ def route(paths):
             output[i].extend(piece);accepted.append(remaining)
     if any(not commands for commands in output):raise RoutingTooSmall('Ein Motivdetail hätte kein Neonstück.')
     return output
+
+
+def size_lower_bound(drawing, reference_width, padding, floor):
+    """Lower bound in board mm before cutting. A cut cannot lengthen a run."""
+    from shapely import STRtree
+    if 'dot' in drawing.get('pathRoles',[]):return floor  # fixed-size point normalization
+    span=reference_width-padding
+    runs=[run for path in drawing['paths'] for part in subpaths(path)
+          for run in corner_runs(part) if path_length(run)>1e-7]
+    if not runs or span<=0:return floor
+    lines=[LineString(sample_path(run,96)) for run in runs]
+    factor=max((floor-padding)/span,10/min(map(path_length,runs)))
+    motif_span=max(line.bounds[2] for line in lines)-min(line.bounds[0] for line in lines)
+    # In reference units this bounds the contact tolerance at every candidate scale.
+    tolerance=max(.5/factor,.001*motif_span)+.05
+    tree=STRtree(lines);fixed=[]
+    for i,line in enumerate(lines):
+        nearby=tree.query(line,predicate='dwithin',distance=tolerance)
+        if all(j==i or lines[j].length<line.length-1e-6 for j in nearby):
+            fixed.append(line)
+    if len(fixed)>1:
+        tree=STRtree(fixed)
+        for i,line in enumerate(fixed):
+            for j in tree.query(line,predicate='dwithin',distance=10/factor):
+                if j>i:
+                    distance=line.distance(fixed[j])
+                    if distance>0:factor=max(factor,10/distance)
+    return max(floor,math.ceil(padding+span*factor-1e-7))
