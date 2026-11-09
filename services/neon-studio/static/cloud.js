@@ -208,8 +208,17 @@ async function cloudSave() {
   } finally {cloudSaving=false;syncSizePreview();}
 }
 async function cloudPublish(){
-  try{await cloudSave();if(cloudSpec.issues?.length){renderReview();setTab('check');return;}cloud=await cloudRequest('publish',{id:cloud.id,revision:cloud.revision});toast('Die drei Dateien werden in Trello hochgeladen.');cloudPoll();}
-  catch(e){toast(e.message,true);}
+  const button=$('export');
+  if(button.disabled)return;
+  state.exporting=true;exportState();
+  try{
+    await cloudSave();
+    if(cloudSpec.issues?.length){cloudDetails(true);return;}
+    cloud=await cloudRequest('publish',{id:cloud.id,revision:cloud.revision});
+    toast('Die drei Dateien werden in Trello hochgeladen.');
+    await cloudPoll();
+  }catch(e){toast(e.message,true);}
+  finally{state.exporting=false;exportState();}
 }
 function textElement(tag,text){const e=document.createElement(tag);e.textContent=text;return e;}
 async function cloudPoll(){
@@ -237,11 +246,12 @@ function cloudPriceControls(){
     warning.textContent=cloudSpec.minimum_width_mm!=null?'Mindestbreite: '+(cloudSpec.minimum_width_mm/10).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' cm · manuell':'Vorschaugröße – Mindestgröße noch nicht geprüft';
   }
 }
-function cloudDetails(){
+function cloudDetails(upload=false){
+  const forUpload=upload===true;
   let dialog=document.getElementById('cloudDetails');if(dialog)dialog.remove();
   dialog=document.createElement('dialog');dialog.id='cloudDetails';
   Object.assign(dialog.style,{maxWidth:'520px',width:'90%',padding:'24px',borderRadius:'16px',background:'#25292c',color:'white',border:'1px solid #555'});
-  dialog.append(textElement('h2','Anfrageangaben'));
+  dialog.append(textElement('h2',forUpload?'Offene Angaben vor dem Trello-Upload':'Anfrageangaben'));
   const fields=[['customer_name','Kundenname'],['colors','Leuchtfarbe (Deutsch)'],['widths_mm','Breiten in cm, getrennt mit Semikolon'],['minimum_width_mm','Mindestbreite in cm (manuell, optional)'],['usage','Innen oder Außen'],['quantity','Stückzahl'],['waterproof_psus','Wasserdichte Netzteile (bei Außen)']];
   if(cloudSpec.size_axis==='height')dialog.append(textElement('p','Die Höhen kannst du über „Größen manuell bestimmen“ ändern.'));
   const inputs={};
@@ -261,9 +271,10 @@ function cloudDetails(){
     const label=textElement('label',issue);label.style.display='block';const check=document.createElement('input');check.type='checkbox';label.prepend(check);dialog.append(label);return {issue,check};
   });
   if(reviewed.length)dialog.append(textElement('p','Geklärte Punkte bitte abhaken.'));
-  const save=textElement('button','Angaben übernehmen');
+  const save=textElement('button',forUpload?'Bestätigen und in Trello hochladen':'Angaben übernehmen');
   save.onclick=async()=>{
     const next={...cloudSpec,issues:reviewed.filter(r=>!r.check.checked).map(r=>r.issue)};
+    if(forUpload&&next.issues.length){toast('Bitte die offenen Punkte prüfen und abhaken.',true);return;}
     for(const [key,input] of Object.entries(inputs))next[key]=input.value.trim();
     if(inputs.widths_mm){
       next.minimum_width_mm=next.minimum_width_mm===''?null:Number(next.minimum_width_mm.replace(',','.'))*10;
@@ -274,7 +285,8 @@ function cloudDetails(){
     }
     next.quantity=Number(next.quantity||1);next.waterproof_psus=next.waterproof_psus===''?null:Number(next.waterproof_psus);
     cloudSpec=next;renderReview();showSizeFields();cloudPriceControls();if(inputs.widths_mm&&next.widths_mm.length){state.settings.width=next.widths_mm[0];state.settings.scale=null;}
-    dialog.close();await requestGeometry(true);try{await cloudSave();toast('Angaben gespeichert.');}catch(e){toast(e.message,true);}
+    dialog.close();
+    try{await requestGeometry(true);if(forUpload){await cloudPublish();return;}await cloudSave();toast('Angaben gespeichert.');}catch(e){toast(e.message,true);}
   };
   const cancel=textElement('button','Schließen');cancel.onclick=()=>dialog.close();dialog.append(save,cancel);document.body.append(dialog);dialog.showModal();
 }
