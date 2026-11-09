@@ -1,0 +1,21 @@
+={{ (() => {
+  const candidate = $('Select Earliest Due Future Stage').first().json || {};
+  const shopEnvelope = $('Shopify Complete Live Gate').first().json || {};
+  const shop = shopEnvelope.body ?? shopEnvelope;
+  const liveEmail = shop && shop.data && shop.data.order ? shop.data.order.email : '';
+  const emails = [...new Set([
+    candidate.mirror_email,
+    candidate.shopify_email_hint,
+    liveEmail
+  ].map((value) => String(value || '').trim().toLowerCase()).filter((value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)))];
+  const identifiers = [...new Set([
+    candidate.shopify_order_name,
+    candidate.easybill_invoice_number
+  ].map((value) => String(value || '').normalize('NFKC').trim().replace(/^#+/, '').replace(/\s+/g, '').toUpperCase()).filter((value) => /^NEONT\d+$/.test(value)))];
+  const sharedDomains = /^(?:gmail\.com|googlemail\.com|outlook\.com|hotmail\.(?:com|de)|live\.(?:com|de)|icloud\.com|me\.com|gmx\.(?:de|net|com)|web\.de|yahoo\.(?:com|de)|t-online\.de|aol\.com)$/;
+  const domains = [...new Set(emails.map(value => value.split('@')[1]).filter(value => !sharedDomains.test(value)))];
+  const terms = [...emails.map((value) => 'participants:' + value), ...domains.map(value => 'from:' + value), ...identifiers];
+  const select = '$select=id,conversationId,from,receivedDateTime,sentDateTime,toRecipients,ccRecipients,bccRecipients,isDraft,internetMessageId,internetMessageHeaders,subject,body,bodyPreview,hasAttachments&$expand=attachments($select=id,name,contentType,isInline,size)';
+  if (!terms.length) return 'https://graph.microsoft.com/v1.0/me/messages?' + select + '&$top=1&$filter=' + encodeURIComponent('isDraft eq true and isDraft eq false');
+  return 'https://graph.microsoft.com/v1.0/me/messages?' + select + '&$top=100&$search=' + encodeURIComponent('"' + terms.join(' OR ') + '"');
+})() }}
