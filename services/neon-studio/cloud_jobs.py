@@ -17,7 +17,7 @@ def size_variants(store,model,settings,spec):
     gap=settings.get('gap',15);sides=settings.get('gapSides',{})
     padding=sides.get('left',gap)+sides.get('right',gap)+8
     floor=max(80,math.floor(padding+20)+1)
-    reference=max(floor,600)
+    reference=floor
     uncut=store.size_probe(model,{**options,'width':reference},uncut=True)
     lower=size_lower_bound(uncut,reference,padding,floor)
     results=[];reports=[]

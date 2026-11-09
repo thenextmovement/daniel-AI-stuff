@@ -114,6 +114,24 @@ class ManufacturingTests(unittest.TestCase):
   d=self.drawing([[['m',[0,0]],['l',[570,0]]],[['m',[0,5]],['l',[570,5]]]])
   # 15 mm free margin + 4 mm half tube at each edge; centerline span doubles.
   self.assertEqual(size_lower_bound(d,608,38,120),1178)
+ def test_near_parallel_paths_are_not_cut_as_contacts(self):
+  from neon_routing import route
+  paths=[[['m',[0,0]],['l',[1000,0]]],[['m',[100,.2]],['l',[250,.2]]]]
+  self.assertEqual(route(paths),paths)
+ def test_corner_shares_clearance_between_short_arms(self):
+  from neon_routing import route
+  from uv_print import subpaths
+  d=self.drawing(route([[['m',[0,0]],['l',[18,0]],['l',[18,18]]]]))
+  d['settings']['tube']=8
+  pieces=subpaths(d['paths'][0]);self.assertEqual(len(pieces),2)
+  self.assertTrue(all(path_length(p)>10 for p in pieces))
+  self.assertFalse(inspect(d)['reasons'])
+ def test_fixed_radius_can_determine_minimum_on_its_own(self):
+  from neon_routing import size_lower_bound
+  k=KAPPA*10
+  d=self.drawing([[['m',[10,0]],['c',[10,k],[k,10],[0,10]]]])
+  w=size_lower_bound(d,138,38,80)
+  self.assertTrue(285<=w<=292,w)
  def test_eps_windows_preview_is_not_used_as_artwork(self):
   import shutil,struct
   from cloud_ai import eps_pdf

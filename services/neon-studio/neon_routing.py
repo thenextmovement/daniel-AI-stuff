@@ -1,6 +1,7 @@
 """Place physical cut gaps at corners and contacts, preserving original Béziers."""
 import math
 import numpy as np
+from shapely import STRtree
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 from geometry import path_length, sample_path
@@ -21,7 +22,7 @@ def corner_runs(part):
     for (index,a),(_,b) in joins:
         before=next(v for v in reversed(np.diff(a,axis=0)) if np.linalg.norm(v)>1e-10)
         after=next(v for v in np.diff(b,axis=0) if np.linalg.norm(v)>1e-10)
-        if np.dot(before,after)<math.cos(math.radians(15))*np.linalg.norm(before)*np.linalg.norm(after):
+        if np.dot(before,after)<math.cos(math.radians(.1))*np.linalg.norm(before)*np.linalg.norm(after):
             cuts.append([index,1.])
     return split_commands(part,cuts) if cuts else [part]
 
@@ -49,50 +50,104 @@ def clipped(run,mask):
     return result
 
 
-def route(paths):
+def endpoint_directions(line):
+    if line.is_closed:return []
+    coords=np.asarray(line.coords)
+    tangents=[]
+    for sequence in (coords,coords[::-1]):
+        for point in sequence[1:]:
+            vector=point-sequence[0]
+            if np.linalg.norm(vector)>1e-10:
+                tangents.append((Point(sequence[0]),vector/np.linalg.norm(vector)))
+                break
+    return tangents
+
+
+def joins(a,b,tolerance):
+    intersection=a.intersection(b)
+    if not intersection.is_empty:
+        if intersection.length>1e-6:
+            raise ValueError('Deckungsgleiche Neonstrecken: gemeinsame Linie im Motiv eindeutig zuordnen.')
+        return True
+    # A close parallel stroke remains a separate strip. Snap only a transverse
+    # endpoint to another run, using a scale-independent artwork tolerance.
+    for first,other in ((a,b),(b,a)):
+        for endpoint,tangent in endpoint_directions(first):
+            if endpoint.distance(other)>tolerance:continue
+            # A tangent connector can terminate at a loop. Over its interior
+            # it must leave the loop; parallel offsets remain independent.
+            if other.is_closed:
+                start=first.project(endpoint)
+                inside=start+first.length*.5*(1 if start<first.length/2 else -1)
+                if first.interpolate(inside).distance(other)>3*tolerance:return True
+            at_length=other.project(endpoint)
+            step=min(other.length*.001,tolerance)
+            left=other.interpolate(max(0,at_length-step))
+            right=other.interpolate(min(other.length,at_length+step))
+            direction=np.array(right.coords[0])-left.coords[0]
+            norm=np.linalg.norm(direction)
+            if norm and abs(np.dot(tangent,direction))/norm<.94:return True
+    return False
+
+
+def layout(paths):
     runs=[(i,run,LineString(sample_path(run,96))) for i,path in enumerate(paths)
           for part in subpaths(path) for run in corner_runs(part) if path_length(run)>1e-7]
     if not runs:raise RoutingTooSmall('Keine messbaren Neonstücke.')
-    contact_tolerance=min(3.,max(.5,(max(x.bounds[2] for _,_,x in runs)-min(x.bounds[0] for _,_,x in runs))*.001))
+    runs.sort(key=lambda item:-item[2].length)
+    lines=[item[2] for item in runs];tree=STRtree(lines)
+    tolerance=max(1e-8,(max(x.bounds[2] for x in lines)-min(x.bounds[0] for x in lines))*.001)
+    contacts=[set() for _ in runs];ends=[[] for _ in runs]
+    for i,line in enumerate(lines):
+        for j in tree.query(line,predicate='dwithin',distance=tolerance):
+            if j>=i or not joins(line,lines[j],tolerance):continue
+            contacts[i].add(j)
+            # At corners of the same source path, share the gap equally.
+            if runs[i][0]!=runs[j][0]:continue
+            for a,u in endpoint_directions(line):
+                for b,v in endpoint_directions(lines[j]):
+                    if a.distance(b)>1e-7:continue
+                    chord=np.linalg.norm(u-v)
+                    if chord>.01:
+                        ends[i].append((a,10.15/chord));ends[j].append((b,10.15/chord))
+    return runs,contacts,ends
+
+
+def route(paths):
+    runs,contacts,ends=layout(paths)
     output=[[] for _ in paths];accepted=[]
-    for i,run,line in sorted(runs,key=lambda item:-item[2].length):
-        # A near miss at an endpoint is common in traced T junctions. Leave
-        # genuinely parallel neighbouring outlines intact for the spacing test.
-        contacts=[other for other in accepted if line.distance(other)<contact_tolerance]
-        pieces=clipped(run,unary_union([other.buffer(10.15,quad_segs=32) for other in contacts])) if contacts else [run]
-        if not pieces:
-            raise RoutingTooSmall('Die Trennstelle würde zu viel vom ursprünglichen Strich entfernen.')
+    for n,(i,run,line) in enumerate(runs):
+        masks=[point.buffer(radius,quad_segs=32) for point,radius in ends[n]]
+        masks.extend(piece.buffer(10.15,quad_segs=32) for j in contacts[n] for piece in accepted[j])
+        pieces=clipped(run,unary_union(masks)) if masks else [run]
+        if not pieces:raise RoutingTooSmall('Die Trennstelle würde einen Strich vollständig entfernen.')
+        accepted.append([])
         for piece in pieces:
             remaining=LineString(sample_path(piece,96))
             if not remaining.is_simple:raise ValueError('Selbstkreuzender Neonpfad: Linienführung an der Kreuzung teilen.')
-            output[i].extend(piece);accepted.append(remaining)
+            output[i].extend(piece);accepted[n].append(remaining)
     if any(not commands for commands in output):raise RoutingTooSmall('Ein Motivdetail hätte kein Neonstück.')
     return output
 
 
 def size_lower_bound(drawing, reference_width, padding, floor):
-    """Lower bound in board mm before cutting. A cut cannot lengthen a run."""
-    from shapely import STRtree
-    if 'dot' in drawing.get('pathRoles',[]):return floor  # fixed-size point normalization
+    """Necessary proportional constraints on runs that routing cannot shorten."""
+    from manufacturing import inspect
+    if 'dot' in drawing.get('pathRoles',[]):return floor  # point normalization can be absolute
+    runs,contacts,ends=layout(drawing['paths'])
     span=reference_width-padding
-    runs=[run for path in drawing['paths'] for part in subpaths(path)
-          for run in corner_runs(part) if path_length(run)>1e-7]
-    if not runs or span<=0:return floor
-    lines=[LineString(sample_path(run,96)) for run in runs]
-    factor=max((floor-padding)/span,10/min(map(path_length,runs)))
-    motif_span=max(line.bounds[2] for line in lines)-min(line.bounds[0] for line in lines)
-    # In reference units this bounds the contact tolerance at every candidate scale.
-    tolerance=max(.5/factor,.001*motif_span)+.05
-    tree=STRtree(lines);fixed=[]
-    for i,line in enumerate(lines):
-        nearby=tree.query(line,predicate='dwithin',distance=tolerance)
-        if all(j==i or lines[j].length<line.length-1e-6 for j in nearby):
-            fixed.append(line)
+    factor=max((floor-padding)/span,10/min(path_length(run) for _,run,_ in runs))
+    fixed=[(run,line) for i,(_,run,line) in enumerate(runs) if not contacts[i] and not ends[i]]
+    if fixed:
+        paths=[run for run,_ in fixed]
+        probe={**drawing,'paths':paths,'names':['']*len(paths),'pathModes':['single']*len(paths),'pathRoles':['stroke']*len(paths)}
+        radius=inspect(probe)['minimumRadius']
+        if radius is not None and radius>0:factor=max(factor,25/radius)
     if len(fixed)>1:
-        tree=STRtree(fixed)
-        for i,line in enumerate(fixed):
+        lines=[line for _,line in fixed];tree=STRtree(lines)
+        for i,line in enumerate(lines):
             for j in tree.query(line,predicate='dwithin',distance=10/factor):
                 if j>i:
-                    distance=line.distance(fixed[j])
+                    distance=line.distance(lines[j])
                     if distance>0:factor=max(factor,10/distance)
     return max(floor,math.ceil(padding+span*factor-1e-7))
