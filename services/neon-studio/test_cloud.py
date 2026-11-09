@@ -310,7 +310,7 @@ class CloudTests(unittest.TestCase):
  def test_acrylic_sheet_sizes_and_single_package(self):
   from geometry import acrylic_split
   from neon_pricing import drawing_price
-  for w,h,n in [(2400,1200,1),(1200,2400,1),(2401,1200,2),(1201,2400,2),(5000,1000,3),(4000,2000,4),(3000,2500,6)]:
+  for w,h,n in [(2400,1200,1),(1200,2400,1),(2401,1200,2),(1201,2400,2),(5000,1000,3),(4000,2000,4),(3000,2500,5)]:
    outline=[['m',[0,0]],['l',[w,0]],['l',[w,h]],['l',[0,h]],['h']]
    split=acrylic_split(outline,[0,0,w,h])
    self.assertEqual(len(split['pieces']) if split else 1,n)
@@ -325,6 +325,29 @@ class CloudTests(unittest.TestCase):
     self.assertEqual(q['items'][0]['controllers'],count)
     self.assertEqual(len(q['packages']),1)
     self.assertEqual(q['packages'][0]['dimensions_cm'][2],str(6+4*(n-1)))
+ def test_mixed_sheet_orientation_uses_straight_partial_cuts(self):
+  from geometry import acrylic_split
+  from shapely.geometry import Polygon,LineString
+  from shapely.ops import split,snap
+  from neon_pricing import drawing_price
+  points=[(0,0),(2600,0),(2600,1200),(1500,2350),(1150,2490),(550,2490)]
+  outline=[['m',points[0]],*(['l',pt] for pt in points[1:]),['h']]
+  polygon=Polygon(points)
+  plan=acrylic_split(outline,polygon.bounds)
+  self.assertEqual(len(plan['pieces']),3)
+  regions=[polygon]
+  for (_,start),(_,end) in plan['seams']:
+   self.assertTrue(start[0]==end[0] or start[1]==end[1])
+   line=LineString([start,end])
+   regions=[piece for region in regions for piece in split(snap(region,line,1e-7),line).geoms]
+  self.assertEqual(len(regions),3)
+  for region in regions:
+   a,b,c,d=region.bounds
+   self.assertLessEqual(min(c-a,d-b),1200.000001)
+   self.assertLessEqual(max(c-a,d-b),2400.000001)
+  q=drawing_price(dict(width=2600,height=2490,neonMeters=5,acrylicSplit=plan),{})
+  self.assertEqual(len(q['packages']),1)
+  self.assertLessEqual(float(q['packages'][0]['dimensions_cm'][1]),130.000001)
  def test_split_appears_in_offer(self):
   store=DurableStore(self.db);info=store.add(SVG.encode(),'Test.svg')
   d=store.drawing(info['id'],json.dumps({'mode':'single','width':3000,'gap':15,'shape':'shape'}))

@@ -16,7 +16,7 @@ DEFAULTS = dict(mode='double', shape='bottom', width=600, gap=15, tube=6,
 KAPPA = 4 * (math.sqrt(2) - 1) / 3
 
 
-def acrylic_split(outer, bounds):
+def acrylic_split(outer, bounds, *, _polygon=None):
     x, y, right, bottom = bounds
     width, height = right-x, bottom-y
     def grid(sheet_width, sheet_height):
@@ -25,7 +25,7 @@ def acrylic_split(outer, bounds):
     cols, rows = min((grid(2400,1200), grid(1200,2400)), key=lambda g: g[0]*g[1])
     if cols*rows == 1:
         return None
-    polygon = Polygon(sample_path(outer, 120))
+    polygon = Polygon(sample_path(outer, 120)) if _polygon is None else _polygon
     def components(shape, kind):
         if shape.geom_type == kind and not shape.is_empty:
             yield shape
@@ -42,11 +42,94 @@ def acrylic_split(outer, bounds):
                 a,b,c,d = piece.bounds
                 pieces.append([c-a, d-b])
     cuts = [((v,y),(v,bottom)) for v in xs[1:-1]] + [((x,v),(right,v)) for v in ys[1:-1]]
-    seams = []
-    for cut in cuts:
-        inside = polygon.intersection(LineString(cut)).difference(polygon.boundary)
-        for segment in components(inside, 'LineString'):
-            seams.append([['m', list(segment.coords[0])], ['l', list(segment.coords[-1])]])
+    def seam_paths(cuts):
+        seams=[]
+        for parent,cut in cuts:
+            inside=parent.intersection(LineString(cut)).difference(parent.boundary)
+            for segment in components(inside,'LineString'):
+                seams.append([['m',list(segment.coords[0])],['l',list(segment.coords[-1])]])
+        return seams
+
+    seams=seam_paths((polygon,cut) for cut in cuts)
+    # Keep the existing grid as a complete plan while looking for fewer pieces.
+    # A cut only crosses the current piece; its two sides can then use
+    # different orientations. Concave cuts can produce multiple physical parts.
+    def describe(shape):
+        a,b,c,d=shape.bounds
+        w,h=c-a,d-b
+        fits=min(w,h)<=1200+1e-7 and max(w,h)<=2400+1e-7
+        lower=max(1 if fits else 2, math.ceil((shape.area-1e-5)/(1200*2400)),
+                  math.ceil((max(w,h)-1e-7)/2400))
+        return (shape,(a,b,c,d),fits,lower)
+
+    initial=describe(polygon)
+    if len(pieces)<=initial[3]:
+        return {'pieces':pieces,'seams':seams}
+    if len(pieces)>12:
+        # Divide large jobs into manageable regions. Keep the full grid when
+        # this first straight cut would introduce additional parts.
+        if width>=height:
+            mid=(x+right)/2
+            halves=(box(x,y,mid,bottom),box(mid,y,right,bottom))
+            cut=((mid,y),(mid,bottom))
+        else:
+            mid=(y+bottom)/2
+            halves=(box(x,y,right,mid),box(x,mid,right,bottom))
+            cut=((x,mid),(right,mid))
+        local_pieces=[]
+        local_seams=seam_paths([(polygon,cut)])
+        for half in halves:
+            for child in components(polygon.intersection(half),'Polygon'):
+                a,b,c,d=child.bounds
+                plan=acrylic_split(None,child.bounds,_polygon=child)
+                if plan:
+                    local_pieces.extend(plan['pieces'])
+                    local_seams.extend(plan['seams'])
+                else:
+                    local_pieces.append([c-a,d-b])
+        if len(local_pieces)<len(pieces):
+            pieces,seams=local_pieces,local_seams
+        return {'pieces':pieces,'seams':seams}
+    frontier=[([initial],[])]
+    # Bound the preview cost for very large or intricately concave motifs.
+    for _ in range(len(pieces)-1):
+        candidates={}
+        for parts,history in frontier:
+            index=max((i for i,p in enumerate(parts) if not p[2]),
+                      key=lambda i:(parts[i][3],parts[i][0].area))
+            shape,(a,b,c,d),_,_=parts[index]
+            rest=parts[:index]+parts[index+1:]
+            for axis,low,high in ((0,a,c),(1,b,d)):
+                mid=(low+high)/2
+                positions={mid,low+1200,high-1200,low+2400,high-2400,
+                           low+1190,high-1190,low+2390,high-2390}
+                for v in sorted(positions,key=lambda v:(abs(mid-v),v)):
+                    if not low+1e-6<v<high-1e-6:continue
+                    if axis==0:
+                        halves=(box(a,b,v,d),box(v,b,c,d))
+                        line=((v,b),(v,d))
+                    else:
+                        halves=(box(a,b,c,v),box(a,v,c,d))
+                        line=((a,v),(c,v))
+                    children=[describe(child) for half in halves
+                              for child in components(shape.intersection(half),'Polygon')]
+                    if len(children)<2:continue
+                    new=rest+children
+                    lower=sum(p[3] for p in new)
+                    if lower>=len(pieces):continue
+                    cuts=history+[(shape,line)]
+                    if all(p[2] for p in new):
+                        pieces=[[c-a,d-b] for _,(a,b,c,d),_,_ in new]
+                        seams=seam_paths(cuts)
+                        if len(pieces)==initial[3]:return {'pieces':pieces,'seams':seams}
+                        continue
+                    key=tuple(sorted(p[1] for p in new))
+                    rank=(lower,sum(not p[2] for p in new),sum(p[0].area for p in new if not p[2]))
+                    if key not in candidates or rank<candidates[key][0]:
+                        candidates[key]=(rank,new,cuts)
+        ordered=sorted(candidates.values(),key=lambda item:item[0])
+        frontier=[(parts,cuts) for rank,parts,cuts in ordered if rank[0]<len(pieces)][:6]
+        if not frontier:break
     return {'pieces': pieces, 'seams': seams}
 
 

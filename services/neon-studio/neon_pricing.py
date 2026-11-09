@@ -107,7 +107,7 @@ def calculate(request, *, acrylic_parts=None):
     if acrylic_parts:
         # One stack per shipment. Existing estimates use 6 cm for one layer
         # and 10 cm for two; apply the same 4 cm increment for further layers.
-        stack_width,stack_height=(max(Decimal(str(piece[i])) for piece in acrylic_parts)/10 for i in (0,1))
+        stack_width,stack_height=(max(Decimal(str(side(piece))) for piece in acrylic_parts)/10 for side in (max,min))
         layers=len(acrylic_parts)*len(items)
         parcels=[(stack_width,stack_height,Decimal(6+4*(layers-1)))]
         if layers>2:assumptions.append('stack_depth_estimated')
