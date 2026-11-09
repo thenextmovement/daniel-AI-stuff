@@ -864,7 +864,11 @@ function paintNeonNodes(){
 function dragNeonNode(event){
   const drag=neonDrag;
   const point=svgPoint(event),scale=state.drawing.settings.scale;
-  const dx=(point.x-drag.start.x)/scale,dy=(point.y-drag.start.y)/scale;
+  let dx=(point.x-drag.start.x)/scale,dy=(point.y-drag.start.y)/scale;
+  if(event.shiftKey){
+    if(Math.abs(dx)>=Math.abs(dy))dy=0;
+    else dx=0;
+  }
   const cmd=drag.original[drag.i];
   const commands=structuredClone(drag.original);
   const move=(i,j)=>{const [x,y]=drag.original[i][j];commands[i][j]=[x+dx,y+dy];};
