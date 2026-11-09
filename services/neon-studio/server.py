@@ -228,11 +228,10 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(payload,dict):raise ValueError('Ungültige Anfrage.')
             path=urlparse(self.path).path
             if path=='/api/manufacturing':
-                from manufacturing import inspect
-                settings=payload.get('settings',{});profile=payload.get('profile',{})
-                if not isinstance(settings,dict) or not isinstance(profile,dict):raise ValueError('Ungültige Fertigungswerte.')
-                drawing=self.server.store.drawing(str(payload.get('id','')),json.dumps(settings,sort_keys=True))
-                return self.respond(200,inspect(drawing,profile))
+                from minimum_size import minimum_size
+                settings=payload.get('settings',{})
+                if not isinstance(settings,dict):raise ValueError('Ungültige Einstellungen.')
+                return self.respond(200,minimum_size(self.server.store,str(payload.get('id','')),settings))
             if path=='/api/pricing':
                 settings=payload.get('settings',{})
                 if not isinstance(settings,dict):raise ValueError('Ungültige Einstellungen.')

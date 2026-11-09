@@ -52,7 +52,7 @@ def artifacts(variants,spec):
         if spec.get('minimum_width_mm') is not None:
             c.setFont('Helvetica',9);c.drawString(36,688,'Mindestbreite (manuell): '+de(spec['minimum_width_mm']/10)+' cm')
         if spec.get('auto_minimum_mm') is not None:
-            c.setFont('Helvetica',9);c.drawString(36,672,'Kleinste geprüfte Breite mit 8-mm-Neonflex: '+de(spec['auto_minimum_mm']/10)+' cm')
+            c.setFont('Helvetica',9);c.drawString(36,672,f"Kleinste geprüfte Breite mit {spec.get('minimum_tube_mm',8)}-mm-Neonflex: "+de(spec['auto_minimum_mm']/10)+' cm')
         artwork(c,d,58,440,506/mm,218/mm)
         dimensions(c,d,58,440,506/mm,218/mm)
         entries=[('Produkt','LED Neon Flex'),('Material','Silikon'),('Zuschnitt',CUT[d['settings']['shape']]),

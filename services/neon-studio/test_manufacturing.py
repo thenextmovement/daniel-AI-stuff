@@ -95,12 +95,20 @@ class ManufacturingTests(unittest.TestCase):
   class Store:
    def size_probe(self,model,options,*,uncut=False):return self.drawing(model,json.dumps(options))
    def drawing(self,model,options):
-    width=json.loads(options)['width'];size=(width-38)/20
-    d=case.drawing([[['m',[0,0]],['l',[size,0]]]]);d['width']=width
+    width=json.loads(options)['width'];size=(width-36)/20
+    d=case.drawing([[['m',[0,0]],['l',[width-36,0]]],[['m',[0,size]],['l',[width-36,size]]]]);d['width']=width
     return d
   widths,reports=size_variants(Store(),'model',{},dict(widths_mm=[600],smallest_requested=True))
-  self.assertEqual(widths,[600,238])
-  self.assertFalse(any(r['shortPaths'] for r in reports))
+  self.assertEqual(widths,[600,196])
+  self.assertEqual(reports[1]['minimumSpacing'],8)
+ def test_geometric_minimum_uses_opening_and_ignores_attached_bar(self):
+  from minimum_size import measure
+  # 10 mm square between centerlines in a 100 mm wide motif.
+  loop=[['m',[0,0]],['l',[10,0]],['l',[10,10]],['l',[0,10]],['h']]
+  bar=[['m',[10,5]],['l',[100,5]]]
+  r=measure(dict(paths=[loop,bar],width=136))
+  self.assertEqual(r['recommendedWidth'],193)
+  self.assertAlmostEqual(r['opening'],4,places=2)
  def test_cut_layout_resolves_T_and_corner_without_dropping_strokes(self):
   from neon_routing import route,RoutingTooSmall
   paths=[[['m',[0,0]],['l',[100,0]]],[['m',[50,0]],['l',[50,55]],['l',[80,55]]]]

@@ -224,6 +224,7 @@ class CloudTests(unittest.TestCase):
   p=self.db.enqueue('small-card','small-event',{'name':'LED Neon Test'})
   p=self.db.save(p['id'],{'copy':'copy','model':'model','settings':{'width':1200},'spec':{'customer_name':'Test','colors':'Pink','widths_mm':[1200],'minimum_width_mm':1100}},status='draft')
   store=Mock();store.drawing.return_value={'exportable':True,'paths':[['M',0,0]],'width':1000}
+  store.size_probe.return_value={'width':80,'paths':[[['m',[0,0]],['l',[44,0]]]]}
   t=Mock();t.card.return_value={'idBoard':BOARD,'idList':HOLDING}
   with self.assertRaisesRegex(Review,'Mindestbreite'):Jobs(self.db,store,t).publish(p)
   t.call.assert_not_called();t.comment_once.assert_not_called()

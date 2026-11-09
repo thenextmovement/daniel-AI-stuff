@@ -11,7 +11,7 @@ from shapely import multipoints, convex_hull, STRtree, linestrings, points as sh
 from colors import NEON_COLORS, line_color, valid_color
 
 
-DEFAULTS = dict(mode='double', shape='bottom', width=600, gap=15, tube=8,
+DEFAULTS = dict(mode='double', shape='bottom', width=600, gap=15, tube=6,
                 depth=20, radius=3)
 KAPPA = 4 * (math.sqrt(2) - 1) / 3
 
@@ -908,7 +908,9 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None):
 
 def build_geometry(model, options=None, *, editable=True, sizing_probe=False, uncut_probe=False):
     settings={**DEFAULTS, 'reserve':.1, **(options or {})}
-    if settings.get('autoRoute'):settings['tube']=8
+    if settings.get('geometricSizing'):
+        settings.update(tube=6,gap=15,gapSides={},autoRoute=False)
+    elif settings.get('autoRoute'):settings['tube']=8
     if settings['mode'] not in ('single','double') or settings['shape'] not in ('rectangle','bottom','shape'):
         raise ValueError('Unbekannter Linienmodus oder Plattenform.')
     limits={'width':(80,20000),'gap':(2,100),'tube':(1,30),'depth':(0,20000),'radius':(.5,40),'reserve':(.001,20)}
@@ -953,7 +955,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     if any(not math.isfinite(value) or not 2<=value<=100 for value in gaps.values()):
         raise ValueError('Randabstand je Seite: Wert zwischen 2 und 100 mm erforderlich.')
     settings['gapSides']=gaps
-    edge_allowance=settings['tube']/2 if settings.get('autoRoute') else 0
+    edge_allowance=settings['tube']/2 if settings.get('autoRoute') or settings.get('geometricSizing') else 0
     side_gaps={side:gaps.get(side,settings['gap'])+edge_allowance for side in sides}
     part_modes=settings.get('partModes',{})
     part_ids={p['id'] for p in model['parts']}
@@ -1058,7 +1060,8 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
                     neonMaterialMeters=sum(map(path_length,paths))*.0011)
     # At large physical scales a fixed coarse sampling can shift the acrylic
     # outline away from the true curve extrema during dimension anchoring.
-    steps=max(40,math.ceil(math.sqrt(max(w,h)))) if settings.get('autoRoute') else 40
+    steps=max(40,math.ceil(math.sqrt(max(w,h)))) if settings.get('autoRoute') or settings.get('geometricSizing') else 40
+    if settings.get('geometricSizing'):steps=max(steps,192)
     lines=[LineString(sample_path(transform(path,scale,dx,dy),steps)) for path in support_paths]
     clearance=unary_union([_directional_buffer(line,paddings) for line in lines]) if asymmetric else None
     def has_clearance(poly,tolerance):
@@ -1095,6 +1098,14 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
         a,b,c,d=path_bounds(outer)
         outer=[[cmd[0],*[[((x-a)*w/(c-a)),((y-b)*h/(d-b))] for x,y in cmd[1:]]]
                for cmd in outer]
+    if settings.get('geometricSizing'):
+        # Restore clearance lost by polygon fitting. The exact motif bounds
+        # already reserve 18 mm to the rectangular envelope on every side.
+        contour=Polygon(sample_path(outer,128))
+        gap=min(contour.exterior.distance(line) for line in lines)
+        if gap<padding and contour.is_valid:
+            corrected=contour.buffer(padding-gap+.025,quad_segs=32).intersection(box(0,0,w,h))
+            outer=[M(*corrected.exterior.coords[0]),*[L(*point) for point in corrected.exterior.coords[1:-1]],['h']]
     # Edits are stored in motif coordinates, so they follow proportional resizing.
     reference=np.asarray(model['sourceOrigin']) if 'sourceOrigin' in model else np.array([path_bounds(p['commands']) for p in model['modes']['double']])[:,:2].min(axis=0)
     shift_x=(x0-reference[0])*scale-left;shift_y=(y0-reference[1])*scale-top

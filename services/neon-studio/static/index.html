@@ -152,7 +152,7 @@
           </div>
           <p class="notice" id="traceWarning" hidden>Automatischer Entwurf: Bei ausgefüllten Flächen und Verzweigungen kann Single Line vom gewünschten Neonverlauf abweichen. Mit dem Original vergleichen.</p>
           <div class="section-divider"></div>
-          <label class="field-row" for="tube"><span>Neonbreite</span><div class="number-field"><input id="tube" type="number" data-setting="tube" min="1" max="30" step=".5" value="8"><span>mm</span></div></label>
+          <label class="field-row" for="tube"><span>Neonbreite</span><div class="number-field"><input id="tube" type="number" data-setting="tube" min="1" max="30" step=".5" value="6"><span>mm</span></div></label>
           <p class="help-text" id="tubeHelp">Schlauchbreite für die Leuchtvorschau. Der Randabstand wird bis zur gezeichneten Neonlinie gemessen und bleibt davon unabhängig.</p>
           <div class="section-divider"></div><h2 id="pathOverview">Pfadübersicht <span class="count" id="pathCount">0</span></h2>
           <p class="help-text">Das Auge schaltet den Pfad ein oder aus. Ausgeblendete Pfade bleiben hier und zählen nicht zu Neonmetern, Außenkontur oder PDF. Die Auswahl gilt je Linienmodus.</p><div class="path-list" id="pathList"></div>
@@ -235,12 +235,7 @@
           <div class="check-list" id="checkList"><p class="help-text">Zuerst ein Motiv laden.</p></div>
           <div class="section-divider"></div><div class="check-detail"><span>Neonpfade</span><strong id="checkPaths">—</strong></div><div class="check-detail"><span>Offene Neonpfade</span><strong id="checkOpen">—</strong></div><p class="help-text">Offene Enden sind bei Single Line häufig beabsichtigt.</p>
           <div class="section-divider"></div><h2>Fertigung &amp; Größenorientierung</h2>
-          <p class="help-text">Die passende Größe hängt von Linienart, Schlauchbreite, Kurven und Zwischenräumen ab. Diese Profilwerte sind vorläufig und müssen zum verwendeten Neon-Flex passen.</p>
-          <label class="field-row">Mindest-Biegeradius<div class="number-field"><input id="manufacturingRadius" type="number" min="1" max="200" value="25"><span>mm</span></div></label>
-          <label class="field-row">Freiraum zwischen Schläuchen<div class="number-field"><input id="manufacturingSpacing" type="number" min="0" max="30" value="2"><span>mm</span></div></label>
-          <label class="field-row">Kürzestes Stück<div class="number-field"><input id="manufacturingCut" type="number" min="10" max="200" value="10"><span>mm</span></div></label>
-          <p class="help-text">Schlauchbreite: Einstellung unter Neon. Biegeradius bezeichnet den Radius der Mittellinie. i/j-Punkte neuer KI-Zeichnungen: Single Line als senkrechter Strich mit mindestens 20 mm Länge; Double Line als proportionaler Kreis. Biegeradius, Stücklänge und Platz zum Buchstaben werden separat geprüft.</p>
-          <button id="manufacturingCheck" class="button full-width">Fertigung prüfen</button>
+          <p class="help-text">Automatische Mindestgröße mit 6 mm Neonflex, 15 mm freiem Acrylrand und 2 mm Abstand zwischen getrennten Linien. Für geschlossene Innenöffnungen gilt der MATPLUS-Vergleichswert von 9,61 mm.</p>
           <div id="manufacturingResult" class="help-text" role="status"></div>
           <button id="manufacturingApply" class="button full-width" hidden>Vorschaugröße übernehmen</button>
           <div class="notice subtle">Keine Fertigungsfreigabe. Scharfe Ecken, Kreuzungen, Anschlüsse und Schnittstellen benötigen eine gesonderte Prüfung. Fräser und Nuttiefe gehören zur CNC-Vorbereitung.</div>

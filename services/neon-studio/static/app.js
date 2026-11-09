@@ -40,7 +40,7 @@ function icon(name) { return `<svg viewBox="0 0 24 24" aria-hidden="true">${icon
 function paintIcons(root=document) { root.querySelectorAll('[data-icon]').forEach(el => {el.innerHTML=icon(el.dataset.icon);}); }
 paintIcons();
 
-const defaults = {mode:'double',shape:'bottom',width:600,gap:15,gapSides:{},tube:8,depth:20,depthSides:{},radius:3,reserve:.1,scale:null,partModes:{},straightened:{},pathSplits:{},pathOffsets:{},outlineEdits:[],depthRegions:[],uvStrokes:[],uvMode:'original',hiddenPaths:[],pathColors:{}};
+const defaults = {mode:'double',shape:'bottom',width:600,gap:15,gapSides:{},tube:6,depth:20,depthSides:{},radius:3,reserve:.1,scale:null,partModes:{},straightened:{},pathSplits:{},pathOffsets:{},outlineEdits:[],depthRegions:[],uvStrokes:[],uvMode:'original',hiddenPaths:[],pathColors:{}};
 const presets = {
   technical:{neon:'#79c6ff',acrylic:'#aab4be',background:'#222527',opacity:8,glow:false},
   glow:{neon:'#fc7249',acrylic:'#aab4be',background:'#202224',opacity:4,glow:true},
@@ -196,6 +196,7 @@ async function runGeometry() {
 }
 function setSetting(key,value,commit=true,side=null) {
   if(state.analyzing)return;
+  if(['gap','gapSides','tube'].includes(key))state.settings.geometricSizing=false;
   if(key==='width' && state.settings.scale!==null){
     // Resize the motif; contour-to-path gaps stay in millimetres.
     // Use the last valid drawing so intermediate numeric input cannot compound
@@ -288,6 +289,7 @@ function updateViewBox() {
   renderOutlinePoints();
 }
 function renderDetails() {
+  checkManufacturing();
   const d=state.drawing;
   $('height').textContent=number(d.height/(state.dimensionUnit==='cm'?10:1),2);$('neonLength').textContent=number(d.neonMaterialMeters,2);
   updatePrice();
@@ -309,39 +311,39 @@ function renderDetails() {
 }
 let manufacturingTicket=0, manufacturingReport=null;
 function invalidateManufacturing(){
-  manufacturingTicket++;manufacturingReport=null;
+  manufacturingTicket++;manufacturingReport=null;lastMinimumRequest=null;
   if($('manufacturingResult'))$('manufacturingResult').textContent='Nach Änderungen erneut prüfen.';
   if($('manufacturingApply'))$('manufacturingApply').hidden=true;
-  if($('manufacturingCheck'))$('manufacturingCheck').disabled=false;
 }
+
 function manufacturingKey(){return JSON.stringify([state.project?.id,state.settings]);}
+let lastMinimumRequest=null;
 async function checkManufacturing(){
-  if(!state.project||!state.valid||state.busy)return toast('Bitte zuerst eine Zeichnung laden und die Berechnung abwarten.');
-  invalidateManufacturing();const ticket=manufacturingTicket,key=manufacturingKey();
-  const profile={bendRadius:Number($('manufacturingRadius').value),spacing:Number($('manufacturingSpacing').value),cutLength:Number($('manufacturingCut').value)};
-  $('manufacturingCheck').disabled=true;$('manufacturingResult').textContent='Kurven, Abstände und Stücklängen werden geprüft …';
+  if(!state.project||state.busy||!state.drawing?.paths?.length)return;
+  const key=manufacturingKey();
+  if(lastMinimumRequest===key)return;
+  lastMinimumRequest=key;
+  const ticket=++manufacturingTicket;
+  const result=$('manufacturingResult');
+  result.textContent='Mindestgröße wird berechnet …';
+  $('manufacturingApply').hidden=true;
   try{
-    const report=await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings,profile})).json();
+    const report=await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings})).json();
     if(ticket!==manufacturingTicket||key!==manufacturingKey())return;
-    manufacturingReport={...report,key};const target=$('manufacturingResult');target.replaceChildren();
-    const rows=[`${number(report.rawMeters,3)} m gezeichnet · ${number(report.materialMeters,3)} m mit 10 % Zuschlag.`,
-      Object.entries(report.modes).map(([mode,count])=>`${count} ${mode==='single'?'Single':'Double'}-Line-Pfade`).join(' · '),
-      report.minimumRadius===null?'Keine größenbestimmenden Kurven gefunden.':`Engster Kurvenradius: ${number(report.minimumRadius,2)} mm.`,
-      report.minimumSpacing===null?'Kein zu enger Abstand zwischen den geprüften Linien gefunden.':`Engster Abstand: ${number(report.minimumSpacing,2)} mm Mitte–Mitte; benötigt ${number(report.requiredSpacing,1)} mm.`,
-      ...(report.spacingWidth?[`Nur für die gemessenen Linienabstände wären bei unveränderter Zeichnung etwa ${number(report.spacingWidth/10,1)} cm Breite nötig. Kurven, Punkte und Anschlüsse sind damit noch nicht geprüft.`]:[]),
-      ...(report.recommendedWidth?[`Größenorientierung für unveränderte Linien: ${number(report.recommendedWidth/10,1)} cm Breite.`]:['Mindestgröße noch offen: erst lokale Details und Anschlüsse korrigieren.']),...report.reasons,...report.warnings];
-    for(const text of rows){const row=document.createElement('p');row.textContent=text;target.append(row);}
-    $('manufacturingApply').hidden=!report.recommendedWidth||Math.abs(report.recommendedWidth-report.currentWidth)<.1;
-    $('manufacturingApply').textContent=report.recommendedWidth?`${number(report.recommendedWidth/10,1)} cm als Vorschau übernehmen`:'Vorschaugröße übernehmen';
-  }catch(error){if(ticket===manufacturingTicket)$('manufacturingResult').textContent=error.message;}
-  finally{if(ticket===manufacturingTicket)$('manufacturingCheck').disabled=false;}
+    manufacturingReport={...report,key};
+    const label=`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
+    result.textContent=label;
+    const warning=$('cloudSizeWarning');
+    if(warning){warning.hidden=false;warning.textContent=label;}
+    $('manufacturingApply').hidden=!!state.settings.geometricSizing&&Math.abs(state.drawing.width-report.recommendedWidth)<.01;
+  }catch(error){
+    if(ticket===manufacturingTicket){result.textContent=error.message;lastMinimumRequest=null;}
+  }
 }
-$('manufacturingCheck').onclick=checkManufacturing;
-for(const id of ['manufacturingRadius','manufacturingSpacing','manufacturingCut'])$(id).oninput=invalidateManufacturing;
 $('manufacturingApply').onclick=()=>{
   const report=manufacturingReport;
   if(!report?.recommendedWidth||report.key!==manufacturingKey()||state.busy)return;
-  state.settings.width=report.recommendedWidth;state.settings.scale=null;
+  Object.assign(state.settings,{geometricSizing:true,autoRoute:false,tube:6,gap:15,gapSides:{},scale:null,width:report.recommendedWidth});
   updateControls();commitHistory();requestGeometry(true);
 };
 function uvLayer() {
