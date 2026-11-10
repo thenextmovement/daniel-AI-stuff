@@ -1,5 +1,6 @@
 /* Ops adds persistence; the existing geometric editor remains unchanged. */
 let cloud=null,cloudSpec={},cloudSaving=false;
+const designNumber=Number(new URLSearchParams(location.search).get('design')||1);
 const cloudBase='/api/ops/neon-studio';
 async function cloudRequest(path,data) {
   const r=await fetch(cloudBase+'/cloud/'+path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined});
@@ -36,7 +37,7 @@ function setupDownloads(){
         light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',pricing_options:priceOptions(),
         controllers:Number($('priceControllers').value),uv_print:$('priceUv').checked,
         waterproof_psus:pricing.outdoor?Number($('pricePsus').value):0,shape:state.settings.shape};
-      const response=await api('/api/export',{id:state.project.id,settings:state.settings,options:{kind:'download',formats,spec,pdfOptions:state.exportOptions}});
+      const response=await api('/api/export',{id:state.project.id,settings:state.settings,options:{kind:'download',formats,spec,motif:spec.design_name,pdfOptions:state.exportOptions}});
       const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');
       link.href=url;link.download=response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]||'Neon_Studio.zip';
       document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
@@ -52,7 +53,7 @@ window.studioManualSizeLabel=()=>cloudSpec.size_axis==='height'&&cloudSpec.manua
   :'Manuelle Mindestbreite: '+number(cloudSpec.minimum_width_mm/10,1)+' cm';
 const extraInputs=['secondSize','thirdSize','fourthSize'];
 const sizeInputs=['manualSize',...extraInputs];
-function sizeDraftKey(){return 'neonstudio.sizes.'+cloud.id;}
+function sizeDraftKey(){return 'neonstudio.sizes.'+cloud.id+(designNumber===1?'':'.'+designNumber);}
 function rememberSizeFields(){
   sizesDirty=true;
   $('previewSize').disabled=true;
@@ -198,7 +199,7 @@ async function cloudSave() {
     Object.assign(cloudSpec,{light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',waterproof_psus:pricing.outdoor?Number($('pricePsus').value):0,uv_print:$('priceUv').checked,controllers:Math.max(1,Number($('priceControllers').value))});
     cloudSpec.pricing_options=priceOptions();
     cloudSpec.shape=state.settings.shape;
-    cloud={...cloud,...await cloudRequest('save',{id:cloud.id,revision:cloud.revision,model:state.project.id,settings:state.settings,spec:cloudSpec})};
+    cloud={...cloud,...await cloudRequest('save',{id:cloud.id,design:designNumber,revision:cloud.revision,model:state.project.id,settings:state.settings,spec:cloudSpec})};
     if(sizesDirty)rememberSizeFields();
     else{
       try{sessionStorage.removeItem(sizeDraftKey());}catch{}
@@ -215,7 +216,7 @@ async function cloudPublish(){
     await cloudSave();
     if(cloudSpec.issues?.length){cloudDetails(true);return;}
     cloud=await cloudRequest('publish',{id:cloud.id,revision:cloud.revision});
-    toast('Die drei Dateien werden in Trello hochgeladen.');
+    toast('Die Dateien werden in Trello hochgeladen.');
     await cloudPoll();
   }catch(e){toast(e.message,true);}
   finally{state.exporting=false;exportState();}
@@ -224,7 +225,7 @@ function textElement(tag,text){const e=document.createElement(tag);e.textContent
 async function cloudPoll(){
   for(let i=0;i<120;i++){
     await new Promise(r=>setTimeout(r,2000));
-    const p=await cloudRequest('project?id='+cloud.id);
+    const p=await cloudRequest('project?id='+cloud.id+'&design='+designNumber);
     if(!['queued','copying','generating','publishing','publish_queued'].includes(p.status)){
       cloud=p;if(p.status==='ready'){cloudSpec=p.spec;showSizeFields();renderReview();}toast(p.error||(p.status==='ready'?'In Trello aktualisiert.':'Verarbeitung noch nicht bestätigt. Bitte Projektstatus prüfen.'),!!p.error||p.status!=='ready');return;
     }
@@ -356,8 +357,15 @@ async function cloudBoot(){
     }
     document.body.append(panel);return;
   }
-  cloud=await cloudRequest('project?id='+encodeURIComponent(id));cloudSpec=cloud.spec||{};
+  cloud=await cloudRequest('project?id='+encodeURIComponent(id)+'&design='+designNumber);cloudSpec=cloud.spec||{};
   status.textContent=cloud.name;
+  if(cloud.design_names?.length>1){
+    const selector=document.createElement('select');selector.setAttribute('aria-label','Design wählen');
+    cloud.design_names.forEach((name,i)=>selector.add(new Option('Design '+(i+1)+' · '+name,String(i+1))));
+    selector.value=String(designNumber);
+    selector.onchange=()=>{const url=new URL(location.href);url.searchParams.set('design',selector.value);location.assign(url);};
+    bar.append(selector);
+  }
   const sizeWarning=textElement('span','Vorschaugröße – Mindestgröße noch nicht geprüft');sizeWarning.id='cloudSizeWarning';sizeWarning.hidden=!!cloudSpec.widths_mm?.length;bar.append(sizeWarning);
   if(cloud.model){
     const check=textElement('button','Mindestgröße ermitteln');

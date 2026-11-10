@@ -53,6 +53,9 @@ class Jobs:
         comment=None
         if error.startswith('Bitte prüfen: ') and p.get('copy_verified'):
             issues=p.get('spec',{}).get('issues',[])
+            if p.get('additional_designs'):
+                issues=[f"{record['spec']['design_name']}: {issue}" for record in [p,*p['additional_designs']]
+                        for issue in record['spec'].get('issues',[])]
             if issues:comment='Noch zu klären\n'+'\n'.join('• '+str(i) for i in issues)
         try:self.mark_copy(p,NEEDS_REVIEW,comment)
         except Exception as exc:print('Review title update failed:',type(exc).__name__,flush=True)
@@ -82,6 +85,12 @@ class Jobs:
         marker='Neon-Studio-Projekt '+id
         self.t.comment_once(p['copy'],marker+'\nhttps://ops.neontrip.de/ops/neon-studio?project='+id+'\nInterner Auto-Quote-Entwurf; kein Kundenversand.',marker)
         data,metrics=generate(self.t,source,p.get('selected_attachments'))
+        designs=data.get('designs',[data])
+        records=[self.design_record(design) for design in designs]
+        p=self.db.save(id,{**records[0],'additional_designs':records[1:],'metrics':metrics},status='draft')
+        self.publish(p)
+
+    def design_record(self,data):
         # Persist even an incomplete spec so a staff member can correct it.
         model,part_modes=drawing_model(data)
         info=self.store.add_model(model,'KI-Zeichnung.svg')
@@ -92,61 +101,80 @@ class Jobs:
             assigned={key:artwork_neon_color(source) for key,source in drawing['colorSources'].items()}
             settings['pathColors']={key:color['id'] for key,color in assigned.items()}
             spec['colors']=' + '.join(dict.fromkeys(assigned[key]['name'] for key in drawing['pathKeys']))
-        p=self.db.save(id,{'model':info['id'],'spec':spec,'metrics':metrics,'settings':settings},status='draft')
-        self.publish(p)
+        return {'model':info['id'],'spec':spec,'settings':settings}
+
+    def size_design(self,p,snapshot):
+        spec=dict(p.get('spec') or {})
+        from cloud_ai import manual_minimum_width
+        manual_minimum_width(spec)
+        if p.get('model'):
+            requested=spec.get('requested_widths_mm',spec.get('widths_mm',[]))
+            # Adopt the title rule for existing smallest-only projects on their next export.
+            if 'minimum_first' not in spec and not requested:
+                extras=smallest_title_widths(snapshot['name'])
+                if extras is not None:
+                    requested=extras
+                    spec.update(minimum_first=True,smallest_requested=True)
+            # Preserve deliberate edits to previously sized variants.
+            if spec.get('sized_widths_mm')!=spec.get('widths_mm') and 'sized_widths_mm' in spec:
+                requested=spec['widths_mm']
+            settings={**p['settings'],**PROFILE}
+            if spec.get('size_axis')=='height' and spec.get('heights_mm'):
+                converted=widths_for_heights(self.store,p['model'],settings,spec['heights_mm'])
+                if spec.get('manual_height_mm') is not None:
+                    spec['minimum_width_mm']=converted[0]
+                    requested=converted[1:]
+                else:requested=converted
+            widths,reports=size_variants(self.store,p['model'],settings,{**spec,'widths_mm':requested})
+            if widths:
+                spec.update(requested_widths_mm=requested,widths_mm=widths,sized_widths_mm=widths)
+                spec.update(auto_minimum_mm=None if spec.get('minimum_width_mm') else reports[0]['recommendedWidth'],minimum_tube_mm=6,
+                            issues=[i for i in spec.get('issues',[]) if not size_only_issue(i)])
+                settings['width']=widths[0]
+                p.update(spec=spec,settings=settings,metrics={**(p.get('metrics') or {}),'manufacturing':reports[0]})
+
+    def design_artifacts(self,p,snapshot):
+        spec=validate_spec(p['spec'])
+        widths=spec['widths_mm'];settings=dict(p['settings'])
+        variants=[]
+        for i,width in enumerate(widths):
+            options={**settings,'width':width,'tube':6,'shape':spec['shape']}
+            if i>0 or abs(float(settings.get('width',0))-width)>.1:options['scale']=None
+            d=self.store.drawing(p['model'],json.dumps(options,sort_keys=True))
+            if not d.get('exportable') or not d['paths']:raise Review('Zeichnung enthält noch ungeklärte Pfade.')
+            if spec.get('minimum_width_mm') is not None and d['width']<spec['minimum_width_mm']-.1:raise Review('Die Zeichnung liegt unter der manuell eingetragenen Mindestbreite.')
+            if 'requested_widths_mm' in spec and not spec.get('minimum_width_mm'):
+                if measure(d)['recommendedWidth']>width:raise Review('Geometrische Mindestbreite unterschritten.')
+            variants.append(d)
+        sources=spec.get('source_attachment_ids') or p.get('selected_attachments') or []
+        filename=next((a['name'] for a in snapshot.get('attachments',[])
+                       if a.get('id') in sources and a.get('name')), '')
+        stem=Path(filename).stem
+        motif=re.sub(r'(?i)[ _-]+logo\d*$', '', stem).replace('_',' ')[:60]
+        files,quotes=artifacts(variants,spec,spec.get('design_name') or motif)
+        return files,quotes,variants,spec
+
     def publish(self,p):
         with self.lock:
             p=self.db.get(p['id'])
             if p['status'] in ('publishing','generating','copying','queued'):raise Review('Projekt wird bereits verarbeitet.')
-            spec=dict(p.get('spec') or {})
-            from cloud_ai import manual_minimum_width
-            manual_minimum_width(spec)
-            if p.get('model'):
-                requested=spec.get('requested_widths_mm',spec.get('widths_mm',[]))
-                # Adopt the title rule for existing smallest-only projects on their next export.
-                if 'minimum_first' not in spec and not requested:
-                    extras=smallest_title_widths(p['snapshot']['name'])
-                    if extras is not None:
-                        requested=extras
-                        spec.update(minimum_first=True,smallest_requested=True)
-                # Preserve deliberate edits to previously sized variants.
-                if spec.get('sized_widths_mm')!=spec.get('widths_mm') and 'sized_widths_mm' in spec:
-                    requested=spec['widths_mm']
-                settings={**p['settings'],**PROFILE}
-                if spec.get('size_axis')=='height' and spec.get('heights_mm'):
-                    converted=widths_for_heights(self.store,p['model'],settings,spec['heights_mm'])
-                    if spec.get('manual_height_mm') is not None:
-                        spec['minimum_width_mm']=converted[0]
-                        requested=converted[1:]
-                    else:requested=converted
-                widths,reports=size_variants(self.store,p['model'],settings,{**spec,'widths_mm':requested})
-                if widths:
-                    spec.update(requested_widths_mm=requested,widths_mm=widths,sized_widths_mm=widths)
-                    spec.update(auto_minimum_mm=None if spec.get('minimum_width_mm') else reports[0]['recommendedWidth'],minimum_tube_mm=6,
-                                issues=[i for i in spec.get('issues',[]) if not size_only_issue(i)])
-                    settings['width']=widths[0]
-                    p=self.db.save(p['id'],{'spec':spec,'settings':settings,'metrics':{**(p.get('metrics') or {}),'manufacturing':reports[0]}})
-            spec=validate_spec(spec)
             if not p.get('copy') or not p.get('model'):raise Review('Kopie oder Zeichnung fehlt.')
+            records=[p,*p.get('additional_designs',[])]
+            for record in records:self.size_design(record,p['snapshot'])
+            p=self.db.save(p['id'],{key:p[key] for key in ('settings','spec','metrics') if key in p}
+                           | {'additional_designs':records[1:]})
             card=self.t.card(p['copy'])
             if card['idBoard']!=BOARD or card['idList'] not in (HOLDING,READY):raise Review('Karte wurde weiterbearbeitet. Veröffentlichung hier gesperrt.')
-            widths=spec['widths_mm'];settings=dict(p['settings'])
-            variants=[]
-            for i,width in enumerate(widths):
-                options={**settings,'width':width,'tube':6,'shape':spec['shape']}
-                if i>0 or abs(float(settings.get('width',0))-width)>.1:options['scale']=None
-                d=self.store.drawing(p['model'],json.dumps(options,sort_keys=True))
-                if not d.get('exportable') or not d['paths']:raise Review('Zeichnung enthält noch ungeklärte Pfade.')
-                if spec.get('minimum_width_mm') is not None and d['width']<spec['minimum_width_mm']-.1:raise Review('Die Zeichnung liegt unter der manuell eingetragenen Mindestbreite.')
-                if 'requested_widths_mm' in spec and not spec.get('minimum_width_mm'):
-                    if measure(d)['recommendedWidth']>width:raise Review('Geometrische Mindestbreite unterschritten.')
-                variants.append(d)
-            sources=spec.get('source_attachment_ids') or p.get('selected_attachments') or []
-            filename=next((a['name'] for a in p['snapshot'].get('attachments',[])
-                           if a.get('id') in sources and a.get('name')), '')
-            stem=Path(filename).stem
-            motif=re.sub(r'(?i)[ _-]+logo\d*$', '', stem).replace('_',' ')[:60]
-            files,quotes=artifacts(variants,spec,motif)
+            files=[];quotes=[];variants=[];specs=[];design_notes=[]
+            for index,record in enumerate(records,1):
+                batch,prices,drawings,spec=self.design_artifacts(record,p['snapshot'])
+                if len(records)>1:
+                    batch=[(f'Design_{index}_{name}',mime,data) for name,mime,data in batch]
+                    design_notes.append(f"Design {index} · {spec['design_name']} · "+
+                        ', '.join(decimal(d['width']/10)+' cm / '+q['total_usd']+' USD' for d,q in zip(drawings,prices)))
+                files.extend(batch);quotes.extend(prices);variants.extend(drawings);specs.extend([spec]*len(drawings))
+            if len(variants)>len(FIELDS):raise Review('Die Karte hat vier Preisfelder. Bitte die Anzahl der Größen je Design reduzieren.')
+            spec=specs[0]
             revision=p['revision'];marker='Neon Studio '+p['id']+' Revision '+str(revision)
             p=self.db.save(p['id'],{'publish_revision':revision,'error':'','upload_intent':False},status='publishing')
             new=[]
@@ -154,7 +182,7 @@ class Jobs:
             try:
                 for name,mime,data in files:
                     self.db.save(p['id'],{'upload_intent':True})
-                    technical=Path(name).stem=='technische_zeichnung' and mime in ('image/jpeg','image/png')
+                    technical=not cover_id and Path(name).stem.endswith('technische_zeichnung') and mime in ('image/jpeg','image/png')
                     endpoint=f"cards/{p['copy']}/attachments"
                     a=self.t.call('POST',endpoint+('?setCover=true' if technical else ''),files={'file':(name,data,mime)},data={'name':name})
                     if technical:cover_id=a['id']
@@ -166,7 +194,7 @@ class Jobs:
                     values=['']*4
                     if i<len(variants):
                         drawing=variants[i]
-                        values=[quotes[i]['total_usd'],decimal(drawing['width']/10)+' × '+decimal(drawing['height']/10)+' cm',spec['colors'],CUT[spec['shape']]]
+                        values=[quotes[i]['total_usd'],decimal(drawing['width']/10)+' × '+decimal(drawing['height']/10)+' cm',specs[i]['colors'],CUT[specs[i]['shape']]]
                     desired.update(zip(fields,values))
                     labels.update(zip(fields,[f'Preis {i+1} (USD)',f'Größe {i+1}',f'Farbe {i+1}',f'Zuschnitt {i+1}']))
                 changes=[]
@@ -179,12 +207,12 @@ class Jobs:
                 if not cover_id or checked.get('idAttachmentCover')!=cover_id:raise Review('Technische Zeichnung als Trello-Titelbild nicht bestätigt.')
                 if not set(new).issubset({a['id'] for a in checked.get('attachments',[])}):raise Review('Trello-Anhänge nicht bestätigt.')
                 if any(field_value(checked,k)!=v for k,v in desired.items()):raise Review('Custom Fields nicht bestätigt.')
-                minimum_note=('\nMindestbreite (manuell): '+decimal(spec['minimum_width_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.') if spec.get('minimum_width_mm') is not None else ''
-                if spec.get('size_axis')=='height' and spec.get('manual_height_mm') is not None:
+                minimum_note=('\nMindestbreite (manuell): '+decimal(spec['minimum_width_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.') if len(records)==1 and spec.get('minimum_width_mm') is not None else ''
+                if len(records)==1 and spec.get('size_axis')=='height' and spec.get('manual_height_mm') is not None:
                     minimum_note='\nMindesthöhe (manuell): '+decimal(spec['manual_height_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.'
-                if spec.get('auto_minimum_mm'):
+                if len(records)==1 and spec.get('auto_minimum_mm'):
                     minimum_note+='\nKleinste geprüfte Breite mit 6-mm-Neonflex: '+decimal(spec['auto_minimum_mm']/10)+' cm.'
-                self.t.comment_once(p['copy'],marker+'\n'+('\n'.join(changes)+'\n' if changes else '')+'Drei Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
+                self.t.comment_once(p['copy'],marker+'\n'+('\n'.join(changes)+'\n' if changes else '')+('\n'.join(design_notes)+'\n' if design_notes else '')+f'{len(files)} Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
                 self.t.call('PUT',f"cards/{p['copy']}",json={'name':copy_title(p['snapshot']['name']),'idList':READY})
                 checked=self.t.card(p['copy'])
                 if checked['idList']!=READY or checked['name']!=copy_title(p['snapshot']['name']):raise Review('Zielliste oder Abschlusstitel nicht bestätigt.')

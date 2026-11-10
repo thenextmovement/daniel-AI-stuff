@@ -133,7 +133,7 @@ def generate(trello,card,selected=None):
     # All attachments remain on the copy. Only raster/PDF customer art is sent for analysis.
     candidates=[a for a in card.get('attachments',[]) if a.get('isUpload') and
         re.search(r'\.(png|jpe?g|webp|pdf|svg|eps)$',a.get('fileName') or a['name'],re.I) and
-        not re.search(r'auto_quote|technische.?zeichnung|technical|invoice|rechnung|angebot|mockup\d|^image\.png$',a['name'],re.I)]
+        not re.search(r'auto_quote|technische.?zeichnung|technical|invoice|rechnung|angebot|mockup\d|^(?:Design_\d+_)?image\.png$',a['name'],re.I)]
     if not candidates and card.get('attachments') and all(a.get('isUpload') and
             (a.get('fileName') or a['name']).lower()=='image.png' for a in card['attachments']):
         candidates=card['attachments']
@@ -214,10 +214,20 @@ gerade und tangential fortsetzen, keine kleinen Stopps, Knicke oder erfundenen V
 Kein Font-Ersatz, keine eingebetteten Bilder, keine text-Elemente. fill=none, stroke-Farbe,
 runde Linienenden. Nur svg/g/path; Befehle M L C Q Z. viewBox passend zur Zeichnung.
 Daten der Anfrage: """+json.dumps(context,ensure_ascii=False)
+    two_designs=bool(re.search(r'\b(?:2|zwei|two)\s+designs\b',card['name']+'\n'+card['desc'],re.I))
+    if two_designs:
+        prompt+="""
+Die Anfrage bestellt zwei getrennte Schilder. Antworte mit {"designs":[Objekt1,Objekt2]}.
+Jedes Objekt enthält alle oben verlangten Felder und einen kurzen eindeutigen design_name.
+Erzeuge für jedes Layout nur dessen eigene Pfade in einer eigenen eng passenden viewBox.
+Der Zeilenumbruch innerhalb eines Layouts gehört zum selben Schild. Behalte die Reihenfolge der Vorlage.
+Zwei bestellte Designs sind kein issue. Bei Größen und Ausführung haben die strukturierten
+aktuellen Kartenangaben Vorrang vor relativen Wünschen im zitierten Mailverlauf.
+Bei ausdrücklicher Farbwahl verwende die bestellte Leuchtfarbe auch für die SVG-Pfade."""
     started=time.perf_counter()
     r=requests.post('https://api.openai.com/v1/responses',headers={'Authorization':'Bearer '+os.environ['OPENAI_API_KEY']},
         json={'model':os.getenv('NEON_AI_MODEL','gpt-6-astra'),'reasoning':{'effort':os.getenv('NEON_AI_EFFORT','high')},
-            'max_output_tokens':18000,'store':False,'input':[{'role':'user','content':[{'type':'input_text','text':prompt}]+content}]},
+            'max_output_tokens':36000 if two_designs else 18000,'store':False,'input':[{'role':'user','content':[{'type':'input_text','text':prompt}]+content}]},
         timeout=(20,900))
     if not r.ok:
         try:code=r.json().get('error',{}).get('code')
@@ -230,9 +240,18 @@ Daten der Anfrage: """+json.dumps(context,ensure_ascii=False)
     text=re.sub(r'^\s*```(?:json)?\s*|\s*```\s*$','',text.strip())
     try:data=json.loads(text)
     except ValueError:raise Review('KI-Antwort ist unvollständig. Bitte erneut prüfen.')
-    if title_widths is not None:
-        data.update(smallest_requested=True,widths_mm=title_widths,minimum_first=True)
-    data['svg']=validate_svg(data.get('svg'))
-    source_ids=data.get('source_attachment_ids',[])
-    if not source_ids or any(x not in supplied_ids for x in source_ids):raise Review('Kundenmotiv konnte nicht zugeordnet werden.')
+    if not isinstance(data,dict) or (not two_designs and 'designs' in data):raise Review('Unerwartete Anzahl von Designs in der KI-Antwort.')
+    designs=data.get('designs') if two_designs else [data]
+    if two_designs and (not isinstance(designs,list) or len(designs)!=2 or
+            any(not isinstance(d,dict) or not isinstance(d.get('design_name'),str) or not d['design_name'].strip() for d in designs)):
+        raise Review('Die beiden bestellten Designs konnten nicht getrennt zugeordnet werden.')
+    if two_designs and (designs[0].get('svg')==designs[1].get('svg') or
+            designs[0]['design_name'].strip().casefold()==designs[1]['design_name'].strip().casefold()):
+        raise Review('Die beiden Zeichnungen brauchen unterscheidbare Motive und Bezeichnungen.')
+    for design in designs:
+        if title_widths is not None:
+            design.update(smallest_requested=True,widths_mm=title_widths,minimum_first=True)
+        design['svg']=validate_svg(design.get('svg'))
+        source_ids=design.get('source_attachment_ids',[])
+        if not source_ids or any(x not in supplied_ids for x in source_ids):raise Review('Kundenmotiv konnte nicht zugeordnet werden.')
     return data,{'seconds':round(time.perf_counter()-started,2),'model':result.get('model'),'usage':result.get('usage'), 'response_id':result.get('id')}

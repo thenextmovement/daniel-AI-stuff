@@ -42,10 +42,15 @@ class CloudHandler(Handler):
                 return self.respond(200,{'projects':[public(p) for p in db.list()],'watch_enabled':os.getenv('NEON_WATCH_ENABLED')=='true','last_poll':db.meta('last_poll'),'watch_error':db.meta('watch_error'),'alert_error':db.meta('alert_error')})
             if path=='/cloud/project':
                 id=parse_qs(urlparse(self.path).query).get('id',[''])[0];p=db.get(id)
-                return self.respond(200,{**public(p),'settings':p.get('settings',{}),'spec':p.get('spec',{}),
-                    'model':self.server.store.info(p['model']) if p.get('model') else None,
+                designs=[p,*p.get('additional_designs',[])]
+                index=int(parse_qs(urlparse(self.path).query).get('design',['1'])[0])-1
+                if not 0<=index<len(designs):raise ValueError('Design nicht gefunden.')
+                design=designs[index]
+                return self.respond(200,{**public(p),'design_names':[d.get('spec',{}).get('design_name','') for d in designs],
+                    'settings':design.get('settings',{}),'spec':design.get('spec',{}),'metrics':design.get('metrics',{}),
+                    'model':self.server.store.info(design['model']) if design.get('model') else None,
                     'attachments':[{'id':a['id'],'name':a['name']} for a in p.get('snapshot',{}).get('attachments',[]) if a.get('isUpload')],
-                    'size_issues':[i for i in (p.get('spec') or {}).get('issues',[]) if size_only_issue(i)],
+                    'size_issues':[i for i in (design.get('spec') or {}).get('issues',[]) if size_only_issue(i)],
                     'selected_attachments':p.get('selected_attachments',[])})
             return super().do_GET()
         except ValueError as e:return self.respond(400,{'error':str(e)})
@@ -65,13 +70,22 @@ class CloudHandler(Handler):
                 if p['status'] in ('copying','generating','publishing','queued','publish_queued'):raise Review('Projekt wird bereits verarbeitet.')
                 if p['revision']!=payload.get('revision'):raise Conflict('Projekt wurde inzwischen geändert. Bitte neu öffnen.')
                 if path=='/cloud/save':
-                    model=str(payload.get('model') or p.get('model',''));self.server.store.model(model)
-                    settings=payload.get('settings');spec=payload.get('spec',p.get('spec'))
+                    others=p.get('additional_designs',[])
+                    number=payload.get('design',1)
+                    if type(number) is not int or not 1<=number<=len(others)+1:raise Review('Design nicht gefunden.')
+                    index=number-1
+                    design=others[index-1] if index else p
+                    model=str(payload.get('model') or design.get('model',''));self.server.store.model(model)
+                    settings=payload.get('settings');spec=payload.get('spec',design.get('spec'))
                     if not isinstance(settings,dict) or not isinstance(spec,dict):raise Review('Ungültige Einstellungen.')
                     manual_minimum_width(spec)
                     # Geometry settings are validated by the existing engine.
                     self.server.store.drawing(model,json.dumps(settings,sort_keys=True))
-                    p=db.save(p['id'],{'model':model,'settings':settings,'spec':spec},expected=p['revision'],status='draft')
+                    changes={'model':model,'settings':settings,'spec':spec}
+                    if index:
+                        others[index-1]={**design,**changes}
+                        changes={'additional_designs':others}
+                    p=db.save(p['id'],changes,expected=p['revision'],status='draft')
                 elif path=='/cloud/publish':
                     spec=p.get('spec') or {}
                     if p.get('model'):

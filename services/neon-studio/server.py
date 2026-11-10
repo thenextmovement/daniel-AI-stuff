@@ -59,8 +59,10 @@ class Store:
             if raster and pdf:raise VectorPreviewRequired(note)
             model=analyze_vector(raw,name,page)
         except VectorPreviewRequired as error:
-            if not pdf:raise
-            rendered,count,index=render_pdf_page(raw,page)
+            if not pdf:
+                from vector_import import _svg_pdf
+                rendered,count,index=render_pdf_page(_svg_pdf(raw),page)
+            else:rendered,count,index=render_pdf_page(raw,page)
             image,labels,preview=prepare_image(rendered);token=uuid.uuid4().hex
             note=str(error)+' Die sichtbare Seite wird als Bild nachgezeichnet. Originalpfade werden dabei nicht übernommen; Kurven und Maße anschließend prüfen.'
             with self.lock:

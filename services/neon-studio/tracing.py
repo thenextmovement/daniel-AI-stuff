@@ -396,14 +396,15 @@ def analyze_image(raw,foreground=None,trace_profile=None):
             raise ValueError('Keine verwertbare Auswahl im Bild.')
         yy,xx=np.where(mask);rect=(int(xx.min()),int(yy.min()),int(xx.max()+1),int(yy.max()+1))
     neon=trace_profile=='neon' or image.info.get('traceProfile')=='neon'
-    signature=_signature(mask,rect)
-    reference,ref_rect,masters=_reference()
-    intersection=np.logical_and(reference,signature).sum()
-    union=np.logical_or(reference,signature).sum()
-    similarity=intersection/max(1,union)
-    a,b,c,d=rect; ra,rb,rc,rd=ref_rect
-    aspect=(c-a)/(d-b); ref_aspect=(rc-ra)/(rd-rb)
-    is_master=similarity>.985 and abs(aspect/ref_aspect-1)<.005
+    a,b,c,d=rect
+    is_master=False
+    if (ASSETS/'B_KITE.png').is_file() and (ASSETS/'masters.json').is_file():
+        reference,ref_rect,masters=_reference()
+        signature=_signature(mask,rect)
+        intersection=np.logical_and(reference,signature).sum()
+        union=np.logical_or(reference,signature).sum()
+        ra,rb,rc,rd=ref_rect
+        is_master=intersection/max(1,union)>.985 and abs(((c-a)/(d-b))/((rc-ra)/(rd-rb))-1)<.005
     if is_master:
         scale=(c-a)/(rc-ra); dx=a-ra*scale; dy=b-rb*scale
         modes={mode:[{'name':item['name'],'commands':transform(item['commands'],scale,dx,dy)}

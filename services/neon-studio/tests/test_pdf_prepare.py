@@ -12,6 +12,19 @@ from reportlab.lib.utils import ImageReader
 from PIL import Image,ImageDraw
 
 class PDFPrepareTests(unittest.TestCase):
+    def test_local_svg_clip_only_imports_the_visible_motif(self):
+        from vector_import import _svg_pdf,render_pdf_page
+        raw=b'''<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+            <defs><clipPath id="slice"><rect width="50" height="100"/></clipPath></defs>
+            <rect x="10" y="20" width="80" height="60" fill="blue" clip-path="url(#slice)"/></svg>'''
+        image=Image.open(io.BytesIO(render_pdf_page(_svg_pdf(raw))[0]))
+        self.assertEqual(image.getpixel((300,900)),(0,0,255))
+        self.assertEqual(image.getpixel((1600,900)),(255,255,255))
+        preview=Store().prepare(raw,'clipped.svg')
+        self.assertEqual(preview['kind'],'pdf-raster')
+        with self.assertRaises(ValueError):
+            _svg_pdf(raw.replace(b'url(#slice)',b'url(https://example.org/slice.svg#slice)'))
+
     def test_enclosing_page_clip_preserves_original_curves(self):
         raw=io.BytesIO();c=canvas.Canvas(raw,pagesize=(300,200))
         p=c.beginPath();p.rect(0,0,300,200);c.clipPath(p,stroke=0)

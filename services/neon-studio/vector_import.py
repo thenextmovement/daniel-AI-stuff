@@ -3,6 +3,7 @@ import base64
 import copy
 import io
 import math
+import re
 import threading
 
 import pdfplumber
@@ -54,21 +55,35 @@ def _svg_pdf(raw):
     if etree.QName(root).localname!='svg':raise ValueError('Keine SVG-Datei erkannt.')
     nodes=list(root.iter())
     if len(nodes)>10000:raise ValueError('Die SVG enthält zu viele Elemente. Bitte nur das Logo exportieren.')
+    clip_ids={n.get("id") for n in nodes if isinstance(n.tag,str) and etree.QName(n).localname=="clipPath" and n.get("id")}
     for node in nodes:
         if not isinstance(node.tag,str):continue
         tag=etree.QName(node).localname
         if tag in ('text','tspan','textPath'):
             raise ValueError('SVG-Schrift bitte zuerst in Pfade/Kurven umwandeln und erneut exportieren.')
-        if tag in ('image','foreignObject','script','filter','mask','clipPath','linearGradient','radialGradient','pattern','animate','set'):
+        if tag in ('image','foreignObject','script','filter','mask','linearGradient','radialGradient','pattern','animate','set'):
             raise ValueError('SVG bitte als reine Pfade mit Vollfarben exportieren, ohne Bilder, Masken oder Effekte.')
         for key,value in node.attrib.items():
             if etree.QName(key).localname=='href' and not value.startswith('#'):
                 raise ValueError('Externe SVG-Verweise werden nicht geladen. Bitte Pfade direkt einbetten.')
-        style=' '.join(node.attrib.values())+' '+(node.text or '')
+        attributes=dict(node.attrib)
+        clip=re.fullmatch(r'url\(#([\w.-]+)\)',attributes.get('clip-path',''))
+        if clip and clip[1] in clip_ids:
+            del attributes['clip-path']
+        style=' '.join(attributes.values())+' '+(node.text or '')
         if '@import' in style.lower() or 'url(' in style.lower():
             raise ValueError('SVG bitte ohne externe Stile, Farbverläufe oder Masken exportieren.')
     # The browser never receives the uploaded XML. It receives a preview rebuilt
     # from the imported path commands below, with no active/external content.
+    if clip_ids:
+        shapes={'svg','defs','g','path','rect','circle','ellipse','line','polyline','polygon','clipPath','title','desc'}
+        if any(etree.QName(n).localname not in shapes or any(etree.QName(k).localname in ('href','base','style') for k in n.attrib)
+               for n in nodes if isinstance(n.tag,str)):
+            raise ValueError('SVG mit Beschneidungspfaden bitte als einfache Formen ohne externe Ressourcen exportieren.')
+        for clip in root.iter('{*}clipPath'):
+            children=[child for child in clip if isinstance(child.tag,str)]
+            if len(children)!=1 or etree.QName(children[0]).localname not in shapes-{'svg','g','defs','clipPath','title','desc'} or clip.get('clipPathUnits','userSpaceOnUse')!='userSpaceOnUse':
+                raise ValueError('Bitte jede SVG-Beschneidung als einzelnen Pfad exportieren.')
     drawing=svg2rlg(io.BytesIO(etree.tostring(root)))
     if drawing is None:raise ValueError('Keine SVG-Pfade gefunden.')
     return renderPDF.drawToString(drawing)

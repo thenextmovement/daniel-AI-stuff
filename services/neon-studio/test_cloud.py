@@ -303,6 +303,18 @@ class CloudTests(unittest.TestCase):
   self.assertIn('Größe 2: 125,00 × ',t.comments[-1])
   self.assertFalse(any(x['idCustomField'] in FIELDS[1] for x in t.data['customFieldItems']))
 
+  second={**saved,'spec':{**updated,'design_name':'Zweizeilig','minimum_width_mm':600,'widths_mm':[600],'sized_widths_mm':[600]}}
+  self.db.save(p['id'],{'spec':{**updated,'design_name':'Einzeilig'},
+                        'additional_designs':[{k:second[k] for k in ('model','spec','settings')}]})
+  result=Jobs(self.db,store,t).publish(p)
+  self.assertEqual(len(result['quotes']),2)
+  for i,label in enumerate(('Einzeilig','Zweizeilig')):
+   batch=t.uploads[-6:][3*i:3*i+3]
+   self.assertTrue(all(f[0].startswith(f'Design_{i+1}_') for f in batch))
+   self.assertIn(label,fitz.open(stream=batch[0][1],filetype='pdf')[0].get_text())
+   self.assertIn(label,t.comments[-1])
+  self.assertTrue(any(f['idCustomField']==FIELDS[1][1] and f['value']['text'].startswith('60,00') for f in t.data['customFieldItems']))
+
  def test_smallest_review_keeps_usage_and_overrides_can_be_below_geometry(self):
   from cloud_ai import size_only_issue
   from cloud_jobs import size_variants
