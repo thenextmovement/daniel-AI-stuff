@@ -21,6 +21,7 @@ import type {
   VoiceCopilotTranscriptTurn,
 } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
+import { findVoiceMailHint } from "@/lib/ops/voice-mail-hint";
 import { VoiceTranscriptBuffer } from "@/lib/ops/voice-transcript-buffer";
 import type { TranscriptSegment } from "@/lib/ops/voice-history";
 import { CustomerContextPanel } from "./customer-context-panel";
@@ -187,6 +188,9 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
     const sessionId = sessionIdRef.current;
     const completedTurns = transcriptTurns.filter((turn) => turn.final).slice(-20);
     if (!sessionId || !completedTurns.some((turn) => turn.speaker === "customer")) return;
+    const customerTurn = [...completedTurns].reverse().find(turn => turn.speaker === "customer")!;
+    const mail = findVoiceMailHint(customerTurn.text, selectedContext?.outlook || []);
+    setSuggestions(mail ? [mail] : []);
     suggestionAbortRef.current?.abort();
     const controller = new AbortController();
     suggestionAbortRef.current = controller;
@@ -205,7 +209,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || "Live-Vorschlaege konnten nicht geladen werden.");
-      if (requestNumber === suggestionRequestRef.current) setSuggestions(payload?.suggestions || []);
+      if (requestNumber === suggestionRequestRef.current) setSuggestions([...(mail ? [mail] : []), ...(payload?.suggestions || [])].slice(0, 3));
     } catch (requestError) {
       if (controller.signal.aborted) return;
       setSuggestionError(requestError instanceof Error ? requestError.message : "Live-Vorschlaege konnten nicht geladen werden.");
