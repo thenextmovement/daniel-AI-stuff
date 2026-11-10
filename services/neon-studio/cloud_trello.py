@@ -1,4 +1,5 @@
-import os,re,time,requests
+import hashlib,os,re,time,requests
+from collections import Counter
 from urllib.parse import urlparse,quote
 BOARD='63d10c34105771f01ccf4296'
 TRIGGER='63d10c34105771f01ccf42a0'
@@ -80,9 +81,23 @@ class Trello:
     def verify_copy(self,source,copyid):
         copy=self.card(copyid)
         if plain_title(copy['name'])!=source['name'] or copy['desc']!=source['desc']:raise ServiceError('Kopie stimmt nicht mit Titel und Beschreibung überein.')
-        src=sorted((a['name'],a.get('bytes',0)) for a in source.get('attachments',[]))
-        dst=sorted((a['name'],a.get('bytes',0)) for a in copy.get('attachments',[]))
-        if src!=dst:raise ServiceError('Anhänge der Kopie sind nicht vollständig.')
+        def inventory(card):
+            return Counter((a['name'],a.get('bytes',0),bool(a.get('isUpload'))) for a in card.get('attachments',[]))
+        src=inventory(source)
+        if src!=inventory(copy) or any(count>1 and key[2] for key,count in src.items()):
+            # Repeated uploads can appear while Trello is copying the card.
+            # Only accept a mismatch when every distinct payload is accounted for.
+            def contents(card,card_id):
+                uploads=set()
+                links=[]
+                for a in card.get('attachments',[]):
+                    if a.get('isUpload'):
+                        uploads.add(hashlib.sha256(self.download(card_id,a)).digest())
+                    else:
+                        links.append((a['name'],a.get('url','')))
+                return uploads,sorted(links)
+            if contents(source,source['id'])!=contents(copy,copyid):
+                raise ServiceError('Anhänge der Kopie weichen vom Original ab. Bitte die Dateien vergleichen.')
         # Trello remaps IDs when Quentin's automation moves the original to another board.
         # Match semantic fields/options, never write a foreign board's ID into this copy.
         source_defs={f['id']:f for f in source.get('field_definitions',[]) or self.fields(source['idBoard'])}

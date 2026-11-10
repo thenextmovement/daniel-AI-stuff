@@ -1,4 +1,4 @@
-import base64,io,json,os,re,time,xml.etree.ElementTree as ET
+import base64,hashlib,io,json,os,re,time,xml.etree.ElementTree as ET
 import requests
 from PIL import Image
 from cloud_trello import named_fields,ServiceError
@@ -134,22 +134,36 @@ def generate(trello,card,selected=None):
     candidates=[a for a in card.get('attachments',[]) if a.get('isUpload') and
         re.search(r'\.(png|jpe?g|webp|pdf|svg|eps)$',a.get('fileName') or a['name'],re.I) and
         not re.search(r'auto_quote|technische.?zeichnung|technical|invoice|rechnung|angebot|mockup\d|^image\.png$',a['name'],re.I)]
-    if not candidates and len(card.get('attachments',[]))==1:
-        only=card['attachments'][0]
-        if only.get('isUpload') and (only.get('fileName') or only['name']).lower()=='image.png':
-            candidates=[only]
+    if not candidates and card.get('attachments') and all(a.get('isUpload') and
+            (a.get('fileName') or a['name']).lower()=='image.png' for a in card['attachments']):
+        candidates=card['attachments']
     if selected:
         candidates=[a for a in card.get('attachments',[]) if a['id'] in selected and a.get('isUpload')]
-    if not candidates or len(candidates)>6:raise Review('Kundenmotiv nicht eindeutig: bitte den gewünschten Anhang im Studio auswählen.')
+    ambiguous='Kundenmotiv nicht eindeutig: bitte den gewünschten Anhang im Studio auswählen.'
+    if not candidates:raise Review(ambiguous)
     content=[]
+    seen=set()
+    supplied_ids=set()
     for a in candidates:
         raw=trello.download(card['id'],a)
+        digest=hashlib.sha256(raw).digest()
+        if digest in seen:continue
+        seen.add(digest)
+        if len(seen)>6:raise Review(ambiguous)
+        supplied_ids.add(a['id'])
         if (a.get('fileName') or a['name']).lower().endswith('.eps'):raw=eps_pdf(raw)
         if (a.get('fileName') or a['name']).lower().endswith('.svg'):raw=_svg_pdf(raw)
         if raw.startswith(b'%PDF'):raw=render_pdf_page(raw,0)[0]
-        image=Image.open(io.BytesIO(raw)).convert('RGB');image.thumbnail((2400,2400))
+        image=Image.open(io.BytesIO(raw))
+        dimensions=f'{image.width} × {image.height} px'
+        image.thumbnail((2400,2400))
+        if 'A' in image.getbands() or 'transparency' in image.info:
+            rgba=image.convert('RGBA')
+            image=Image.new('RGB',rgba.size,'#808080')
+            image.paste(rgba,mask=rgba.getchannel('A'))
+        else:image=image.convert('RGB')
         out=io.BytesIO();image.save(out,'PNG')
-        content.extend([{'type':'input_text','text':'Kundenanhang-ID: '+a['id']+'; Name: '+a['name']},
+        content.extend([{'type':'input_text','text':'Kundenanhang-ID: '+a['id']+'; Name: '+a['name']+'; Bildgröße: '+dimensions},
             {'type':'input_image','image_url':'data:image/png;base64,'+base64.b64encode(out.getvalue()).decode(),'detail':'original'}])
     context={'title':card['name'],'description':card['desc'],'fields':named_fields(card)}
     title_widths=smallest_title_widths(card['name'])
@@ -167,6 +181,8 @@ line_plan (Liste pro Schriftzeile/Logobereich mit name, mode: single oder double
 reason: deutsche Begründung anhand der Vorlage, path_ids: alle zugehörigen SVG-Pfad-IDs,
 dot_ids: IDs ausschließlich von i/j-Punkten, keine dekorativen Logopunkte/-quadrate).
 Jeder SVG-Pfad braucht eine eindeutige ID und genau eine Zuordnung im line_plan.
+Bei mehreren Versionen desselben Motivs vergleiche Vollständigkeit, Konturenschärfe und Lesbarkeit. Verwende die beste Vorlage und gib nur deren Kundenanhang-ID an.
+Eine allgemeine Vorgabe „Single line“ gilt für das gesamte Motiv.
 Wenn die Kartenbeschreibung einem eindeutig benannten Motivbereich Single Line oder Double Line zuordnet, setze diese
 Produktvorgabe in SVG und line_plan um und nenne die Vorgabe in reason. Bei widersprüchlicher oder nicht zuordenbarer
 Linienvorgabe benenne die konkrete Rückfrage in issues. Ohne explizite Vorgabe prüfe die Strichstärke jedes Bereichs getrennt: Fette/flächige Schrift erhält ihre Innen-
@@ -212,5 +228,5 @@ Daten der Anfrage: """+json.dumps(context,ensure_ascii=False)
         data.update(smallest_requested=True,widths_mm=title_widths,minimum_first=True)
     data['svg']=validate_svg(data.get('svg'))
     source_ids=data.get('source_attachment_ids',[])
-    if not source_ids or any(x not in {a['id'] for a in candidates} for x in source_ids):raise Review('Kundenmotiv konnte nicht zugeordnet werden.')
+    if not source_ids or any(x not in supplied_ids for x in source_ids):raise Review('Kundenmotiv konnte nicht zugeordnet werden.')
     return data,{'seconds':round(time.perf_counter()-started,2),'model':result.get('model'),'usage':result.get('usage'), 'response_id':result.get('id')}

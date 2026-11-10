@@ -160,6 +160,32 @@ class CloudTests(unittest.TestCase):
   with self.assertRaisesRegex(RuntimeError,'selected'):
    generate(t,{'id':'source','attachments':[{'id':'art','name':'image.png','isUpload':True}]})
   self.assertEqual(t.download.call_count,1)
+ def test_copy_compares_repeated_upload_contents(self):
+  from unittest.mock import Mock
+  src={'id':'src','name':'Logo','desc':'','attachments':[{'id':'a','isUpload':True,'name':'logo.png','bytes':1}],'idBoard':BOARD}
+  copy={**src,'attachments':[dict(src['attachments'][0],id=k) for k in ('b','c')]}
+  t=Mock(spec=Trello);t.card.return_value=copy;t.fields.return_value=[]
+  t.download.side_effect=lambda card,a: b'x'
+  # Pass the attachment gate and reach the independent request-ID check.
+  with self.assertRaisesRegex(RuntimeError,'Request-ID'):Trello.verify_copy(t,src,'copy')
+  t.download.side_effect=lambda card,a: b'y' if a['id']=='c' else b'x'
+  with self.assertRaisesRegex(RuntimeError,'Anhänge'):Trello.verify_copy(t,src,'copy')
+ def test_identical_customer_uploads_sent_once(self):
+  from unittest.mock import Mock,patch
+  from cloud_ai import generate
+  import base64
+  logo=io.BytesIO();image=Image.new('RGBA',(10,10),(255,255,255,0))
+  image.putpixel((5,5),(255,255,255,255));image.save(logo,'PNG')
+  card={'id':'src','name':'Logo','desc':'Single line','attachments':[
+      {'id':str(i),'name':'logo.png','isUpload':True} for i in range(7)]}
+  t=Mock();t.download.return_value=logo.getvalue()
+  with patch.dict('os.environ',{'OPENAI_API_KEY':'test'}),patch('cloud_ai.requests.post',side_effect=RuntimeError('sent')) as post:
+   with self.assertRaisesRegex(RuntimeError,'sent'):generate(t,card)
+  content=post.call_args.kwargs['json']['input'][0]['content']
+  images=[p for p in content if p['type']=='input_image']
+  self.assertEqual(len(images),1)
+  preview=Image.open(io.BytesIO(base64.b64decode(images[0]['image_url'].split(',')[1])))
+  self.assertNotEqual(preview.getpixel((0,0)),preview.getpixel((5,5)))
  def test_scope(self):
   self.assertTrue(eligible('LED Neon Flex | Anfrage'))
   for title in ('3D Neon | Kunde','Light Box | Kunde','🤖 LED Neon'):self.assertFalse(eligible(title))
