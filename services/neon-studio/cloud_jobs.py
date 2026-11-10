@@ -1,7 +1,7 @@
 import fcntl,json,math,os,re,threading,time,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
-from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,copy_title,ServiceError
+from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,plain_title,copy_title,ServiceError
 from cloud_ai import generate,validate_spec,Review,drawing_model,smallest_title_widths,size_only_issue
 from colors import artwork_neon_color, NEON_COLORS
 from cloud_exports import artifacts,CUT
@@ -92,6 +92,30 @@ class Jobs:
         records=[self.design_record(design) for design in designs]
         p=self.db.save(id,{**records[0],'additional_designs':records[1:],'metrics':metrics},status='draft')
         self.publish(p, generated=True)
+
+    def reread(self,p):
+        card=self.t.card(p[p['reread']])
+        if p['reread']=='copy':
+            card['name']=plain_title(card['name'])
+            outputs=set(p.get('generated_attachments',[]))
+            # Previous uploads also remain on the copy. Trello IDs preserve creation time.
+            quotes=[a['id'] for a in card['attachments'] if re.match(r'(?:Design_\d+_)?auto_quote_',a['name'],re.I)]
+            card['attachments']=[a for a in card['attachments'] if a['id'] not in outputs
+                and not (quotes and a['id']>=min(quotes) and re.fullmatch(r'(?:Design_\d+_)?image\.png',a['name'],re.I))]
+            output_fields={field for group in FIELDS for field in group}
+            card['customFieldItems']=[item for item in card.get('customFieldItems',[]) if item['idCustomField'] not in output_fields]
+        data,metrics=generate(self.t,card)
+        records=[self.design_record(design) for design in data.get('designs',[data])]
+        for record in records:
+            try:self.size_design(record,card)
+            except SpacingLimitExceeded:
+                fallback=self.png_centerlines(record,card) if len(records)==1 else None
+                if fallback is None:raise
+                self.size_design(fallback,card)
+                record.update(fallback)
+        changes={**records[0],'metrics':{**metrics,**records[0].get('metrics',{})},'additional_designs':records[1:],
+                 'snapshot':card,'selected_attachments':[],'reread':None,'error':''}
+        self.db.save(p['id'],changes,expected=p['revision'],status='draft')
 
     def design_record(self,data):
         # Persist even an incomplete spec so a staff member can correct it.
@@ -302,7 +326,9 @@ class Jobs:
             for p in self.db.pending():
                 if p['status'] not in ('queued','publish_queued'):continue
                 try:
-                    if p['status']=='publish_queued':
+                    if p.get('reread'):
+                        self.reread(p)
+                    elif p['status']=='publish_queued':
                         self.publish(p)
                     else:self.process(p)
                 except Exception as e:
@@ -312,7 +338,9 @@ class Jobs:
                     else:
                         stage=next((f.name for f in reversed(traceback.extract_tb(e.__traceback__)) if Path(f.filename).name in ('cloud_jobs.py','cloud_ai.py','cloud_trello.py','cloud_exports.py')),'process')
                         message=f'Verarbeitung angehalten ({stage}, {type(e).__name__}). Bitte den Schritt im Studio prüfen.'
-                    self.fail(p['id'],message)
+                    if p.get('reread'):
+                        self.db.save(p['id'],{'reread':None,'error':'Neu einlesen fehlgeschlagen. '+message},status='review')
+                    else:self.fail(p['id'],message)
             time.sleep(2)
     def watch(self):
         while True:

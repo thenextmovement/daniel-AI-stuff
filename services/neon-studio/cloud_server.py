@@ -98,6 +98,11 @@ class CloudHandler(Handler):
                 elif path=='/cloud/retry':
                     if p.get('copy_intent') and not p.get('copy'):raise Review('Kopierergebnis zuerst in Trello abgleichen.')
                     if p.get('upload_intent') or p.get('pending_attachments'):raise Review('Frühere Übertragung zuerst in Trello abgleichen.')
+                    if 'reread' in payload:
+                        target=payload['reread']
+                        if target not in ('source','copy') or not p.get(target):raise Review('Trello-Karte nicht verfügbar.')
+                        p=db.save(p['id'],{'reread':target,'error':''},expected=p['revision'],status='queued')
+                        return self.respond(200,public(p))
                     selected=payload.get('attachments',p.get('selected_attachments',[]))
                     allowed={a['id'] for a in p.get('snapshot',{}).get('attachments',[]) if a.get('isUpload')}
                     if not isinstance(selected,list) or any(x not in allowed for x in selected):raise Review('Ungültige Anhangauswahl.')

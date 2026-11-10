@@ -8,6 +8,26 @@ import fitz
 from PIL import Image
 SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path d="M10 50 C60 0 80 0 110 50 M120 10 L180 50" fill="none" stroke="#f333a5" stroke-width="1"/></svg>'
 class CloudTests(unittest.TestCase):
+ def test_reread_edited_copy_replaces_stale_full_glow_question(self):
+  from unittest.mock import Mock,patch
+  card={'id':'copy','name':'🤖 LED Neon 🤖','desc':'LED-Neon-Kontur',
+        'attachments':[{'id':'1','name':'logo.png'},{'id':'3','name':'image.png'}]}
+  p=self.db.enqueue('source','event',{'desc':'Full Glow'})
+  p=self.db.save(p['id'],{'copy':'copy','reread':'copy','spec':{'issues':['Full Glow?']},
+                           'selected_attachments':['old-id'],'generated_attachments':['3']})
+  t=Mock();t.card.return_value=card
+  jobs=Jobs(self.db,DurableStore(self.db),t)
+  data={'svg':SVG.replace('<path ', '<path id="logo" '),'line_plan':[{'name':'Logo','mode':'single','path_ids':['logo']}],'widths_mm':[600],'colors':'Kaltweiß','issues':[]}
+  with patch('cloud_jobs.generate',return_value=(data,{})) as generate:
+   jobs.reread(p)
+  t.card.assert_called_once_with('copy')
+  snapshot=generate.call_args.args[1]
+  self.assertEqual((snapshot['name'],snapshot['desc']),('LED Neon','LED-Neon-Kontur'))
+  self.assertEqual([a['id'] for a in snapshot['attachments']],['1'])
+  saved=self.db.get(p['id'])
+  self.assertEqual((saved['status'],saved['spec']['issues'],saved['selected_attachments']),('draft',[],[]))
+  self.assertTrue(saved['model'])
+  t.call.assert_not_called()
  def test_review_and_watcher_failures_do_not_send_email(self):
   from unittest.mock import patch
   p=self.db.enqueue('no-mail-card','no-mail-event',{})

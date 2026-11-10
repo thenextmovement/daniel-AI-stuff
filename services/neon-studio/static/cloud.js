@@ -254,6 +254,35 @@ function cloudPriceControls(){
     warning.textContent=cloudSpec.minimum_width_mm!=null?'Mindestbreite: '+(cloudSpec.minimum_width_mm/10).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' cm · manuell':'Vorschaugröße – Mindestgröße noch nicht geprüft';
   }
 }
+function rereadButton(){
+  const button=textElement('button','Trello-Karte neu einlesen');
+  button.type='button';
+  button.onclick=()=>{
+    const dialog=document.createElement('dialog');
+    dialog.style.cssText='max-width:460px;padding:24px;border-radius:16px;background:#25292c;color:white';
+    dialog.append(textElement('h2','Welche Trello-Karte hast du geändert?'),
+      textElement('p','Titel, Beschreibung, Felder und Kundenmotive werden neu eingelesen. Der neue Entwurf ersetzt deine bisherigen Studio-Bearbeitungen. Anschließend kannst du ihn prüfen und hochladen.'));
+    const feedback=textElement('p','');
+    for(const [key,label] of [['copy','🤖-Kopie'],['source','Originalkarte']]){
+      if(key==='copy'&&!cloud.copy_url)continue;
+      const choose=textElement('button',label);
+      choose.onclick=async()=>{
+        const buttons=dialog.querySelectorAll('button');
+        buttons.forEach(b=>b.disabled=true);
+        try{
+          await cloudRequest('retry',{id:cloud.id,revision:cloud.revision,reread:key});
+          state.historyIndex=0;
+          const url=new URL(location.href);url.searchParams.delete('design');location.replace(url);
+        }catch(e){feedback.textContent=e.message;buttons.forEach(b=>b.disabled=false);}
+      };
+      dialog.append(choose);
+    }
+    const cancel=textElement('button','Abbrechen');
+    cancel.onclick=()=>dialog.close();dialog.onclose=()=>dialog.remove();
+    dialog.append(cancel,feedback);document.body.append(dialog);dialog.showModal();
+  };
+  return button;
+}
 function cloudDetails(upload=false){
   const forUpload=upload===true;
   let dialog=document.getElementById('cloudDetails');if(dialog)dialog.remove();
@@ -296,7 +325,7 @@ function cloudDetails(upload=false){
     dialog.close();
     try{await requestGeometry(true);if(forUpload){await cloudPublish();return;}await cloudSave();toast('Angaben gespeichert.');}catch(e){toast(e.message,true);}
   };
-  const cancel=textElement('button','Schließen');cancel.onclick=()=>dialog.close();dialog.append(save,cancel);document.body.append(dialog);dialog.showModal();
+  const cancel=textElement('button','Schließen');cancel.onclick=()=>dialog.close();dialog.append(save,rereadButton(),cancel);document.body.append(dialog);dialog.showModal();
 }
 function cloudSources(){
   const dialog=document.createElement('dialog');
@@ -409,6 +438,7 @@ async function cloudBoot(){
   const source=textElement('button','Kundenmotiv wählen');
   source.onclick=()=>cloudSources();
   bar.append(source);
+  if(!['queued','copying','generating','publishing','publish_queued'].includes(cloud.status))bar.append(rereadButton());
   if(!cloud.model||['queued','copying','generating'].includes(cloud.status)){
     processing('Anfrage wird vorbereitet',cloud.error||'Das Kundenmotiv wird auf dem Server als Zeichnung erstellt. Du kannst dieses Fenster schließen und später wieder öffnen.');
     if(cloud.error){$('processingOverlay').hidden=true;toast(cloud.error,true);cloudSources();}
