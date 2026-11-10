@@ -130,6 +130,13 @@ function renderReview(){
   issues.forEach(issue=>box.append(textElement('p',issue)));
   const button=textElement('button','Angaben prüfen');button.className='button';button.onclick=cloudDetails;box.append(button);
 }
+window.addEventListener('studio-exception-applied',event=>{
+  if(!cloud||!cloudSpec.minimum_first||window.studioManualMinimum())return;
+  const first=event.detail;
+  const extra=(cloudSpec.requested_widths_mm??(cloudSpec.sized_widths_mm||[]).slice(1)).filter(w=>w>first);
+  cloudSpec.widths_mm=cloudSpec.sized_widths_mm=[first,...extra];
+  syncSizePreview();
+});
 window.addEventListener('studio-minimum-ready',()=>{
   if(!cloud)return;
   syncSizePreview();
@@ -385,7 +392,9 @@ async function cloudBoot(){
     const limit=textElement('button','Engstelle zeigen');
     limit.id='cloudShowLimit';limit.type='button';limit.disabled=true;
     limit.onclick=toggleLimit;
-    bar.append(check,limit);
+    const ignore=textElement('button','Diese Engstelle ignorieren');
+    ignore.id='cloudIgnoreLimit';ignore.type='button';ignore.hidden=true;
+    bar.append(check,limit,ignore);
   }
   const savedPrice=cloudSpec.pricing_options;
   if(savedPrice){

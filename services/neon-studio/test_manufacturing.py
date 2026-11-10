@@ -136,6 +136,35 @@ class ManufacturingTests(unittest.TestCase):
   self.assertEqual(report['limitingReasons'],['spacing'])
   drawing['paths']=drawing['paths'][2:]
   self.assertEqual(measure(drawing)['limitingKeys'],[])
+ def test_ignore_only_one_gap_between_the_same_two_paths(self):
+  import json
+  from minimum_size import measure
+  from geometry import transform
+  baseline=[['m',[0,0]],['l',[100,0]]]
+  zigzag=[['m',[0,2]],['l',[50,25]],['l',[100,4]]]
+  d=dict(width=136,paths=[baseline,zigzag],pathKeys=['a','b'],settings={'scale':1})
+  first=measure(d)
+  self.assertEqual(first['recommendedWidth'],436)
+  site=first['limitingSite']
+  d['settings']['ignoredLimits']=[site]
+  second=measure(d)
+  self.assertEqual(second['recommendedWidth'],236)
+  self.assertEqual(second['limitingKeys'],['a','b'])
+  self.assertNotEqual(site['id'],second['limitingSite']['id'])
+  # Saving, reloading and resizing preserves the decision.
+  resized=json.loads(json.dumps(d))
+  resized.update(width=236,paths=[transform(path,2,15,20) for path in d['paths']])
+  resized['settings']['scale']=2
+  self.assertEqual(measure(resized)['ignoredSiteIds'],[site['id']])
+  issues={}
+  measure(resized,issues)
+  self.assertFalse(issues)
+  d['paths'][1][0][1][1]=1
+  self.assertFalse(measure(d)['ignoredSiteIds'])
+  d['paths'][1][0][1][1]=2
+  d['settings']['ignoredLimits']=[]
+  self.assertEqual(measure(d),first)
+
  def test_target_reports_other_tight_pairs_and_accepts_exact_clearance(self):
   from minimum_size import measure
   lines=[[['m',[0,y]],['l',[100,y]]] for y in (0,2,8,16)]

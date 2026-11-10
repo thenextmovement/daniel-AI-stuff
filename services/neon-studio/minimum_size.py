@@ -1,10 +1,13 @@
 """Geometric size of a motif with fixed-width neon on the drawn centerlines."""
+import hashlib
 import json
 import math
 
 import numpy as np
-from shapely import STRtree, points
-from shapely.geometry import LineString, Polygon
+from shapely import STRtree, points, linestrings, distance as distances
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
+from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import nearest_points, polylabel, unary_union
 
 from geometry import sample_path, segments, transform
@@ -18,10 +21,9 @@ CENTER_SPACING = 8
 REFERENCE_DIAMETER = 15.608
 
 
-def parallel_gap(path):
-    """Clearance between parallel arms in a continuous stroke, e.g. a U."""
+def parallel_sites(path):
+    """Each pair of parallel arms is a separate clearance check."""
     arms = []
-    best = math.inf
     for op, points in segments(path):
         if op != 'l':
             continue
@@ -38,20 +40,72 @@ def parallel_gap(path):
             offset = c-a
             distance = abs(offset[0]*direction[1]-offset[1]*direction[0])
             if distance > 1e-8 and overlap > 1e-8:
-                best = min(best, distance)
+                yield nearest_points(LineString([a,b]), LineString([c,d]))
         arms.append((a, b, direction))
-    return best
 
 
-def opening_diameter(polygon):
-    center = polylabel(polygon, tolerance=.001)
-    return 2 * center.distance(polygon.boundary)
+def other_pair_sites(first, second, excluded):
+    """Local minima on the two curves, including more than one gap on the same pair."""
+    def edges(line):
+        coords = np.asarray(line.coords)
+        return linestrings(np.stack([coords[:-1],coords[1:]],axis=1)), points(coords)
+
+    a, av = edges(first)
+    b, bv = edges(second)
+    tree = STRtree(b)
+    ai, bi = tree.query(a, predicate='dwithin', distance=8*1000/44)
+    if not len(ai):
+        return
+    # Segment pairs that share a minimum form one plateau. A neighbor with
+    # a smaller distance matters only if that shared boundary also reaches
+    # the minimum (two nearby corners can be independent bottlenecks).
+    ids = ai*len(b)+bi
+    order = np.argsort(ids)
+    ids,ai,bi = ids[order],ai[order],bi[order]
+    value = distances(a[ai],b[bi])
+    rejected = np.zeros(len(ai),dtype=bool)
+    links = []
+    for di,dj in [(0,1),(1,-1),(1,0),(1,1)]:
+        x,y = ai+di,bi+dj
+        if first.is_ring:
+            x %= len(a)
+        if second.is_ring:
+            y %= len(b)
+        neighbor = x*len(b)+y
+        pos = np.minimum(np.searchsorted(ids,neighbor),len(ids)-1)
+        src = np.flatnonzero((x>=0)&(x<len(a))&(y>=0)&(y<len(b))&(ids[pos]==neighbor))
+        dst = pos[src]
+        boundary_a = av[ai[src]+1] if di else a[ai[src]]
+        boundary_b = bv[bi[src]+int(dj>0)] if dj else b[bi[src]]
+        shared = distances(boundary_a,boundary_b)
+        at_src = shared <= value[src]+1e-7
+        at_dst = shared <= value[dst]+1e-7
+        rejected[src[at_src & ~at_dst]] = True
+        rejected[dst[at_dst & ~at_src]] = True
+        common = at_src & at_dst
+        links.append((src[common],dst[common]))
+    rows,cols = (np.concatenate(side) for side in zip(*links))
+    graph = coo_matrix((np.ones(len(rows),dtype=bool),(rows,cols)),shape=(len(ai),len(ai)))
+    _,component = connected_components(graph,directed=False)
+    # All equally close points on the ignored plateau refer to the same gap.
+    rejected |= np.isin(ai,STRtree(a).query(excluded[0],predicate='dwithin',distance=1e-7)) & np.isin(
+        bi,tree.query(excluded[1],predicate='dwithin',distance=1e-7))
+    groups,representatives = np.unique(component,return_index=True)
+    for k in representatives[~np.isin(groups,component[rejected])]:
+        yield nearest_points(a[ai[k]],b[bi[k]])
 
 
 def measure(drawing, issues=None):
     span = drawing['width'] - PADDING
     if span <= 0 or not drawing['paths']:
         raise ValueError('Keine messbare Neonzeichnung.')
+    settings = drawing.get('settings', {})
+    scale = settings.get('scale') or span/1000
+    keys = drawing.get('pathKeys', [])
+    ignored = {row['id'] for row in settings.get('ignoredLimits', []) if isinstance(row,dict) and isinstance(row.get('id'),str)}
+    ignored_groups = {(row.get('kind'),tuple(row.get('keys',[]))) for row in settings.get('ignoredLimits',[])
+                      if isinstance(row,dict) and row.get('id') in ignored}
+    active_ignored = set()
     paths, owners, lines = [], [], []
     for owner, path in enumerate(drawing['paths']):
         for part in subpaths(path):
@@ -62,80 +116,90 @@ def measure(drawing, issues=None):
                 lines.append(LineString(sample_path(scaled, 128)))
     if not lines:
         raise ValueError('Keine messbaren Neonpfade.')
-    gaps = [parallel_gap(p) for p in paths]
-    def record(kind, indices, actual, required):
-        if issues is None or actual >= required - 1e-7:
+    best = {'spacing': math.inf, 'opening': math.inf}
+    winner = None
+    required_span = 0.
+    def consider(kind, indices, endpoints, value=None):
+        nonlocal winner, required_span
+        first, second = [np.asarray(point.coords[0]) for point in endpoints]
+        if value is None:
+            value = float(np.linalg.norm(second-first))
+        required = CENTER_SPACING if kind=='spacing' else REFERENCE_DIAMETER
+        indices = sorted(set(indices))
+        names = [keys[i] if i<len(keys) else str(i) for i in indices]
+        size = required*1000/max(value,1e-12)
+        if size>required_span or (kind,tuple(names)) in ignored_groups:
+            origin = np.asarray(drawing['paths'][indices[0]][0][1])
+            offsets = [(v*span/1000-origin)/scale for v in (first,second)]
+            # Source units make the exception independent of preview width and pan.
+            # Include all participating geometry so an edit requires a fresh decision.
+            signature = [kind,names]
+            for i in indices:
+                signature.append([[cmd[0], *[(np.round((np.asarray(x)-origin)/scale,4)+0.).tolist() for x in cmd[1:]]] for cmd in drawing['paths'][i]])
+            signature.append(sorted(tuple(np.round(v,3)+0.) for v in offsets))
+            identity = hashlib.sha256(json.dumps(signature,sort_keys=True).encode()).hexdigest()[:32]
+            if identity in ignored:
+                active_ignored.add(identity)
+                return False
+        best[kind] = min(best[kind],value)
+        actual = value*span/1000
+        if issues is not None and actual < required-1e-7:
+            k = kind,tuple(sorted(names))
+            allowance = 6 if kind=='opening' else 0
+            if k not in issues or actual-allowance<issues[k]['actual']:
+                issues[k]=dict(kind=kind,keys=k[1],actual=actual-allowance,required=required-allowance)
+        if size>required_span:
+            required_span=size
+            winner=dict(id=identity,keys=names,kind=kind,offsets=[v.tolist() for v in offsets])
+        return True
+
+    tree=STRtree(lines)
+    for i,line in enumerate(lines):
+        for endpoints in parallel_sites(paths[i]):
+            consider('spacing',[owners[i]],endpoints)
+        for j in tree.query(line,predicate='dwithin',distance=8*1000/44):
+            if j>=i:
+                continue
+            other=lines[j]
+            distance=line.distance(other)
+            if distance<=5 and joins(line,other,1,5):
+                continue
+            pair=[owners[i],owners[j]]
+            endpoints=nearest_points(line,other)
+            if not consider('spacing',pair,endpoints):
+                for local in other_pair_sites(line,other,endpoints):
+                    consider('spacing',pair,local)
+
+    seam=.25
+    ink=unary_union(lines).buffer(seam,quad_segs=32)
+    def opening(polygon,indices,correction):
+        center=polylabel(polygon,tolerance=.001)
+        edge=nearest_points(center,polygon.boundary)[1]
+        radius=center.distance(edge)
+        if radius<=0:
             return
-        keys = tuple(sorted({drawing['pathKeys'][i] for i in indices}))
-        identity = kind, keys
-        if identity not in issues or actual < issues[identity]['actual']:
-            issues[identity] = dict(kind=kind, keys=keys, actual=actual, required=required)
-
-    if issues is not None:
-        for i, value in enumerate(gaps):
-            record('spacing', [owners[i]], value*span/1000, CENTER_SPACING)
-    gap = min(gaps)
-    gap_owners = {owners[i] for i,value in enumerate(gaps) if value == gap}
-    tree = STRtree(lines)
-    for i, line in enumerate(lines):
-        # Wider gaps already fit at the smallest supported plate (80 mm).
-        for j in tree.query(line, predicate='dwithin', distance=(CENTER_SPACING*1000/span if issues is not None else min(gap, 8*1000/44))):
-            if j >= i:
-                continue
-            other = lines[j]
-            distance = line.distance(other)
-            if distance <= 5 and joins(line, other, 1, 5):
-                continue
-            record('spacing', [owners[i], owners[j]], distance*span/1000, CENTER_SPACING)
-            if distance < gap:
-                gap_owners = set()
-                gap = distance
-            if distance == gap:
-                gap_owners.update((owners[i], owners[j]))
-
-    # Close tracing seams within half a unit per metre of artwork. Restore
-    # the offset to measure the diameter between the original centerlines.
-    seam = .25
-    ink = unary_union(lines).buffer(seam, quad_segs=32)
-    openings = [(opening_diameter(Polygon(ring)) + 2*seam, ring, None)
-                for part in getattr(ink, 'geoms', [ink]) for ring in part.interiors]
-    # Explicit closed contours remain relevant even below the seam tolerance.
+        delta=(np.asarray(edge.coords[0])-center.coords[0])*(1+correction/radius)
+        consider('opening',indices,[Point(center.coords[0]-delta),Point(center.coords[0]+delta)])
+    for part in getattr(ink,'geoms',[ink]):
+        for ring in part.interiors:
+            coords=np.asarray(ring.coords)
+            hits=set(tree.nearest(points((coords[:-1]+coords[1:])/2)))
+            if len(hits)==1 and lines[next(iter(hits))].is_ring:
+                continue  # The explicit ring below measures this same aperture.
+            opening(Polygon(ring),[owners[i] for i in hits],seam)
     for i,line in enumerate(lines):
         if line.is_ring:
-            openings.append((opening_diameter(Polygon(line)), None, owners[i]))
-    def opening_owners(ring, owner):
-        if owner is not None:
-            return {owner}
-        coords = np.asarray(ring.coords)
-        mids = points((coords[:-1]+coords[1:])/2)
-        return {owners[i] for i in tree.nearest(mids)}
-
+            opening(Polygon(line),[owners[i]],0)
     if issues is not None:
-        for value, ring, owner in openings:
-            if value*span/1000 < REFERENCE_DIAMETER:
-                record('opening', opening_owners(ring, owner), value*span/1000-6, REFERENCE_DIAMETER-6)
         return
-    opening = min((v for v,_,_ in openings), default=math.inf)
-    spacing_span = CENTER_SPACING*1000/gap
-    opening_span = REFERENCE_DIAMETER*1000/opening
-    required_span = max(spacing_span, opening_span)
-    minimum = max(80, math.ceil(PADDING + required_span - 1e-8))
-    limiting = set()
-    reasons = []
-    if minimum > 80 and spacing_span == required_span:
-        limiting.update(gap_owners)
-        reasons.append('spacing')
-    if minimum > 80 and opening_span == required_span:
-        reasons.append('opening')
-        for value, ring, owner in openings:
-            if value != opening:
-                continue
-            limiting.update(opening_owners(ring, owner))
-    keys = drawing.get('pathKeys', [])
-    return dict(recommendedWidth=minimum, limitingKeys=[keys[i] for i in sorted(limiting) if i<len(keys)],
-                limitingReasons=reasons, currentWidth=drawing['width'],
-                minimumSpacing=None if math.isinf(gap) else gap*span/1000,
-                opening=None if math.isinf(opening) else opening*span/1000-6)
+    minimum=max(80,math.ceil(PADDING+required_span-1e-8))
+    if minimum==80:
+        winner=None
+    gap,aperture=best['spacing'],best['opening']
+    return dict(recommendedWidth=minimum,limitingSite=winner,ignoredSiteIds=sorted(active_ignored),
+                limitingKeys=winner['keys'] if winner else [],limitingReasons=[winner['kind']] if winner else [],
+                currentWidth=drawing['width'],minimumSpacing=None if math.isinf(gap) else gap*span/1000,
+                opening=None if math.isinf(aperture) else aperture*span/1000-6)
 
 
 class SpacingLimitExceeded(ValueError):

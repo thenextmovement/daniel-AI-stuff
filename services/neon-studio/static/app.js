@@ -114,7 +114,7 @@ async function loadImage(file=null, suppliedData=null, suppliedName=null, cropSo
     // Keep the full raster separate from the traced motif and any later crops.
     if(project.sourceKind!=='vector')project.cropSource=cropSource||{data:project.image,name:project.name};
     state.project=project;state.selection=-1;state.selectedParts=[];state.selectedKeys=[];closePathColor();state.pan={x:0,y:0};state.zoom=100;
-    state.settings.scale=null;state.settings.partModes={};state.settings.straightened={};state.settings.pathSplits={};state.settings.pathShapes={};state.settings.pathOffsets={};state.settings.outlineEdits=[];state.settings.depthRegions=[];state.settings.uvStrokes=[];state.settings.hiddenPaths=[];state.settings.pathColors={};setTool('select');
+    state.settings.scale=null;state.settings.ignoredLimits=[];state.settings.partModes={};state.settings.straightened={};state.settings.pathSplits={};state.settings.pathShapes={};state.settings.pathOffsets={};state.settings.outlineEdits=[];state.settings.depthRegions=[];state.settings.uvStrokes=[];state.settings.hiddenPaths=[];state.settings.pathColors={};setTool('select');
     if(project.sourceKind==='vector'){
       state.settings.mode=importMode||(project.vectorHasFills?'double':'single');
       state.settings.scale=1;
@@ -277,7 +277,7 @@ function renderDrawing() {
     <text class="dimension-text" style="fill:${dim}" x="${(x0+x1)/2}" y="${y0-offset-label*.45}" font-size="${label}" text-anchor="middle" stroke="none">${number(W/(state.dimensionUnit==='cm'?10:1),2)} ${state.dimensionUnit}</text>
     <text class="dimension-text" style="fill:${dim}" transform="translate(${x0-offset-label*.55} ${(y0+y1)/2}) rotate(-90)" font-size="${label}" text-anchor="middle" stroke="none">${number(H/(state.dimensionUnit==='cm'?10:1),2)} ${state.dimensionUnit}</text></g>`:'';
   $('drawing').innerHTML=`<path d="${state.outlineDraft?.kind==='point'&&state.outlineDraft.drawing?state.outlineDraft.drawing.outerData:d.outerData}" fill="${p.acrylic}" fill-opacity="${p.opacity/100}" stroke="${edge}" stroke-width="1.4" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-    ${state.view==='original'?`<image href="${state.project.image}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="none"/>`:`<g fill="none" stroke-linejoin="round" stroke-linecap="round">${paths}</g>`}${recoveryImageLayer()}${uvLayer()}${(d.acrylicSplit?.seams||[]).map(([[,start],[,end]])=>{return `<line x1="${start[0]}" y1="${start[1]}" x2="${end[0]}" y2="${end[1]}" stroke="${edge}" stroke-dasharray="5 4" vector-effect="non-scaling-stroke" pointer-events="none"/>`;}).join('')}${selections}${dimensions}${straightenOverlay()}${outlineStraightenOverlay()}${depthRegionOverlay()}<g id="uvLiveOverlay" pointer-events="none"></g>`;
+    ${state.view==='original'?`<image href="${state.project.image}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="none"/>`:`<g fill="none" stroke-linejoin="round" stroke-linecap="round">${paths}</g>`}${recoveryImageLayer()}${uvLayer()}${(d.acrylicSplit?.seams||[]).map(([[,start],[,end]])=>{return `<line x1="${start[0]}" y1="${start[1]}" x2="${end[0]}" y2="${end[1]}" stroke="${edge}" stroke-dasharray="5 4" vector-effect="non-scaling-stroke" pointer-events="none"/>`;}).join('')}${selections}${dimensions}${limitOverlay(d)}${straightenOverlay()}${outlineStraightenOverlay()}${depthRegionOverlay()}<g id="uvLiveOverlay" pointer-events="none"></g>`;
   renderMoveBounds();updateNeonSelection();updateViewBox();
   renderVisibilityControls();renderUvControls();renderUvOverlay();renderRecoveryOverlay();
   $('selectionLabel').textContent=state.tool==='move'&&state.selectedKeys.length?'Ziehen · Pfeile: 1 mm · Shift + Pfeile: 10 mm':state.selectedKeys.length>1?`${state.selectedKeys.length} Pfade ausgewählt`:state.selection>=0?d.names[state.selection]:'';
@@ -363,10 +363,74 @@ $('targetForm').onsubmit=async event=>{
     }
   }catch(error){if(current())$('targetStatus').textContent=error.message;}
 };
+let changingLimit=false, inspectedException=null;
+function limitOverlay(d){
+  const site=inspectedException||(showingLimit&&(manufacturingReport||previewLimit)?.limitingSite);
+  if(!site||!d.settings.scale)return '';
+  const origin=d.paths[d.pathKeys.indexOf(site.keys[0])]?.[0]?.[1];
+  if(!origin)return '';
+  const [a,b]=site.offsets.map(point=>point.map((value,i)=>origin[i]+value*d.settings.scale));
+  const mm=Math.hypot(b[0]-a[0],b[1]-a[1]);
+  const radius=Math.max(1.2,d.width/480);
+  return `<g pointer-events="none" stroke="#932700" fill="#ffce3a"><line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke-width="3" vector-effect="non-scaling-stroke"/>${[a,b].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="${radius}" stroke-width="1" vector-effect="non-scaling-stroke"/>`).join('')}<text x="${(a[0]+b[0])/2}" y="${Math.min(a[1],b[1])-radius*2}" text-anchor="middle" fill="#222" stroke="white" stroke-width="3" paint-order="stroke" font-size="${radius*4}">${number(mm,1)} mm</text></g>`;
+}
+async function changeLimitException(site,restore){
+  if(changingLimit||state.busy||!site)return;
+  changingLimit=true;
+  inspectedException=null;
+  const project=state.project;
+  const before=state.settings.ignoredLimits||[];
+  state.settings.ignoredLimits=restore?before.filter(item=>item.id!==site.id):[...before,site];
+  try{
+    resetTarget();
+    await checkManufacturing(false,true);
+    if(project!==state.project)return;
+    if(!manufacturingReport)throw Error('Die Mindestgröße konnte nicht neu berechnet werden.');
+    const width=manufacturingReport.recommendedWidth;
+    if(!window.studioManualMinimum?.()&&Math.abs(state.drawing.width-width)>.01){
+      await resizeToMinimum(width);
+      await checkManufacturing(false,true);
+    }else commitHistory();
+    if(project!==state.project||!manufacturingReport||!state.valid)throw Error('Bitte die Zeichnung erneut prüfen.');
+    window.dispatchEvent(new CustomEvent('studio-exception-applied',{detail:width}));
+    if(manufacturingReport.limitingSite)await toggleLimit();
+    else {state.selectedKeys=[];renderDrawing();toast('Keine weitere begrenzende Stelle.');}
+  }catch(error){
+    if(project===state.project){
+      state.settings.ignoredLimits=before;
+      await checkManufacturing(false,true);
+      toast(error.message,true);
+    }
+  }finally{changingLimit=false;updateLimitControls();}
+}
 function updateLimitControls(){
   const report=manufacturingReport||previewLimit;
   const keys=report?.limitingKeys||[];
   const d=state.drawing;
+  const entries=state.settings.ignoredLimits||[];
+  for(const id of ['ignoreLimit','cloudIgnoreLimit']){
+    const button=$(id);
+    if(!button)continue;
+    button.hidden=!showingLimit||!report?.limitingSite;
+    button.disabled=changingLimit||state.busy;
+    button.onclick=()=>changeLimitException(report.limitingSite,false);
+  }
+  const panel=$('ignoredLimitsPanel');
+  panel.hidden=!entries.length;
+  panel.querySelector('summary').textContent=`Ignorierte Stellen (${entries.length})`;
+  $('ignoredLimitRows').replaceChildren();
+  entries.forEach((site,i)=>{
+    const row=document.createElement('div'),show=document.createElement('button'),restore=document.createElement('button');
+    show.type=restore.type='button';
+    const active=report?.ignoredSiteIds?.includes(site.id);
+    show.textContent=`Stelle ${i+1} · ${site.kind==='spacing'?'Abstand':'Innenöffnung'}`+(report&&!active?' (inaktiv)':'');
+    show.className=restore.className='button';
+    show.disabled=!active||changingLimit;
+    show.onclick=()=>{showingLimit=false;updateLimitControls();inspectedException=site;state.view='vectors';updateViewControls();selectKeys(site.keys);};
+    restore.textContent='Wieder prüfen';restore.disabled=changingLimit||!report;
+    restore.onclick=()=>changeLimitException(site,true);
+    row.append(show,restore);$('ignoredLimitRows').append(row);
+  });
   const names=keys.map(key=>d?.pathKeys.indexOf(key)??-1).filter(i=>i>=0)
     .map(i=>`${d.names[i]} (Linie ${i+1})`);
   const reasons=(report?.limitingReasons||[]).map(reason=>reason==='spacing'?'Abstand der Neonlinien':'geschlossene Innenöffnung');
@@ -395,7 +459,7 @@ async function toggleLimit(){
   }
   const keys=(manufacturingReport||previewLimit)?.limitingKeys;
   if(!keys?.length){toast('Keine begrenzende Linie ermittelt.');return;}
-  targetKeys=[];showingLimit=!showingLimit;
+  inspectedException=null;targetKeys=[];showingLimit=!showingLimit;
   updateLimitControls();
   if(showingLimit){
     state.view='vectors';updateViewControls();setTool('select');
@@ -412,6 +476,7 @@ function minimumStatus(message,canCheck){
   if(button)button.disabled=!canCheck;
 }
 function invalidateManufacturing(){
+  inspectedException=null;
   resetTarget();manufacturingTicket++;manufacturingReport=null;previewLimit=null;previewLimitTicket=null;lastMinimumRequest=null;
   showingLimit=false;updateLimitControls();
   minimumStatus('Mindestgröße noch nicht geprüft.',false);
@@ -429,7 +494,7 @@ async function checkManufacturing(applyToPreview=false,force=false){
   }
   const key=manufacturingKey();
   if(lastMinimumRequest===key&&!applyToPreview&&!force)return;
-  lastMinimumRequest=key;
+  lastMinimumRequest=key;inspectedException=null;
   const ticket=++manufacturingTicket;
   manufacturingReport=null;previewLimit=null;previewLimitTicket=null;showingLimit=false;updateLimitControls();
   if(state.drawing)renderDrawing();
@@ -444,7 +509,8 @@ async function checkManufacturing(applyToPreview=false,force=false){
     window.dispatchEvent(new Event('studio-minimum-ready'));
     const manual=window.studioManualMinimum?.();
     const label=manual?window.studioManualSizeLabel():`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
-    minimumStatus(label,true);
+    const count=report.ignoredSiteIds?.length||0;
+    minimumStatus(label+(count?` · ${count} ${count===1?'Stelle ignoriert':'Stellen ignoriert'}`:''),true);
     $('manufacturingApply').hidden=!!state.settings.geometricSizing&&Math.abs(state.drawing.width-(manual||report.recommendedWidth))<.01;
     if(applyToPreview&&!$('manufacturingApply').hidden)applyMinimumToPreview();
   }catch(error){
