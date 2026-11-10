@@ -138,6 +138,10 @@ def measure(drawing, issues=None):
                 opening=None if math.isinf(opening) else opening*span/1000-6)
 
 
+class SpacingLimitExceeded(ValueError):
+    """The spacing constraint would require a sign wider than the supported range."""
+
+
 def minimum_size(store, model, settings):
     options = {**settings, **PROFILE}
     def at_width(width):
@@ -153,7 +157,8 @@ def minimum_size(store, model, settings):
                 return report
         raise ValueError('Keine passende Breite bis 20 m für diese Punktgeometrie.')
     if report['recommendedWidth'] > 20000:
-        raise ValueError('Die geometrische Mindestbreite überschreitet 20 m.')
+        error = SpacingLimitExceeded if 'spacing' in report['limitingReasons'] else ValueError
+        raise error('Die geometrische Mindestbreite überschreitet 20 m.')
     return report
 
 def widths_for_heights(store, model, settings, heights):

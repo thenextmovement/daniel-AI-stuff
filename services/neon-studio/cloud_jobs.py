@@ -3,9 +3,9 @@ from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,copy_title,ServiceError
 from cloud_ai import generate,validate_spec,Review,drawing_model,smallest_title_widths,size_only_issue
-from colors import artwork_neon_color
+from colors import artwork_neon_color, NEON_COLORS
 from cloud_exports import artifacts,CUT
-from minimum_size import PROFILE, measure, minimum_size, widths_for_heights
+from minimum_size import PROFILE, SpacingLimitExceeded, measure, minimum_size, widths_for_heights
 
 
 def size_variants(store,model,settings,spec):
@@ -26,7 +26,10 @@ def size_variants(store,model,settings,spec):
         if drawing['width'] < floor-.001:raise Review('Die Zeichnung unterschreitet die Mindestbreite.')
         report={'recommendedWidth':manual} if manual else measure(drawing)
         if report['recommendedWidth']>width and spec.get('minimum_first') and width>floor:continue
-        if report['recommendedWidth']>width:raise Review('Abstand oder Innenöffnung in der Angebotszeichnung zu klein.')
+        if report['recommendedWidth']>width:
+            if 'spacing' in report.get('limitingReasons',[]):
+                raise SpacingLimitExceeded('Abstand in der Angebotszeichnung zu klein.')
+            raise Review('Abstand oder Innenöffnung in der Angebotszeichnung zu klein.')
         verified.append(width)
         reports.append({**report,'recommendedWidth':floor})
     return verified,reports
@@ -88,7 +91,7 @@ class Jobs:
         designs=data.get('designs',[data])
         records=[self.design_record(design) for design in designs]
         p=self.db.save(id,{**records[0],'additional_designs':records[1:],'metrics':metrics},status='draft')
-        self.publish(p)
+        self.publish(p, generated=True)
 
     def design_record(self,data):
         # Persist even an incomplete spec so a staff member can correct it.
@@ -154,14 +157,61 @@ class Jobs:
         files,quotes=artifacts(variants,spec,spec.get('design_name') or motif)
         return files,quotes,variants,spec
 
-    def publish(self,p):
+    def png_centerlines(self,record,snapshot):
+        spec=record['spec']
+        plan=spec.get('line_plan',[])
+        if not plan or any(r['mode']!='single' or r.get('dot_ids') for r in plan):return None
+        ids=spec.get('source_attachment_ids',[])
+        if len(set(ids))!=1:return None
+        attachment=next((a for a in snapshot.get('attachments',[]) if a['id']==ids[0] and a.get('isUpload')),None)
+        if not attachment:return None
+        name=attachment.get('fileName') or attachment['name']
+        if Path(name).suffix.lower()!='.png':return None
+        raw=self.t.download(snapshot['id'],attachment)
+        if not raw.startswith(b'\x89PNG\r\n\x1a\n'):return None
+        from tracing import analyze_image
+        model=analyze_image(raw)
+        paths=model['modes']['single']
+        if not paths or any(path.get('method')=='silhouette' for path in paths):return None
+        info=self.store.add_model(model,name)
+        settings={**record['settings'],'partModes':{},'pathColors':{}}
+        drawing=self.store.drawing(info['id'],json.dumps(settings,sort_keys=True))
+        keys=drawing['pathKeys']
+        colors=spec.get('colors','')
+        if isinstance(colors,list):colors=' + '.join(colors)
+        color=next((c['id'] for c in NEON_COLORS if colors in (c['name'],c['english'])),None)
+        if color:
+            settings['pathColors']=dict.fromkeys(keys,color)
+        elif spec.get('colors_from_artwork'):
+            settings['pathColors']={key:artwork_neon_color(drawing['colorSources'][key])['id'] for key in keys}
+            names={c['name'] for c in NEON_COLORS if c['id'] in settings['pathColors'].values()}
+            if names!=set(colors.split(' + ')):return None
+        else:
+            # Retain the explicit colour from the AI design if it has a single ink.
+            if not colors or '+' in colors:return None
+            previous=self.store.drawing(record['model'],json.dumps(record['settings'],sort_keys=True))
+            inks={c['id'] for c in previous['pathColors']}
+            if len(inks)!=1:return None
+            settings['pathColors']=dict.fromkeys(keys,inks.pop())
+        region={'name':Path(name).stem,'mode':'single','reason':'Mittellinien aus der Original-PNG nach Abstandsprüfung.',
+                'path_ids':keys,'dot_ids':[]}
+        return {**record,'model':info['id'],'settings':settings,'spec':{**spec,'line_plan':[region]}}
+
+    def publish(self,p,generated=False):
         with self.lock:
             p=self.db.get(p['id'])
             if p['status'] in ('publishing','generating','copying','queued'):raise Review('Projekt wird bereits verarbeitet.')
             if not p.get('copy') or not p.get('model'):raise Review('Kopie oder Zeichnung fehlt.')
             records=[p,*p.get('additional_designs',[])]
-            for record in records:self.size_design(record,p['snapshot'])
-            p=self.db.save(p['id'],{key:p[key] for key in ('settings','spec','metrics') if key in p}
+            for record in records:
+                try:self.size_design(record,p['snapshot'])
+                except SpacingLimitExceeded:
+                    if not generated or len(records)!=1:raise
+                    retry=self.png_centerlines(record,p['snapshot'])
+                    if retry is None:raise
+                    self.size_design(retry,p['snapshot'])
+                    record.update(retry)
+            p=self.db.save(p['id'],{key:p[key] for key in ('model','settings','spec','metrics') if key in p}
                            | {'additional_designs':records[1:]})
             card=self.t.card(p['copy'])
             if card['idBoard']!=BOARD or card['idList'] not in (HOLDING,READY):raise Review('Karte wurde weiterbearbeitet. Veröffentlichung hier gesperrt.')

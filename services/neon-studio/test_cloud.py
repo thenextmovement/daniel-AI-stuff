@@ -40,6 +40,42 @@ class CloudTests(unittest.TestCase):
   info2=DurableStore(self.db).add_model(model,'customer.svg')
   imported=DurableStore(Database(self.tmp.name)).model(info2['id'])
   self.assertFalse(imported['modes']['double'][0].get('neonCenterline'))
+ def test_png_retry_on_generated_spacing_failure(self):
+  from unittest.mock import Mock,patch
+  from PIL import ImageDraw
+  from cloud_trello import HOLDING
+  png=io.BytesIO();im=Image.new('RGB',(140,100),'white')
+  ImageDraw.Draw(im).line([(15,82),(67,12),(125,82)],fill='black',width=5);im.save(png,'PNG')
+  card={'id':'source','name':'LED Neon | Smallest Size','attachments':[{'id':'png','name':'Hand.png','isUpload':True}]}
+  p=self.db.enqueue('source','event',card)
+  p=self.db.save(p['id'],{'copy':'copy','copy_verified':True})
+  t=Mock();t.download.return_value=png.getvalue();t.card.return_value={'name':'🤖 LED Neon 🤖','idBoard':BOARD,'idList':HOLDING}
+  jobs=Jobs(self.db,DurableStore(self.db),t)
+  svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80"><g stroke="black" fill="none"><path id="a" d="M2 20 L198 20"/><path id="b" d="M2 20.05 L198 20.05"/></g></svg>'
+  data={'svg':svg,'line_plan':[{'name':'Hand','mode':'single','path_ids':['a','b']}],
+        'source_attachment_ids':['png'],'colors':'Kaltweiß','widths_mm':[],'smallest_requested':True,'customer_name':'Test'}
+  with patch('cloud_jobs.generate',return_value=(data,{})),patch.object(jobs,'design_artifacts') as export:
+   # Stop after rendering, before sending anything to Trello.
+   def rendered(*args):
+    files,quotes,drawings,spec=Jobs.design_artifacts(jobs,*args)
+    self.assertEqual(len(files),3)
+    self.assertEqual(spec['auto_minimum_mm'],drawings[0]['width'])
+    self.assertTrue(all(c['id']=='cold-white' for c in drawings[0]['pathColors']))
+    raise StopIteration
+   export.side_effect=rendered
+   with self.assertRaises(StopIteration):jobs.process(p)
+  t.download.assert_called_once_with('source',card['attachments'][0])
+  saved=self.db.get(p['id'])
+  self.assertEqual(jobs.store.info(saved['model'])['name'],'Hand.png')
+  self.assertEqual(set(saved['spec']['line_plan'][0]['path_ids']),set(saved['settings']['pathColors']))
+ def test_png_centerlines_preserve_double_line_and_ambiguous_sources(self):
+  from unittest.mock import Mock
+  jobs=Jobs(self.db,None,Mock())
+  for mode,ids in [('double',['png']),('single',['first','second'])]:
+   record={'spec':{'line_plan':[{'mode':mode}],'source_attachment_ids':ids}}
+   self.assertIsNone(jobs.png_centerlines(record,{}))
+  jobs.t.download.assert_not_called()
+
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.db=Database(self.tmp.name)
  def tearDown(self):self.tmp.cleanup()
