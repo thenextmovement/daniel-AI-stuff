@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
@@ -186,7 +186,11 @@ export function PhoneCentral(props: Props) {
   const phone = customer?.phone || "";
   const dialPhone = dialPhoneNumber(phone);
   const freeDialPhone = dialPhoneNumber(number);
-  function appNotice() {
+  const lastDialAt = useRef(-Infinity);
+  function openPhoneApp(event: MouseEvent<HTMLButtonElement>, phone: string) {
+    if (!event.nativeEvent.isTrusted || busy || performance.now() - lastDialAt.current < 2000) return;
+    lastDialAt.current = performance.now();
+    window.location.assign("tel:" + phone);
     setNotice("Die Standard-Telefon-App öffnet sich. Anrufe darüber werden derzeit nicht automatisch mitgeschrieben.");
   }
   const lastCall = selected?.recentCalls?.[0];
@@ -313,8 +317,8 @@ export function PhoneCentral(props: Props) {
             {canDial && freeDialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary+" "+styles.dialAction}
               disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial(activeContact?
                 {customerId:activeContact.customerId,requestId:activeContact.requestId}:{phone:freeDialPhone},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
-            {freeDialPhone && !busy ? <a className={styles.button + " " + styles.primary + " " + styles.dialAction}
-              href={"tel:" + freeDialPhone} onClick={appNotice}><Phone size={17}/>In Telefon-App anrufen</a> :
+            {freeDialPhone && !busy ? <button type="button" className={styles.button + " " + styles.primary + " " + styles.dialAction}
+              onClick={event => openPhoneApp(event, freeDialPhone)}><Phone size={17}/>In Telefon-App anrufen</button> :
               !browserPhone.call ? <button className={styles.button + " " + styles.primary + " " + styles.dialAction} disabled><Phone size={17}/>{browserPhone.externalIncoming?"Eingehender Anruf":browserPhone.incoming?"Eingehende Übergabe":busy?"Gespräch aktiv":"Nummer eingeben"}</button>:null}
             {number && !freeDialPhone ? <p className={styles.small}>Bitte eine vollständige Telefonnummer eingeben.</p> : null}
           </section>}
@@ -388,9 +392,9 @@ export function PhoneCentral(props: Props) {
               {canDial && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
                 disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
               {customer && dialPhone && !busy ? (
-                <a className={styles.button + " " + styles.primary} href={"tel:" + dialPhone} onClick={appNotice}>
+                <button type="button" className={styles.button + " " + styles.primary} onClick={event => openPhoneApp(event, dialPhone)}>
                   <Phone size={17} />In Telefon-App anrufen
-                </a>
+                </button>
               ) : customer ? (
                 <button className={styles.button + " " + styles.primary} disabled>
                   {busy ? "Gespräch aktiv" : "Rufnummer fehlt"}

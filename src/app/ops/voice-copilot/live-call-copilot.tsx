@@ -336,6 +336,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
     vadCommittersRef.current.forEach((commit) => commit());
     await new Promise((resolve) => window.setTimeout(resolve, 2_000));
     await finishSession("completed");
+    setConsentConfirmed(false);
     setStatus("stopped");
     appendEvent("Live-Copilot beendet. Speicherstatus wird separat angezeigt.");
   }
@@ -388,17 +389,24 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
       });
       setStatus("capturing");
       appendEvent("Kunden-Audio wird angefragt.");
-      const customerStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      window.focus();
+      const captureOptions = { video: true, audio: true, systemAudio: "include", windowAudio: "window" };
+      const customerStream = await navigator.mediaDevices.getDisplayMedia(captureOptions).catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "InvalidStateError") {
+          throw new Error("Bitte den OPS-Tab in den Vordergrund holen und Kunden-Audio teilen erneut auswählen.");
+        }
+        throw error;
+      });
+      mediaStreamsRef.current.push(customerStream);
       const customerAudio = customerStream.getAudioTracks()[0];
       if (!customerAudio) {
-        customerStream.getTracks().forEach((track) => track.stop());
         throw new Error("Die ausgewaehlte Quelle liefert kein Audio. Im Freigabedialog muss Audio aktiviert sein.");
       }
       customerStream.getVideoTracks().forEach((track) => { track.enabled = false; });
       const operatorStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      mediaStreamsRef.current = [customerStream, operatorStream];
+      mediaStreamsRef.current.push(operatorStream);
 
       setStatus("connecting");
       const customerPeer = await createTranscriptionPeer(customerStream, "customer");
@@ -453,8 +461,10 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
   const isBusy = ["capturing", "connecting", "live", "stopping"].includes(status);
   useEffect(() => { onSuggestionsChange?.(suggestions); }, [suggestions, onSuggestionsChange]);
   useEffect(() => { onBusyChange?.(isBusy || saveFailed); }, [isBusy, saveFailed, onBusyChange]);
+  const lastBoundCustomer = useRef<VoiceCustomerContext | null | undefined>(undefined);
   useEffect(() => {
-    if (isBusy || saveFailed || boundCustomer === undefined) return;
+    if (isBusy || saveFailed || boundCustomer === undefined || lastBoundCustomer.current === boundCustomer) return;
+    lastBoundCustomer.current = boundCustomer;
     setSelectedContext(boundCustomer);
     setSuggestions([]);
     setMode(boundCustomer ? "lead_qualification" : "internal_test");
