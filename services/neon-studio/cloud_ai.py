@@ -203,7 +203,13 @@ Schreibschrift/dünnen Strichen, vorhandene Umrisslinien bei bewusst breiten Out
 Keine Leuchthöfe, Schattierungen, Acrylkontur, Beschriftungen, Bemaßung oder Bildrahmen.
 Ein leuchtender Neon-Rahmen IST ein Neonpfad und muss erhalten bleiben.
 Zeichne wie mit einem Bleistift in einem Zug, wenige saubere kubische Bézierkurven.
-Erhalte Originalform, Layout, Text, Querstriche, Punkte und Farbzuordnung. An Kreuzungen
+Erhalte Originalform, Layout, Text, Querstriche, Punkte und Farbzuordnung.
+Eine Ausnahme sind eindeutig erkennbare, sehr kleine, separat beigestellte Schutzzeichen
+(® im Kreis, © im Kreis, ™), etwa hochgestellt neben einem Logo. Lass das gesamte Zeichen
+einschließlich Kreis aus SVG und line_plan weg, bevor die Mindestgröße berechnet wird.
+Wenn die Anfrage das Zeichen ausdrücklich als Teil der Neonzeichnung verlangt, erhalte es.
+Ein R im Schriftzug, ein eigenständiges ℝ, i/j-Punkte, kleine Schriftzüge wie „DJ“ und
+Logodetails bleiben erhalten. Bei unklarer Zuordnung das Detail beibehalten. An Kreuzungen
 gerade und tangential fortsetzen, keine kleinen Stopps, Knicke oder erfundenen Verbindungen.
 Kein Font-Ersatz, keine eingebetteten Bilder, keine text-Elemente. fill=none, stroke-Farbe,
 runde Linienenden. Nur svg/g/path; Befehle M L C Q Z. viewBox passend zur Zeichnung.
