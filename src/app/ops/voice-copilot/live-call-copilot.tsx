@@ -529,6 +529,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
                     onClick={() => {
                       setMode(entry.value);
                       if (entry.value === "internal_test") setSelectedContext(null);
+                      else if (boundCustomer) setSelectedContext(boundCustomer);
                     }}
                     disabled={isBusy}
                     className={`min-h-9 flex-1 rounded-md px-2 text-sm font-semibold ${mode === entry.value ? "bg-[#f1edf7] text-[#66508a]" : "text-stone-600 hover:bg-white"}`}
@@ -539,7 +540,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
               </div>
             </div>
 
-            {boundCustomer !== undefined ? <p className="text-sm text-stone-600">{selectedContext?.customer.displayName || selectedContext?.customer.company || "Interner Test ohne Kundenzuordnung"}</p> : mode !== "internal_test" ? (
+            {boundCustomer !== undefined ? <p className="text-sm text-stone-600">{selectedContext?.customer.displayName || selectedContext?.customer.company || (mode === "internal_test" ? "Interner Test ohne Kundenzuordnung" : selectedContext ? "Vorgang " + selectedContext.requestId.slice(0,8) : "Kein Kunde ausgewählt")}</p> : mode !== "internal_test" ? (
               <CustomerContextPanel selected={selectedContext} disabled={isBusy} onSelect={setSelectedContext} />
             ) : (
               <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">

@@ -7981,6 +7981,7 @@
       "queryParameters": [
         "customerId",
         "directory",
+        "history",
         "offset",
         "query",
         "requestId"
@@ -9672,7 +9673,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/context/route.ts",
-      "sha256": "e51d9a05e8fea86a1bade118520fb67a712b9406b93c5969253b5db00ecad380",
+      "sha256": "943a4c3ec3f7dfb46511be9a9923b0753c7c388a8e0e5876867f20f4422663da",
       "methods": [
         "GET"
       ],
@@ -10090,11 +10091,11 @@
     },
     {
       "source": "src/lib/ops/voice-knowledge.ts",
-      "sha256": "0b9744797cd25a17f644a72384f0e86ad7bb6abe047555e889bba845fb64fada"
+      "sha256": "12902c69cb6c6ca98a6098646675946442f8e6ec373ecfa563f769a8d9973594"
     },
     {
       "source": "src/lib/ops/voice-directory.ts",
-      "sha256": "09366178dc6a595f57810917761b2253e59ebaa399b4caa27c0e3f051ef1b2ba"
+      "sha256": "c827651fc2881373edc9be2f0a2385bf8962b2351549da9d7ec9852ac7848385"
     },
     {
       "source": "src/lib/ops/voice-copilot.ts",

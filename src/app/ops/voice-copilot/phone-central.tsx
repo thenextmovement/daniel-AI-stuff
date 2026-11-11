@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "re
 import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
+import { CustomerBrief } from "./customer-brief";
 import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
 import { OpsAppSwitcher } from "../ops-app-switcher";
@@ -199,8 +200,7 @@ export function PhoneCentral(props: Props) {
     window.location.assign("tel:" + phone);
     setNotice(assisted ? "Telefon-App geöffnet. Die Gesprächsbegleitung läuft in OPS weiter." : "Die Standard-Telefon-App öffnet sich. Anrufe darüber werden derzeit nicht automatisch mitgeschrieben.");
   }
-  const lastCall = selected?.recentCalls?.[0];
-  const lastMail = selected?.outlook[0];
+
   return (
     <div className={styles.page}>
     <main className={styles.shell}>
@@ -295,6 +295,7 @@ export function PhoneCentral(props: Props) {
                   <strong>{contact.company || contact.displayName || "Kontakt"}</strong>
                   <span>{contact.company && contact.displayName ? contact.displayName + " · " : ""}{contact.phone || "Rufnummer fehlt"}</span>
                   <span>{contact.email || contact.requestTitle || "Kontaktdaten öffnen"}</span>
+                  {contact.requestCreatedAt && <span>Letzte Anfrage: {new Date(contact.requestCreatedAt).toLocaleDateString("de-DE")}</span>}
                 </span>
                 <ChevronRight size={16} />
               </button>)}
@@ -422,6 +423,10 @@ export function PhoneCentral(props: Props) {
                 <Bot size={18} />
                 KI-Sprachtest
               </button>
+              {selected && <div className={styles.caseLinks}>
+                {selected.links?.trello && <a className={styles.link} target="_blank" rel="noreferrer" href={selected.links.trello}>Trello-Karte ↗</a>}
+                {selected.links?.offer && <a className={styles.link} target="_blank" rel="noreferrer" href={selected.links.offer}>Angebot {selected.offer?.offerNumber} ↗</a>}
+              </div>}
             </div>
           </section>
           <div className={styles.detailgrid}>
@@ -475,18 +480,8 @@ export function PhoneCentral(props: Props) {
               {props.children}
             </section>
             <aside className={styles.context} aria-label="Kundenübersicht">
-              {selected && (
-                <section className={styles.prep} aria-label="Kunde und Anfrage">
-                  <p className={styles.label}>Kunde und Anfrage</p>
-                  <h3>{[selected.customer.displayName, selected.customer.company].filter((value, i, all) => value && all.indexOf(value) === i).join(" · ") || "Kunde"}</h3>
-                  <p>{[selected.customer.email, selected.customer.phone].filter(Boolean).join(" · ")}</p>
-                  <p><strong>{selected.request.title || "Anfrage"} · {selected.requestId.slice(0, 8)}</strong></p>
-                  {selected.request.description && <p>{selected.request.description}</p>}
-                  {[selected.request.status, selected.request.segment, selected.request.size, ...selected.request.colors, selected.request.application, selected.request.deliveryTime].some(Boolean) && (
-                    <p><strong>Angaben aus der Anfrage</strong><br />{[selected.request.status, selected.request.segment, selected.request.size, ...selected.request.colors, selected.request.application, selected.request.deliveryTime].filter(Boolean).join(" · ")}</p>
-                  )}
-                </section>
-              )}
+              {(selected?.masterCustomerId || activeContact?.customerId) && <CustomerBrief key={(selected?.masterCustomerId || activeContact?.customerId)+":"+(selected?.requestId || "")}
+                id={(selected?.masterCustomerId || activeContact?.customerId)!} context={selected}/>}
               {selected && props.hints.length ? (
                 <div aria-live="polite">
                   {props.hints.map((hint, index) => (
@@ -510,114 +505,6 @@ export function PhoneCentral(props: Props) {
                   <p>Kurze Hinweise zu Kundenwünschen und euren Regeln – sobald die Gesprächsbegleitung läuft.</p>
                 </div>
               )}
-              <div className={styles.contextgrid}>
-                <div>
-                  <p className={styles.label}>Kundenübersicht</p>
-                  <h3>Zuletzt besprochen</h3>
-                  {lastCall ? (
-                    <>
-                      <p className={styles.small}>
-                        {lastCall.startedAt
-                          ? new Date(lastCall.startedAt).toLocaleString("de-DE")
-                          : "Telefonat"}
-                        {lastCall.incomplete
-                          ? " · unvollständiges Transkript"
-                          : ""}
-                      </p>
-                      <p>
-                        {lastCall.summary ||
-                          "Ein Telefontranskript liegt vor. Eine Zusammenfassung wurde noch nicht erstellt."}
-                      </p>
-                      <a
-                        className={styles.link}
-                        href={lastCall.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Letztes Telefonat öffnen ↗
-                      </a>
-                    </>
-                  ) : (
-                    <p className={styles.small}>
-                      {selected
-                        ? "Noch kein gespeichertes Telefontranskript zu diesem Vorgang."
-                        : "Nach der Kundenauswahl verfügbar."}
-                    </p>
-                  )}
-                  {lastMail ? (
-                    <>
-                      <h3>Letzte Nachricht</h3>
-                      <p>
-                        <strong>{lastMail.subject}</strong>
-                      </p>
-                      <p>
-                        {lastMail.preview ||
-                          "Kein Nachrichtenauszug verfügbar."}
-                      </p>
-                      <p className={styles.small}>
-                        {lastMail.occurredAt
-                          ? new Date(lastMail.occurredAt).toLocaleString(
-                              "de-DE",
-                            )
-                          : ""}
-                        {lastMail.scope === "organization"
-                          ? " · Firmenkontext, anderer Kontakt"
-                          : ""}
-                      </p>
-                    </>
-                  ) : null}
-                </div>
-                <div>
-                  <h3>Direkt zum Vorgang</h3>
-                  {selected?.links?.offer ? (
-                    <a
-                      className={styles.link}
-                      href={selected.links.offer}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Angebot {selected.offer?.offerNumber} öffnen ↗
-                    </a>
-                  ) : (
-                    <p className={styles.small}>Kein Angebot verknüpft.</p>
-                  )}
-                  {selected?.links?.trello ? (
-                    <a
-                      className={styles.link}
-                      href={selected.links.trello}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Trello-Karte öffnen ↗
-                    </a>
-                  ) : (
-                    <p className={styles.small}>
-                      Keine Trello-Karte verknüpft.
-                    </p>
-                  )}
-                  {selected?.outlook.length ? (
-                    <details>
-                      <summary className={styles.link}>
-                        Letzte Nachrichten anzeigen
-                      </summary>
-                      {selected.outlook.map((mail, i) => (
-                        <div key={i}>
-                          <p>
-                            <strong>{mail.subject}</strong>
-                          </p>
-                          <p>{mail.preview}</p>
-                        </div>
-                      ))}
-                    </details>
-                  ) : null}
-
-                </div>
-              </div>
-              {selected ? (
-                <div className="mt-7">
-                  <VoiceHistoryPanel requestId={selected.requestId} />
-                </div>
-              ) : null}
               {props.linkedTranscript ? (
                 <div className="mt-7">
                   <VoiceHistoryPanel

@@ -8,8 +8,7 @@ import { middleware } from "../../src/middleware";
 
 const contact = (id: string, phone: string | null, requestId: string | null = null) => ({
   id, name: "Testkontakt " + id, first_name: null, last_name: null, company: null, company_name: null,
-  email: "kontakt-" + id + "@example.invalid", phone, original_phone: null, request_id: null,
-  requests: requestId ? [{ request_id: requestId, title: "Synthetischer Vorgang" }] : [],
+  email: "kontakt-" + id + "@example.invalid", phone, original_phone: null, request_id: requestId, request_title: requestId ? "Synthetischer Vorgang" : null,
 });
 async function fixture(rows: unknown[], run: (requests: URL[]) => Promise<void>) {
   const originalFetch = globalThis.fetch;
@@ -22,7 +21,7 @@ async function fixture(rows: unknown[], run: (requests: URL[]) => Promise<void>)
       const url = new URL(String(input));
       requests.push(url);
       assert.equal(url.origin, "https://directory.example.invalid");
-      assert.equal(url.pathname, "/rest/v1/master_customers");
+      assert.equal(url.pathname, "/rest/v1/voice_customer_directory");
       assert.equal(init?.method || "GET", "GET");
       assert.equal(init?.cache, "no-store");
       assert.ok(init?.signal);
@@ -44,8 +43,7 @@ test("directory returns contacts without a request and does not load external do
     assert.equal(result.results[0].requestId, null);
     assert.equal(result.results[1].requestId, "request-two");
     assert.equal(requests.length, 1);
-    assert.equal(requests[0].searchParams.get("requests.limit"), "1");
-    assert.match(requests[0].searchParams.get("select")!, /requests_customer_id_fkey/);
+    assert.equal(requests[0].searchParams.get("order"), "request_created_at.desc.nullslast,name.asc.nullslast,id.asc");
     assert.equal(requests[0].searchParams.get("limit"), "21");
     assert.equal(result.nextOffset, null);
   });

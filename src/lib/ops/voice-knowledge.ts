@@ -69,6 +69,7 @@ export type VoiceKnowledgeCandidate = {
 };
 
 export type VoiceCustomerContext = {
+  masterCustomerId?: string;
   requestId: string;
   customer: {
     displayName: string | null;
@@ -815,7 +816,7 @@ export async function getVoiceCustomerContext(requestIdInput: unknown, options?:
   const safeTrelloUrl = trelloUrl && /^https:\/\/trello\.com\/c\/[a-zA-Z0-9]+(?:[/?#]|$)/.test(trelloUrl) ? trelloUrl : null;
 
   return {
-    requestId: record.requestId,
+    requestId: record.requestId, masterCustomerId: record.masterCustomerId,
     customer: { displayName: record.displayName, company: record.company, email: record.email, phone: record.phone },
     links: {
       offer: boundOffer.offer?.offerId ? "/api/ops/customer-records/offers/" + encodeURIComponent(boundOffer.offer.offerId) + "/admin" : null,

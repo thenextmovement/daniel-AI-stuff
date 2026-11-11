@@ -10,13 +10,14 @@ export type VoiceDirectoryContact = {
   email: string | null;
   phone: string | null;
   requestTitle: string | null;
+  requestCreatedAt?: string | null;
 };
 type DirectoryRow = {
   id: string; request_id: string | null; name: string | null;
   first_name: string | null; last_name: string | null;
   company: string | null; company_name: string | null;
   email: string | null; phone: string | null; original_phone: string | null;
-  requests?: Array<{ request_id: string | null; title: string | null }>;
+  request_title: string | null; request_created_at: string | null;
 };
 const PAGE_SIZE = 20;
 const text = (value: string | null | undefined) => value?.trim() || null;
@@ -55,16 +56,13 @@ export async function listVoiceDirectory(query: string, offset = 0, customerId: 
     filter = "(" + ["name", "first_name", "last_name", "company", "company_name", "email", "billing_email", "original_email"]
       .map(field => `${field}.ilike.${pattern}`).join(",") + ")";
   }
-  const rows = await supabaseRequest<DirectoryRow[]>("master_customers", {
+  const rows = await supabaseRequest<DirectoryRow[]>("voice_customer_directory", {
     signal: AbortSignal.timeout(8000),
   }, {
-    select: "id,request_id,name,first_name,last_name,company,company_name,email,phone,original_phone,requests:master_requests!requests_customer_id_fkey(request_id,title)",
-    "requests.order": "updated_at.desc.nullslast,id.desc",
-    "requests.request_id": "not.is.null",
-    "requests.limit": 1,
+    select: "id,request_id,name,first_name,last_name,company,company_name,email,phone,original_phone,request_title,request_created_at",
     ...(boundCustomer ? {id:"eq."+boundCustomer} : {}),
     ...(filter ? { or: filter } : {}),
-    order: "name.asc.nullslast,id.asc",
+    order: "request_created_at.desc.nullslast,name.asc.nullslast,id.asc",
     offset: boundCustomer?0:offset,
     limit: boundCustomer?1:PAGE_SIZE + 1,
   });
@@ -74,12 +72,13 @@ export async function listVoiceDirectory(query: string, offset = 0, customerId: 
     results: page.filter(row => (!boundCustomer || row.id===boundCustomer) && (!needle || [row.phone, row.original_phone].some(value => value && directoryPhoneDigits(value).includes(needle))))
       .map(row => ({
         customerId: row.id,
-        requestId: text(row.requests?.[0]?.request_id) || text(row.request_id),
+        requestId: text(row.request_id),
         displayName: text(row.name) || text([row.first_name, row.last_name].filter(Boolean).join(" ")),
         company: text(row.company) || text(row.company_name),
         email: text(row.email),
         phone: text(row.phone),
-        requestTitle: text(row.requests?.[0]?.title),
+        requestTitle: text(row.request_title),
+        requestCreatedAt: row.request_created_at,
       })),
     nextOffset: !boundCustomer && rows.length > PAGE_SIZE ? offset + PAGE_SIZE : null,
   };
