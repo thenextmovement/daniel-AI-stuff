@@ -397,13 +397,13 @@ export function PhoneCentral(props: Props) {
             <div className={styles.actions}>
               {canDial && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
                 disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
-              {customer && dialPhone && (!busy || assistedDialReady) ? (
+              {customer && dialPhone && ((!busy && props.workspace !== "assist") || assistedDialReady) ? (
                 <button type="button" className={styles.button + " " + styles.primary} onClick={event => openPhoneApp(event, dialPhone)}>
                   <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "In Telefon-App anrufen"}
                 </button>
               ) : customer ? (
                 <button className={styles.button + " " + styles.primary} disabled>
-                  {busy ? "Gespräch aktiv" : "Rufnummer fehlt"}
+                  {props.workspace === "assist" && dialPhone ? (readySession ? "Anruf gestartet" : "Gesprächsbegleitung vorbereiten") : busy ? "Gespräch aktiv" : "Rufnummer fehlt"}
                 </button>
               ) : null}
               <button
@@ -482,7 +482,9 @@ export function PhoneCentral(props: Props) {
                   <p>{[selected.customer.email, selected.customer.phone].filter(Boolean).join(" · ")}</p>
                   <p><strong>{selected.request.title || "Anfrage"} · {selected.requestId.slice(0, 8)}</strong></p>
                   {selected.request.description && <p>{selected.request.description}</p>}
-                  <p>{[selected.request.status, selected.request.segment, selected.request.size, ...selected.request.colors, selected.request.application, selected.request.deliveryTime].filter(Boolean).join(" · ")}</p>
+                  {[selected.request.status, selected.request.segment, selected.request.size, ...selected.request.colors, selected.request.application, selected.request.deliveryTime].some(Boolean) && (
+                    <p><strong>Angaben aus der Anfrage</strong><br />{[selected.request.status, selected.request.segment, selected.request.size, ...selected.request.colors, selected.request.application, selected.request.deliveryTime].filter(Boolean).join(" · ")}</p>
+                  )}
                 </section>
               )}
               {selected && props.hints.length ? (
