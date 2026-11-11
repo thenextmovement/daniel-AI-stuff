@@ -99,6 +99,7 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled, liveCopilotE
   const [requestSummary, setRequestSummary] = useState("");
   const [knownInterest, setKnownInterest] = useState("LED-Neonschild / Leuchtreklame");
   const [workspace, setWorkspace] = useState<"prepare" | "assist" | "live">("prepare");
+  const [liveAssistSession, setLiveAssistSession] = useState<string | null>(null);
   const [humanBusy, setHumanBusy] = useState(false);
   const [copilotHints,setCopilotHints] = useState<VoiceCopilotSuggestion[]>([]);
   const [liveTranscript, setLiveTranscript] = useState<Array<{id:string;speaker:string;text:string}>>([]);
@@ -362,10 +363,10 @@ export function VoiceCopilotClient({ initialHasSession, opsEnabled, liveCopilotE
   const busy = status === "connecting" || status === "live" || humanBusy || Boolean(voiceSessionIdRef.current);
   return <PhoneCentral operatorName={operatorName} onOperatorNameChange={setOperatorName}
     selected={selectedContext} onSelect={context => { setSelectedContext(context); setCopilotHints([]); }} busy={busy} status={statusLabel(status)}
-    workspace={workspace} onWorkspaceChange={setWorkspace} hints={copilotHints} linkedTranscript={linkedTranscript}
+    liveAssistSession={liveAssistSession} workspace={workspace} onWorkspaceChange={setWorkspace} hints={copilotHints} linkedTranscript={linkedTranscript}
     settings={<div className="grid gap-8"><VoicePlatformPanel operatorName={operatorName}/><KnowledgePanel operatorName={operatorName}/></div>}>
     <div hidden={workspace !== "assist"}>
-      <LiveCallCopilot operatorName={operatorName} knowledgeEnabled={knowledgeEnabled} enabled={liveCopilotEnabled} boundCustomer={selectedContext} onBusyChange={setHumanBusy} onSuggestionsChange={setCopilotHints}/>
+      <LiveCallCopilot operatorName={operatorName} knowledgeEnabled={knowledgeEnabled} enabled={liveCopilotEnabled} boundCustomer={selectedContext} onLiveSessionChange={setLiveAssistSession} onBusyChange={setHumanBusy} onSuggestionsChange={setCopilotHints}/>
     </div>
     <div hidden={workspace !== "live"}>
       <p className={styles.small}>Sprich hier selbst mit der KI. Es wird keine Telefonnummer angerufen. Ein ausgewählter Kunde dient als Testkontext; der Test erscheint nicht in seiner Gesprächshistorie.</p>

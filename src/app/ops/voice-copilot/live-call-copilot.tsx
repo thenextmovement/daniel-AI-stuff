@@ -31,6 +31,7 @@ type LiveCallCopilotProps = {
   knowledgeEnabled: boolean | null;
   enabled: boolean;
   boundCustomer?: VoiceCustomerContext | null;
+  onLiveSessionChange?: (sessionId: string | null) => void;
   onBusyChange?: (busy: boolean) => void;
   onSuggestionsChange?: (suggestions: VoiceCopilotSuggestion[]) => void;
 };
@@ -92,7 +93,7 @@ function waitForIceGathering(peerConnection: RTCPeerConnection) {
   });
 }
 
-export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, boundCustomer, onBusyChange, onSuggestionsChange }: LiveCallCopilotProps) {
+export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, boundCustomer, onLiveSessionChange, onBusyChange, onSuggestionsChange }: LiveCallCopilotProps) {
   const [mode, setMode] = useState<VoiceCopilotMode>("internal_test");
   const [selectedContext, setSelectedContext] = useState<VoiceCustomerContext | null>(null);
   const [consentConfirmed, setConsentConfirmed] = useState(false);
@@ -322,13 +323,19 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
         method: "POST",
         headers: { "content-type": "application/json", "x-voice-session-token": writeTokenRef.current },
         body: JSON.stringify({ sessionId, status: finalStatus }),
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(50_000),
       });
       if (!response.ok) throw new Error("transcript_finalize_failed");
+      const result = await response.json();
+      if (result.summaryStatus === "failed") {
+        setSaveFailed(true);
+        setSaveStatus("Transkript gespeichert. Zusammenfassung ausstehend – bitte erneut versuchen.");
+        return;
+      }
       sessionIdRef.current = null;
       writeTokenRef.current = "";
       const hasPartial = [...segmentStateRef.current.values()].some((segment) => !segment.final);
-      setSaveStatus(hasPartial ? "Gespeichert – letzte Passage möglicherweise unvollständig" : "Telefontranskript gespeichert");
+      setSaveStatus(result.summaryStatus === "empty" ? "Kein Sprachtext erfasst. Es gibt keine Gesprächszusammenfassung." : result.summaryStatus === "saved" ? (hasPartial ? "Transkript und Zusammenfassung gespeichert – letzte Passage möglicherweise unvollständig" : "Transkript und Zusammenfassung gespeichert") : hasPartial ? "Gespeichert – letzte Passage möglicherweise unvollständig" : "Telefontranskript gespeichert");
       setSaveFailed(false);
     } catch {
       setSaveFailed(true);
@@ -467,6 +474,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
 
   const isBusy = ["capturing", "connecting", "live", "stopping"].includes(status);
   useEffect(() => { onSuggestionsChange?.(suggestions); }, [suggestions, onSuggestionsChange]);
+  useEffect(() => { onLiveSessionChange?.(status === "live" ? sessionIdRef.current : null); }, [status, onLiveSessionChange]);
   useEffect(() => { onBusyChange?.(isBusy || saveFailed); }, [isBusy, saveFailed, onBusyChange]);
   const lastBoundCustomer = useRef<VoiceCustomerContext | null | undefined>(undefined);
   useEffect(() => {
