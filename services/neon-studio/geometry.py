@@ -1013,6 +1013,25 @@ def _letter_bands(lines, names, padding):
     return bands
 
 
+def _review_cut_to_shape(path, reference, lines, padding):
+    # Both directions matter: a straight bridge can fill a recess, and a
+    # shortcut towards a letter can remove backing. Coordinates are in mm.
+    def matches(candidate):
+        outline = Polygon(sample_path(candidate, 60))
+        return (outline.is_valid and not outline.is_empty
+                and _indexed_hausdorff(outline.exterior, reference.exterior) <= .1
+                and all(outline.covers(line) and outline.exterior.distance(line) >= padding - .09
+                        for line in lines))
+
+    if matches(path):
+        return path
+    points = list(reference.exterior.coords)
+    repaired = [M(*points[0]), *[L(*point) for point in points[1:-1]], ['h']]
+    if matches(repaired):
+        return repaired
+    raise ValueError('Formzuschnitt konnte den Konturverlauf und Neonabstand nicht einhalten.')
+
+
 def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands=()):
     # Close the outline of each component, preserving useful exterior concavities.
     pieces=[]
@@ -1069,11 +1088,7 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
         part=fit_curve(points[a:b+1],.01)
         path.extend(part if not path else part[1:])
     path.append(['h'])
-    fitted=Polygon(sample_path(path,40))
-    if not fitted.is_valid or any(not fitted.covers(line) or fitted.exterior.distance(line)<padding-.09 for line in lines):
-        # A valid rounded GEOS outline is preferable to a cubic fit that cuts inward.
-        path=[M(*points[0]),*[L(*p) for p in points[1:]],['h']]
-    return path
+    return _review_cut_to_shape(path, merged, lines, padding)
 
 
 def build_geometry(model, options=None, *, editable=True, sizing_probe=False, uncut_probe=False):
