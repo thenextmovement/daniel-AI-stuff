@@ -96,7 +96,18 @@ function waitForIceGathering(peerConnection: RTCPeerConnection) {
 export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, boundCustomer, onLiveSessionChange, onBusyChange, onSuggestionsChange }: LiveCallCopilotProps) {
   const [mode, setMode] = useState<VoiceCopilotMode>("internal_test");
   const [selectedContext, setSelectedContext] = useState<VoiceCustomerContext | null>(null);
-  const [consentConfirmed, setConsentConfirmed] = useState(false);
+  const inPhoneDirectory = boundCustomer !== undefined;
+  const [consentConfirmed, setConsentConfirmed] = useState(inPhoneDirectory);
+  const sharedSource = useRef<MediaStream | null>(null);
+  const [hasSharedAudio, setHasSharedAudio] = useState(false);
+  const acquiring = useRef(false);
+
+  function releaseSharedAudio() {
+    sharedSource.current?.getTracks().forEach(track => track.stop());
+    sharedSource.current = null;
+    setHasSharedAudio(false);
+  }
+
   const [status, setStatus] = useState<LiveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
@@ -350,12 +361,13 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
     vadCommittersRef.current.forEach((commit) => commit());
     await new Promise((resolve) => window.setTimeout(resolve, 2_000));
     await finishSession("completed");
-    setConsentConfirmed(false);
+    setConsentConfirmed(inPhoneDirectory);
     setStatus("stopped");
     appendEvent("Live-Copilot beendet. Speicherstatus wird separat angezeigt.");
   }
 
   async function startSession() {
+    if (acquiring.current) return;
     if (sessionIdRef.current || bufferRef.current?.size) {
       setError("Das vorherige Transkript muss zuerst fertig gespeichert werden.");
       return;
@@ -377,7 +389,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
       setError("Mitarbeitername fehlt.");
       return;
     }
-    if (mode !== "internal_test" && !selectedContext) {
+    if ((inPhoneDirectory || mode !== "internal_test") && !selectedContext) {
       setError("Kundenvorgang muss ausgewaehlt sein.");
       return;
     }
@@ -386,6 +398,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
       return;
     }
 
+    acquiring.current = true;
     try {
       segmentStateRef.current.clear();
       captureStartedRef.current = Date.now();
@@ -404,19 +417,34 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
       setStatus("capturing");
       appendEvent("Kunden-Audio wird angefragt.");
       window.focus();
-      const captureOptions = { video: true, audio: true, systemAudio: "include", windowAudio: "window" };
-      const customerStream = await navigator.mediaDevices.getDisplayMedia(captureOptions).catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "InvalidStateError") {
-          throw new Error("Bitte den OPS-Tab in den Vordergrund holen und Kunden-Audio teilen erneut auswählen.");
+      let source = sharedSource.current;
+      if (!source?.active || source.getAudioTracks()[0]?.readyState !== "live") {
+        releaseSharedAudio();
+        const captureOptions = { video: true, audio: true, systemAudio: "include", windowAudio: "window" };
+        source = await navigator.mediaDevices.getDisplayMedia(captureOptions);
+        const audio = source.getAudioTracks()[0];
+        if (!audio) {
+          source.getTracks().forEach(track => track.stop());
+          throw new Error("Die ausgewählte Quelle liefert kein Audio. Bitte Placetel mit Ton freigeben.");
         }
-        throw error;
-      });
-      mediaStreamsRef.current.push(customerStream);
-      const customerAudio = customerStream.getAudioTracks()[0];
-      if (!customerAudio) {
-        throw new Error("Die ausgewaehlte Quelle liefert kein Audio. Im Freigabedialog muss Audio aktiviert sein.");
+        source.getVideoTracks().forEach(track => { track.enabled = false; });
+        if (inPhoneDirectory) {
+          sharedSource.current = source;
+          audio.enabled = false;
+          setHasSharedAudio(true);
+          for (const track of source.getTracks()) {
+            track.addEventListener("ended", () => {
+              if (sharedSource.current === source) releaseSharedAudio();
+            }, {once:true});
+          }
+        } else {
+          mediaStreamsRef.current.push(source);
+        }
       }
-      customerStream.getVideoTracks().forEach((track) => { track.enabled = false; });
+      const callAudio = source.getAudioTracks()[0].clone();
+      callAudio.enabled = true;
+      const customerStream = new MediaStream([callAudio]);
+      mediaStreamsRef.current.push(customerStream);
       const operatorStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
@@ -445,6 +473,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
       captureStartedRef.current = Date.now();
       await customerPeer.peerConnection.setRemoteDescription({ type: "answer", sdp: payload.customerSdp });
       await operatorPeer.peerConnection.setRemoteDescription({ type: "answer", sdp: payload.operatorSdp });
+      if (inPhoneDirectory && source !== sharedSource.current) throw new Error("Die Audiofreigabe wurde beendet.");
       startLocalVad(customerStream, customerPeer.channel);
       startLocalVad(operatorStream, operatorPeer.channel);
       setStatus("live");
@@ -455,6 +484,8 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
       appendEvent(`Fehler: ${message}`);
       await finishSession("cancelled");
       setStatus("error");
+    } finally {
+      acquiring.current = false;
     }
   }
 
@@ -470,7 +501,17 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
   useEffect(() => () => {
     suggestionAbortRef.current?.abort();
     cleanupMedia();
+    sharedSource.current?.getTracks().forEach(track => track.stop());
+    sharedSource.current = null;
   }, []);
+
+  useEffect(() => {
+    if (inPhoneDirectory && status === "live" && !hasSharedAudio) {
+      setError("Die Audiofreigabe wurde beendet. Die bisherige Mitschrift wird gespeichert.");
+      setStatus("stopping");
+      void finishSession("cancelled").then(() => setStatus("stopped"));
+    }
+  }, [inPhoneDirectory, status, hasSharedAudio]);
 
   const isBusy = ["capturing", "connecting", "live", "stopping"].includes(status);
   useEffect(() => { onSuggestionsChange?.(suggestions); }, [suggestions, onSuggestionsChange]);
@@ -482,8 +523,8 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
     lastBoundCustomer.current = boundCustomer;
     setSelectedContext(boundCustomer);
     setSuggestions([]);
-    setMode(boundCustomer ? "lead_qualification" : "internal_test");
-    setConsentConfirmed(false);
+    setMode("lead_qualification");
+    setConsentConfirmed(inPhoneDirectory);
   }, [boundCustomer, isBusy, saveFailed]);
 
   const canStart = enabled
@@ -519,7 +560,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
 
         <div className={boundCustomer !== undefined ? "grid gap-4" : "grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(320px,1.2fr)]"}>
           <div className="grid content-start gap-4">
-            <div className="grid gap-2">
+            {!inPhoneDirectory && <div className="grid gap-2">
               <span className="text-xs font-semibold uppercase text-stone-500">Gespraechstyp</span>
               <div className="inline-flex w-full rounded-lg border border-stone-200 bg-stone-50 p-1" role="group" aria-label="Gespraechstyp">
                 {modes.map((entry) => (
@@ -538,7 +579,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
                   </button>
                 ))}
               </div>
-            </div>
+            </div>}
 
             {boundCustomer !== undefined ? <p className="text-sm text-stone-600">{selectedContext?.customer.displayName || selectedContext?.customer.company || (mode === "internal_test" ? "Interner Test ohne Kundenzuordnung" : selectedContext ? "Vorgang " + selectedContext.requestId.slice(0,8) : "Kein Kunde ausgewählt")}</p> : mode !== "internal_test" ? (
               <CustomerContextPanel selected={selectedContext} disabled={isBusy} onSelect={setSelectedContext} />
@@ -549,6 +590,10 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
               </div>
             )}
 
+            {inPhoneDirectory && <form id="phone-assist-start" onSubmit={event => {
+              event.preventDefault();
+              if (!isBusy && !saveFailed) void startSession();
+            }}/>}
             <label className="flex items-start gap-3 rounded-lg border border-stone-200 p-3 text-sm text-stone-800">
               <input
                 type="checkbox"
@@ -557,18 +602,22 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
                 disabled={isBusy}
                 className="mt-0.5 h-4 w-4"
               />
-              <span>Die aktive Einwilligung zur Live-Transkription und dauerhaften Speicherung wurde erteilt.</span>
+              <span>{inPhoneDirectory ? "Live-Mitschrift und Speicherung beim Kunden" : "Die aktive Einwilligung zur Live-Transkription und dauerhaften Speicherung wurde erteilt."}</span>
             </label>
 
+            {inPhoneDirectory && <p className="text-sm text-stone-600">
+              {hasSharedAudio ? "Placetel-Audio ist für diesen Tab freigegeben. " : "Beim ersten Start in diesem Tab Placetel mit Ton freigeben."}
+              {hasSharedAudio && !isBusy && <button type="button" className="underline" onClick={releaseSharedAudio}>Freigabe beenden</button>}
+            </p>}
             <div className="flex flex-wrap gap-2">
-              <button
+              {!inPhoneDirectory && <button
                 type="button"
                 onClick={() => void startSession()}
                 disabled={!canStart || isBusy}
                 className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#21714d] px-4 text-sm font-semibold text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Headphones className="h-4 w-4" /> Kunden-Audio teilen
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={() => void stopSession()}

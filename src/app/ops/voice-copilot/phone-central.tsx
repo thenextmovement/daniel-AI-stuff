@@ -153,7 +153,7 @@ export function PhoneCentral(props: Props) {
     setActiveContact(contact);
     setNumber(contact.phone || "");
     props.onSelect(null);
-    props.onWorkspaceChange("prepare");
+    props.onWorkspaceChange(contact.requestId ? "assist" : "prepare");
     setNotice("");
     setContextError("");
     setContextLoading(Boolean(contact.requestId));
@@ -398,25 +398,26 @@ export function PhoneCentral(props: Props) {
               </span>
             ) : null}
             <div className={styles.actions}>
+              {customer && !readySession && (props.workspace === "assist" ? (
+                <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
+                  disabled={busy || contextLoading || !selected}>
+                  <Headphones size={17}/> Einwilligung bestätigen und Begleitung starten
+                </button>
+              ) : (
+                <button type="button" className={styles.button} disabled={busy || contextLoading || !selected}
+                  onClick={() => props.onWorkspaceChange("assist")}><Headphones size={17}/> Gespräch begleiten</button>
+              ))}
               {canDial && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
                 disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
-              {customer && dialPhone && ((!busy && props.workspace !== "assist") || assistedDialReady) ? (
-                <button type="button" className={styles.button + " " + styles.primary} onClick={event => openPhoneApp(event, dialPhone)}>
-                  <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "In Telefon-App anrufen"}
+              {customer && dialPhone && (!busy || assistedDialReady) ? (
+                <button type="button" className={assistedDialReady ? styles.button + " " + styles.primary : styles.button} onClick={event => openPhoneApp(event, dialPhone)}>
+                  <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "Ohne Mitschrift anrufen"}
                 </button>
               ) : customer ? (
                 <button className={styles.button + " " + styles.primary} disabled>
                   {props.workspace === "assist" && dialPhone ? (readySession ? "Anruf gestartet" : "Gesprächsbegleitung vorbereiten") : busy ? "Gespräch aktiv" : "Rufnummer fehlt"}
                 </button>
               ) : null}
-              <button
-                className={styles.button}
-                disabled={busy || contextLoading || Boolean(activeContact && !selected)}
-                onClick={() => props.onWorkspaceChange("assist")}
-              >
-                <Headphones size={17} />
-                Gespräch begleiten
-              </button>
               <button
                 className={styles.button}
                 disabled={busy || contextLoading || Boolean(activeContact && !selected)}
