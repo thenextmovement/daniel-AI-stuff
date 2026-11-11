@@ -208,8 +208,11 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
         signal: controller.signal,
       });
       const payload = await response.json().catch(() => null);
+      if (requestNumber !== suggestionRequestRef.current) return;
+      const matchedMail = payload?.mailHint || mail;
+      if (matchedMail) setSuggestions([matchedMail]);
       if (!response.ok) throw new Error(payload?.error || "Live-Vorschlaege konnten nicht geladen werden.");
-      if (requestNumber === suggestionRequestRef.current) setSuggestions([...(mail ? [mail] : []), ...(payload?.suggestions || [])].slice(0, 3));
+      setSuggestions([...(matchedMail ? [matchedMail] : []), ...(payload?.suggestions || [])].slice(0, 3));
     } catch (requestError) {
       if (controller.signal.aborted) return;
       setSuggestionError(requestError instanceof Error ? requestError.message : "Live-Vorschlaege konnten nicht geladen werden.");

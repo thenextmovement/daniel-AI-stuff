@@ -19,6 +19,8 @@ import {
 import { getVoiceCopilotSuggestionModel, getVoiceOpenAiApiKey, isVoiceLiveCopilotEnabled } from "@/lib/ops/voice-openai-config";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
+import { findVoiceMailHint } from "@/lib/ops/voice-mail-hint";
+
 export const dynamic = "force-dynamic";
 
 function cleanText(value: unknown, maxLength: number) {
@@ -29,6 +31,7 @@ export async function POST(request: NextRequest) {
   const authError = await authorizeVoiceCopilotApi(request);
   if (authError) return authError;
 
+  let mailHint: ReturnType<typeof findVoiceMailHint> = null;
   try {
     if (!isVoiceLiveCopilotEnabled()) {
       return NextResponse.json({ ok: false, error: "voice_live_copilot_disabled" }, { status: 503 });
@@ -40,13 +43,14 @@ export async function POST(request: NextRequest) {
     if (!latestCustomerTurn) {
       throw new QuoteValidationError("Noch kein Kundenbeitrag fuer Vorschlaege vorhanden.", ["customer_turn_required"], 422);
     }
+    const boundContext = session.requestId ? await getVoiceCustomerContext(session.requestId, { mailQuestion: latestCustomerTurn.text }) : null;
+    mailHint = findVoiceMailHint(latestCustomerTurn.text, boundContext?.outlook || []);
     const apiKey = getVoiceOpenAiApiKey();
     const model = getVoiceCopilotSuggestionModel();
     if (!apiKey || !model) {
-      return NextResponse.json({ ok: false, error: "suggestion_model_not_configured" }, { status: 503 });
+      return NextResponse.json({ ok: false, mailHint, error: "suggestion_model_not_configured" }, { status: 503 });
     }
 
-    const boundContext = session.requestId ? await getVoiceCustomerContext(session.requestId) : null;
     const knowledgeMatches = await searchApprovedVoiceKnowledge([
       buildVoiceKnowledgeQuery(boundContext, session.mode),
       latestCustomerTurn.text,
@@ -102,7 +106,7 @@ export async function POST(request: NextRequest) {
     const payload = await openAiResponse.json().catch(() => null);
     if (!openAiResponse.ok) {
       console.error("voice copilot live suggestion request failed", { status: openAiResponse.status, model });
-      return NextResponse.json({ ok: false, error: "openai_suggestion_failed" }, { status: 502 });
+      return NextResponse.json({ ok: false, mailHint, error: "openai_suggestion_failed" }, { status: 502 });
     }
     const outputText = extractOpenAiResponseText(payload);
     let parsed: unknown;
@@ -118,10 +122,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       suggestions,
+      mailHint,
       generatedAt: new Date().toISOString(),
       transcriptStored: false,
     }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
+    if (mailHint) return NextResponse.json({ ok: false, mailHint, error: "live_suggestions_failed" }, { status: 502 });
     return voiceCopilotApiFailure(error, "live-suggestions");
   }
 }

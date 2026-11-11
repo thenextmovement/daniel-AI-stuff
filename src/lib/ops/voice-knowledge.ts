@@ -764,7 +764,7 @@ function mergeVoiceOutlookMessages(messages: VoiceCustomerContext["outlook"]) {
     });
 }
 
-export async function getVoiceCustomerContext(requestIdInput: unknown, options?: { customerId?: string | null }): Promise<VoiceCustomerContext> {
+export async function getVoiceCustomerContext(requestIdInput: unknown, options?: { customerId?: string | null; mailQuestion?: string }): Promise<VoiceCustomerContext> {
   const requestId = requiredText(requestIdInput, "Request-ID", 160, 3);
   const record = await loadVoiceContextRecord(requestId, options?.customerId);
   if (record.requestId !== requestId) {
@@ -772,12 +772,20 @@ export async function getVoiceCustomerContext(requestIdInput: unknown, options?:
   }
   const boundOffer = await resolveVoiceOffer(record);
   const mirrorOutlook = selectVoiceMirrorOutlook(record);
-  const liveOutlook = await fetchOutlookGraphEvidenceForBoundCustomer({
-    requestId: record.requestId,
-    customerEmail: record.email || null,
-    offerNumber: boundOffer.offer?.offerNumber || null,
-  });
+  const [archiveRows, liveOutlook] = await Promise.all([
+    supabaseRpc<Array<{ direction: string; subject: string; preview: string; occurred_at: string }>>(
+      "voice_customer_mail_evidence", { p_customer_id: record.masterCustomerId, p_question: options?.mailQuestion || "" },
+    ).catch(() => []),
+    fetchOutlookGraphEvidenceForBoundCustomer({
+      requestId: record.requestId,
+      customerEmail: record.email || null,
+      offerNumber: boundOffer.offer?.offerNumber || null,
+    }),
+  ]);
+  const archive = archiveRows.map(row => ({ direction: row.direction, subject: cleanText(row.subject, 240),
+    preview: cleanText(row.preview, 600), occurredAt: row.occurred_at, scope: "contact" as const }));
   const outlookMatches = mergeVoiceOutlookMessages([
+    ...archive,
     ...liveOutlook.evidence.map((entry) => ({
       direction: entry.direction,
       subject: cleanText(entry.title.replace(/^Live-Outlook(?: Treffer)?:\s*/i, ""), 240),
@@ -787,7 +795,10 @@ export async function getVoiceCustomerContext(requestIdInput: unknown, options?:
     })),
     ...mirrorOutlook,
   ]);
-  const outlook = outlookMatches.slice(0, 6);
+  // A matching older email must survive the six-message model context limit.
+  const outlook = options?.mailQuestion && archive.length
+    ? [...archive, ...outlookMatches.filter(message => !archive.some(row => row.subject === message.subject && row.occurredAt === message.occurredAt && row.direction === message.direction))].slice(0, 6)
+    : outlookMatches.slice(0, 6);
   let recentCalls: NonNullable<VoiceCustomerContext["recentCalls"]> = [];
   let historyStatus: VoiceCustomerContext["historyStatus"] = "ok";
   try {
