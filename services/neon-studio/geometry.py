@@ -6,7 +6,7 @@ from functools import lru_cache
 
 import numpy as np
 from scipy.integrate import quad
-from shapely.geometry import LineString, Polygon, MultiPoint, Point, box
+from shapely.geometry import GeometryCollection, LineString, Polygon, MultiPoint, Point, box
 from shapely.ops import unary_union, nearest_points
 from shapely import multipoints, convex_hull, STRtree, linestrings, points as shapely_points
 from colors import NEON_COLORS, line_color, valid_color
@@ -956,6 +956,33 @@ def _side_inset(hull, depths):
     return Polygon(clipped)
 
 
+def _illustration_depths(lines, base, padding):
+    """Allow shallow cuts across broad empty spans on the outside of line art."""
+    from shapely.geometry.polygon import orient
+    hull = GeometryCollection(lines).convex_hull
+    if hull.geom_type != 'Polygon':
+        return {}
+    left, top, right, bottom = hull.bounds
+    short_side = min(right - left, bottom - top)
+    tree = STRtree(lines)
+    depths = {}
+    points = list(orient(hull, sign=1).exterior.coords)
+    for a, b in zip(points, points[1:]):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        span = math.hypot(dx, dy)
+        # A long, nearly side-facing bridge can recede into empty space.
+        # Oblique corners and short openings retain the surrounding silhouette.
+        if span < short_side / 4 or max(abs(dx), abs(dy)) < .9 * span:
+            continue
+        middle = Point((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        free = middle.distance(lines[tree.nearest(middle)]) - padding
+        depth = round(min(.12 * span, .09 * short_side, free / 2))
+        if depth > base:
+            side = ('right' if dy > 0 else 'left') if abs(dy) > abs(dx) else ('top' if dx > 0 else 'bottom')
+            depths[side] = max(depths.get(side, base), depth)
+    return depths
+
+
 def _directional_buffer(core, paddings):
     """Minkowski envelope with a convex, four-radius rounded offset kernel.
 
@@ -1263,6 +1290,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     if radius<settings['radius']-.01:
         notices.append(f'Eckenradius auf {radius:.1f} mm begrenzt, damit der Rand erhalten bleibt.')
     depth=side_depths['bottom'] if settings['shape']=='bottom' else settings['depth']; notches=[]
+    automatic_depths = {}
     requested_depth=depth
     if settings['shape']=='bottom':
         bottom_bounds=[line.bounds for line in lines if line.bounds[3]>h-bottom-(h-top-bottom)*.15]
@@ -1286,6 +1314,15 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
         bands=()
         if all(value==DEFAULTS['depth'] for value in side_depths.values()) and not asymmetric:
             bands=_letter_bands(lines,[name for _,name in support_sections],padding)
+        if (not bands and not asymmetric and not overrides and depth == DEFAULTS['depth']
+                and not settings.get('manualContourDepth') and not uv_support
+                and (settings.get('illustrationContour') or not (clean_regions or settings.get('outlineEdits')))
+                and sum(not line.is_ring for line in lines) >= max(2, len(lines) / 2)):
+            automatic_depths = _illustration_depths(lines, depth, padding)
+            if automatic_depths:
+                side_depths.update(automatic_depths)
+                if settings['radius'] == DEFAULTS['radius'] and not settings.get('manualContourRadius'):
+                    radius = min(15, padding, w/4, h/4)
         outer=_full_shape(lines,padding,radius,depth,side_depths,paddings if asymmetric else None,bands)
         # Sampling/curve fitting can move extrema by a fraction of a millimetre.
         # Anchor the backing to the requested dimensions without moving neon.
@@ -1447,7 +1484,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
                 width=float(bbox[2]-bbox[0]), height=float(bbox[3]-bbox[1]), bounds=bbox,
                 neonMeters=neon_length, neonMaterialMeters=neon_length*1.10,
                 minGap=center_gap,
-                settings=settings, effectiveRadius=radius,effectiveDepth=depth,
+                settings=settings, automaticDepthSides=automatic_depths, effectiveRadius=radius,effectiveDepth=depth,
                 imageBox=[(raw_box[0]-reference[0])*scale,(raw_box[1]-reference[1])*scale,raw_box[2]*scale,raw_box[3]*scale],
                 checks=checks, notices=notices, sourceKind=model['sourceKind'],
                 sourceLabel=model['sourceLabel'], openPaths=sum(p[-1][0]!='h' for p in paths))

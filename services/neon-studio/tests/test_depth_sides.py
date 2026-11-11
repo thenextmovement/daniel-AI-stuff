@@ -14,6 +14,19 @@ class DepthSideTests(unittest.TestCase):
         self.assertEqual(_side_inset(box(0,0,200,200),depths).bounds,(8,25,185,160))
         self.assertTrue(_side_inset(Polygon([(0,100),(100,0),(200,100),(100,200)]),depths).is_valid)
 
+    def test_automatic_line_art_recess_follows_the_empty_side(self):
+        from geometry import _illustration_depths
+        from shapely.affinity import scale
+        lines = [LineString([(0,0),(500,0),(510,25)]),
+                 LineString([(220,10),(215,305),(30,550)])]
+        depths = _illustration_depths(lines, 20, 18)
+        self.assertGreater(depths['left'], 20)
+        mirrored = [scale(line, xfact=-1, origin=(0,0)) for line in lines]
+        self.assertEqual(_illustration_depths(mirrored, 20, 18)['right'], depths['left'])
+        # A neon route along the same long bridge leaves no empty recess.
+        lines.append(LineString([(0,0),(30,550)]))
+        self.assertNotIn('left', _illustration_depths(lines, 20, 18))
+
     def test_each_side_controls_only_its_own_recess(self):
         # Use disjoint recess corners, so the neon route has no self-touching necks.
         points=[(0,0),(80,0),(80,60),(120,60),(120,0),(200,0),(200,80),(140,80),(140,120),(200,120),(200,200),(120,200),(120,140),(80,140),(80,200),(0,200),(0,120),(60,120),(60,80),(0,80),(0,0)]

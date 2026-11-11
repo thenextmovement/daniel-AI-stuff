@@ -172,6 +172,7 @@ async function runGeometry() {
       const last=state.history[state.historyIndex];
       const historyMatches=last?.project===project && JSON.stringify(last.settings)===JSON.stringify(settings);
       state.settings.scale=drawing.settings.scale;state.settings.width=drawing.width;
+      if(Object.keys(drawing.automaticDepthSides||{}).length)state.settings.illustrationContour=true;
       if(historyMatches)last.settings={...state.settings};
       state.busy=false;state.valid=drawing.exportable;
     }
@@ -207,6 +208,14 @@ function setSetting(key,value,commit=true,side=null) {
     state.settings.scale=span>0 && value>padding(state.settings)+20
       ? drawing.settings.scale*(value-padding(state.settings))/span : null;
   }
+  if(key==='depth'){
+    if(!state.settings.manualContourDepth && Object.keys(state.drawing?.automaticDepthSides||{}).length){
+      if(side)state.settings.depthSides={...state.drawing.automaticDepthSides,...state.settings.depthSides};
+      state.settings.radius=state.drawing.effectiveRadius;
+    }
+    state.settings.manualContourDepth=true;
+  }
+  if(key==='radius')state.settings.manualContourRadius=true;
   if(key==='depth'||key==='gap'){
     if(side)state.settings[key+'Sides']={...state.settings[key+'Sides'],[side]:value};
     else{state.settings[key]=value;state.settings[key+'Sides']={};}
@@ -219,9 +228,18 @@ function updateControls() {
   const factor=state.dimensionUnit==='cm'?10:1;
   $('width').min=80/factor;$('width').max=20000/factor;
   $('depthRange').max=Math.max(500,Math.ceil(state.settings.depth/100)*100);
-  $$('[data-setting]').forEach(el=>{if(document.activeElement!==el)el.value=el.id==='width'?(state.settings.width/factor).toFixed(2):Number(Number(state.settings[el.dataset.setting]).toFixed(3));});
+  const automaticSides=state.settings.manualContourDepth ? {} : (state.drawing?.automaticDepthSides||{});
+  const usesAutomaticDepth=Object.keys(automaticSides).length>0;
+  $$('[data-setting]').forEach(el=>{
+    if(document.activeElement===el)return;
+    const key=el.dataset.setting;
+    const value=key==='radius'&&usesAutomaticDepth&&!state.settings.manualContourRadius ? state.drawing.effectiveRadius : state.settings[key];
+    el.value=el.id==='width'?(state.settings.width/factor).toFixed(2):Number(Number(value).toFixed(3));
+  });
   $$('[data-side-setting]').forEach(el=>{
-    const value=state.settings[el.dataset.sideSetting+'Sides']?.[el.dataset.side]??state.settings[el.dataset.sideSetting];
+    const {sideSetting,side}=el.dataset;
+    const automatic=sideSetting==='depth' ? automaticSides[side] : undefined;
+    const value=state.settings[sideSetting+'Sides']?.[side]??automatic??state.settings[sideSetting];
     if(el.type==='range'&&el.dataset.sideSetting==='depth')el.max=Math.max(500,Math.ceil(value/100)*100);
     if(document.activeElement!==el)el.value=value;
   });
