@@ -242,6 +242,25 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(len(images),1)
   preview=Image.open(io.BytesIO(base64.b64decode(images[0]['image_url'].split(',')[1])))
   self.assertNotEqual(preview.getpixel((0,0)),preview.getpixel((5,5)))
+ def test_two_quotes_are_separate_when_two_texts_are_ordered(self):
+  from unittest.mock import Mock,patch
+  from cloud_ai import generate
+  t=Mock();image=io.BytesIO();Image.new('RGB',(20,10)).save(image,'PNG');t.download.return_value=image.getvalue()
+  card={'id':'source','name':'2 Quotes | LED Neon Flex | 180cm','desc':
+        'Die zwei Schilder wie PAD1, aber anderen Text: "amazon rme contractor point" "amazon rme red-tag area" jeweils 1 Stück',
+        'attachments':[{'id':'art','name':'logo.png','isUpload':True}]}
+  first={'design_name':'Contractor Point','source_attachment_ids':['art'],'svg':SVG}
+  second={**first,'design_name':'Red-Tag Area','svg':SVG.replace('M10 50','M20 50')}
+  def run(response):
+   with patch.dict('os.environ',{'OPENAI_API_KEY':'test'}),patch('cloud_ai.requests.post') as post:
+    post.return_value.json.return_value={'status':'completed','output':[{'content':[{'type':'output_text','text':json.dumps(response)}]}]}
+    return generate(t,card)[0]
+  with self.assertRaises(Review):run(first)
+  self.assertEqual(len(run({'designs':[first,second]})['designs']),2)
+  card['desc']='Ein Motiv in zwei Größen anbieten.'
+  self.assertNotIn('designs',run(first))
+  card['desc']='Contractor Point und Red-Tag Area bitte separat anbieten.'
+  self.assertEqual(len(run({'designs':[first,second]})['designs']),2)
  def test_scope(self):
   self.assertTrue(eligible('LED Neon Flex | Anfrage'))
   for title in ('3D Neon | Kunde','Light Box | Kunde','🤖 LED Neon'):self.assertFalse(eligible(title))

@@ -197,7 +197,7 @@ alle anderen automatisch die nächstpassende verfügbare Neonfarbe. Diese Farbzu
 Ausdrücklich bestellte Leuchtfarben haben Vorrang. Formuliere jede tatsächlich offene Entscheidung als kurze Frage:
 Benenne den betroffenen Motivteil und erkläre in einem zweiten Satz, welche Angabe fehlt oder welche Angaben sich widersprechen.
 Fehlende Usage: Innen; fehlender Zuschnitt: shape. Randabstand später 15mm.
-Falls verbindliche_titelgroessen vorliegen, sind die Größen vollständig geklärt. Keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen. Die geometrische Mindestbreite wird immer automatisch berechnet. Fehlende Mindestbreite ist kein issue. Nur Rückfragen, deren Antwort Zeichnung oder Kalkulation tatsächlich verändert und die weder durch die Vorlage noch durch die vereinbarten Standardwerte geklärt sind, gehören in issues. Reine Erläuterungen, Bestätigungswünsche und allgemeine Produktionshinweise sind keine issues. Pro offenem Sachverhalt genau ein separates issue. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei mehreren unterschiedlichen Motiven: issues. Für die Zeichnung immer 6 mm Neonflex annehmen.
+Falls verbindliche_titelgroessen vorliegen, sind die Größen vollständig geklärt. Keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen. Die geometrische Mindestbreite wird immer automatisch berechnet. Fehlende Mindestbreite ist kein issue. Nur Rückfragen, deren Antwort Zeichnung oder Kalkulation tatsächlich verändert und die weder durch die Vorlage noch durch die vereinbarten Standardwerte geklärt sind, gehören in issues. Reine Erläuterungen, Bestätigungswünsche und allgemeine Produktionshinweise sind keine issues. Pro offenem Sachverhalt genau ein separates issue. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei unklarer Motivwahl frage nur nach, wenn sich aus der Bestellung nicht ergibt, welche Motive angeboten werden sollen. Für die Zeichnung immer 6 mm Neonflex annehmen.
 Die SVG enthält ausschließlich die tatsächlich benötigten Neonpfade: smooth Mittellinien bei
 Schreibschrift/dünnen Strichen, vorhandene Umrisslinien bei bewusst breiten Outline-Logos.
 Keine Leuchthöfe, Schattierungen, Acrylkontur, Beschriftungen, Bemaßung oder Bildrahmen.
@@ -214,20 +214,30 @@ gerade und tangential fortsetzen, keine kleinen Stopps, Knicke oder erfundenen V
 Kein Font-Ersatz, keine eingebetteten Bilder, keine text-Elemente. fill=none, stroke-Farbe,
 runde Linienenden. Nur svg/g/path; Befehle M L C Q Z. viewBox passend zur Zeichnung.
 Daten der Anfrage: """+json.dumps(context,ensure_ascii=False)
-    two_designs=bool(re.search(r'\b(?:2|zwei|two)\s+designs\b',card['name']+'\n'+card['desc'],re.I))
-    if two_designs:
-        prompt+="""
-Die Anfrage bestellt zwei getrennte Schilder. Antworte mit {"designs":[Objekt1,Objekt2]}.
+    order=card['name']+'\n'+card['desc']
+    two_designs_required=bool(re.search(r'\b(?:2|zwei|two)\s+designs\b',order,re.I) or
+        (re.search(r'\b(?:2|zwei|two)\s+(?:schilder|signs)\b',order,re.I) and
+         len(re.findall(r'[„“"]([^„“”"\n]+)[“”"]',card['desc']))>=2 and
+         re.search(r'\bjeweils\s+(?:ein|1)\s+Stück\b',card['desc'],re.I)))
+    prompt+="""
+Ermittle anhand der Bestellung und der Kundenmotive, ob zwei unterschiedliche Schilder angefragt sind.
+Zwei bestellte Schriftzüge, auch im selben Stil, erhalten jeweils eine eigene Zeichnung und Kalkulation.
+„2 Quotes“ allein kann auch zwei Größen oder Farbvarianten desselben Designs bezeichnen.
+Mehrere Vorlagen desselben Motivs oder zwei Exemplare allein sind ein Design.
+Bei zwei bestellten Designs antworte mit {"designs":[Objekt1,Objekt2]}.
+Ordne jedem Design den passenden Anhang, den bestellten Text und die Stückzahl je Motiv zu.
 Jedes Objekt enthält alle oben verlangten Felder und einen kurzen eindeutigen design_name.
 Erzeuge für jedes Layout nur dessen eigene Pfade in einer eigenen eng passenden viewBox.
 Der Zeilenumbruch innerhalb eines Layouts gehört zum selben Schild. Behalte die Reihenfolge der Vorlage.
 Zwei bestellte Designs sind kein issue. Bei Größen und Ausführung haben die strukturierten
 aktuellen Kartenangaben Vorrang vor relativen Wünschen im zitierten Mailverlauf.
 Bei ausdrücklicher Farbwahl verwende die bestellte Leuchtfarbe auch für die SVG-Pfade."""
+    if two_designs_required:
+        prompt+='\nFür diese Bestellung sind zwei verschiedene Designs erforderlich.'
     started=time.perf_counter()
     r=requests.post('https://api.openai.com/v1/responses',headers={'Authorization':'Bearer '+os.environ['OPENAI_API_KEY']},
         json={'model':os.getenv('NEON_AI_MODEL','gpt-6-astra'),'reasoning':{'effort':os.getenv('NEON_AI_EFFORT','high')},
-            'max_output_tokens':36000 if two_designs else 18000,'store':False,'input':[{'role':'user','content':[{'type':'input_text','text':prompt}]+content}]},
+            'max_output_tokens':36000 if two_designs_required or len(seen)>1 or re.search(r'\b2 quotes\b',order,re.I) else 18000,'store':False,'input':[{'role':'user','content':[{'type':'input_text','text':prompt}]+content}]},
         timeout=(20,900))
     if not r.ok:
         try:code=r.json().get('error',{}).get('code')
@@ -240,7 +250,8 @@ Bei ausdrücklicher Farbwahl verwende die bestellte Leuchtfarbe auch für die SV
     text=re.sub(r'^\s*```(?:json)?\s*|\s*```\s*$','',text.strip())
     try:data=json.loads(text)
     except ValueError:raise Review('KI-Antwort ist unvollständig. Bitte erneut prüfen.')
-    if not isinstance(data,dict) or (not two_designs and 'designs' in data):raise Review('Unerwartete Anzahl von Designs in der KI-Antwort.')
+    if not isinstance(data,dict):raise Review('Unerwartete Anzahl von Designs in der KI-Antwort.')
+    two_designs=two_designs_required or 'designs' in data
     designs=data.get('designs') if two_designs else [data]
     if two_designs and (not isinstance(designs,list) or len(designs)!=2 or
             any(not isinstance(d,dict) or not isinstance(d.get('design_name'),str) or not d['design_name'].strip() for d in designs)):
