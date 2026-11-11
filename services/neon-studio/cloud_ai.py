@@ -283,17 +283,26 @@ Bei ausdrücklicher Farbwahl verwende die bestellte Leuchtfarbe auch für die SV
     if two_designs_required:
         prompt+='\nFür diese Bestellung sind zwei verschiedene Designs erforderlich.'
     started=time.perf_counter()
-    r=requests.post('https://api.openai.com/v1/responses',headers={'Authorization':'Bearer '+os.environ['OPENAI_API_KEY']},
-        json={'model':os.getenv('NEON_AI_MODEL','gpt-6-astra'),'reasoning':{'effort':os.getenv('NEON_AI_EFFORT','high')},
-            'max_output_tokens':36000 if two_designs_required or len(seen)>1 or re.search(r'\b2 quotes\b',order,re.I) else 18000,'store':False,'input':[{'role':'user','content':[{'type':'input_text','text':prompt}]+content}]},
-        timeout=(20,900))
-    if not r.ok:
-        try:code=r.json().get('error',{}).get('code')
-        except (ValueError,AttributeError):code=None
-        code=code if isinstance(code,str) and re.fullmatch(r'[a-z_0-9]{1,64}',code) else ''
-        raise ServiceError('KI-Dienst bestätigt die Zeichnung nicht (HTTP %s%s).'%(r.status_code,', '+code if code else ''))
-    result=r.json()
-    if result.get('status')!='completed':raise Review('KI-Zeichnung wurde nicht vollständig erstellt.')
+    budget=36000 if two_designs_required or len(seen)>1 or re.search(r'\b2 quotes\b',order,re.I) else 18000
+    for attempt in range(2):
+        r=requests.post('https://api.openai.com/v1/responses',headers={'Authorization':'Bearer '+os.environ['OPENAI_API_KEY']},
+            json={'model':os.getenv('NEON_AI_MODEL','gpt-6-astra'),'reasoning':{'effort':os.getenv('NEON_AI_EFFORT','high')},
+                'max_output_tokens':budget,'store':False,'input':[{'role':'user','content':[{'type':'input_text','text':prompt}]+content}]},
+            timeout=(20,900))
+        if not r.ok:
+            try:code=r.json().get('error',{}).get('code')
+            except (ValueError,AttributeError):code=None
+            code=code if isinstance(code,str) and re.fullmatch(r'[a-z_0-9]{1,64}',code) else ''
+            raise ServiceError('KI-Dienst bestätigt die Zeichnung nicht (HTTP %s%s).'%(r.status_code,', '+code if code else ''))
+        result=r.json()
+        if result.get('status')=='completed':break
+        reason=(result.get('incomplete_details') or {}).get('reason')
+        if result.get('status')=='incomplete' and reason in (None,'max_output_tokens'):
+            if attempt==0:
+                budget*=2
+                continue
+            raise Review('Zeichnung auch nach zwei Versuchen unvollständig. Zeichnung erneut starten oder Vorlage prüfen.')
+        raise Review('KI-Dienst hat die Zeichnung nicht abgeschlossen. Bitte den Zeichnungslauf prüfen.')
     text=''.join(p.get('text','') for o in result.get('output',[]) for p in o.get('content',[]) if p.get('type')=='output_text')
     text=re.sub(r'^\s*```(?:json)?\s*|\s*```\s*$','',text.strip())
     try:data=json.loads(text)

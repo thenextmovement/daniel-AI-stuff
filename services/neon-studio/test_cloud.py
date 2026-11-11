@@ -242,6 +242,24 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(len(images),1)
   preview=Image.open(io.BytesIO(base64.b64decode(images[0]['image_url'].split(',')[1])))
   self.assertNotEqual(preview.getpixel((0,0)),preview.getpixel((5,5)))
+ def test_incomplete_drawing_retries_same_source_once(self):
+  from unittest.mock import Mock,patch
+  from cloud_ai import generate
+  image=io.BytesIO();Image.new('RGB',(20,10)).save(image,'PNG')
+  t=Mock();t.download.return_value=image.getvalue()
+  card={'id':'card','name':'Logo','desc':'','attachments':[{'id':'art','name':'logo.png','isUpload':True}]}
+  partial={'status':'incomplete','incomplete_details':{'reason':'max_output_tokens'}}
+  design={'source_attachment_ids':['art'],'svg':SVG,'excluded_regions':[]}
+  done={'status':'completed','output':[{'content':[{'type':'output_text','text':json.dumps(design)}]}]}
+  for final in (partial,done):
+   with patch.dict('os.environ',{'OPENAI_API_KEY':'test'}),patch('cloud_ai.requests.post') as post:
+    post.return_value.json.side_effect=[partial,final]
+    if final is partial:
+     with self.assertRaisesRegex(Review,'zwei Versuchen'):generate(t,card)
+    else:self.assertEqual(generate(t,card)[0]['source_attachment_ids'],['art'])
+    a,b=[call.kwargs['json'] for call in post.call_args_list]
+    self.assertEqual(a['input'],b['input'])
+    self.assertGreater(b['max_output_tokens'],a['max_output_tokens'])
  def test_two_quotes_are_separate_when_two_texts_are_ordered(self):
   from unittest.mock import Mock,patch
   from cloud_ai import generate

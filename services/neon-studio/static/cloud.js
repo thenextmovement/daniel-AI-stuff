@@ -335,7 +335,7 @@ function cloudSources(){
   const checks=[];
   for(const a of cloud.attachments||[]){
     const label=textElement('label',a.name);label.style.cssText='display:block;padding:10px';
-    const input=document.createElement('input');input.type='checkbox';input.value=a.id;input.checked=(cloud.selected_attachments||[]).includes(a.id);
+    const input=document.createElement('input');input.type='checkbox';input.value=a.id;input.checked=cloud.attachments.length===1||(cloud.selected_attachments||[]).includes(a.id);
     label.prepend(input);dialog.append(label);checks.push(input);
   }
   const retry=textElement('button','Zeichnung neu erstellen');
@@ -441,7 +441,17 @@ async function cloudBoot(){
   if(!['queued','copying','generating','publishing','publish_queued'].includes(cloud.status))bar.append(rereadButton());
   if(!cloud.model||['queued','copying','generating'].includes(cloud.status)){
     processing('Anfrage wird vorbereitet',cloud.error||'Das Kundenmotiv wird auf dem Server als Zeichnung erstellt. Du kannst dieses Fenster schließen und später wieder öffnen.');
-    if(cloud.error){$('processingOverlay').hidden=true;toast(cloud.error,true);cloudSources();}
+    if(cloud.error){$('processingOverlay').hidden=true;toast(cloud.error,true);
+      if((cloud.attachments||[]).length>1 && cloud.error.includes('Kundenmotiv nicht eindeutig'))cloudSources();
+      else {
+        const restart=textElement('button','Zeichnung erneut starten');
+        restart.onclick=async()=>{
+          restart.disabled=true;
+          try{await cloudRequest('retry',{id:cloud.id,revision:cloud.revision});location.reload();}
+          catch(e){restart.disabled=false;toast(e.message,true);}
+        };
+        bar.append(restart);
+      }}
     if(['queued','copying','generating'].includes(cloud.status))setTimeout(()=>location.reload(),10000);
     return;
   }
