@@ -369,7 +369,9 @@ $('targetForm').onsubmit=async event=>{
     const proposal=report.proposal;
     if(proposal){
       const detail=document.createElement('p');detail.className='help-text';
-      detail.textContent=`Vorschlag für ${names(proposal.keys)}: ${number(Math.abs(proposal.dx),2)} mm ${proposal.dx<0?'links':'rechts'}, ${number(Math.abs(proposal.dy),2)} mm ${proposal.dy<0?'oben':'unten'}. Verbleibende Engstellen: ${proposal.remaining}.`;
+      detail.textContent=proposal.horizontalMoves ?
+        `Buchstabenabstände angepasst · größte Verschiebung: ${number(Math.max(...Object.values(proposal.horizontalMoves).map(Math.abs)),2)} mm. Verbleibende Engstellen: ${proposal.remaining}.` :
+        `Vorschlag für ${names(proposal.keys)}: ${number(Math.abs(proposal.dx),2)} mm ${proposal.dx<0?'links':'rechts'}, ${number(Math.abs(proposal.dy),2)} mm ${proposal.dy<0?'oben':'unten'}. Verbleibende Engstellen: ${proposal.remaining}.`;
       $('targetIssues').append(detail);
       button('Verschiebung und Wunschbreite übernehmen',async()=>{
         state.settings.pathOffsets=proposal.offsets;await resizeToMinimum(width);

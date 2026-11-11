@@ -2,9 +2,12 @@
 import hashlib
 import json
 import math
+import re
 
 import numpy as np
 from shapely import STRtree, points, linestrings, distance as distances
+from scipy.optimize import linprog
+from shapely.affinity import translate
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from shapely.geometry import LineString, Point, Polygon
@@ -261,6 +264,94 @@ def widths_for_heights(store, model, settings, heights):
     return result
 
 
+def letter_spacing_offsets(drawing, shapes, connected, pairs):
+    """Keep glyph geometry rigid and minimize total horizontal movement per glyph."""
+    keys = drawing['pathKeys']
+    labels = {key: name.removesuffix(' · Punkt') for key, name in zip(keys, drawing.get('names', []))}
+    text = re.compile(r'\b(?:schrift\w*|text\w*|wortmarke|wordmark|lettering|buchstaben\w*)\b', re.I)
+    rows = set()
+    for pair in pairs:
+        a, b = pair['keys']
+        name = labels.get(a, '')
+        if name == labels.get(b) and text.search(name):
+            rows.add(name)
+    if not rows:
+        return {}
+    roles = dict(zip(keys, drawing.get('pathRoles', [])))
+    moves = {}
+    left = min(s.bounds[0] for s in shapes.values())
+    right = max(s.bounds[2] for s in shapes.values())
+    for row in sorted(rows):
+        members = {k for k in shapes if labels.get(k) == row}
+        # Keep enclosed contours, joined strokes and detached dots with their letter.
+        groups = []
+        while members:
+            group = connected(min(members))
+            if any(labels.get(k) != row for k in group):
+                return {}
+            members -= group
+            groups.append(group)
+        for group in list(groups):
+            if not all(roles.get(k) == 'dot' for k in group):
+                continue
+            box = unary_union([shapes[k] for k in group]).bounds
+            x = (box[0] + box[2])/2
+            stems = []
+            for other in groups:
+                if other is group: continue
+                bounds = unary_union([shapes[k] for k in other]).bounds
+                if bounds[0] <= x <= bounds[2] and bounds[1] >= box[3]:
+                    stems.append((bounds[1], other))
+            if stems:
+                min(stems, key=lambda item: item[0])[1].update(group)
+                groups.remove(group)
+        groups.sort(key=lambda g: min(shapes[k].bounds[0] for k in g))
+        glyphs = [unary_union([shapes[k] for k in g]) for g in groups]
+        n = len(groups)
+        unit = np.eye(n)
+        matrix = [*np.c_[unit, -unit], *np.c_[-unit, -unit]]
+        limits = [0.]*(2*n)
+        bounds = []
+        for glyph in glyphs:
+            x0, _, x1, _ = glyph.bounds
+            bounds.append((0, 0) if min(x0-left, right-x1)<.001 else (left-x0, right-x1))
+        offsets = np.zeros(n)
+        for _ in range(16):
+            shifted = [translate(g, xoff=x) for g, x in zip(glyphs, offsets)]
+            conflicts = 0
+            for i, first in enumerate(shifted):
+                for j in range(i+1, n):
+                    second = shifted[j]
+                    if first.distance(second) >= CENTER_SPACING-1e-7:
+                        continue
+                    # Find the nearest clear position to the right with the
+                    # original letter order. Physical coordinates are millimetres.
+                    lo = 0.
+                    hi = max(CENTER_SPACING, first.bounds[2]-second.bounds[0]+CENTER_SPACING)
+                    for _ in range(24):
+                        mid = (lo+hi)/2
+                        if first.distance(translate(second, xoff=mid)) < CENTER_SPACING:
+                            lo = mid
+                        else:
+                            hi = mid
+                    matrix.append(np.r_[unit[i]-unit[j], np.zeros(n)])
+                    limits.append(offsets[i]-offsets[j]-hi-.0001)
+                    conflicts += 1
+            if not conflicts:
+                for group, dx in zip(groups, offsets):
+                    if abs(dx)>.00001:
+                        moves.update(dict.fromkeys(group, float(dx)))
+                break
+            solution = linprog(np.r_[np.zeros(n), np.ones(n)], A_ub=matrix, b_ub=limits,
+                               bounds=bounds+[(0, None)]*n, method='highs')
+            if not solution.success:
+                return {}
+            offsets = solution.x[:n]
+        else:
+            return {}
+    return moves
+
+
 def target_width(store, model, settings, width):
     if type(width) not in (float, int) or not 80 <= width <= 20000:
         raise ValueError('Wunschbreite zwischen 8 und 2000 cm eingeben.')
@@ -321,6 +412,25 @@ def target_width(store, model, settings, width):
                     frontier.extend(neighbours)
         if moved != group:
             yield moved
+
+    moves = letter_spacing_offsets(drawing, shapes, connected, pairs)
+    if moves:
+        offsets = dict(settings.get('pathOffsets') or {})
+        for key, dx in moves.items():
+            x, y = offsets.get(key, [0, 0])
+            offsets[key] = [float(x + dx/drawing['settings']['scale']), y]
+        candidate = {**options, 'pathOffsets': offsets}
+        after = {}
+        try:
+            final = store.drawing(model, json.dumps(candidate, sort_keys=True), editable=False)
+            measure(final, after)
+        except ValueError:
+            final = None
+        if (final and final['exportable'] and abs(final['width']-width)<=.1 and len(after)<len(issues)
+                and all(k in issues and v['actual']>=issues[k]['actual']-.001 for k,v in after.items())):
+            report['proposal'] = dict(keys=sorted(moves), horizontalMoves=moves, offsets=offsets,
+                                      remaining=len(after), remainingIssues=list(after.values()))
+            return report
 
     for issue in pairs[:3]:
         first, second = issue['keys']
