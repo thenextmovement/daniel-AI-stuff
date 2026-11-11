@@ -17,8 +17,11 @@ export async function GET(request: NextRequest) {
       const offset = Number(request.nextUrl.searchParams.get("offset") || 0);
       if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000)
         return NextResponse.json({ok:false,error:"invalid_offset"}, {status:400});
+      const channel = request.nextUrl.searchParams.get("channel");
+      const kinds = channel === "phone" ? "in.(call,transcript)" : channel === "email" ? "in.(inbound,outbound)" : null;
       const rows = await supabaseRequest<unknown[]>("voice_customer_events", {signal:AbortSignal.timeout(12000)}, {
         select:"id,occurred_at,kind,subject,detail,request_ref,session_id", customer_id:"eq."+id,
+        ...(kinds ? {kind:kinds} : {}),
         order:"occurred_at.desc.nullslast,id.asc", offset, limit:21,
       });
       const ref = request.nextUrl.searchParams.get("requestId");
