@@ -1043,7 +1043,16 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
         # Replace the sloping hull only over text columns. The buffered neon
         # underneath retains local ascenders, descenders and the full clearance.
         columns=unary_union([box(l,hull.bounds[1]-1,r,hull.bounds[3]+1) for l,t,r,b in bands])
-        levels=unary_union([box(l,t,r,b) for l,t,r,b in bands]).intersection(hull)
+        # Limit the dip from the shared baseline while following exposed glyph
+        # edges. Closing the protected outline rounds narrow gaps between glyphs.
+        shoulder=max(radius,padding*.7)
+        envelope=merged.buffer(shoulder,quad_segs=16).buffer(-shoulder,quad_segs=16)
+        levels=[]
+        for l,t,r,b in bands:
+            dip=min(depth,(b-t)*.10,(r-l)*.10)
+            band=box(l,t,r,b)
+            levels.append(box(l,t+dip,r,b-dip).union(envelope.intersection(band)))
+        levels=unary_union(levels).intersection(hull)
         cap=cap.difference(columns).union(levels)
     if not cap.is_empty:
         merged=unary_union([merged,cap])

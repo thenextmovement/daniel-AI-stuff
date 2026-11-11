@@ -19,8 +19,11 @@ class LetterContourTests(unittest.TestCase):
         for line in lines:
             self.assertTrue(poly.covers(line))
             self.assertGreaterEqual(poly.exterior.distance(line),17.9)
-        for x in (80,115,140,260,280):
+        recesses=[]
+        for x in (80,115,125,140,260,280):
             cross=poly.intersection(LineString([(x,-100),(x,200)])).bounds
-            self.assertAlmostEqual(cross[1],17,delta=.1)
-            self.assertAlmostEqual(cross[3],103,delta=.1)
+            recesses.extend([cross[1]-17,103-cross[3]])
+        self.assertGreater(max(recesses),.5)
+        self.assertLessEqual(max(recesses),8.7)
+        self.assertGreaterEqual(min(recesses),-.1)
         self.assertEqual(_letter_bands(lines,['Logosymbol']*len(lines),18),[])
