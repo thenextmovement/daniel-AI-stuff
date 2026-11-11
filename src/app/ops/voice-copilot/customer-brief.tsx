@@ -12,10 +12,9 @@ function abridge(input:string|null,max=240) {
   if(text.length<=max)return text;
   return text.slice(0,max).replace(/\s+\S*$/,"")+"…";
 }
-export function CustomerBrief({id,context}:{id:string;context:VoiceCustomerContext|null}) {
+export function CustomerBrief({id,requestId,context}:{id:string;requestId:string;context:VoiceCustomerContext|null}) {
   const [page,setPage]=useState<Page|null>(null),[offset,setOffset]=useState(0),[retry,setRetry]=useState(0);
   const [error,setError]=useState(false),[loading,setLoading]=useState(true);
-  const requestId=context?.requestId||"";
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError(false);
     const params=new URLSearchParams({history:"1",customerId:id,offset:String(offset),requestId});
@@ -31,7 +30,7 @@ export function CustomerBrief({id,context}:{id:string;context:VoiceCustomerConte
     {context && <p className={styles.small}>{[context.customer.email,context.customer.phone].filter(Boolean).join(" · ")}</p>}
     {req ? <><p><strong>{req.title || "Anfrage"} · {requestId.slice(0,8)}</strong></p>
       <p>{abridge(req.description,320)||"Keine Beschreibung hinterlegt."}</p>
-      <p>{[req.size,...req.colors,req.application,req.deliveryTime].filter(Boolean).join(" · ")}</p></> : <p>Kein Vorgang ausgewählt.</p>}
+      <p>{[req.size,...req.colors,req.application,req.deliveryTime].filter(Boolean).join(" · ")}</p></> : <p>{requestId ? "Ausgewählter Vorgang · " + requestId.slice(0,8) : "Kein Vorgang ausgewählt."}</p>}
     {page?.brief.map(e=><p key={e.id}><strong>{labels[e.kind]}: </strong>{abridge(e.detail)||e.subject}</p>)}
     {page && requestId && !page.brief.length && <p className={styles.small}>Keine Mail oder Gesprächsnotiz eindeutig dieser Anfrage zugeordnet.</p>}
     {page && !page.brief.some(e=>e.kind==="inbound"||e.kind==="outbound") && ["inbound","outbound"].map(kind=>{

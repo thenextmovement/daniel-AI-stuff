@@ -63,6 +63,8 @@ export function PhoneCentral(props: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeContact, setActiveContact] = useState<VoiceDirectoryContact | null>(null);
+  const briefCustomerId = selected?.masterCustomerId || activeContact?.customerId;
+  const briefRequestId = selected?.requestId || activeContact?.requestId || "";
   const [panel, setPanel] = useState<"contacts" | "dial">("contacts");
   const [number, setNumber] = useState("");
   const [offset, setOffset] = useState(0);
@@ -468,7 +470,7 @@ export function PhoneCentral(props: Props) {
                     <p className={styles.small}>
                       {activeContact && !activeContact.requestId
                         ? "Für diesen Kontakt ist noch kein Vorgang verknüpft. Du kannst ihn trotzdem über die Telefon-App anrufen."
-                        : selected ? "Letzte Absprachen, Nachrichten und verknüpfte Vorgänge findest du rechts."
+                        : selected || activeContact ? "Letzte Absprachen, Nachrichten und verknüpfte Vorgänge findest du rechts."
                           : "Wähle links einen Kontakt. Hier findest du seine letzten Absprachen, Nachrichten und Vorgänge."}
                     </p>
                   </div>
@@ -480,8 +482,8 @@ export function PhoneCentral(props: Props) {
               {props.children}
             </section>
             <aside className={styles.context} aria-label="Kundenübersicht">
-              {(selected?.masterCustomerId || activeContact?.customerId) && <CustomerBrief key={(selected?.masterCustomerId || activeContact?.customerId)+":"+(selected?.requestId || "")}
-                id={(selected?.masterCustomerId || activeContact?.customerId)!} context={selected}/>}
+              {briefCustomerId && <CustomerBrief key={briefCustomerId + ":" + briefRequestId}
+                id={briefCustomerId} requestId={briefRequestId} context={selected}/>}
               {selected && props.hints.length ? (
                 <div aria-live="polite">
                   {props.hints.map((hint, index) => (
