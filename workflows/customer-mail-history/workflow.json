@@ -1,0 +1,228 @@
+{
+  "name": "NEONTRIP · Kundenmailverlauf Support → Supabase",
+  "nodes": [
+    {
+      "id": "history-0",
+      "name": "Read schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 20
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "history-1",
+      "name": "Verify mailbox",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        200,
+        0
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "url": "https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName",
+        "options": {}
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "name": "Reuse support mailbox credential"
+        }
+      }
+    },
+    {
+      "id": "history-2",
+      "name": "Read checkpoints",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        0
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/customer_mail_import_state?select=lane,revision,watermark,cursor_url&next_run=lte.now",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Reuse customer email sync database credential"
+        }
+      }
+    },
+    {
+      "id": "history-3",
+      "name": "Prepare page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const approved = 'https://graph.microsoft.com/v1.0/me/messages';\nconst profile = $('Verify mailbox').first().json;\nif ((profile.mail || profile.userPrincipalName || '').toLowerCase() !== 'support@neontrip.de') throw Error('Unexpected Outlook mailbox');\nreturn $input.all().map((item,index) => {\n const state=item.json;\n let url=state.cursor_url;\n if (!url) {\n  const filter=state.lane==='recent' ? '&$filter='+encodeURIComponent('lastModifiedDateTime ge '+new Date(state.watermark).toISOString()) : '';\n  url=approved+'?$top=100&$select=id,internetMessageId,conversationId,from,sender,toRecipients,ccRecipients,bccRecipients,subject,body,receivedDateTime,sentDateTime,isDraft'+filter;\n }\n if (!url.startsWith(approved+'?')) throw Error('Unexpected Graph cursor');\n return {json:{url,lane:state.lane,revision:state.revision},pairedItem:{item:index}};\n});"
+      }
+    },
+    {
+      "id": "history-4",
+      "name": "Read Outlook page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        0
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "IdType=\"ImmutableId\", outlook.body-content-type=\"text\""
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "name": "Reuse support mailbox credential"
+        }
+      }
+    },
+    {
+      "id": "history-5",
+      "name": "Select customer mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const account='support@neontrip.de';\nconst addr = value => (value?.emailAddress?.address || '').trim().toLowerCase();\nconst list = recipients => [...new Set((recipients || []).map(addr).filter(Boolean))];\nreturn $input.all().map((item,index) => {\n const state=$('Prepare page').itemMatching(index).json;\n const page=item.json;\n if (!Array.isArray(page.value)) throw Error('Missing Outlook page');\n const messages=[];\n for(const mail of page.value) {\n  if(mail.isDraft) continue;\n  const sender=addr(mail.from)||addr(mail.sender);\n  if(!sender) continue;\n  const outbound=sender===account;\n  if(!outbound && sender.endsWith('@neontrip.de')) continue;\n  const recipients=list(mail.toRecipients),cc=list(mail.ccRecipients),bcc=list(mail.bccRecipients);\n  const addresses=outbound ? [...new Set([...recipients,...cc,...bcc].filter(e=>!e.endsWith('@neontrip.de')))] : [sender];\n  if(!addresses.length) continue;\n  if(!mail.id || typeof mail.body?.content!=='string' || mail.body.contentType?.toLowerCase()!=='text') throw Error('Missing full text or immutable ID');\n  messages.push({id:mail.id,internet_id:mail.internetMessageId||null,thread:mail.conversationId||null,direction:outbound?'outbound':'inbound',occurred:outbound?mail.sentDateTime:mail.receivedDateTime,sender,recipients,cc,bcc,addresses,subject:mail.subject||'',body:mail.body.content});\n }\n return {json:{p_lane:state.lane,p_revision:state.revision,p_messages:messages,p_next:page['@odata.nextLink']||null},pairedItem:{item:index}};\n});"
+      }
+    },
+    {
+      "id": "history-6",
+      "name": "Save page and checkpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/ingest_customer_mail_page",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Reuse customer email sync database credential"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Read schedule": {
+      "main": [
+        [
+          {
+            "node": "Verify mailbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify mailbox": {
+      "main": [
+        [
+          {
+            "node": "Read checkpoints",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read checkpoints": {
+      "main": [
+        [
+          {
+            "node": "Prepare page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare page": {
+      "main": [
+        [
+          {
+            "node": "Read Outlook page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Outlook page": {
+      "main": [
+        [
+          {
+            "node": "Select customer mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select customer mail": {
+      "main": [
+        [
+          {
+            "node": "Save page and checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "executionTimeout": 180
+  }
+}
