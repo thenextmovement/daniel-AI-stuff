@@ -180,6 +180,7 @@ evidence (kurze wörtliche Belege für bestellte Größen und Materialwünsche),
 line_plan (Liste pro Schriftzeile/Logobereich mit name, mode: single oder double,
 reason: deutsche Begründung anhand der Vorlage, path_ids: alle zugehörigen SVG-Pfad-IDs,
 dot_ids: IDs ausschließlich von i/j-Punkten, keine dekorativen Logopunkte/-quadrate).
+Benenne jede waagerechte Schriftzeile einzeln mit „Schriftzug“ und ihrem Text. Verwende dieses Präfix ausschließlich für waagerechte Schrift, auch bei kombinierten Wort-Bild-Marken.
 Jeder SVG-Pfad braucht eine eindeutige ID und genau eine Zuordnung im line_plan.
 Bei mehreren Versionen desselben Motivs vergleiche Vollständigkeit, Konturenschärfe und Lesbarkeit. Verwende die beste Vorlage und gib nur deren Kundenanhang-ID an.
 Eine allgemeine Vorgabe „Single line“ gilt für das gesamte Motiv.

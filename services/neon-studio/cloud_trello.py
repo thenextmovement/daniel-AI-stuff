@@ -1,4 +1,4 @@
-import hashlib,os,re,time,requests
+import hashlib,math,os,re,time,requests
 from collections import Counter
 from urllib.parse import urlparse,quote
 BOARD='63d10c34105771f01ccf4296'
@@ -36,6 +36,15 @@ def card_reference(value):
     raise ValueError('Bitte einen Trello-Kartenlink einfügen, zum Beispiel https://trello.com/c/AbCd1234.')
 def decimal(value):
     return ('%.2f'%float(value)).replace('.',',')
+def size_field(width_mm,height_mm):
+    # Geometry calculations can leave floating point dust on a whole centimetre.
+    return 'x'.join(str(math.ceil(round(mm/10,9))) for mm in (width_mm,height_mm))+'cm'
+
+def color_field(value):
+    value=re.sub(r'\b(?:(?:hell(?:e[sr]?)?|dunkel(?:e[sr]?)?)\s*[- ]?)(grün|rot|blau|pink|gelb|orange|lila)\b|\b(zitronengelb)\b',
+                 lambda m: m.group(1).capitalize() if m.group(1) else 'Gelb',value,flags=re.I)
+    return ' + '.join(dict.fromkeys(part.strip() for part in re.split(r'[+,;/]',value) if part.strip()))
+
 def field_value(card,id):
     return next((x.get('value',{}).get('text','') for x in card.get('customFieldItems',[]) if x['idCustomField']==id),'')
 def request_id(card):

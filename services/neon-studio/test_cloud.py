@@ -309,6 +309,12 @@ class CloudTests(unittest.TestCase):
     self.assertEqual(error.exception.code,400)
     self.assertEqual(self.db.get(p['id'])['revision'],p['revision'])
   finally:server.shutdown();server.server_close();thread.join()
+ def test_trello_display_size_and_stock_colors(self):
+  from cloud_trello import size_field,color_field
+  self.assertEqual(size_field(680,222.6),'68x23cm')
+  self.assertEqual(size_field(685,220),'69x22cm')
+  self.assertEqual(color_field('Hellgrün + Dunkelgrün + Zitronengelb + Goldgelb + Dunkelblau + Eisblau'),'Grün + Gelb + Goldgelb + Blau + Eisblau')
+
  def test_manual_minimum_is_exported_without_changing_technical_drawing(self):
   store=DurableStore(self.db);info=store.add(SVG.encode(),'Test.svg')
   d=store.drawing(info['id'],json.dumps({'mode':'single','width':1200,'gap':15,'shape':'shape','radius':3}))
@@ -349,7 +355,7 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(len(t.uploads),3)
   self.assertIn('110,50 cm',fitz.open(stream=t.uploads[0][1],filetype='pdf')[0].get_text())
   size=next(x['value']['text'] for x in t.data['customFieldItems'] if x['idCustomField']==FIELDS[0][1])
-  self.assertTrue(size.startswith('120,00 × '),size)
+  self.assertTrue(size.startswith('120x'),size)
   first_ids=[a['id'] for a in t.data['attachments']]
   self.assertEqual(t.uploads[int(t.data['idAttachmentCover'])-1][0],'technische_zeichnung.jpg')
   t.data['attachments'].append({'id':'original'})
@@ -367,15 +373,15 @@ class CloudTests(unittest.TestCase):
            'pricing_options':{'additional_cost_usd':20}}
   self.db.save(p['id'],{'spec':updated})
   result=Jobs(self.db,store,t).publish(p)
-  self.assertIn('Größe 1: 120,00 × ',t.comments[-1])
-  self.assertIn(' → 95,00 × ',t.comments[-1])
+  self.assertIn('Größe 1: 120x',t.comments[-1])
+  self.assertIn(' → 95x',t.comments[-1])
   self.assertIn('Preis 2 (USD): leer → '+result['quotes'][1]['total_usd'],t.comments[-1])
   self.assertEqual(result['spec']['widths_mm'],[950,1250])
   self.assertEqual(float(result['quotes'][0]['additional_cost_usd']),20)
   updated.update(requested_widths_mm=[],widths_mm=[950],sized_widths_mm=[950])
   self.db.save(p['id'],{'spec':updated})
   Jobs(self.db,store,t).publish(p)
-  self.assertIn('Größe 2: 125,00 × ',t.comments[-1])
+  self.assertIn('Größe 2: 125x',t.comments[-1])
   self.assertFalse(any(x['idCustomField'] in FIELDS[1] for x in t.data['customFieldItems']))
 
   second={**saved,'spec':{**updated,'design_name':'Zweizeilig','minimum_width_mm':600,'widths_mm':[600],'sized_widths_mm':[600]}}
@@ -388,7 +394,7 @@ class CloudTests(unittest.TestCase):
    self.assertTrue(all(f[0].startswith(f'Design_{i+1}_') for f in batch))
    self.assertIn(label,fitz.open(stream=batch[0][1],filetype='pdf')[0].get_text())
    self.assertIn(label,t.comments[-1])
-  self.assertTrue(any(f['idCustomField']==FIELDS[1][1] and f['value']['text'].startswith('60,00') for f in t.data['customFieldItems']))
+  self.assertTrue(any(f['idCustomField']==FIELDS[1][1] and f['value']['text'].startswith('60x') for f in t.data['customFieldItems']))
 
  def test_smallest_review_keeps_usage_and_overrides_can_be_below_geometry(self):
   from cloud_ai import size_only_issue

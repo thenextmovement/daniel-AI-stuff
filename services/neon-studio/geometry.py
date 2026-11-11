@@ -1,5 +1,6 @@
 """Millimetre geometry. Cubic paths stay cubic through preview and PDF export."""
 import math
+import re
 from copy import deepcopy
 from functools import lru_cache
 
@@ -975,7 +976,44 @@ def _directional_buffer(core, paddings):
     return unary_union([core,*pieces] if core.geom_type=='Polygon' else pieces)
 
 
-def _full_shape(lines, padding, radius, depth, depths=None, paddings=None):
+def _letter_bands(lines, names, padding):
+    """Common cap height and baseline for horizontal text regions in the line plan."""
+    groups={}
+    for index,name in enumerate(names):
+        if re.search(r'\b(?:schrift\w*|text\w*|wortmarke|wordmark|lettering|buchstaben\w*)\b',name,re.I):
+            groups.setdefault(name.split(' · Punkt')[0],[]).append(index)
+    bands=[]
+    for indices in groups.values():
+        bounds=[lines[i].bounds for i in indices]
+        # Interior counters, dots and crossbars do not define the letter height.
+        height=max(b-t for _,t,_,b in bounds)
+        letters=[v for v in bounds if v[3]-v[1]>=height*.5]
+        if not letters or height<=0:continue
+        left=min(v[0] for v in letters);right=max(v[2] for v in letters)
+        if right-left<1.5*height:continue
+        top=float(np.median([v[1] for v in letters]))
+        bottom=float(np.median([v[3] for v in letters]))
+        # Slanted text or several lines in one named region have no common baseline.
+        if sum(abs(v[1]-top)<=height*.15 or abs(v[3]-bottom)<=height*.15 for v in letters)<len(letters)*.65:continue
+        # Keep small optical overshoots (e.g. O) on the common level.
+        top=min(v[1] for v in letters if v[1]>=top-height*.12)
+        bottom=max(v[3] for v in letters if v[3]<=bottom+height*.12)
+        # Start/end inside the outer letters so their round ends survive.
+        first=min(letters,key=lambda v:v[0]);last=max(letters,key=lambda v:v[2])
+        start=left+min(height/2,(first[2]-left)/2)
+        end=right-min(height/2,(right-last[0])/2)
+        if end<=start:continue
+        # Continue the level edge across the gap to an adjacent logo or word.
+        neighbours=[line.bounds for i,line in enumerate(lines) if i not in indices]
+        for x,t,r,b in neighbours:
+            if min(bottom,b)-max(top,t)<(bottom-top)*.5:continue
+            if 0<=left-r<=height:start=min(start,(x+r)/2)
+            if 0<=x-right<=height:end=max(end,(x+r)/2)
+        bands.append((start,top-padding,end,bottom+padding))
+    return bands
+
+
+def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands=()):
     # Close the outline of each component, preserving useful exterior concavities.
     pieces=[]
     for line in lines:
@@ -1001,6 +1039,12 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None):
     else:
         inset=hull.buffer(-next(iter(depths.values()),depth),quad_segs=20) if depths else hull.buffer(-depth,quad_segs=20)
     cap=inset.buffer(radius,quad_segs=20).intersection(hull)
+    if bands:
+        # Replace the sloping hull only over text columns. The buffered neon
+        # underneath retains local ascenders, descenders and the full clearance.
+        columns=unary_union([box(l,hull.bounds[1]-1,r,hull.bounds[3]+1) for l,t,r,b in bands])
+        levels=unary_union([box(l,t,r,b) for l,t,r,b in bands]).intersection(hull)
+        cap=cap.difference(columns).union(levels)
     if not cap.is_empty:
         merged=unary_union([merged,cap])
         merged=Polygon(merged.exterior)
@@ -1146,8 +1190,9 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
                      notices=['Alle Linien sind ausgeblendet. Stelle mindestens eine Linie wieder her.'])
         empty['settings']['hiddenPaths']=settings['hiddenPaths']
         return empty
-    support_paths=[path for item in support_source for path in subpaths(transform(
-        subtract_mask(item['commands'],uv_mask) if not uv_mask.is_empty else item['commands'],1,*item['offset']))]+uv_support
+    support_sections=[(path,item.get('name','')) for item in support_source for path in subpaths(transform(
+        subtract_mask(item['commands'],uv_mask) if not uv_mask.is_empty else item['commands'],1,*item['offset']))]
+    support_paths=[path for path,_ in support_sections]+uv_support
     bounds=np.array([path_bounds(path) for path in support_paths])
     x0,y0=bounds[:,:2].min(axis=0); x1,y1=bounds[:,2:].max(axis=0)
     # User-facing gap is contour to vector path, with no tube-width or reserve
@@ -1214,7 +1259,10 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     elif settings['shape']=='rectangle':
         outer=rounded_outline(w,h,radius,radius)
     else:
-        outer=_full_shape(lines,padding,radius,depth,side_depths,paddings if asymmetric else None)
+        bands=()
+        if all(value==DEFAULTS['depth'] for value in side_depths.values()) and not asymmetric:
+            bands=_letter_bands(lines,[name for _,name in support_sections],padding)
+        outer=_full_shape(lines,padding,radius,depth,side_depths,paddings if asymmetric else None,bands)
         # Sampling/curve fitting can move extrema by a fraction of a millimetre.
         # Anchor the backing to the requested dimensions without moving neon.
         a,b,c,d=path_bounds(outer)

@@ -1,7 +1,7 @@
 import fcntl,json,math,os,re,threading,time,traceback
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
-from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,decimal,PROCESSING,NEEDS_REVIEW,plain_title,copy_title,ServiceError
+from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,size_field,color_field,decimal,PROCESSING,NEEDS_REVIEW,plain_title,copy_title,ServiceError
 from cloud_ai import generate,validate_spec,Review,drawing_model,smallest_title_widths,size_only_issue
 from colors import artwork_neon_color, NEON_COLORS
 from cloud_exports import artifacts,CUT
@@ -268,7 +268,7 @@ class Jobs:
                     values=['']*4
                     if i<len(variants):
                         drawing=variants[i]
-                        values=[quotes[i]['total_usd'],decimal(drawing['width']/10)+' × '+decimal(drawing['height']/10)+' cm',specs[i]['colors'],CUT[specs[i]['shape']]]
+                        values=[quotes[i]['total_usd'],size_field(drawing['width'],drawing['height']),color_field(specs[i]['colors']),CUT[specs[i]['shape']]]
                     desired.update(zip(fields,values))
                     labels.update(zip(fields,[f'Preis {i+1} (USD)',f'Größe {i+1}',f'Farbe {i+1}',f'Zuschnitt {i+1}']))
                 changes=[]
