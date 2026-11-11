@@ -30,6 +30,7 @@ type Props = {
   hints: VoiceCopilotSuggestion[];
   children: ReactNode;
   settings: ReactNode;
+  liveAssistSession?: string | null;
   linkedTranscript?: string | null;
 };
 function initials(value: string) {
@@ -187,11 +188,16 @@ export function PhoneCentral(props: Props) {
   const dialPhone = dialPhoneNumber(phone);
   const freeDialPhone = dialPhoneNumber(number);
   const lastDialAt = useRef(-Infinity);
+  const dialedSession = useRef<string | null>(null);
+  const readySession = props.workspace === "assist" && selected && !browserPhone.busy ? props.liveAssistSession : null;
+  const assistedDialReady = Boolean(readySession && readySession !== dialedSession.current);
   function openPhoneApp(event: MouseEvent<HTMLButtonElement>, phone: string) {
-    if (!event.nativeEvent.isTrusted || busy || performance.now() - lastDialAt.current < 2000) return;
+    const assisted = assistedDialReady && phone === dialPhone && readySession !== dialedSession.current;
+    if (!event.nativeEvent.isTrusted || (busy && !assisted) || performance.now() - lastDialAt.current < 2000) return;
+    if (assisted && readySession) dialedSession.current = readySession;
     lastDialAt.current = performance.now();
     window.location.assign("tel:" + phone);
-    setNotice("Die Standard-Telefon-App öffnet sich. Anrufe darüber werden derzeit nicht automatisch mitgeschrieben.");
+    setNotice(assisted ? "Telefon-App geöffnet. Die Gesprächsbegleitung läuft in OPS weiter." : "Die Standard-Telefon-App öffnet sich. Anrufe darüber werden derzeit nicht automatisch mitgeschrieben.");
   }
   const lastCall = selected?.recentCalls?.[0];
   const lastMail = selected?.outlook[0];
@@ -391,9 +397,9 @@ export function PhoneCentral(props: Props) {
             <div className={styles.actions}>
               {canDial && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
                 disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
-              {customer && dialPhone && !busy ? (
+              {customer && dialPhone && (!busy || assistedDialReady) ? (
                 <button type="button" className={styles.button + " " + styles.primary} onClick={event => openPhoneApp(event, dialPhone)}>
-                  <Phone size={17} />In Telefon-App anrufen
+                  <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "In Telefon-App anrufen"}
                 </button>
               ) : customer ? (
                 <button className={styles.button + " " + styles.primary} disabled>
@@ -462,13 +468,23 @@ export function PhoneCentral(props: Props) {
                     </p>
                   </div>
                   <p className={styles.small}>
-                    Transkription und Speicherung: vor Gesprächsbeginn klären.
+                    Für eine Mitschrift mit Placetel zuerst „Gespräch begleiten“ öffnen, die Einwilligung bestätigen und Placetel-Audio teilen. Sobald die Begleitung live ist, erscheint „Mit Live-Mitschrift anrufen“.
                   </p>
                 </>
               ) : null}
               {props.children}
             </section>
             <aside className={styles.context} aria-label="Kundenübersicht">
+              {selected && (
+                <section className={styles.prep} aria-label="Kunde und Anfrage">
+                  <p className={styles.label}>Kunde und Anfrage</p>
+                  <h3>{[selected.customer.displayName, selected.customer.company].filter((value, i, all) => value && all.indexOf(value) === i).join(" · ") || "Kunde"}</h3>
+                  <p>{[selected.customer.email, selected.customer.phone].filter(Boolean).join(" · ")}</p>
+                  <p><strong>{selected.request.title || "Anfrage"} · {selected.requestId.slice(0, 8)}</strong></p>
+                  {selected.request.description && <p>{selected.request.description}</p>}
+                  <p>{[selected.request.status, selected.request.segment, selected.request.size, ...selected.request.colors, selected.request.application, selected.request.deliveryTime].filter(Boolean).join(" · ")}</p>
+                </section>
+              )}
               {selected && props.hints.length ? (
                 <div aria-live="polite">
                   {props.hints.map((hint, index) => (
@@ -592,12 +608,7 @@ export function PhoneCentral(props: Props) {
                       ))}
                     </details>
                   ) : null}
-                  {selected?.request.description ? (
-                    <>
-                      <h3>Anfrage</h3>
-                      <p>{selected.request.description}</p>
-                    </>
-                  ) : null}
+
                 </div>
               </div>
               {selected ? (
