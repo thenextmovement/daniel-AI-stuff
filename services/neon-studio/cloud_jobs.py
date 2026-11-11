@@ -183,6 +183,8 @@ class Jobs:
 
     def png_centerlines(self,record,snapshot):
         spec=record['spec']
+        if spec.get('excluded_regions'):
+            return None  # A full-image trace would restore intentionally omitted artwork.
         plan=spec.get('line_plan',[])
         if not plan or any(r['mode']!='single' or r.get('dot_ids') for r in plan):return None
         ids=spec.get('source_attachment_ids',[])

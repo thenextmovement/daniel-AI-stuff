@@ -249,7 +249,7 @@ class CloudTests(unittest.TestCase):
   card={'id':'source','name':'2 Quotes | LED Neon Flex | 180cm','desc':
         'Die zwei Schilder wie PAD1, aber anderen Text: "amazon rme contractor point" "amazon rme red-tag area" jeweils 1 Stück',
         'attachments':[{'id':'art','name':'logo.png','isUpload':True}]}
-  first={'design_name':'Contractor Point','source_attachment_ids':['art'],'svg':SVG}
+  first={'excluded_regions':[], 'design_name':'Contractor Point','source_attachment_ids':['art'],'svg':SVG}
   second={**first,'design_name':'Red-Tag Area','svg':SVG.replace('M10 50','M20 50')}
   def run(response):
    with patch.dict('os.environ',{'OPENAI_API_KEY':'test'}),patch('cloud_ai.requests.post') as post:
@@ -261,6 +261,25 @@ class CloudTests(unittest.TestCase):
   self.assertNotIn('designs',run(first))
   card['desc']='Contractor Point und Red-Tag Area bitte separat anbieten.'
   self.assertEqual(len(run({'designs':[first,second]})['designs']),2)
+ def test_omitted_tagline_cannot_return_in_vector_or_png_recovery(self):
+  from cloud_ai import apply_motif_exclusions, drawing_model
+  from unittest.mock import Mock
+  svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g fill="none"><path id="a" stroke="blue" d="M0 0 L30 0"/><path id="b" stroke="cyan" d="M40 0 L70 0"/><path id="c" stroke="red" d="M0 80 L70 80"/></g></svg>'
+  description='CARRIER in blue; 4YOU in ice blue. Ignore the tagline.'
+  design={'svg':svg,'line_plan':[{'name':n,'mode':'double','path_ids':[key]} for key,n in zip('abc',['CARRIER','4YOU','Tagline'])],
+          'excluded_regions':[{'name':'Tagline','evidence':'Ignore the tagline','path_ids':['c']}]}
+  apply_motif_exclusions(design,description)
+  model,modes=drawing_model(design)
+  self.assertEqual({i['name'] for i in model['modes']['double']},{'CARRIER','4YOU'})
+  self.assertEqual(set(modes.values()),{'double'})
+  self.assertNotIn('id="c"',design['svg'])
+  for region in design['line_plan']:region['mode']='single'
+  design['source_attachment_ids']=['src']
+  snapshot={'id':'card','attachments':[{'id':'src','name':'logo.png','isUpload':True}]}
+  trello=Mock()
+  self.assertIsNone(Jobs(self.db,Mock(),trello).png_centerlines({'spec':design},snapshot))
+  trello.download.assert_not_called()
+  with self.assertRaises(Review):apply_motif_exclusions(design,'Keep the tagline.')
  def test_scope(self):
   self.assertTrue(eligible('LED Neon Flex | Anfrage'))
   for title in ('3D Neon | Kunde','Light Box | Kunde','🤖 LED Neon'):self.assertFalse(eligible(title))

@@ -38,6 +38,45 @@ def validate_svg(svg):
     if not paths or root.tag.split('}')[-1]!='svg':raise Review('SVG enthält keine Zeichnung.')
     return svg
 
+def apply_motif_exclusions(design, description):
+    """Remove any residual excluded paths before vector import and pricing."""
+    exclusions = design.get('excluded_regions')
+    if not isinstance(exclusions, list):
+        raise Review('Die Prüfung auf ausgeschlossene Motivteile fehlt.')
+    if not exclusions:
+        return
+    root = ET.fromstring(design['svg'])
+    omitted = set()
+    for region in exclusions:
+        if not isinstance(region, dict):
+            raise Review('Unklare Zuordnung eines ausgeschlossenen Motivteils.')
+        quote = region.get('evidence')
+        ids = region.get('path_ids')
+        if (not isinstance(quote, str) or not quote.strip() or quote.strip() not in description
+                or not isinstance(ids, list) or any(not isinstance(key, str) or not key for key in ids)):
+            raise Review('Der Ausschluss lässt sich der Kartenbeschreibung oder den Pfaden nicht zuordnen.')
+        omitted.update(ids)
+    if not omitted:
+        return
+    found = set()
+    for parent in root.iter():
+        for child in list(parent):
+            if child.tag.split('}')[-1] == 'path' and child.get('id') in omitted:
+                found.add(child.get('id'))
+                parent.remove(child)
+    if found != omitted:
+        raise Review('Ausgeschlossene Pfade konnten nicht eindeutig zugeordnet werden.')
+    if not any(e.tag.split('}')[-1]=='path' for e in root.iter()):
+        raise Review('Nach dem Ausschluss bleibt kein Neonmotiv übrig.')
+    plan = []
+    for region in design.get('line_plan') or []:
+        paths = [key for key in region['path_ids'] if key not in omitted]
+        if paths:
+            plan.append({**region, 'path_ids': paths,
+                         'dot_ids': [key for key in region.get('dot_ids', []) if key not in omitted]})
+    design.update(svg=ET.tostring(root, encoding='unicode'), line_plan=plan)
+
+
 def drawing_model(data):
     """Bind the explicit per-region line decision to the imported painted paths."""
     from vector_import import analyze_vector
@@ -183,6 +222,14 @@ dot_ids: IDs ausschließlich von i/j-Punkten, keine dekorativen Logopunkte/-quad
 Benenne jede waagerechte Schriftzeile einzeln mit „Schriftzug“ und ihrem Text. Verwende dieses Präfix ausschließlich für waagerechte Schrift, auch bei kombinierten Wort-Bild-Marken.
 Jeder SVG-Pfad braucht eine eindeutige ID und genau eine Zuordnung im line_plan.
 Bei mehreren Versionen desselben Motivs vergleiche Vollständigkeit, Konturenschärfe und Lesbarkeit. Verwende die beste Vorlage und gib nur deren Kundenanhang-ID an.
+Lies die Kartenbeschreibung für jedes Design auf Vorgaben zum Umfang des Motivs, auch in freier Sprache:
+„ignorieren“, „ohne Unterzeile“, „nur den oberen Schriftzug“, „leave out“ usw. Ordne diese Angaben anhand des Bildes zu,
+auch bei eindeutigen Schreibfehlern. Zeichne ausgeschlossene Teile gar nicht. Nur bestellte Bereiche zählen für SVG,
+line_plan und colors. Übernimm die je Bereich bestellte Farbe und Linienart. Prüfe vor der Ausgabe jeden Bereich nochmals.
+Gib immer excluded_regions als Liste aus (leer ohne Ausschlüsse). Pro ausgeschlossenem Motivteil: name, evidence
+(wörtliches Zitat aus der Beschreibung) und path_ids (leer, wenn gar nicht gezeichnet; sonst ALLE verbliebenen SVG-Pfade
+dieses Teils zur Entfernung). Bei unklarer Zuordnung eine konkrete Rückfrage in issues. Ein Ausschluss bezüglich
+Farbe, Material oder einer anderen Variante entfernt keinen Motivteil.
 Eine allgemeine Vorgabe „Single line“ gilt für das gesamte Motiv.
 Wenn die Kartenbeschreibung einem eindeutig benannten Motivbereich Single Line oder Double Line zuordnet, setze diese
 Produktvorgabe in SVG und line_plan um und nenne die Vorgabe in reason. Bei widersprüchlicher oder nicht zuordenbarer
@@ -264,6 +311,7 @@ Bei ausdrücklicher Farbwahl verwende die bestellte Leuchtfarbe auch für die SV
         if title_widths is not None:
             design.update(smallest_requested=True,widths_mm=title_widths,minimum_first=True)
         design['svg']=validate_svg(design.get('svg'))
+        apply_motif_exclusions(design, card['desc'])
         source_ids=design.get('source_attachment_ids',[])
         if not source_ids or any(x not in supplied_ids for x in source_ids):raise Review('Kundenmotiv konnte nicht zugeordnet werden.')
     return data,{'seconds':round(time.perf_counter()-started,2),'model':result.get('model'),'usage':result.get('usage'), 'response_id':result.get('id')}
