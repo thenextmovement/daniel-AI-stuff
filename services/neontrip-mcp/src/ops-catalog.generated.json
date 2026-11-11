@@ -9745,7 +9745,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/suggestions/route.ts",
-      "sha256": "5771051cd04e181b4dc04103288f35f3c6d862d2cee306459320de49b3525ebd",
+      "sha256": "c73ab850e32b3157048d106c9aa475efc5fc703c0855ee26b550194f9554bdb4",
       "methods": [
         "POST"
       ],
