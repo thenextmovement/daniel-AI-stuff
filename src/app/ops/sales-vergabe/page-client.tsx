@@ -37,6 +37,7 @@ import {
 import { defaultSupplierSelection, shouldSuggestSaeid, type SupplierSelection } from "@/lib/ops/supplier-selection";
 import { deliveryCountdownLabel, orderAgeLabel, supplierSaleMountingSelection } from "@/lib/ops/supplier-sales-display";
 import { OpsLoginCard } from "../ops-login-card";
+import { ProductionReviewPanel } from "./production-review";
 import { OpsPageHeader } from "../ops-page-header";
 import { OpsPageIntro, OpsStatCard, opsPageContainerClass, opsPageShellClass } from "../ops-design";
 
@@ -442,6 +443,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, ti
 
 function assignmentMessage(sale: SupplierSale | undefined) {
   if (!sale) return "Vergabe gespeichert. Sync-Status wurde aktualisiert.";
+  if (sale.productionReviewStatus === "synced") return "Produktionsübergabe bestätigt: Karte, Dateien, Cover und Listenposition geprüft.";
   const syncStatuses = [sale.shopifyTagSyncStatus, sale.trelloProjectionStatus, sale.taskSyncStatus];
   if (syncStatuses.includes("failed")) return "Vergabe gespeichert, aber mindestens ein Sync ist fehlgeschlagen. Bitte Sync-Status pruefen.";
   if (syncStatuses.includes("pending")) return "Vergabe gespeichert. Mindestens ein Sync ist noch offen.";
@@ -830,6 +832,10 @@ function SaleCard({
   const [trelloLinkSaved, setTrelloLinkSaved] = useState(false);
   const [approvedDesignBusy, setApprovedDesignBusy] = useState(false);
   const [approvedDesignUpload, setApprovedDesignUpload] = useState<SupplierSaleApprovedDesignUpload | null>(null);
+  const [productionReviewOpen, setProductionReviewOpen] = useState(false);
+  useEffect(() => {
+    setProductionReviewOpen(false);
+  }, [supplier, assignmentNote, deliveryDate, paymentDecision]);
   useEffect(() => {
     setAssignmentNote(sale.assignmentNote || "");
   }, [sale.id, sale.assignmentNote]);
@@ -866,7 +872,7 @@ function SaleCard({
   const isOverdue = sale.supplierDueDate && sale.supplierDueDate < todayDate() && !["completed", "canceled"].includes(sale.assignmentStatus);
   const needsManualPaymentRelease = sale.shopifyPaymentStatus !== "paid";
   const canRetryShopifyTag = sale.assignmentStatus === "assigned" && sale.assignedSupplier !== "special" && sale.shopifyTagSyncStatus !== "synced";
-  const canRetryTrello = sale.assignmentStatus === "assigned" && !supplierSaleTrelloConfirmed(sale);
+  const canRetryTrello = sale.assignmentStatus === "assigned" && !supplierSaleTrelloConfirmed(sale) && !sale.productionReviewStatus;
   const shopifyConfirmed = supplierSaleShopifyConfirmed(sale);
   const trelloConfirmed = supplierSaleTrelloConfirmed(sale);
   const readyForProduction = supplierSaleReadyForProduction(sale);
@@ -1352,9 +1358,10 @@ function SaleCard({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={saving || assignmentSaved || Boolean(assignBlockReason)}
+                disabled={saving || (supplier !== "quentin" && (assignmentSaved || Boolean(assignBlockReason))) || sale.productionReviewStatus === "synced"}
                 title={assignmentSaved ? "Sale ist bereits vergeben." : assignBlockReason || "Sale vergeben"}
                 onClick={() => {
+                  if (supplier === "quentin") { setProductionReviewOpen(true); return; }
                   const selectedSupplier = supplierLabel(supplier, specialSupplierName);
                   const confirmationMessage =
                     needsManualPaymentRelease && paymentDecision === "manual_approved_unpaid"
@@ -1378,7 +1385,7 @@ function SaleCard({
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-3 py-2 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
               >
                 <BadgeCheck className="h-4 w-4" />
-                Vergeben
+                {supplier === "quentin" ? sale.productionReviewStatus === "partial" ? "Übergabe prüfen" : "Vergabe prüfen" : "Vergeben"}
               </button>
               {canRetryShopifyTag ? (
                 <button
@@ -1681,6 +1688,14 @@ function SaleCard({
           </div>
         </div>
       </div>
+      {productionReviewOpen && supplier === "quentin" ? <ProductionReviewPanel
+        saleId={sale.id}
+        assignment={{ requestedDeliveryDate: deliveryDate, paymentDecisionStatus: needsManualPaymentRelease ? paymentDecision : "paid_confirmed", assignmentNote, operatorName }}
+        blockReason={assignBlockReason}
+        saving={saving}
+        onAction={onAction}
+        onClose={() => setProductionReviewOpen(false)}
+      /> : null}
     </article>
   );
 }
@@ -1853,7 +1868,7 @@ export function SupplierSalesClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...body, operatorName }),
-      }, 30_000);
+      }, body.productionApproval ? 240_000 : 30_000);
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
       setMessage(actionMessage(body.action, payload));

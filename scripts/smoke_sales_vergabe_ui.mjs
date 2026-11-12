@@ -499,7 +499,7 @@ async function main() {
   if (process.env.SALES_VERGABE_UI_NOTE_SCREENSHOT) {
     await assignmentNotice.screenshot({ path: process.env.SALES_VERGABE_UI_NOTE_SCREENSHOT });
   }
-  assert(await openReviewCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Vergeben darf bei offenem 24h-Fenster nicht disabled sein");
+  assert(await openReviewCard.getByRole("button", { name: "Vergabe prüfen" }).isEnabled(), "Vergeben darf bei offenem 24h-Fenster nicht disabled sein");
   const mountingNotice = (card) => card.getByRole("note", { name: "Montage und Bohrungen mit dem Kunden klären" });
   const hangingNotice = mountingNotice(configuratorCard);
   assert(await hangingNotice.isVisible(), "Montagehinweis fehlt ohne gewähltes Wandmontageset");
@@ -528,13 +528,15 @@ async function main() {
   assert(await multiQuantityLabel.isVisible(), "Hervorgehobenes Mehrmengen-Label fehlt");
   assert((await multiQuantityLabel.getAttribute("class"))?.includes("bg-red-600"), "Mehrmengen-Label ist nicht rot hervorgehoben");
   assert((await multiQuantityLabel.getAttribute("class"))?.includes("text-base"), "Mehrmengen-Label ist nicht vergroessert");
-  assert(await configuratorCard.getByRole("button", { name: "Vergeben" }).isEnabled(), "Konfigurator-Sale ist mit Quentin nicht vergebbar");
+  assert(await configuratorCard.getByRole("button", { name: "Vergabe prüfen" }).isEnabled(), "Konfigurator-Sale ist mit Quentin nicht vergebbar");
   assert(await paidCard.getByRole("link", { name: "Trello-Karte oeffnen" }).count() === 1, "Bekannte Trello-Karte wird nicht direkt verlinkt");
   assert(await paidCard.getByRole("link", { name: "Quentin-Suche" }).count() === 0, "Quentin-Suche bleibt trotz bekannter Trello-Karte sichtbar");
   assert(await configuratorCard.getByRole("link", { name: "Trello per Request-ID finden" }).count() === 1, "Request-ID-Fallback fehlt ohne bekannte Trello-Karte");
   await configuratorCard.getByRole("button", { name: "SAID auswählen" }).click();
   assert(await configuratorCard.getByLabel("Supplier auswaehlen").inputValue() === "said", "Saeid-Hinweis waehlt Saeid nicht bewusst aus");
 
+  // Keep the legacy supplier/payment path covered beside the reviewed Quentin handoff.
+  await unpaidCard.getByLabel("Supplier auswaehlen").selectOption("said");
   await unpaidCard.getByLabel("Zahlungsentscheidung").selectOption("wait_for_payment");
   assert(await unpaidCard.getByRole("button", { name: "Vergeben" }).isDisabled(), "Vergeben bleibt bei Warten nicht disabled");
   await unpaidCard.getByLabel("Zahlungsentscheidung").selectOption("manual_approved_unpaid");
@@ -563,6 +565,8 @@ async function main() {
   await unpaidCard.getByRole("button", { name: "Warten" }).click();
   assert(posts.length === 3 && posts[2].body.action === "update_payment_decision", "Akzeptiertes Warten sendet falsche Action");
 
+  await unpaidCard.locator('button[disabled]').filter({ hasText: /^Warten$/ }).waitFor({ state: "hidden" });
+  await paidCard.getByLabel("Supplier auswaehlen").selectOption("said");
   page.once("dialog", dialogHandler(dialogs, "accept-paid-assign", true));
   await paidCard.getByRole("button", { name: "Vergeben" }).click();
   assert(posts.length === 4 && posts[3].body.action === "assign_supplier", "Bezahlte Vergabe sendet falsche Action");
@@ -606,6 +610,8 @@ async function main() {
   const candidateCard = page.locator("article").filter({ has: page.getByRole("heading", { name: "#QA-sale-institution-candidate", exact: true }) });
   const changeCard = page.locator("article").filter({ has: page.getByRole("heading", { name: "#QA-sale-institution-change", exact: true }) });
   assert(await page.locator("article").count() === 3, "Einrichtungsfilter muss bezahlte, vergebene und private Sales ausschließen");
+  await institutionCard.getByLabel("Supplier auswaehlen").selectOption("said");
+  await changeCard.getByLabel("Supplier auswaehlen").selectOption("said");
   assert(await institutionCard.getByLabel("Zahlungsentscheidung").inputValue() === "wait_for_payment", "Gespeichertes Warten wurde zurückgesetzt");
   assert(await institutionCard.getByRole("button", { name: "Vergeben", exact: true }).isDisabled(), "Institutionsmarker umgeht Warten");
   assert(await institutionCard.getByText("Warten auf Zahlung ist ausgewählt", { exact: true }).isVisible(), "Warten-Hinweis fehlt");

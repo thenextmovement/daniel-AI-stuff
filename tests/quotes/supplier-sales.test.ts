@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
+import { createHmac, createHash } from "node:crypto";
+import { defaultReviewApproval, type ProductionReview, QUENTIN_REVIEW_BOARD } from "@/lib/ops/supplier-sale-review";
 import test from "node:test";
 import { NextRequest } from "next/server";
+
 import { GET as supplierSalesGET, POST as supplierSalesPOST } from "@/app/api/ops/supplier-sales/route";
 import {
   acknowledgeSupplierSalePostOrderChange,
@@ -169,6 +171,13 @@ async function withMockedAssignmentFetch<T>(
     "OPS_CLOUDFLARE_ACCESS_AUD",
     "OPS_REQUIRE_CLOUDFLARE_ACCESS",
     "SUPPLIER_SALES_WEBHOOK_SECRET",
+    "SUPPLIER_SALES_AGENT_API_TOKEN",
+    "MICROSOFT_GRAPH_MAILBOX",
+    "MICROSOFT_GRAPH_TENANT_ID",
+    "MICROSOFT_GRAPH_CLIENT_ID",
+    "MICROSOFT_GRAPH_CLIENT_SECRET",
+    "MICROSOFT_GRAPH_CLIENT_ID_NEXT",
+    "MICROSOFT_GRAPH_CLIENT_SECRET_NEXT",
   ];
   const previousEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
@@ -5281,5 +5290,75 @@ test("supplier order confirmation without billing case respects confirmed paymen
     const content=await(await document.getPage(1)).getTextContent();
     const text=content.items.map((x:any)=>x.str||"").join(" ");
     assert.match(text,/vollständig bezahlt/);assert.doesNotMatch(text,/Gesamtbetrag ist fällig/);
+  });
+});
+
+test("reviewed assignment rejects pending attempts, changed orders, new mail and a lost row claim before external writes", async () => {
+  const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const row = saleRow({ customer_email: "customer@example.test" });
+  const item = itemRow({});
+  const card = { id: "aaaaaaaaaaaaaaaaaaaaaaaa", idBoard: QUENTIN_REVIEW_BOARD, idList: "waiting", name: "Original", desc: "Original description", idAttachmentCover: null, closed: false, attachments: [], pos: 1 };
+  const review: ProductionReview = {
+    version: 1, id: "review", saleId: row.id, preparedAt: "now", sourceHash: "all", orderHash: "", mailHash: digest([]),
+    cardHash: digest({ id: card.id, board: card.idBoard, list: card.idList, name: card.name, desc: card.desc, cover: card.idAttachmentCover, closed: false, attachments: [] }),
+    orderName: row.shopify_order_name!, customerName: "Test", requestId: row.request_id,
+    cardId: card.id, cardUrl: "https://trello.com/c/fixture", originalTitle: card.name, originalDescription: card.desc, originalListId: card.idList, originalCoverId: null, originalPos: 1,
+    products: [{ id: item.id, title: "LED Neon Sign", quantity: 1, fields: [{label:"Size",value:"120 cm"}], imageUrl: "https://angebote.neontrip.de/image", imageId: "image", imageTitle: "Final", imageHash: "hash" }],
+    accessories: [], sources: [], analysis: {summary:"Prüfung",changes:[],threads:[]}, attachments: [], priority:"standard", mailCount:1, blockers:[],
+  };
+  review.orderHash = digest({ offer: row.offer_id, order: row.shopify_order_id, name: row.shopify_order_name,
+    email: row.customer_email, request: row.request_id, customerDueDate: row.customer_due_date,
+    snapshot: row.offer_snapshot, items: [{id:item.id,quantity:item.quantity,raw:item.raw_line_item}],change:{} });
+  row.metadata.production_review = review;
+  const approval = {...defaultReviewApproval(review),confirmed:true};
+  const input = {saleId:row.id,supplier:"quentin" as const,requestedDeliveryDate:"2026-11-20",productionApproval:approval};
+  const writes: string[]=[];
+  await withMockedAssignmentFetch((url, init) => {
+    const method=init?.method||"GET";
+    if (url.host === "login.microsoftonline.com") return Response.json({access_token:"fixture"});
+    if(method!=="GET") writes.push(url.pathname);
+    if(url.pathname.endsWith("/supplier_sales")) {
+      if(method==="PATCH") {assert.equal(url.searchParams.get("updated_at"),"eq."+row.updated_at);return Response.json([]);}
+      return Response.json([row]);
+    }
+    if(url.pathname.endsWith("/supplier_sale_items")) return Response.json([item]);
+    if(url.host==="graph.microsoft.com") return Response.json({value:[]});
+    if(url.pathname.endsWith("/cards/"+card.id)) return Response.json(card);
+    return Response.json([]);
+  },async()=>{
+    process.env.MICROSOFT_GRAPH_MAILBOX="support@neontrip.de";
+    process.env.MICROSOFT_GRAPH_TENANT_ID="fixture";
+    process.env.MICROSOFT_GRAPH_CLIENT_ID="fixture";
+    process.env.MICROSOFT_GRAPH_CLIENT_SECRET="fixture";
+    delete process.env.MICROSOFT_GRAPH_CLIENT_ID_NEXT;delete process.env.MICROSOFT_GRAPH_CLIENT_SECRET_NEXT;
+    row.metadata.production_handoff={status:"pending"};
+    await assert.rejects(assignSupplierSale(input),/Freigabe läuft bereits/);assert.equal(writes.length,0);
+    delete row.metadata.production_handoff;
+    const hash=review.orderHash;review.orderHash="old";
+    await assert.rejects(assignSupplierSale(input),/Bestellung hat sich geändert/);assert.equal(writes.length,0);
+    review.orderHash=hash;review.mailHash="old";
+    await assert.rejects(assignSupplierSale(input),/Neue oder geänderte E-Mail/);assert.equal(writes.length,0);
+    review.mailHash=digest([]);
+    await assert.rejects(assignSupplierSale(input),/andere Prüfung/);
+    assert.deepEqual(writes,["/rest/v1/supplier_sales"]);
+    row.assignment_status="assigned";row.assigned_supplier="quentin";row.shopify_tag_sync_status="synced";row.trello_projection_status="synced";row.supplier_trello_card_id=card.id;
+    await assert.rejects(markSupplierSaleInProduction({saleId:row.id}),/Produktion kann noch nicht/);
+    assert.equal(writes.length,1);
+  });
+});
+
+test("new production review and file backup routes require an Ops session, not an automation token", async()=>{
+  await withMockedAssignmentFetch(()=>{throw new Error("No provider calls expected");},async()=>{
+    process.env.OPS_PORTAL_TOKEN="ops-only";process.env.SUPPLIER_SALES_AGENT_API_TOKEN="automation";
+    process.env.OPS_CLOUDFLARE_ACCESS_ISSUER="https://fixture.cloudflareaccess.com";
+    process.env.OPS_CLOUDFLARE_ACCESS_AUD="fixture";
+    process.env.OPS_REQUIRE_CLOUDFLARE_ACCESS="true";
+    const headers={host:"ops.neontrip.de",authorization:"Bearer automation","content-type":"application/json"};
+    const post=await supplierSalesPOST(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales",{method:"POST",headers,body:JSON.stringify({action:"prepare_production_review",saleId:"fixture"})}));
+    assert.equal(post.status,401);
+    for(const action of ["production_review","production_file_backup"]){
+      const get=await supplierSalesGET(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales?action="+action+"&saleId=fixture",{headers}));
+      assert.equal(get.status,401);
+    }
   });
 });

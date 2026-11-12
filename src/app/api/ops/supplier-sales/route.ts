@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import type { ReviewApproval } from "@/lib/ops/supplier-sale-review";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
 import {
   assignSupplierSale,
+  prepareSupplierSaleProductionReview,
+  readSupplierSaleProductionReview,
+  downloadSupplierSaleFileBackup,
   acknowledgeSupplierSalePostOrderChange,
   applyNoPaymentReminderShopifyTag,
   cleanupSupplierAssignmentTasks,
@@ -56,7 +60,8 @@ type SupplierSalesPostBody = {
     | "cleanup_supplier_assignment_tasks"
     | "sync_completed_offers"
     | "sync_shopify_supplier_tags"
-    | "diagnose_sales_flow";
+    | "diagnose_sales_flow"
+    | "prepare_production_review";
   payload?: unknown;
   sale?: unknown;
   order?: unknown;
@@ -79,6 +84,7 @@ type SupplierSalesPostBody = {
   agentToken?: string | null;
   idempotencyKey?: string | null;
   limit?: number | string | null;
+  productionApproval?: ReviewApproval | null;
 };
 
 function unauthorized() {
@@ -230,6 +236,18 @@ export async function GET(request: NextRequest) {
 
   try {
     const params = request.nextUrl.searchParams;
+    if (params.get("action") === "production_review") {
+      const state = await readSupplierSaleProductionReview(String(params.get("saleId") || ""));
+      return NextResponse.json({ ok: true, ...state }, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    if (params.get("action") === "production_file_backup") {
+      const result = await downloadSupplierSaleFileBackup(String(params.get("saleId") || ""), String(params.get("attachmentId") || ""));
+      return new NextResponse(Buffer.from(result.bytes), { headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.backup.name)}`,
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+      } });
+    }
     if (params.get("action") === "order_confirmation_pdf" || params.get("action") === "snapshot_pdf") {
       const pdf = await generateSupplierOrderConfirmationPdf(String(params.get("saleId") || ""));
       return new NextResponse(Buffer.from(pdf.bytes), {
@@ -285,6 +303,17 @@ export async function POST(request: NextRequest) {
   if (!actor) return unauthorized();
 
   try {
+    if (action === "prepare_production_review") {
+      try {
+        const review = await prepareSupplierSaleProductionReview(String(body.saleId || ""));
+        return NextResponse.json({ ok: true, review }, { headers: { "Cache-Control": "private, no-store" } });
+      } catch (error) {
+        if (error instanceof QuoteValidationError || error instanceof SupabaseRestError) throw error;
+        throw new QuoteValidationError("Die Vorbereitung konnte nicht abgeschlossen werden.", [
+          error instanceof Error ? error.message : "Bitte die vorhandenen Anbindungen prüfen.",
+        ], 422);
+      }
+    }
     if (action === "upsert_sale") {
       const result = await upsertSupplierSaleFromPayload(payloadFromBody(body), actor);
       const board = await listSupplierSalesBoard({ scope: "active" });
@@ -387,6 +416,7 @@ export async function POST(request: NextRequest) {
         paymentDecisionStatus: body.paymentDecisionStatus || null,
         operatorName: body.operatorName || null,
         assigneeLabel: body.assigneeLabel || null,
+        productionApproval: body.productionApproval || null,
       }, actor);
       return NextResponse.json({ ok: true, action, sale });
     }

@@ -9,6 +9,7 @@ export type SupplierSaleCompletionSnapshot = {
   supplierTrelloCardUrl: string | null;
   productionConfirmedAt: string | null;
   manualShopifySupplierTagConfirmedAt: string | null;
+  productionReviewStatus?: string | null;
 };
 
 export function supplierSaleShopifyConfirmed(sale: SupplierSaleCompletionSnapshot) {
@@ -17,6 +18,7 @@ export function supplierSaleShopifyConfirmed(sale: SupplierSaleCompletionSnapsho
 }
 
 export function supplierSaleTrelloConfirmed(sale: SupplierSaleCompletionSnapshot) {
+  if (sale.productionReviewStatus && sale.productionReviewStatus !== "synced") return false;
   return sale.trelloProjectionStatus === "synced" && Boolean(sale.supplierTrelloCardId || sale.supplierTrelloCardUrl);
 }
 
@@ -40,6 +42,7 @@ export function supplierSaleVisibleInActiveOverview(
   now = new Date(),
 ) {
   if (["completed", "canceled"].includes(sale.assignmentStatus)) return false;
+  if (sale.productionReviewStatus && sale.productionReviewStatus !== "synced") return true;
   if (sale.assignmentStatus === "assigned") {
     return !(supplierSaleShopifyConfirmed(sale) && supplierSaleTrelloConfirmed(sale));
   }

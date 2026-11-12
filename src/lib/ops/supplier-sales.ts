@@ -1,6 +1,14 @@
 import { orderConfirmationFromBillingCase, orderConfirmationFromSnapshot, orderConfirmationFileName, renderOrderConfirmation } from "@/lib/ops/order-confirmation";
 import { normalizeOpsListPage } from "@/lib/ops/list-pagination";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { analyzeProductionReview } from "./supplier-sale-review-ai";
+import { readSupplierSaleMail } from "./supplier-sale-mail";
+import { backupSupplierFile, checkSupplierFileStorage, readSupplierFileBackup, type SupplierFileBackup } from "./supplier-sale-files";
+import { executeProductionHandoff, type ProductionHandoff } from "./supplier-sale-handoff";
+import {
+  QUENTIN_REVIEW_BOARD, PRODUCTION_LISTS, reviewApprovalIssues, productionPriorityFromDeliveryTitles, type ProductionReview, type ReviewApproval,
+  type ReviewProduct, type ReviewSource,
+} from "./supplier-sale-review";
 import { createOpsInternalTask, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
 import {
   supplierSaleReadyForProduction,
@@ -23,6 +31,11 @@ import {
   getTrelloCard,
   searchTrelloCards,
   updateTrelloCard,
+  readProductionTrelloCard,
+  readProductionListCards,
+  downloadProductionAttachment,
+  deleteTrelloCardAttachment,
+  type ProductionTrelloCard,
   type TrelloBoardSearchCard,
 } from "@/lib/quotes/trello";
 import { SupabaseRestError, supabaseRequest } from "@/lib/quotes/supabase-rest";
@@ -302,6 +315,7 @@ export type SupplierSale = {
   assignedAt: string | null;
   assignedBy: string | null;
   productionConfirmedAt: string | null;
+  productionReviewStatus?: string | null;
   productionConfirmedBy: string | null;
   manualShopifySupplierTagConfirmedAt: string | null;
   shopifyTagSyncStatus: SupplierSaleSyncStatus;
@@ -469,6 +483,7 @@ export type SupplierSaleAssignInput = {
   paymentDecisionStatus?: SupplierSalePaymentDecision | null;
   operatorName?: string | null;
   assigneeLabel?: string | null;
+  productionApproval?: ReviewApproval | null;
 };
 
 export type SupplierSaleProductionInput = {
@@ -2333,6 +2348,7 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     assignedAt: row.assigned_at,
     assignedBy: row.assigned_by,
     productionConfirmedAt: nullableText(metadata.production_confirmed_at, 80),
+    productionReviewStatus: nullableText(jsonRecord(metadata.production_handoff).status, 30) || (metadata.production_review ? "prepared" : null),
     productionConfirmedBy: nullableText(metadata.production_confirmed_by, 120),
     manualShopifySupplierTagConfirmedAt: nullableText(metadata.shopify_supplier_tag_confirmed_at, 80),
     shopifyTagSyncStatus: row.shopify_tag_sync_status,
@@ -3154,6 +3170,23 @@ export async function getSupplierSale(saleId: string) {
 }
 
 async function patchSaleRow(saleId: string, patch: Partial<SupplierSaleRow>) {
+  if (patch.metadata) {
+    // These two entries belong to the reviewed handoff. Legacy metadata writers
+    // must not erase them with a stale full-JSON replacement.
+    const current = await fetchSaleRowById(saleId);
+    if (current?.metadata.production_review || current?.metadata.production_handoff) {
+      const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
+        method: "PATCH", headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ ...patch, metadata: {
+          ...patch.metadata,
+          production_review: current.metadata.production_review,
+          production_handoff: current.metadata.production_handoff,
+        } }),
+      }, { id: `eq.${saleId}`, updated_at: `eq.${current.updated_at}`, select: "*" });
+      if (!rows[0]) throw new QuoteValidationError("Die Vergabe wurde gleichzeitig geändert. Bitte neu laden.", [], 409);
+      return rows[0];
+    }
+  }
   const rows = await supabaseRequest<SupplierSaleRow[]>(
     "supplier_sales",
     {
@@ -3633,7 +3666,7 @@ export async function upsertSupplierSale(input: SupplierSaleInput, actor?: Suppl
           body: JSON.stringify(payload),
           headers: { Prefer: "return=representation" },
         },
-        { id: `eq.${existing.id}`, select: "*", limit: 1 },
+        { id: `eq.${existing.id}`, updated_at: `eq.${existing.updated_at}`, select: "*", limit: 1 },
       )
     : await supabaseRequest<SupplierSaleRow[]>(
         upsertPath("supplier_sales", "sale_key"),
@@ -3645,6 +3678,7 @@ export async function upsertSupplierSale(input: SupplierSaleInput, actor?: Suppl
       );
 
   const saleRow = rows[0];
+  if (!saleRow) throw new QuoteValidationError("Die Vergabe wurde gleichzeitig geändert; der Import wurde nicht übernommen.", [], 409);
   const items = await replaceSaleItems(saleRow.id, recommendation.lineItems);
   await insertEvent({
     saleId: saleRow.id,
@@ -3732,7 +3766,7 @@ async function mergeShopifyOrderIntoExistingSale(row: SupplierSaleRow, order: Js
       body: JSON.stringify(payload),
       headers: { Prefer: "return=representation" },
     },
-    { id: `eq.${row.id}`, select: "*", limit: 1 },
+    { id: `eq.${row.id}`, updated_at: `eq.${row.updated_at}`, select: "*", limit: 1 },
   );
   const saleRow = rows[0];
   if (!saleRow) throw new Error("Bestehende Vergabezeile konnte nicht mit Shopify-Daten aktualisiert werden.");
@@ -4746,7 +4780,7 @@ export async function listSupplierSalesBoard(options?: {
   if (scope === "active") {
     saleRows = saleRows.filter((row) => {
       if (row.assignment_status === "assigned" || row.assignment_status === "in_production") {
-        if (row.assignment_status === "assigned" && assignedSupplierFromRowTags(row)) return false;
+        if (row.assignment_status === "assigned" && assignedSupplierFromRowTags(row) && !row.metadata.production_handoff && !row.metadata.production_review) return false;
         const productionConfirmedAt = nullableText(jsonRecord(row.metadata).production_confirmed_at, 80);
         return supplierSaleVisibleInActiveOverview({
           assignmentStatus: row.assignment_status,
@@ -4756,6 +4790,7 @@ export async function listSupplierSalesBoard(options?: {
           supplierTrelloCardId: row.supplier_trello_card_id,
           supplierTrelloCardUrl: row.supplier_trello_card_url,
           productionConfirmedAt,
+          productionReviewStatus: nullableText(jsonRecord(row.metadata.production_handoff).status, 30) || (row.metadata.production_review ? "prepared" : null),
           manualShopifySupplierTagConfirmedAt: nullableText(jsonRecord(row.metadata).shopify_supplier_tag_confirmed_at, 80),
         }, now);
       }
@@ -6417,6 +6452,7 @@ async function reserveSupplierAssignmentAttempt(input: {
   assigneeLabel: string | null;
   specialSupplierName: string | null;
   shopifySupplierTagConfirmed: boolean;
+  metadata?: JsonRecord;
 }) {
   try {
     await supabaseRequest("supplier_assignment_attempts", {
@@ -6432,6 +6468,7 @@ async function reserveSupplierAssignmentAttempt(input: {
         status: "pending",
         shopify_tag_value: input.tagValue,
         metadata: {
+          ...input.metadata,
           assignee_label: input.assigneeLabel,
           special_supplier_name: input.specialSupplierName,
           shopify_supplier_tag_confirmed: input.shopifySupplierTagConfirmed,
@@ -6444,6 +6481,328 @@ async function reserveSupplierAssignmentAttempt(input: {
     if (error instanceof SupabaseRestError && error.status === 409) return false;
     throw error;
   }
+}
+
+function productionHash(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+function productionOrderHash(row: SupplierSaleRow, items: SupplierSaleItemRow[]) {
+  return productionHash({
+    offer: row.offer_id, order: row.shopify_order_id, name: row.shopify_order_name,
+    email: row.customer_email, request: row.request_id, customerDueDate: row.customer_due_date,
+    snapshot: row.offer_snapshot, items: items.map(i => ({ id: i.id, quantity: i.quantity, raw: i.raw_line_item })).sort((a, b) => a.id.localeCompare(b.id)),
+    change: jsonRecord(row.metadata.post_order_review),
+  });
+}
+function productionCardHash(card: ProductionTrelloCard) {
+  return productionHash({
+    id: card.id, board: card.idBoard, list: card.idList, name: card.name, desc: card.desc,
+    cover: card.idAttachmentCover, closed: card.closed,
+    attachments: card.attachments.map(a => ({ id: a.id, name: a.name, url: a.url, bytes: a.bytes })).sort((a, b) => a.id.localeCompare(b.id)),
+  });
+}
+async function patchProductionMetadata(saleId: string, metadataPatch: JsonRecord, patch: Partial<SupplierSaleRow> = {}) {
+  // Optimistic compare-and-swap preserves metadata written by a concurrent Offers/Shopify sync.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const row = await fetchSaleRowById(saleId);
+    if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", [], 404);
+    if (patch.assignment_status && ["completed", "canceled"].includes(row.assignment_status)) throw new QuoteValidationError("Die Sale wurde zwischenzeitlich abgeschlossen oder storniert.", [], 409);
+    const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
+      method: "PATCH", headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ ...patch, metadata: { ...jsonRecord(row.metadata), ...metadataPatch } }),
+    }, { id: `eq.${saleId}`, updated_at: `eq.${row.updated_at}`, select: "*" });
+    if (rows[0]) return rows[0];
+  }
+  throw new QuoteValidationError("Die Sale wurde gleichzeitig geändert. Bitte neu laden.", [], 409);
+}
+
+async function productionReviewCard(row: SupplierSaleRow) {
+  const lookup = await lookupExactQuentinCard(row);
+  if (!lookup.cardId || !lookup.card) throw new QuoteValidationError("Bitte die Quentin-Karte über den vorhandenen Kartenlink eindeutig zuordnen.", [], 422);
+  const card = await readProductionTrelloCard(lookup.cardId);
+  const bound = [row.supplier_trello_card_id, row.quentin_trello_card_id, row.trello_card_id].includes(card.id);
+  if (!bound && (lookup.candidates.length !== 1 || lookup.candidates[0].matchBasis !== "request_id")) {
+    throw new QuoteValidationError("Die Kartensuche ist nicht eindeutig. Bitte zuerst den Kartenlink bestätigen.", [], 409);
+  }
+  const requestMarkers = [...card.desc.matchAll(/Request[- ]ID\s*:\s*([a-f0-9-]{36})/gi)].map(m => m[1].toLowerCase());
+  const orderMarkers = [...card.name.matchAll(/#NEONT\d+/gi)].map(m => m[0].toUpperCase());
+  if (card.closed || card.idBoard !== QUENTIN_REVIEW_BOARD
+    || (row.request_id && requestMarkers.some(id => id !== row.request_id?.toLowerCase()))
+    || (row.shopify_order_name && orderMarkers.some(id => id !== row.shopify_order_name?.toUpperCase()))) {
+    throw new QuoteValidationError("Die Karte enthält eine widersprechende Auftragszuordnung oder ist archiviert.", [], 409);
+  }
+  return card;
+}
+async function readPurchasedProductionImage(urlValue: string) {
+  let url = new URL(urlValue);
+  const storageHost = new URL(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://invalid.example").hostname;
+  const allowed = (url: URL) => !(url.protocol !== "https:" || url.username || url.password
+    || !(url.hostname === "angebote.neontrip.de" || (url.hostname === storageHost && url.pathname.startsWith("/storage/v1/object/public/"))));
+  let response: Response | null = null;
+  for (let redirects = 0; redirects <= 3; redirects++) {
+    if (!allowed(url)) throw new QuoteValidationError("Das gekaufte Bild stammt nicht aus der vorhandenen Offers-/Supabase-Anbindung.", [], 422);
+    response = await fetch(url.toString(), { cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(30_000) });
+    if (![301, 302, 303, 307, 308].includes(response.status)) break;
+    const location = response.headers.get("location");
+    if (!location || redirects === 3) throw new Error("Das gekaufte Bild konnte nicht eindeutig aufgelöst werden.");
+    url = new URL(location, url);
+  }
+  if (!response) throw new Error("Das gekaufte Bild fehlt.");
+  if (!response.ok || !response.headers.get("content-type")?.startsWith("image/")) throw new Error("Das gekaufte Angebotsbild konnte nicht vollständig gelesen werden.");
+  const { readBoundedResponseBytes } = await import("./arrival-labels/printing");
+  const bytes = await readBoundedResponseBytes(response, 25 * 1024 * 1024);
+  return { bytes, contentType: response.headers.get("content-type")!.split(";")[0], hash: createHash("sha256").update(bytes).digest("hex") };
+}
+
+export async function prepareSupplierSaleProductionReview(saleId: string) {
+  const row = await fetchSaleRowById(saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", [], 404);
+  const previous = jsonRecord(row.metadata.production_handoff);
+  if (previous.status === "pending" || previous.status === "synced" || previous.releaseAttempted || ["completed", "canceled", "in_production"].includes(row.assignment_status)
+    || (row.assigned_supplier && row.assigned_supplier !== "quentin")) {
+    throw new QuoteValidationError("Diese Vergabe ist gesperrt oder bereits in Produktion.", [], 409);
+  }
+  const itemRows = await fetchItemsForSale(row.id);
+  const items = itemRows.map(mapItem);
+  const productRows = itemRows.filter(i => Boolean(jsonRecord(i.raw_line_item).purchasedImageId));
+  if (!row.offer_id || !productRows.length || productRows.length > 12) throw new QuoteValidationError("Die gespeicherte Angebotsannahme enthält keine vollständige Zuordnung der gekauften Designs.", [], 422);
+  // Products are selected from the accepted item snapshot, never from a keyword in the whole offer.
+  const products: ReviewProduct[] = [];
+  for (const productRow of productRows) {
+    const raw = jsonRecord(productRow.raw_line_item);
+    const item = items.find(i => i.id === productRow.id)!;
+    const imageUrl = safeApprovedDesignUrl(raw.purchasedImageUrl || raw.imageUrl);
+    if (!imageUrl || item.quantity <= 0) throw new QuoteValidationError("Gekauftes Bild oder Menge fehlt.", [], 422);
+    products.push({
+      id: item.id, title: /3d/i.test(item.productType || item.title) ? "3D Sign" : "LED Neon Sign",
+      quantity: item.quantity,
+      fields: item.selectionDetails.map(detail => {
+        const [label, ...rest] = detail.replace(/[\u2757\uFE0F]/g, "").split(":");
+        return { label: label.trim(), value: rest.join(":").trim() };
+      }).filter(f => f.value && !/^(Product Type|Section|SKU)$/i.test(f.label)),
+      imageUrl, imageId: String(raw.purchasedImageId), imageTitle: String(raw.purchasedImageTitle || "Gekauftes Design"),
+      imageHash: (await readPurchasedProductionImage(imageUrl)).hash,
+    });
+  }
+  const card = await productionReviewCard(row);
+  if (Object.values(PRODUCTION_LISTS).some(list => list.id === card.idList)) throw new QuoteValidationError("Die Karte liegt bereits in einer Produktionsliste. Den bestehenden Produktionsstand manuell prüfen.", [], 409);
+  const mails = await readSupplierSaleMail({ email: row.customer_email || "", requestId: row.request_id });
+  const storage = await checkSupplierFileStorage();
+  const deliveryRows = itemRows.filter(i => /^(versand|lieferung|delivery|shipping)$/i.test(i.product_type || String(i.raw_line_item.section || "")));
+  const priority = productionPriorityFromDeliveryTitles(deliveryRows.map(i => i.title));
+  const accessories = items.filter(i => !products.some(p => p.id === i.id) && !deliveryRows.some(d => d.id === i.id)).map(i => {
+    const known = supplierAccessoryLine(i)?.line.replace(/[\u2757\uFE0F]/g, "").trim();
+    const label = /klebe|adhesive/i.test(i.title) ? "Adhesive mounting set"
+      : /dimmer/i.test(i.title) ? "Dimmer with Bluetooth and remote control"
+      : /kabel|cable/i.test(i.title) ? i.title.replace(/zusätzliche?/gi, "Additional").replace(/meter/gi, "m").replace(/kabellänge/gi, "cable length")
+      : known?.replace(/^\d+x\s*/, "") || i.title;
+    return `${i.quantity}x ${label}`;
+  });
+  const sources: ReviewSource[] = [
+    ...itemRows.map(i => ({
+      id: `order:${i.id}`, kind: "order" as const, label: i.title,
+      text: [i.title, `Quantity: ${i.quantity}`, String(i.raw_line_item.description || ""), ...items.find(item => item.id === i.id)!.selectionDetails].join("\n"),
+      at: row.created_at, href: null,
+    })),
+    { id: "card", kind: "card", label: "Aktuelle Quentin-Karte", text: `${card.name}\n${card.desc}`, at: null, href: `https://trello.com/c/${card.id}` },
+    ...mails.map(m => ({ id: `mail:${m.id}`, kind: "mail" as const, label: `${m.direction === "inbound" ? "Eingang" : "Ausgang"}: ${m.subject}${m.hasAttachments ? " (mit Anhängen; deren Inhalte wurden nicht gelesen)" : ""}`, text: m.body, at: m.at, href: m.href, threadId: m.threadId })),
+  ];
+  const analysis = await analyzeProductionReview({ products, sources, orderReference: row.shopify_order_name || row.offer_number || row.sale_key, requestId: row.request_id });
+  const knownApproved = arrayRecords(row.metadata.approved_design_attachments).filter(a => a.card_id === card.id);
+  const orderHash = productionOrderHash(row, itemRows);
+  const mailHash = productionHash(mails);
+  const cardHash = productionCardHash(card);
+  const review: ProductionReview = {
+    version: 1, id: randomUUID(), saleId: row.id, preparedAt: new Date().toISOString(),
+    sourceHash: productionHash([orderHash, mailHash, cardHash]), orderHash, mailHash, cardHash,
+    orderName: row.shopify_order_name || row.offer_number || row.sale_key, customerName: row.customer_name || row.customer_company || "Customer",
+    requestId: row.request_id, cardId: card.id, cardUrl: `https://trello.com/c/${card.id}`,
+    originalTitle: card.name, originalDescription: card.desc, originalListId: card.idList,
+    originalCoverId: card.idAttachmentCover || null, originalPos: card.pos,
+    products, accessories, sources, analysis, priority, mailCount: mails.length,
+    blockers: [
+      ...(!mails.length || analysis.threads.every(t => t.relevance === "unrelated") ? ["Keine auftragsbezogene Korrespondenz gefunden. Mailzuordnung prüfen."] : []),
+      ...(!deliveryRows.length ? ["Die bestellte Lieferleistung ist nicht eindeutig im Annahme-Snapshot enthalten."] : []),
+      ...(products.some(p => !p.fields.length) ? ["Mindestens einem Produkt fehlen Produktionsmerkmale."] : []),
+    ],
+    attachments: card.attachments.map(a => ({
+      id: a.id, name: a.name || a.fileName || "Datei", url: a.url || "", mimeType: a.mimeType || "",
+      previewUrl: a.previews?.find(p => p.width && p.width >= 200)?.url || null,
+      removable: Boolean(a.isUpload) && (!a.bytes || a.bytes <= Math.min(storage.file_size_limit || Infinity, 25 * 1024 * 1024)),
+      decision: !a.isUpload || knownApproved.some(k => k.attachment_id === a.id && products.some(p => p.id === k.item_id && createHash("sha256").update(p.imageUrl).digest("hex") === k.source_hash)) ? "keep" : "undecided",
+      reason: !a.isUpload ? "Verknüpfte Datei: keine gesicherte Entfernung möglich; behalten."
+        : a.bytes && a.bytes > Math.min(storage.file_size_limit || Infinity, 25 * 1024 * 1024) ? "Zu groß für die bestehende Sicherung; behalten."
+        : "Finales Design, technische Zeichnung oder benötigte Referenz behalten; alte Varianten können gesichert entfernt werden.",
+    })),
+  };
+  const latest = await fetchSaleRowById(row.id);
+  if (!latest || productionOrderHash(latest, await fetchItemsForSale(row.id)) !== orderHash || jsonRecord(latest.metadata.production_handoff).status === "pending") throw new QuoteValidationError("Die Bestellung wurde während der Vorbereitung geändert. Bitte erneut prüfen.", [], 409);
+  const saved = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
+    method: "PATCH", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ metadata: { ...latest.metadata, production_review: review } }),
+  }, { id: `eq.${row.id}`, updated_at: `eq.${latest.updated_at}`, select: "id" });
+  if (!saved[0]) throw new QuoteValidationError("Eine andere Prüfung hat die Sale geändert. Bitte neu vorbereiten.", [], 409);
+  return review;
+}
+
+export async function readSupplierSaleProductionReview(saleId: string) {
+  const row = await fetchSaleRowById(saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", [], 404);
+  const handoff = row.metadata.production_handoff as ProductionHandoff | undefined;
+  const attempt = handoff ? (await supabaseRequest<Array<{ metadata: JsonRecord }>>("supplier_assignment_attempts", undefined, {
+    select: "metadata", attempt_key: `eq.${handoff.attemptKey}`, sale_id: `eq.${row.id}`, limit: 1,
+  }))[0] : null;
+  return { review: row.metadata.production_review || null, handoff: handoff || null,
+    approval: handoff?.reviewId === (row.metadata.production_review as ProductionReview | undefined)?.id ? attempt?.metadata.approval || null : null };
+}
+export async function downloadSupplierSaleFileBackup(saleId: string, attachmentId: string) {
+  const row = await fetchSaleRowById(saleId);
+  const backups = (jsonRecord(row?.metadata.production_handoff).backups || []) as SupplierFileBackup[];
+  const backup = backups.find(b => b.attachmentId === attachmentId);
+  if (!backup) throw new QuoteValidationError("Dateisicherung wurde nicht gefunden.", [], 404);
+  return { backup, bytes: await readSupplierFileBackup(backup) };
+}
+
+async function assignReviewedSupplierSale(input: SupplierSaleAssignInput, decision: SupplierSalePaymentDecision, deliveryDate: string, actor?: SupplierSaleActor | null) {
+  let row = await fetchSaleRowById(input.saleId);
+  if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", [], 404);
+  if (["completed", "canceled"].includes(row.assignment_status)) throw new QuoteValidationError("Diese Sale ist abgeschlossen oder storniert.", [], 409);
+  const review = row.metadata.production_review as ProductionReview | undefined;
+  const approval = input.productionApproval!;
+  if (!review) throw new QuoteValidationError("Bitte zuerst Vergabe prüfen.", [], 409);
+  const issues = reviewApprovalIssues(review, approval);
+  if (issues.length) throw new QuoteValidationError("Die Vorbereitung benötigt noch eine Entscheidung.", issues, 422);
+  const approvalHash = productionHash(approval);
+  const prior = row.metadata.production_handoff as ProductionHandoff | undefined;
+  if (prior?.status === "synced") {
+    if (prior.approvalHash === approvalHash) return getSupplierSale(row.id);
+    throw new QuoteValidationError("Diese Vergabe wurde bereits freigegeben.", [], 409);
+  }
+  if (prior?.status === "pending") throw new QuoteValidationError("Eine Freigabe läuft bereits oder benötigt nach einem Abbruch eine Prüfung. Nicht erneut auslösen.", [], 409);
+  const checkSources = async () => {
+    const current = await fetchSaleRowById(input.saleId);
+    if (!current || ["completed", "canceled"].includes(current.assignment_status) || postOrderReviewFromRow(current).status === "change_requested"
+      || (current.payment_decision_status === "wait_for_payment" && row!.payment_decision_status !== "wait_for_payment")
+      || productionOrderHash(current, await fetchItemsForSale(input.saleId)) !== review.orderHash) throw new QuoteValidationError("Die Bestellung hat sich geändert. Bitte neu vorbereiten.", [], 409);
+    const mails = await readSupplierSaleMail({ email: current.customer_email || "", requestId: current.request_id });
+    if (productionHash(mails) !== review.mailHash) throw new QuoteValidationError("Neue oder geänderte E-Mail gefunden. Bitte neu vorbereiten und prüfen.", [], 409);
+  };
+  await checkSources();
+  if (!prior || prior.reviewId !== review.id) {
+    const currentCard = await readProductionTrelloCard(review.cardId);
+    if (productionCardHash(currentCard) !== review.cardHash) throw new QuoteValidationError("Die Karte hat sich geändert. Bitte neu vorbereiten.", [], 409);
+  }
+  const attemptKey = prior?.attemptKey || `supplier-sale:${row.id}:assign:quentin:${deliveryDate}`;
+  const previousAttempt = prior ? (await supabaseRequest<Array<{ sale_id: string; requested_delivery_date: string; status: string; metadata: JsonRecord }>>("supplier_assignment_attempts", undefined, {
+    select: "sale_id,requested_delivery_date,status,metadata", attempt_key: `eq.${attemptKey}`, limit: 1,
+  }))[0] : null;
+  if (prior && (!previousAttempt || previousAttempt.sale_id !== row.id || previousAttempt.status !== "partial" || previousAttempt.requested_delivery_date !== deliveryDate)) {
+    throw new QuoteValidationError("Der bestehende Vergabeversuch muss mit seinem bestätigten Lieferdatum fortgesetzt werden.", [], 409);
+  }
+  if (prior?.reviewId === review.id && prior.approvalHash !== approvalHash) throw new QuoteValidationError("Für geänderte Entscheidungen bitte zuerst neu vorbereiten.", [], 409);
+  const previousProducts = (previousAttempt?.metadata.production_review as ProductionReview | undefined)?.products || [];
+  const state: ProductionHandoff = {
+    reviewId: review.id, attemptKey, approvalHash, status: "pending", error: null,
+    uploads: Object.fromEntries(Object.entries(prior?.uploads || {}).filter(([id]) => review.products.some(p => p.id === id && previousProducts.some(old => old.id === id && old.imageHash === p.imageHash)))),
+    backups: prior?.backups || [],
+    releaseAttempted: prior?.releaseAttempted || false, verifiedAt: null,
+  };
+  const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
+  // One atomic row claim serializes different dates and multiple employee tabs, before provider writes.
+  const claimRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
+    method: "PATCH", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ metadata: { ...row.metadata, production_handoff: state } }),
+  }, { id: `eq.${row.id}`, updated_at: `eq.${row.updated_at}`, select: "*" });
+  if (!claimRows[0]) throw new QuoteValidationError("Eine andere Prüfung hat die Sale geändert. Bitte neu laden.", [], 409);
+  row = claimRows[0];
+  const tag = supplierTagValue("quentin");
+  let ownsAttempt = Boolean(previousAttempt);
+  const save = async (next: ProductionHandoff) => {
+    await supabaseRequest("supplier_assignment_attempts", {
+      method: "PATCH", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        status: next.status, error: next.error, trello_card_id: review.cardId, trello_card_url: review.cardUrl,
+        completed_at: next.status === "pending" ? null : new Date().toISOString(),
+        metadata: { ...jsonRecord(previousAttempt?.metadata), production_review: review, approval, handoff: next, original_snapshot: previousAttempt?.metadata.original_snapshot || review },
+      }),
+    }, { attempt_key: `eq.${attemptKey}` });
+    await patchProductionMetadata(input.saleId, { production_handoff: next, ...(next.status === "synced" ? { production_confirmed_at: next.verifiedAt, production_confirmed_by: operatorName } : {}) }, {
+      assignment_status: next.status === "synced" ? "in_production" : "assigned",
+      assigned_supplier: "quentin", assigned_by: operatorName, assigned_at: row!.assigned_at || new Date().toISOString(),
+      supplier_due_date: deliveryDate, payment_decision_status: decision, assignment_note: input.assignmentNote || null,
+      supplier_trello_card_id: review.cardId, supplier_trello_card_url: review.cardUrl,
+      trello_projection_status: next.status === "synced" ? "synced" : next.status === "partial" ? "failed" : "pending",
+      trello_projection_error: next.error,
+    });
+  };
+  try {
+    if (!prior) {
+      const reserved = await reserveSupplierAssignmentAttempt({
+        saleId: row.id, attemptKey, supplier: "quentin", operatorName, requestedDeliveryDate: deliveryDate,
+        assignmentNote: input.assignmentNote || null, paymentDecisionStatus: decision, tagValue: tag,
+        assigneeLabel: input.assigneeLabel || null, specialSupplierName: null, shopifySupplierTagConfirmed: false,
+        metadata: { production_review: review, approval, handoff: state, original_snapshot: review },
+      });
+      if (!reserved) throw new Error("Für diesen Liefertermin besteht bereits ein Vergabeversuch. Bitte den vorhandenen Vorgang prüfen.");
+      ownsAttempt = true;
+    }
+    await save(state);
+    await executeProductionHandoff(review, approval, state, {
+      readCard: () => readProductionTrelloCard(review.cardId),
+      upload: async (url, name) => {
+        const file = await readPurchasedProductionImage(url);
+        if (!review.products.some(p => p.imageUrl === url && p.imageHash === file.hash)) throw new Error("Das gekaufte Bild wurde nach der Vorschau geändert.");
+        return addTrelloCardAttachment({ cardId: review.cardId, name, setCover: false, file: { ...file, fileName: `${name}.${file.contentType === "image/jpeg" ? "jpg" : file.contentType.split("/")[1] || "png"}` } });
+      },
+      readFile: attachment => downloadProductionAttachment(review.cardId, attachment),
+      backup: async attachment => {
+        const file = await downloadProductionAttachment(review.cardId, attachment);
+        return backupSupplierFile({ saleId: input.saleId, cardId: review.cardId, attachmentId: attachment.id, name: attachment.name || "Datei", ...file });
+      },
+      verifyBackup: backup => readSupplierFileBackup(backup),
+      update: patch => updateTrelloCard(review.cardId, patch),
+      remove: attachmentId => deleteTrelloCardAttachment({ cardId: review.cardId, attachmentId }),
+      checkSources,
+      isTop: async (listId, cardId) => {
+        const cards = await readProductionListCards(listId);
+        return cards.some(c => c.id === cardId) && cards.every(c => c.id === cardId || c.pos > (cards.find(c => c.id === cardId)?.pos ?? Infinity));
+      },
+      verifyShopify: async () => {
+        const current = await fetchSaleRowById(input.saleId);
+        const config = shopifyConfig();
+        const gid = current && shopifyOrderGid(current);
+        if (!current || !config || !gid || !tag) throw new Error("Eine eindeutige Shopify-Bestellung und Supplier-Kennzeichnung fehlen.");
+        let live = await fetchShopifyOrderByGid(config, gid);
+        if (!live.order || live.order.cancelledAt || ["REFUNDED", "VOIDED"].includes(String(live.order.displayFinancialStatus))) throw new Error("Shopify-Bestellung ist nicht für die Produktion bestätigt.");
+        if (decision === "paid_confirmed" && live.order.displayFinancialStatus !== "PAID") throw new Error("Shopify bestätigt die Zahlung nicht mehr.");
+        if (!(Array.isArray(live.order.tags) && live.order.tags.includes(tag))) {
+          const synced = await syncShopifySupplierTag(current, tag);
+          if (synced.status !== "synced") throw new Error(synced.error || "Shopify-Supplier-Kennzeichnung fehlt.");
+          live = await fetchShopifyOrderByGid(config, gid);
+        }
+        if (!live.order || !(Array.isArray(live.order.tags) && live.order.tags.includes(tag))) throw new Error("Shopify-Supplier-Kennzeichnung konnte nicht zurückgelesen werden.");
+        await patchSaleRow(input.saleId, { shopify_tag_sync_status: "synced", shopify_tag_value: tag, shopify_tag_error: null, shopify_tag_synced_at: new Date().toISOString() });
+        if (supplierAssignmentTasksEnabled()) await ensureSupplierAssignmentTask(input.saleId, actor, input.assigneeLabel);
+        else await patchSaleRow(input.saleId, { task_sync_status: "skipped", task_sync_error: null });
+      },
+      save,
+    });
+    await insertEvent({
+      saleId: input.saleId, eventType: "assignment_confirmed", actor, idempotencyKey: attemptKey,
+      payload: { review_id: review.id, approval_hash: approvalHash, production_verified_at: state.verifiedAt },
+    });
+  } catch (error) {
+    if (!ownsAttempt) {
+      await patchProductionMetadata(input.saleId, { production_handoff: prior || null });
+      throw new QuoteValidationError("Der vorhandene Vergabeversuch wurde nicht verändert.", [error instanceof Error ? error.message : "Reservierung fehlgeschlagen."], 409);
+    }
+    if (state.status !== "partial") {
+      state.status = "partial"; state.error = error instanceof Error ? error.message : "Vergabe unvollständig.";
+      await save(state);
+    }
+    throw new QuoteValidationError("Produktionsübergabe ist noch nicht vollständig.", [state.error || "Bitte erneut prüfen."], 409);
+  }
+  return getSupplierSale(input.saleId);
 }
 
 export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?: SupplierSaleActor | null) {
@@ -6473,6 +6832,15 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     throw new QuoteValidationError("Shopify-Supplier-Tag ist nicht bestaetigt.", [
       "Bitte den Supplier als Tag in Shopify eintragen und die Bestaetigung aktivieren.",
     ], 422);
+  }
+
+  if (input.productionApproval) {
+    if (supplier !== "quentin") throw new QuoteValidationError("Diese Vorbereitung gehört zu Quentin.", [], 422);
+    return assignReviewedSupplierSale(input, decision, requestedDeliveryDate, actor);
+  }
+  const reviewRow = await fetchSaleRowById(sale.id);
+  if (reviewRow?.metadata?.production_review || reviewRow?.metadata?.production_handoff) {
+    throw new QuoteValidationError("Bitte die vorbereitete Produktionsvergabe prüfen und freigeben.", [], 409);
   }
 
   const now = new Date().toISOString();
@@ -6632,6 +7000,7 @@ export async function retrySupplierSaleTrelloProjection(
   actor?: SupplierSaleActor | null,
 ) {
   const sale = await getSupplierSale(input.saleId);
+  if (sale.productionReviewStatus) throw new QuoteValidationError("Bitte den bestehenden geprüften Vergabeversuch öffnen und fortsetzen.", [], 409);
   if (!sale.assignedSupplier || !["assigned", "in_production"].includes(sale.assignmentStatus)) {
     throw new QuoteValidationError("Sale ist noch nicht vergeben.", [
       "Die Trello-Karte kann erst nach einer gespeicherten Supplier-Vergabe aktualisiert werden.",

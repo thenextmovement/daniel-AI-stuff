@@ -551,22 +551,29 @@ export async function archiveTrelloCard(cardId: string) {
 
 export async function addTrelloCardAttachment(input: {
   cardId: string;
-  url: string;
+  url?: string;
+  file?: { bytes: Uint8Array; contentType: string; fileName: string };
   name?: string | null;
+  setCover?: boolean;
 }) {
   const { key, token } = trelloConfig();
   const sourceUrl = String(input.url || "").trim();
-  if (!sourceUrl) throw new Error("Trello Attachment URL fehlt.");
+  if (!sourceUrl && !input.file) throw new Error("Trello Attachment URL oder Datei fehlt.");
 
   const url = new URL(`https://api.trello.com/1/cards/${encodeURIComponent(input.cardId)}/attachments`);
   url.searchParams.set("key", key);
   url.searchParams.set("token", token);
-  url.searchParams.set("url", sourceUrl);
+  if (!input.file) url.searchParams.set("url", sourceUrl);
   if (input.name) url.searchParams.set("name", input.name);
+  if (input.setCover !== undefined) url.searchParams.set("setCover", String(input.setCover));
 
+  const form = input.file ? new FormData() : undefined;
+  if (form && input.file) form.append("file", new Blob([Buffer.from(input.file.bytes)], { type: input.file.contentType }), input.file.fileName);
   const response = await fetch(url.toString(), {
     method: "POST",
+    body: form,
     cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {
@@ -768,6 +775,9 @@ export async function updateTrelloCard(
   patch: {
     name?: string | null;
     desc?: string | null;
+    idAttachmentCover?: string;
+    idList?: string;
+    pos?: "top";
   },
 ) {
   const { key, token } = trelloConfig();
@@ -781,6 +791,9 @@ export async function updateTrelloCard(
   if (patch.desc !== undefined) {
     url.searchParams.set("desc", patch.desc || "");
   }
+  if (patch.idAttachmentCover !== undefined) url.searchParams.set("idAttachmentCover", patch.idAttachmentCover);
+  if (patch.idList !== undefined) url.searchParams.set("idList", patch.idList);
+  if (patch.pos !== undefined) url.searchParams.set("pos", patch.pos);
 
   const response = await fetch(url.toString(), {
     method: "PUT",
@@ -790,6 +803,41 @@ export async function updateTrelloCard(
   if (!response.ok) {
     throw new Error(`Trello Karten-Update fehlgeschlagen: ${response.status}`);
   }
+}
+
+export type ProductionTrelloCard = {
+  id: string; idBoard: string; idList: string; name: string; desc: string;
+  pos: number; closed: boolean; idAttachmentCover: string | null;
+  attachments: Array<TrelloAttachment & { bytes?: number; isUpload?: boolean }>;
+};
+
+export async function readProductionTrelloCard(cardId: string): Promise<ProductionTrelloCard> {
+  return trelloFetch<ProductionTrelloCard>(
+    `/cards/${encodeURIComponent(cardId)}?fields=id,idBoard,idList,name,desc,pos,closed,idAttachmentCover&attachments=true&attachment_fields=id,name,fileName,url,mimeType,previews,bytes,isUpload`,
+  );
+}
+
+export async function readProductionListCards(listId: string) {
+  return trelloFetch<Array<{ id: string; pos: number }>>(`/lists/${encodeURIComponent(listId)}/cards?fields=id,pos`);
+}
+
+/** Only a real uploaded Trello file; arbitrary attachment links never receive credentials. */
+export async function downloadProductionAttachment(cardId: string, attachment: ProductionTrelloCard["attachments"][number]) {
+  if (!attachment.isUpload || !attachment.url || !/^[a-f0-9]{24}$/i.test(cardId) || !/^[a-f0-9]{24}$/i.test(attachment.id)) {
+    throw new Error("Dieser Anhang ist keine sicher herunterladbare Trello-Datei. Bitte behalten.");
+  }
+  const { key, token } = trelloConfig();
+  const name = attachment.fileName || attachment.name || "attachment";
+  const endpoint = `https://api.trello.com/1/cards/${cardId}/attachments/${attachment.id}/download/${encodeURIComponent(name)}`;
+  const response = await fetch(endpoint, {
+    headers: { Authorization: `OAuth oauth_consumer_key="${key}", oauth_token="${token}"` },
+    cache: "no-store", signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`Trello-Datei konnte nicht gesichert werden (HTTP ${response.status}).`);
+  const { readBoundedResponseBytes } = await import("@/lib/ops/arrival-labels/printing");
+  const bytes = await readBoundedResponseBytes(response, 25 * 1024 * 1024);
+  if (attachment.bytes && attachment.bytes !== bytes.byteLength) throw new Error("Dateigröße stimmt nicht mit Trello überein.");
+  return { bytes, contentType: response.headers.get("content-type")?.split(";")[0] || attachment.mimeType || "application/octet-stream" };
 }
 
 export async function moveTrelloCardToList(cardId: string, listId: string) {
