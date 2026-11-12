@@ -4,11 +4,12 @@ import type { ReviewMail } from "./supplier-sale-review";
 
 type Recipient = { emailAddress?: { address?: string } };
 type GraphMessage = {
-  id: string; conversationId: string; subject?: string; body?: { content?: string; contentType?: string };
+  id: string; conversationId: string; internetMessageId?: string; subject?: string; body?: { content?: string; contentType?: string };
   receivedDateTime?: string; sentDateTime?: string; from?: Recipient;
   toRecipients?: Recipient[]; ccRecipients?: Recipient[]; webLink?: string; isDraft?: boolean; hasAttachments?: boolean;
 };
-const SELECT = "id,conversationId,subject,body,receivedDateTime,sentDateTime,from,toRecipients,ccRecipients,webLink,isDraft,hasAttachments";
+const SELECT = "id,conversationId,internetMessageId,subject,body,receivedDateTime,sentDateTime,from,toRecipients,ccRecipients,webLink,isDraft,hasAttachments";
+const SEED_SELECT = SELECT.split(",").filter(field => field !== "body").join(",");
 const escapeFilter = (value: string) => value.replace(/'/g, "''");
 const address = (r?: Recipient) => String(r?.emailAddress?.address || "").toLowerCase();
 
@@ -23,21 +24,41 @@ export async function readSupplierSaleMail(input: { email: string; requestId: st
   const token = await (dependencies?.token || microsoftGraphToken)();
   const fetcher = dependencies?.fetch || fetch;
   const endpoint = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages`;
-  async function collect(query: Record<string, string>, search = false) {
-    let next: string | null = `${endpoint}?${new URLSearchParams({ "$select": SELECT, "$top": "100", ...query })}`;
+  async function collect(query: Record<string, string>, search = false, fullText = true) {
+    // Search/recent pages only identify threads. Read full bodies once, from those threads.
+    let next: string | null = `${endpoint}?${new URLSearchParams({ "$select": fullText ? SELECT : SEED_SELECT, "$top": fullText ? "25" : "100", ...query })}`;
     const messages: GraphMessage[] = [];
     let pages = 0;
     while (next) {
       const url = new URL(next);
-      if (url.origin !== "https://graph.microsoft.com" || url.pathname !== new URL(endpoint).pathname || url.username || url.password) throw new Error("Ungültiger Outlook-Seitenlink.");
+      // Graph returns the same mailbox with a literal @ in nextLink, even when the
+      // initial URL uses %40. Normalize encoding only; never accept another mailbox/path.
+      if (url.origin !== "https://graph.microsoft.com" || decodeURIComponent(url.pathname) !== `/v1.0/users/${mailbox}/messages` || url.username || url.password || url.hash) throw new Error("Ungültiger Outlook-Seitenlink.");
       if (++pages > 30) throw new Error("Mailverlauf überschreitet das Prüflimit. Keine vollständige Mailprüfung möglich.");
-      const response = await fetcher(url.toString(), {
-        headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.body-content-type="text", IdType="ImmutableId"' },
-        cache: "no-store", signal: AbortSignal.timeout(20_000),
-      });
-      if (!response.ok) throw new Error(`Outlook-Lesezugriff fehlgeschlagen (HTTP ${response.status}).`);
-      const payload = await response.json() as { value?: GraphMessage[]; "@odata.nextLink"?: string };
-      if (!Array.isArray(payload.value)) throw new Error("Outlook lieferte keinen vollständigen Nachrichtenstapel.");
+      let payload: { value?: GraphMessage[]; "@odata.nextLink"?: string } | undefined;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        let response: Response;
+        try {
+          response = await fetcher(url.toString(), {
+            headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.body-content-type="text", IdType="ImmutableId"' },
+            cache: "no-store", signal: AbortSignal.timeout(20_000),
+          });
+          if (response.ok) { payload = await response.json(); break; }
+        } catch (error) {
+          const transient = error instanceof Error && ["TimeoutError", "AbortError", "TypeError"].includes(error.name);
+          if (!transient || attempt === 2) throw error;
+          await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
+          continue;
+        }
+        if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) throw new Error(`Outlook-Lesezugriff fehlgeschlagen (HTTP ${response.status}).`);
+        const retryAfter = response.headers.get("Retry-After");
+        const seconds = retryAfter === null ? NaN : Number(retryAfter);
+        const wait = retryAfter === null ? 500 * 2 ** attempt : Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now();
+        await response.body?.cancel();
+        if (wait > 10_000) throw new Error("Outlook ist vorübergehend ausgelastet. Bitte die vollständige Mailprüfung später erneut starten.");
+        await new Promise(resolve => setTimeout(resolve, Number.isFinite(wait) ? Math.max(0, wait) : 500 * 2 ** attempt));
+      }
+      if (!payload || !Array.isArray(payload.value)) throw new Error("Outlook lieferte keinen vollständigen Nachrichtenstapel.");
       messages.push(...payload.value);
       next = payload["@odata.nextLink"] || null;
     }
@@ -56,22 +77,31 @@ export async function readSupplierSaleMail(input: { email: string; requestId: st
       if (offset >= 1500) throw new Error("Zu viele verknüpfte E-Mails; eine vollständige Prüfung ist nicht möglich.");
     }
   }
-  const search = await collect({ "$search": `"participants:${email}"` }, true);
+  const search = await collect({ "$search": `"participants:${email}"` }, true, false);
   // Search is eventually consistent. Also read recent messages directly, without the search index.
   const now = dependencies?.now || new Date();
   const recentSince = input.since || new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-  const recent = await collect({ "$filter": `receivedDateTime ge ${recentSince}` });
+  const recent = await collect({ "$filter": `receivedDateTime ge ${recentSince}` }, false, false);
   const participates = (m: GraphMessage) => address(m.from) === email || [...(m.toRecipients || []), ...(m.ccRecipients || [])].some(r => address(r) === email);
   const relevantSeeds = [...search, ...recent].filter(m => !m.isDraft && (participates(m) || linkedThreads.has(m.conversationId)));
   const threadIds = new Set([...linkedThreads, ...relevantSeeds.map(m => m.conversationId).filter(Boolean)]);
   if (threadIds.size > 40) throw new Error("Mehr als 40 Kunden-Threads. Bitte den auftragsbezogenen Verlauf zuerst eingrenzen.");
   const found = new Map<string, GraphMessage>();
-  for (const m of relevantSeeds) found.set(m.id, m);
+  const coveredSeeds = new Set<string>();
+  const stableMessageKey = (m: GraphMessage) => m.internetMessageId ? `${m.conversationId}\n${m.internetMessageId}` : null;
   for (const threadId of threadIds) {
     for (const m of await collect({ "$filter": `conversationId eq '${escapeFilter(threadId)}'` })) {
-      if (!m.isDraft) found.set(m.id, m);
+      if (!m.isDraft) {
+        found.set(m.id, m);
+        const key = stableMessageKey(m);
+        if (key) coveredSeeds.add(key);
+      }
     }
   }
+  // Outlook search can return mutable IDs despite Prefer: ImmutableId. The full
+  // thread response owns the returned ID; verify every seed by ID or by the exact
+  // Internet-Message-ID within its conversation, never by subject/body similarity.
+  if (relevantSeeds.some(m => !found.has(m.id) && (!stableMessageKey(m) || !coveredSeeds.has(stableMessageKey(m)!)))) throw new Error("Nicht alle gefundenen E-Mails konnten vollständig gelesen werden. Bitte die Mailprüfung erneut starten.");
   const messages = [...found.values()];
   if (messages.length > 250) throw new Error("Mehr als 250 Nachrichten; der Verlauf benötigt eine gezielte manuelle Zuordnung.");
   const mapped = messages.map((m): ReviewMail => {

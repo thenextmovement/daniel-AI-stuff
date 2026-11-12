@@ -207,22 +207,61 @@ test("private existing storage verifies byte identity, including duplicate uploa
 
 test("mail reader includes full incoming/outgoing bodies, pagination and unindexed recent threads", async () => {
   const old = process.env.MICROSOFT_GRAPH_MAILBOX; process.env.MICROSOFT_GRAPH_MAILBOX = "support@neontrip.de";
-  const msg = (id: string, thread: string, from = "customer@example.test") => ({ id, conversationId: thread, subject: "Änderung", body: { contentType: "text", content: "Vollständiger Inhalt " + id }, receivedDateTime: "2026-11-12T09:00:00Z", sentDateTime: "2026-11-12T09:00:00Z", from: { emailAddress: { address: from } }, toRecipients: [{ emailAddress: { address: from === "support@neontrip.de" ? "customer@example.test" : "support@neontrip.de" } }] });
+  const msg = (id: string, thread: string, from = "customer@example.test") => ({ id, conversationId: thread, internetMessageId: `<${id}@example.test>`, subject: "Änderung", body: { contentType: "text", content: "Vollständiger Inhalt " + id }, receivedDateTime: "2026-11-12T09:00:00Z", sentDateTime: "2026-11-12T09:00:00Z", from: { emailAddress: { address: from } }, toRecipients: [{ emailAddress: { address: from === "support@neontrip.de" ? "customer@example.test" : "support@neontrip.de" } }] });
   const calls: URL[] = [];
   const fetcher: typeof fetch = async url => {
     const u = new URL(String(url)); calls.push(u);
-    if (u.searchParams.has("$search")) return Response.json({ value: [msg("in", "old")], "@odata.nextLink": u.origin + u.pathname + "?page=2" });
-    if (u.searchParams.has("page")) return Response.json({ value: [msg("out", "old", "support@neontrip.de")] });
+    if (u.searchParams.has("$search")) return Response.json({ value: [{ ...msg("in", "old"), id: "mutable-in", body: undefined }], "@odata.nextLink": u.origin + decodeURIComponent(u.pathname) + "?page=2" });
+    if (u.searchParams.has("page")) return Response.json({ value: [{ ...msg("out", "old", "support@neontrip.de"), id: "mutable-out", body: undefined }] });
     const filter = u.searchParams.get("$filter") || "";
-    return Response.json({ value: filter.startsWith("receivedDateTime") ? [msg("fresh", "new")] : filter.includes("'new'") ? [msg("fresh", "new")] : [msg("in", "old"), msg("out", "old", "support@neontrip.de")] });
+    return Response.json({ value: filter.startsWith("receivedDateTime") ? [{ ...msg("fresh", "new"), body: undefined }] : filter.includes("'new'") ? [msg("fresh", "new")] : [msg("in", "old"), msg("out", "old", "support@neontrip.de")] });
   };
   try {
     const result = await readSupplierSaleMail({ email: "customer@example.test", requestId: null }, { token: async () => "fixture", fetch: fetcher });
     assert.equal(result.length, 3); assert.equal(result.find(m => m.id === "out")?.direction, "outbound");
+    assert.equal(result.find(m => m.id === "in")?.body, "Vollständiger Inhalt in");
     assert.ok(calls.some(u => u.searchParams.get("$select")?.includes("body")));
+    assert.ok(calls.filter(u => u.searchParams.has("$search") || u.searchParams.get("$filter")?.startsWith("receivedDateTime")).every(u => !u.searchParams.get("$select")?.split(",").includes("body")));
+    assert.ok(calls.filter(u => u.searchParams.get("$filter")?.startsWith("conversationId")).every(u => u.searchParams.get("$top") === "25"));
     assert.ok(calls.some(u => u.searchParams.get("$filter")?.includes("'new'")));
     await assert.rejects(readSupplierSaleMail({ email: "customer@example.test", requestId: null }, { token: async () => "fixture", fetch: async () => Response.json({ value: [], "@odata.nextLink": "https://evil.example/messages" }) }), /Seitenlink/);
     await assert.rejects(readSupplierSaleMail({ email: "customer@example.test", requestId: null }, { token: async () => "fixture", fetch: async () => Response.json({ value: [{ ...msg("missing", "old"), body: undefined }] }) }), /Volltext fehlt/);
+    for (const mismatch of ["missing", "other-thread"]) {
+      await assert.rejects(readSupplierSaleMail({ email: "customer@example.test", requestId: null }, { token: async () => "fixture", fetch: async url => {
+        const threadRead = new URL(String(url)).searchParams.get("$filter")?.startsWith("conversationId");
+        return Response.json({ value: threadRead ? mismatch === "missing" ? [] : [{ ...msg("in", "other"), id: "immutable-in" }] : [msg("in", "old")] });
+      } }), /Nicht alle gefundenen/);
+    }
+  } finally { if (old === undefined) delete process.env.MICROSOFT_GRAPH_MAILBOX; else process.env.MICROSOFT_GRAPH_MAILBOX = old; }
+});
+
+test("mail reader retries only transient reads and keeps nextLink bound to the support mailbox", async () => {
+  const old = process.env.MICROSOFT_GRAPH_MAILBOX; process.env.MICROSOFT_GRAPH_MAILBOX = "support@neontrip.de";
+  try {
+    let calls = 0;
+    const fetcher: typeof fetch = async (_url, init) => {
+      assert.equal(init?.method, undefined); // GET only; no resend or mutation.
+      calls++;
+      if (calls === 1) return new Response(null, { status: 500, headers: { "Retry-After": "0" } });
+      if (calls === 2) throw new DOMException("fixture timeout", "TimeoutError");
+      return Response.json({ value: [] });
+    };
+    assert.deepEqual(await readSupplierSaleMail({ email: "customer@example.test", requestId: null }, { token: async () => "fixture", fetch: fetcher }), []);
+    assert.equal(calls, 4);
+    for (const status of [403, 500, 429]) {
+      calls = 0;
+      await assert.rejects(readSupplierSaleMail({ email: "customer@example.test", requestId: null }, { token: async () => "fixture", fetch: async () => {
+        calls++; return new Response(null, { status, headers: { "Retry-After": status === 429 ? "60" : "0" } });
+      } }), status === 429 ? /ausgelastet/ : /HTTP/);
+      assert.equal(calls, status === 500 ? 3 : 1);
+    }
+    for (const next of ["https://graph.microsoft.com/v1.0/users/other@example.test/messages", "https://graph.microsoft.com/v1.0/users/support@neontrip.de/events", "https://evil.example/v1.0/users/support@neontrip.de/messages", "https://user:pass@graph.microsoft.com/v1.0/users/support@neontrip.de/messages"]) {
+      calls = 0;
+      await assert.rejects(readSupplierSaleMail({ email: "customer@example.test", requestId: null }, { token: async () => "fixture", fetch: async () => {
+        calls++; return Response.json({ value: [], "@odata.nextLink": next });
+      } }), /Seitenlink/);
+      assert.equal(calls, 1);
+    }
   } finally { if (old === undefined) delete process.env.MICROSOFT_GRAPH_MAILBOX; else process.env.MICROSOFT_GRAPH_MAILBOX = old; }
 });
 

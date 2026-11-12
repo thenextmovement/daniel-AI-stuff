@@ -34,6 +34,13 @@ Produktionslisten werden nicht erneut vorbereitet.
   direkte letzte 24 Stunden gegen Suchindex-Verzug, danach vollständige Threads.
   Pagination, Provider-Suchlimit, maximal 40 Threads/250 Nachrichten/450.000 Zeichen:
   bei Überschreitung expliziter Abbruch, kein abgeschnittener „Erfolg“.
+  Suche und letzte 24 Stunden liefern nur Zuordnungsdaten; Volltexte werden danach
+  einmal aus den vollständigen Threads geladen, mit 25 Nachrichten je Seite.
+  Graph-Seitenlinks mit `@` statt `%40` bleiben exakt an dasselbe Postfach gebunden.
+  Unterschiedliche Such-/Immutable-IDs werden über exakte Internet-Message-ID innerhalb
+  desselben Threads abgeglichen; jeder Suchtreffer muss vollständig abgedeckt sein.
+  Nur vorübergehende GET-Fehler/Timeouts werden höchstens dreimal versucht. Retry-After
+  wird eingehalten; über 10 Sekunden geforderte Wartezeit stoppt die Prüfung explizit.
 - Mailanhänge werden als vorhanden gekennzeichnet, ihre Inhalte nicht automatisch
   gelesen. Änderungen, die nur daraus hervorgehen, müssen manuell geprüft werden.
 - Ein Responses-Aufruf mit bestehendem OPS_OPENAI_API_KEY oder OPENAI_API_KEY;
@@ -92,10 +99,9 @@ gemacht oder mit geänderten Entscheidungen fortgesetzt.
 - Vorab live read-only: customer-documents ist privat, erlaubt die benötigten
   Dateitypen; aktuelle Graph-gestützte Arrival-Läufe und Mailspiegel wurden gesehen.
   Das beweist die vorhandene Anbindung, nicht den neuen all-folder-Leseaufruf.
-- Vor Produktionsfreigaben fehlen noch der neue Reader mit der Ops-Runtime-Identität
-  sowie ein ausdrücklich freigegebener Datei-Upload/Download-Test dieser Runtime.
-  Lokale Provider-Tests ersetzen diesen Betriebsnachweis nicht. Keine produktive
-  Kundenkarte, Kundenmail oder Produktionsliste wurde für Tests verändert.
+- Beide Betriebsnachweise wurden am 12. November mit der produktiven Ops-Identität
+  erbracht (siehe unten). Der Anwendungskandidat ist weiterhin nicht veröffentlicht.
+  Keine produktive Kundenkarte, Kundenmail oder Produktionsliste wurde für Tests verändert.
 
 Release folgt OPERATIONS.md: vollständige Tests, TypeScript, Build, UI, sauberer
 Diff/Commit, exact-SHA-Freigabe, codex-predeploy ops, codex-safe-push-main.
@@ -155,8 +161,9 @@ Outlook-Suche lieferte beim abschließenden Aktualisieren einen internen Connect
 während das Profil support@neontrip.de erreichbar blieb. Maildaten stammen deshalb aus
 dem vollständigen Abruf derselben Sitzung. Teilweise fehlende Conversation-IDs wurden
 im Test aus dem Mailspiegel bzw. ersatzweise Betreffgruppen gebildet. Das ist kein Ersatz
-für den noch offenen Test des echten Graph-Readers und der Dateiablage unter Ops-Runtime-
-Identität. Kein Livegang und keine Produktionsfreigabe wurden durchgeführt.
+für einen Test des echten Graph-Readers und der Dateiablage unter Ops-Runtime-Identität.
+Dieser zunächst offene Nachweis wurde anschließend separat erbracht (siehe unten).
+Kein Livegang und keine Produktionsfreigabe wurden durchgeführt.
 
 Die bestehende UI-Smoke-Prüfung deckt zusätzlich die Quentin-Prüfmaske, eine belegte
 Entscheidung ohne Pflichttext, Dateientscheidung, responsive Ansicht, Abbruch und
@@ -164,3 +171,40 @@ Bestätigung der unbezahlten Vergabe sowie den zurückgelesenen Übergabestand a
 Eine separate lokale Ansicht mit dem echten Apel-Entwurf wurde auf 1440/390 px geprüft.
 Der IAB hing beim Zahlungsdialog; der entsprechende Ablauf wurde im bestehenden
 isolierten Chromium-Smoke mit Dialog-Handler erfolgreich bis zum Ende geprüft.
+
+## Produktive Identitätsprüfung (12. November, 21:08–21:17 UTC)
+
+Der bestehende HTTPS-Zugang `https://coolify.fuajob.online` stellt das Terminal wieder
+bereit. Beim direkten IP-Zugang waren die Ports 6001/6002 nicht erreichbar. Keine
+Firewall-, Berechtigungs-, Credential- oder Serveränderung war nötig. Die Anwendung
+lief unverändert auf `d4cd4172a708862f8a41a2694efa0c29db479d0a`; geprüft wurden die
+Kandidatenfunktionen als temporäres, hashverifiziertes Skript im laufenden Ops-Container,
+mit dessen vorhandenen Umgebungsvariablen. Es gab keinen Feature-Deploy und keinen Neustart.
+
+Der erste echte Reader-Test fand drei Probleme: ein Such-Timeout, einen transienten
+Graph-HTTP-500-Fehler und die abweichende URL-Kodierung im Seitenlink. Der reduzierte
+Metadatenabruf zeigte außerdem unterschiedliche Such-/Immutable-IDs. Die oben
+beschriebene Reparatur ist durch Regressionstests und folgenden Wiederholungslauf belegt:
+
+| Fall | Vollständige Nachrichten | Eingang / Ausgang | Threads | Dauer |
+| --- | ---: | ---: | ---: | ---: |
+| #NEONT4849 | 5 | 1 / 4 | 5 | 2,9 s |
+| #NEONT4823 | 24 | 5 / 19 | 9 | 14,0 s |
+| #NEONT4839 | 16 | 3 / 13 | 11 | 4,9 s |
+
+Alle 45 Nachrichten wurden als volle Text-Bodies gelesen. Die wörtliche Logo-Korrektur
+aus dem älteren Eisedicht-Verlauf wurde dabei gefunden. Im erfolgreichen Lauf trat
+erneut ein HTTP 500 auf, den der begrenzte Lese-Retry erfolgreich auffing. Diese Zeiten
+messen nur den Mailabruf, nicht KI-Aufbereitung oder Produktionsübergabe.
+
+Dateiablage: ein isolierter synthetischer Text mit 97 Bytes wurde im vorhandenen privaten
+`customer-documents` gespeichert und zweimal unabhängig zurückgelesen. Bytegleichheit
+und SHA-256 stimmten überein; Dauer 1,2 s. Die Storage-Tabelle bestätigte den gespeicherten
+97-Byte-Testdatensatz. Kein Kundenanhang wurde entfernt. Die synthetische Datei bleibt
+als Nachweis unter Test-Sale `00000000-0000-4000-8000-202611120001` erhalten; temporäre
+Prüfskripte/Protokolle liegen ausschließlich unter `/tmp` des Containers.
+
+Abschließende DB-Gegenprüfung: auf allen sechs Testfällen weiterhin keine
+`production_review` und keine `production_handoff`. Keine Kundenmail, Vergabe, Shopify-
+oder Trello-Mutation wurde ausgelöst. Die Mailprüfung bleibt bei fehlenden Volltexten,
+nicht abgedeckten Suchtreffern oder überschrittenen Grenzen ausdrücklich offen.
