@@ -7,6 +7,7 @@ import { executeProductionHandoff, approvedDesignAttachmentName, type HandoffDep
 import { readSupplierSaleMail } from "@/lib/ops/supplier-sale-mail";
 import { backupSupplierFile, type SupplierFileBackup } from "@/lib/ops/supplier-sale-files";
 import { supplierSaleVisibleInActiveOverview, supplierSaleReadyForProduction } from "@/lib/ops/supplier-sale-completion";
+import { productionReviewItems, productionOrderHash, type SupplierSaleItemRow } from "@/lib/ops/supplier-sales";
 import type { ProductionTrelloCard } from "@/lib/quotes/trello";
 
 const bytes = new TextEncoder().encode("bought-image-content");
@@ -103,7 +104,7 @@ test("model cannot omit a mail thread, invent numeric values, use unrelated mail
   const misclassified = structuredClone(r.analysis);
   misclassified.changes[0].kind = "addition";
   misclassified.changes[0].value = "Top right";
-  assert.equal(validateReviewAnalysis(misclassified, r.sources, r.products).changes[0].kind, "conflict");
+  assert.equal(validateReviewAnalysis(misclassified, r.sources, r.products).changes.find(c => c.field === "Cable Position")?.kind, "conflict");
   r.sources[0].text = "CHECK INFO\nKeep original cable cover.\n\nLED Neon Sign\nSize: 120 x 45 cm";
   const notes = validateReviewAnalysis({ ...r.analysis, changes: [] }, r.sources, r.products);
   assert.ok(notes.changes.some(c => c.id === "preserve-card-instructions"));
@@ -118,7 +119,9 @@ test("one structured AI request excludes purchased-image tokens and source links
       assert.equal(request.store, false); assert.equal(request.text.format.strict, true);
       assert.doesNotMatch(request.input, /secret|outlook.office.com/);
       assert.equal(request.tools, undefined);
-      return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(r.analysis) }] }] });
+      assert.deepEqual(request.text.format.schema.properties.threads.required, ["t1"]);
+      assert.equal(request.reasoning.effort, "low");
+      return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify({ summary: r.analysis.summary, threads: { t1: { relevance: "related", reason: "Fortsetzung" } }, changes: r.analysis.changes.map(c => ({ ...c, id: undefined, productId: "p1", questionOnly: false, evidence: c.evidence.map(e => JSON.parse(request.input).snippets.find((s: { id: string; text: string }) => s.text.includes(e.quote)).id) })) }) }] }] });
     });
   } finally { if (old === undefined) delete process.env.OPS_OPENAI_API_KEY; else process.env.OPS_OPENAI_API_KEY = old; }
 });
@@ -223,3 +226,105 @@ test("mail reader includes full incoming/outgoing bodies, pagination and unindex
   } finally { if (old === undefined) delete process.env.MICROSOFT_GRAPH_MAILBOX; else process.env.MICROSOFT_GRAPH_MAILBOX = old; }
 });
 
+
+
+test("accepted image survives Shopify replacement through exact Offer Item ID, without hiding order changes", () => {
+  const snapshot = { lineItems: [{ id: "accepted-product", title: "Sign", quantity: 1, section: "Lightbox", description: "Size: 70 x 44cm", purchasedImageId: "bought", purchasedImageUrl: "https://angebote.neontrip.de/bought" }] };
+  const item = { id: "volatile-db-row", line_item_key: "shopify:1", quantity: 1, title: "Sign", product_type: null, raw_line_item: { id: "gid://shopify/LineItem/1", properties: [{ name: "Offer Item ID", value: "accepted-product" }, { name: "Beschreibung", value: "Size: 80 x 44cm" }] } } as unknown as SupplierSaleItemRow;
+  const result = productionReviewItems(snapshot, [item]);
+  assert.equal(result[0].id, "accepted-product"); assert.equal(result[0].product_type, "Lightbox");
+  assert.equal(result[0].raw_line_item.purchasedImageId, "bought");
+  assert.equal(result[0].raw_line_item.description, "Size: 80 x 44cm");
+  assert.throws(() => productionReviewItems(snapshot, [{ ...item, quantity: 2 }]), /Menge/);
+  assert.throws(() => productionReviewItems(snapshot, [item, { ...item, id: "duplicate" }]), /eindeutig/);
+  assert.throws(() => productionReviewItems(snapshot, []), /entfernt/);
+  assert.throws(() => productionReviewItems(snapshot, [{ ...item, raw_line_item: { id: "new-item" } }]), /eindeutig/);
+  const row = { metadata: {}, offer_snapshot: snapshot } as never;
+  assert.equal(productionOrderHash(row, [item]), productionOrderHash(row, [{ ...item, id: "replacement-db-row" }]));
+  assert.notEqual(productionOrderHash(row, [item]), productionOrderHash(row, [{ ...item, quantity: 2 }]));
+});
+
+test("bold UPDATE and Additional Information survive; placeholders and equivalent spelling do not add conflicts", () => {
+  const r = review(); r.sources = [{ ...r.sources[0], text: "**Additional Information:**\n\n**UPDATE: NEW EPS File attached**\n**Front painted in RAL 3020**\nSize: As Logo\n**Cable Output: Right Bottom**" }];
+  const a = validateReviewAnalysis({ summary: "Geprüft", changes: [], threads: [] }, r.sources, r.products);
+  assert.ok(a.changes.some(c => c.value.includes("NEW EPS")));
+  assert.ok(a.changes.some(c => c.value.includes("RAL 3020")));
+  assert.ok(a.changes.some(c => c.field === "Cable Position"));
+  assert.ok(!a.changes.some(c => c.field === "Size"));
+  r.sources[0].text = "Size: 120x45cm";
+  assert.equal(validateReviewAnalysis({ summary: "Geprüft", changes: [], threads: [] }, r.sources, r.products).changes.length, 0);
+});
+
+test("source choices need a click, open questions need a documented result and never replace a field", () => {
+  const r = review(), a = approved(r); a.decisions.cable.note = "";
+  assert.deepEqual(reviewApprovalIssues(r, a), []);
+  assert.ok(reviewApprovalIssues(r, { ...a, confirmed: false }).some(v => v.includes("bestätigen")));
+  const bad = structuredClone(r.analysis); bad.changes[0].value = "Confirm cable position?";
+  assert.throws(() => validateReviewAnalysis(bad, r.sources, r.products), /offene Frage/);
+  bad.changes[0].questionOnly = true;
+  r.analysis = validateReviewAnalysis(bad, r.sources, r.products);
+  assert.equal(r.analysis.changes[0].value, "");
+  assert.match(renderProductionReview(r, a.decisions).description, /Cable Position: Top right/);
+  assert.ok(reviewApprovalIssues(r, a).some(v => v.includes("Klärung")));
+  const release = structuredClone(r.analysis); release.changes[0].field = "ProductionRelease";
+  assert.throws(() => validateReviewAnalysis(release, r.sources, r.products), /Unzulässiges/);
+});
+
+
+test("obsolete old values cannot delete bought fields; rejected obsolete notes are retained", () => {
+  const r = review(); r.analysis.changes = [{ id: "old-size", kind: "obsolete", productId: "product-1", field: "Size", value: "As Logo", reason: "Ersetzt", evidence: [{ sourceId: "card", quote: "Cable Position: Bottom right" }] }, { id: "old-note", kind: "obsolete", productId: null, field: "Additional Information", value: "Keep original cable cover.", reason: "Prüfen", evidence: [{ sourceId: "card", quote: "Cable Position: Bottom right" }] }];
+  const text = renderProductionReview(r, { "old-size": { action: "accept", note: "" }, "old-note": { action: "reject", note: "" } });
+  assert.match(text.description, /Size: 120 x 45 cm/);
+  assert.match(text.description, /Keep original cable cover/);
+});
+
+
+test("equivalent dimensions and light colors do not become manual conflicts", () => {
+  const r = review(); r.products[0].fields = [{ label: "Size", value: "160 × 41,7 cm (1600 × 417 mm)" }, { label: "Backboard", value: "Einzelne Buchstaben" }, { label: "Color", value: "Kaltweiß + Rot" }];
+  r.sources = [{ ...r.sources[0], text: "Size: 160 x 41.7cm\nBackboard: Loose letters\nColor: Red + Coolwhite" }];
+  assert.equal(validateReviewAnalysis({ summary: "Geprüft", changes: [], threads: [] }, r.sources, r.products).changes.length, 0);
+  r.sources[0].text = "Size: 160 x 42cm";
+  assert.equal(validateReviewAnalysis({ summary: "Geprüft", changes: [], threads: [] }, r.sources, r.products).changes[0].kind, "conflict");
+});
+
+test("uncertain mail requires explicit exclusion or documented review when linked", () => {
+  const r = review(), a = approved(r); r.analysis.threads = [{ id: "older", relevance: "uncertain", reason: "Andere Bestellung?" }];
+  assert.ok(reviewApprovalIssues(r, a).some(s => s.includes("Mailzuordnung")));
+  a.decisions["thread:older"] = { action: "reject", note: "" };
+  assert.deepEqual(reviewApprovalIssues(r, a), []);
+  a.decisions["thread:older"].action = "accept";
+  assert.ok(reviewApprovalIssues(r, a).some(s => s.includes("Mailzuordnung")));
+});
+
+test("model cannot add an unsupported mounting template or invent quoted logo wording", () => {
+  const r = review(); const bad = structuredClone(r.analysis);
+  bad.changes[1].value = "Include mounting template.";
+  assert.throws(() => validateReviewAnalysis(bad, r.sources, r.products), /nicht belegte Montageschablone/);
+  bad.changes[1].value = 'Use logo wording "Completely different brand".';
+  assert.throws(() => validateReviewAnalysis(bad, r.sources, r.products), /Wortlaut oder Dateiname/);
+});
+
+
+test("literal logo corrections from a related customer thread survive an omitted model finding", () => {
+  const r = review(); r.sources[1].label = "Eingang: Früheres Angebot";
+  r.sources[1].text = 'Das alte Logo ist angekommen. Für das zweite Logo bitte ein Angebot, indem „Alpha. Beta.“ gezeigt wird und nicht „Alpha- Beta-“.';
+  const analysis = validateReviewAnalysis({ ...r.analysis, changes: [] }, r.sources, r.products);
+  const correction = analysis.changes.find(c => c.id.startsWith("mail-literal-"));
+  assert.equal(correction?.value, 'Use exactly "Alpha. Beta." instead of "Alpha- Beta-" in the logo.');
+  r.analysis = analysis; const a = defaultReviewApproval(r);
+  assert.match(a.description, /Alpha\. Beta\./);
+  const unrelated = validateReviewAnalysis({ ...r.analysis, changes: [], threads: [{ id: "old-offer", relevance: "unrelated", reason: "Anderes Projekt" }] }, r.sources, r.products);
+  const unlinked = unrelated.changes.find(c => c.id.startsWith("mail-literal-"));
+  assert.equal(unlinked?.kind, "conflict"); assert.equal(unlinked?.requiresThreadId, "old-offer");
+  r.analysis = unrelated; const approval = { ...defaultReviewApproval(r), confirmed: true }; approval.attachments.old = "keep"; approval.decisions[unlinked!.id] = { action: "accept", note: "" };
+  assert.ok(reviewApprovalIssues(r, approval).some(v => v.includes("ausdrücklich zugeordnet")));
+  approval.decisions["thread:old-offer"] = { action: "accept", note: "Quelle geprüft, gehört dazu" };
+  assert.ok(!reviewApprovalIssues(r, approval).some(v => v.includes("ausdrücklich zugeordnet")));
+});
+
+test("an unresolved production detail stays a mandatory question even inside an addition", () => {
+  const r = review(); const proposed = structuredClone(r.analysis);
+  proposed.changes[1].value = "Mounting positions require clarification with the customer.";
+  const analysis = validateReviewAnalysis(proposed, r.sources, r.products);
+  assert.ok(analysis.changes.some(c => c.id === "unresolved-production-detail" && c.questionOnly));
+});

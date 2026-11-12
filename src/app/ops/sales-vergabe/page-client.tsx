@@ -1358,10 +1358,10 @@ function SaleCard({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={saving || (supplier !== "quentin" && (assignmentSaved || Boolean(assignBlockReason))) || sale.productionReviewStatus === "synced"}
+                disabled={saving || ((supplier !== "quentin" || (!sale.offerId && !sale.productionReviewStatus)) && (assignmentSaved || Boolean(assignBlockReason))) || sale.productionReviewStatus === "synced"}
                 title={assignmentSaved ? "Sale ist bereits vergeben." : assignBlockReason || "Sale vergeben"}
                 onClick={() => {
-                  if (supplier === "quentin") { setProductionReviewOpen(true); return; }
+                  if (supplier === "quentin" && (sale.offerId || sale.productionReviewStatus)) { setProductionReviewOpen(true); return; }
                   const selectedSupplier = supplierLabel(supplier, specialSupplierName);
                   const confirmationMessage =
                     needsManualPaymentRelease && paymentDecision === "manual_approved_unpaid"
@@ -1385,7 +1385,7 @@ function SaleCard({
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-[0.5rem] bg-stone-950 px-3 py-2 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
               >
                 <BadgeCheck className="h-4 w-4" />
-                {supplier === "quentin" ? sale.productionReviewStatus === "partial" ? "Übergabe prüfen" : "Vergabe prüfen" : "Vergeben"}
+                {supplier === "quentin" && (sale.offerId || sale.productionReviewStatus) ? sale.productionReviewStatus === "partial" ? "Übergabe prüfen" : "Vergabe prüfen" : supplier === "quentin" ? "Manuell vergeben" : "Vergeben"}
               </button>
               {canRetryShopifyTag ? (
                 <button
@@ -1692,6 +1692,9 @@ function SaleCard({
         saleId={sale.id}
         assignment={{ requestedDeliveryDate: deliveryDate, paymentDecisionStatus: needsManualPaymentRelease ? paymentDecision : "paid_confirmed", assignmentNote, operatorName }}
         blockReason={assignBlockReason}
+        paymentConfirmation={needsManualPaymentRelease && paymentDecision === "manual_approved_unpaid" ? institutionPaymentOpen
+          ? `${sale.publicInstitution?.institution}: Institutionellen Auftrag und Zahlungsziel geprüft? Vor Zahlung an Quentin vergeben? Die Zahlung bleibt offen.`
+          : "Die Zahlung dieser Sale ist offen oder unklar. Trotzdem vor Zahlung an Quentin vergeben und Shopify/Trello synchronisieren?" : null}
         saving={saving}
         onAction={onAction}
         onClose={() => setProductionReviewOpen(false)}

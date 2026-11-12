@@ -661,6 +661,59 @@ async function main() {
     await page.screenshot({ path: screenshotPath, fullPage: true });
   }
 
+  // The reviewed Quentin path: source choice, file decision and explicit unpaid consent.
+  const reviewPage = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const reviewedSale = sale({ id: "sale-review-ui", shopifyPaymentStatus: "pending", paymentDecisionStatus: "pending", recommendedSupplier: "quentin" });
+  const reviewBoard = { ...board, items: [reviewedSale] };
+  const prepared = {
+    version: 1, id: "review-ui", saleId: reviewedSale.id, preparedAt: now,
+    sourceHash: "fixture", orderHash: "fixture", mailHash: "fixture", cardHash: "fixture",
+    orderName: reviewedSale.shopifyOrderName, customerName: "Testkundin", requestId: "request_qa",
+    cardId: "fixture-card", cardUrl: "https://trello.com/c/fixture", originalTitle: "Original", originalDescription: "Cable Position: Bottom left", originalListId: "waiting", originalCoverId: null, originalPos: 1,
+    products: [{ id: "product", title: "LED Neon Sign", quantity: 1, fields: [{ label: "Size", value: "80 cm" }, { label: "Cable Position", value: "Top right" }], imageUrl: "/neontrip-ops-logo.svg", imageId: "image", imageTitle: "Final design", imageHash: "fixture" }],
+    accessories: [], sources: [{ id: "card", kind: "card", label: "Karte", text: "Cable Position: Bottom left", at: null, href: null }],
+    analysis: { summary: "Kabelposition prüfen", threads: [], changes: [{ id: "cable", kind: "conflict", productId: "product", field: "Cable Position", value: "Bottom left", reason: "Kabelposition weicht ab", evidence: [{ sourceId: "card", quote: "Cable Position: Bottom left" }] }] },
+    attachments: [{ id: "variant", name: "Variant.png", url: "https://trello.com/fixture", mimeType: "image/png", previewUrl: null, decision: "undecided", reason: "Datei prüfen", removable: true }],
+    priority: "standard", mailCount: 1, blockers: [],
+  };
+  let reviewHandoff = null; const reviewPosts = [];
+  await reviewPage.route("**/api/**", async route => {
+    const request = route.request(), url = new URL(request.url());
+    if (request.method() === "POST") {
+      const body = request.postDataJSON(); reviewPosts.push(body);
+      if (body.action === "assign_supplier") reviewHandoff = { status: "synced", backups: [], verifiedAt: now };
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, board: reviewBoard, sale: reviewedSale, review: prepared }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(url.searchParams.get("action") === "production_review" ? { ok: true, review: prepared, handoff: reviewHandoff } : { ok: true, board: reviewBoard, tasks: [] }) });
+  });
+  reviewedSale.offerId = null;
+  await reviewPage.goto(`${target}/ops/sales-vergabe`);
+  await reviewPage.getByRole("button", { name: "Manuell vergeben", exact: true }).waitFor();
+  reviewedSale.offerId = "offer-review";
+  await reviewPage.reload();
+  await reviewPage.getByRole("button", { name: "Vergabe prüfen", exact: true }).click();
+  const panel = reviewPage.getByRole("region", { name: "Vorbereitete Produktionsvergabe" });
+  const release = panel.getByRole("button", { name: "Geprüft – an Produktion freigeben", exact: true });
+  await release.waitFor(); assert(!await release.isEnabled(), "Offene Entscheidungen erlauben Freigabe");
+  await panel.getByRole("button", { name: "Vorschlag übernehmen", exact: true }).click();
+  await panel.getByLabel("Datei: Variant.png").selectOption("remove");
+  assert((await panel.innerText()).includes("Cable Position: Bottom left"), "Auswahl aktualisiert die Produktionsvorschau nicht");
+  assert(await release.isEnabled(), "Belegte Auswahl verlangt unnötig Freitext");
+  for (const width of [390, 1440]) {
+    await reviewPage.setViewportSize({ width, height: 1000 });
+    assert(!await reviewPage.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), "Prüfmaske läuft seitlich über");
+  }
+  reviewPage.once("dialog", dialogHandler(dialogs, "review-payment-cancel", false));
+  await release.click(); assert(reviewPosts.length === 0, "Abgebrochene Zahlungsfreigabe schreibt trotzdem");
+  reviewPage.once("dialog", dialogHandler(dialogs, "review-payment-accept", true));
+  await release.click();
+  await panel.getByText(/Übergabe bestätigt/).waitFor();
+  assert(reviewPosts.length === 1 && reviewPosts[0].productionApproval.confirmed === true, "Explizite Endfreigabe fehlt");
+  assert(reviewPosts[0].productionApproval.attachments.variant === "remove", "Dateientscheidung fehlt");
+  assert(reviewPosts[0].productionApproval.decisions.cable.note === "", "Belegte Auswahl fordert unnötige Begründung");
+  assert(dialogs.some(d => d.action === "review-payment-cancel" && /Zahlung/.test(d.message)), "Zahlungswarnung fehlt");
+  await reviewPage.close();
+
   console.log(JSON.stringify({ ok: true, baseUrl: target, posts: posts.map((entry) => entry.body?.action || entry.method), dialogs: dialogs.length, mobileLayout, consoleErrors }, null, 2));
   } finally {
     await browser.close();

@@ -7,7 +7,10 @@ Stand 2026-11-12: lokal implementiert, nicht veröffentlicht. NEONTRIP, Quentin-
 
 Ziel: Im bestehenden Sale „Vergabe prüfen“ öffnen, Bestellung und Mailvolltexte
 abgleichen, fertigen Titel/Beschreibung, Dateien, Cover und Ziel prüfen, dann
-„Freigeben und an Produktion“. Konflikte benötigen eine begründete Entscheidung.
+„Geprüft – an Produktion freigeben“. Belegte Konflikte benötigen eine Auswahl;
+nur offene technische Fragen und nicht belegte Ausnahmen benötigen eine Prüfnote.
+Bei offener/unklarer Zahlung bleibt die zusätzliche ausdrückliche Zahlungsbestätigung
+erhalten. Shopify-only-Aufträge ohne Offers-Annahme behalten den manuellen Vergabeweg.
 Vorhandene Additional Information werden in der Vorschau übernommen.
 Nachbar: Zahlungsfreigabe, Kundenänderungssperre, andere Lieferanten, optionale
 Vergabeaufgabe und Kundenkommunikation behalten ihre bestehenden Pfade.
@@ -35,8 +38,11 @@ Produktionslisten werden nicht erneut vorbereitet.
   gelesen. Änderungen, die nur daraus hervorgehen, müssen manuell geprüft werden.
 - Ein Responses-Aufruf mit bestehendem OPS_OPENAI_API_KEY oder OPENAI_API_KEY;
   Modell OPS_COPILOT_OPENAI_MODEL / OPENAI_MODEL / bestehender Default gpt-5-mini.
-  Striktes Schema begrenzt Produkt-, Quellen- und Thread-IDs. Wörtliche Quellen und
-  Zahlen werden geprüft. Keine Tools, keine Nachrichten, store:false; Bild-URLs und
+  Striktes Schema mit Pflichtschlüssel je Thread und kurzen Beleg-IDs. Wiederholte
+  Mailabsätze werden einmal mit vollständigen Quellenverweisen übermittelt; es wird
+  kein Verlauf abgeschnitten. Zitate werden aus Originalabsätzen rekonstruiert, nicht
+  vom Modell geschrieben. Zahlen, zitierte Namen und Montageschablonen werden belegt.
+  Einzelne ungültige Werte werden als offene Frage ohne Produktionswert dargestellt. Keine Tools, keine Nachrichten, store:false; Bild-URLs und
   Quellenlinks werden nicht an das Modell übermittelt.
 - Trello nutzt die vorhandenen Credentials. Gekaufte Bildbytes werden hochgeladen,
   zurückgelesen und gehasht; ein externes URL-Attachment ist kein Inhaltsnachweis.
@@ -98,3 +104,63 @@ Sicherung über production_file_backup herunterladen und gezielt auf derselben K
 wiederherstellen; Originaltext liegt im Assignment Attempt. Ein Code-Rollback nimmt
 keine bereits ausgelöste Produktion zurück.
 
+
+## Nachbesserung nach Echtdatenprüfung (12. November 2026)
+
+Die importierten Shopify-Positionen enthalten weiterhin die ursprüngliche `Offer Item ID`.
+Die Vorbereitung verknüpft sie exakt mit `offer_snapshot.lineItems`; aktuelle Mengen,
+Texte und Lieferpositionen bleiben erhalten. Fehlende, doppelte oder entfernte
+Positionen und geänderte/ungültige Mengen stoppen die Vorbereitung. Die Bildauswahl
+kommt ausschließlich aus dem angenommenen Snapshot. Eine fehlende Bildzuordnung
+bei nur einem von mehreren Produkten darf nicht als Zubehör verborgen werden.
+Der Aktualitätsvergleich hängt nicht mehr an austauschbaren Datenbank-Zeilen-IDs.
+Ein Live-Lesecheck von 15 unzugeordneten NEONTRIP-Offers-Sales ergab 15 eindeutige
+Positionszuordnungen und 14 vorhandene gekaufte Bildauswahlen. Ein Altfall hat weiterhin
+keine Bildauswahl im Annahme-Snapshot.
+
+KI-Abgleich: kurze stabile IDs, verpflichtende Thread-Schlüssel, deduplizierte
+Originalabsätze, unveränderte Quellenchronologie und `reasoning.effort=low` beim
+bestehenden Modell. Die Zusammenfassung der offenen Punkte kommt aus dem validierten
+Ergebnis. Explizite wörtliche Logo-Korrekturen werden auch bei ausgelassenem KI-Befund
+vorgelegt. Bei unsicherer Projektzuordnung muss die Mitarbeiterin die Korrektur dem
+Auftrag zuordnen; die zugehörige Mailentscheidung wird mit derselben Auswahl gespeichert.
+Eine automatische Projektzuordnung anhand desselben Absenders findet nicht statt.
+
+Markdown-UPDATE/Additional-Information-Hinweise werden unabhängig vom Modell auf
+Auslassungen geprüft. Gleiche Maße mit cm/mm, Dezimalkomma, Multiplikationszeichen,
+Farbübersetzungen und anderer Farbreihenfolge erzeugen keinen Scheinkonflikt.
+Überholte Angaben können keine gekauften Produktionsfelder löschen. Fragen werden
+niemals als Größe/Farbe eingesetzt. Ausdrücklich ungeklärte Produktionsdetails bleiben
+auch dann eine Pflichtfrage, wenn das Modell sie als Ergänzung bezeichnet.
+
+Bedienung: fertige Karte zuerst als Vorschau; „Text anpassen“ bei Bedarf. Belegte
+Ergänzungen sind übernommen und zusammengeklappt, Konflikte bieten konkrete Knöpfe.
+Eine einzige Vektordatei wird zum Behalten vorgeschlagen; unklare Bild-/PDF-Varianten
+benötigen weiterhin die Dateiauswahl. Keine rein optische automatische Variantenwahl.
+Entfernen bleibt an die vorhandene bytegeprüfte Sicherung gebunden. Cover und aus der
+bestellten Lieferleistung bestimmte Zielliste sind vorausgewählt. Ein ausdrücklicher
+Freigabeknopf ersetzt das zusätzliche allgemeine Bestätigungs-Häkchen.
+
+Echtdatenprüfung: sechs echte Aufträge mit zuvor vollständig gelesener Korrespondenz,
+erneut gelesenen Bestell-/Kartenständen und echten Responses-Aufrufen. Der letzte Lauf
+brauchte 8,2 s (Apel), 19,0 s (Eisedicht) und 19,4 s (Autoland). Apel ergibt einen
+nutzbaren Entwurf, Eisedicht erkennt Claim und Kabelkonflikt. Autoland zeigt EPS/RAL und
+offene Montage; sein alter Snapshot hat kein gekauftes Bild, daher bleibt die Freigabe
+blockiert. Ritter benötigt eine eindeutige Quentin-Karte; Saeid und Shopify-only bleiben
+in ihren bestehenden Wegen. Bereits produzierte Karten werden nicht erneut freigegeben.
+
+Diese Läufe sind lokale Replays echter Daten mit echter KI; DB-/Trello-Schreibzugriffe
+wurden abgefangen. Reale Kundenkarten wurden nicht als Testobjekte verändert. Die
+Outlook-Suche lieferte beim abschließenden Aktualisieren einen internen Connectorfehler,
+während das Profil support@neontrip.de erreichbar blieb. Maildaten stammen deshalb aus
+dem vollständigen Abruf derselben Sitzung. Teilweise fehlende Conversation-IDs wurden
+im Test aus dem Mailspiegel bzw. ersatzweise Betreffgruppen gebildet. Das ist kein Ersatz
+für den noch offenen Test des echten Graph-Readers und der Dateiablage unter Ops-Runtime-
+Identität. Kein Livegang und keine Produktionsfreigabe wurden durchgeführt.
+
+Die bestehende UI-Smoke-Prüfung deckt zusätzlich die Quentin-Prüfmaske, eine belegte
+Entscheidung ohne Pflichttext, Dateientscheidung, responsive Ansicht, Abbruch und
+Bestätigung der unbezahlten Vergabe sowie den zurückgelesenen Übergabestand ab.
+Eine separate lokale Ansicht mit dem echten Apel-Entwurf wurde auf 1440/390 px geprüft.
+Der IAB hing beim Zahlungsdialog; der entsprechende Ablauf wurde im bestehenden
+isolierten Chromium-Smoke mit Dialog-Handler erfolgreich bis zum Ende geprüft.

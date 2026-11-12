@@ -13,10 +13,13 @@ export type ReviewField = { label: string; value: string };
 export type ReviewProduct = {
   id: string; title: string; quantity: number; fields: ReviewField[];
   imageUrl: string; imageId: string; imageTitle: string; imageHash: string;
+  orderTitle?: string;
 };
 export type ReviewChange = {
   id: string; kind: "addition" | "conflict" | "obsolete";
   productId: string | null; field: string; value: string; reason: string;
+  questionOnly?: boolean;
+  requiresThreadId?: string;
   evidence: Array<{ sourceId: string; quote: string }>;
 };
 export type ReviewAttachment = {
@@ -60,7 +63,7 @@ export function productionPriorityFromDeliveryTitles(titles: string[]): Producti
 export function defaultReviewApproval(review: ProductionReview): ReviewApproval {
   const decisions: ReviewApproval["decisions"] = {};
   for (const change of review.analysis.changes) {
-    if (change.kind === "addition") decisions[change.id] = { action: "accept", note: "" };
+    if (change.kind === "addition" && !change.questionOnly) decisions[change.id] = { action: "accept", note: "" };
   }
   const base: ReviewApproval = {
     reviewId: review.id, title: "", description: "", decisions,
@@ -75,12 +78,17 @@ export function renderProductionReview(review: ProductionReview, decisions: Revi
   const products = review.products.map(p => ({ ...p, fields: p.fields.map(f => ({ ...f })) }));
   const notes: string[] = [];
   for (const change of review.analysis.changes) {
-    if (decisions[change.id]?.action !== "accept") continue;
+    // Obsolete refers to an old note, never permission to delete a purchased production field.
+    if (change.kind === "obsolete") {
+      if (decisions[change.id]?.action === "reject" && change.field === "Additional Information" && change.value) notes.push(change.value);
+      continue;
+    }
+    if (decisions[change.id]?.action !== "accept" || change.questionOnly) continue;
     const product = products.find(p => p.id === change.productId);
     if (product && change.field !== "Additional Information") {
       product.fields = product.fields.filter(f => f.label.toLowerCase() !== change.field.toLowerCase());
-      if (change.kind !== "obsolete") product.fields.push({ label: change.field, value: change.value });
-    } else if (change.kind !== "obsolete" && change.value) {
+      product.fields.push({ label: change.field, value: change.value });
+    } else if (change.value) {
       notes.push(product ? `Product ${products.indexOf(product) + 1}: ${change.value}` : change.value);
     }
   }
@@ -126,10 +134,12 @@ export function reviewApprovalIssues(review: ProductionReview, approval: ReviewA
   for (const change of review.analysis.changes) {
     const decision = approval.decisions?.[change.id];
     if (!decision || !["accept", "reject"].includes(decision.action)) issues.push(`Entscheidung fehlt: ${change.reason}`);
-    else if ((change.kind !== "addition" || decision.action === "reject") && !decision.note?.trim()) issues.push(`Begründung fehlt: ${change.reason}`);
+    else if (change.questionOnly && !decision.note?.trim()) issues.push(`Klärung dokumentieren: ${change.reason}`);
+    if (change.requiresThreadId && decision?.action === "accept" && approval.decisions[`thread:${change.requiresThreadId}`]?.action !== "accept") issues.push("Die Logo-Korrektur muss diesem Auftrag ausdrücklich zugeordnet werden.");
   }
-  for (const thread of review.analysis.threads.filter(t => t.relevance === "uncertain")) {
-    if (!approval.decisions?.[`thread:${thread.id}`]?.note?.trim()) issues.push(`Mailzuordnung klären: ${thread.reason}`);
+  for (const thread of review.analysis.threads.filter(t => t.relevance === "uncertain" && !review.analysis.changes.some(c => c.requiresThreadId === t.id))) {
+    const decision = approval.decisions?.[`thread:${thread.id}`];
+    if (!decision || (decision.action === "accept" && !decision.note.trim())) issues.push(`Mailzuordnung klären: ${thread.reason}`);
   }
   for (const attachment of review.attachments) {
     if (!["keep", "remove"].includes(approval.attachments?.[attachment.id])) issues.push(`Datei prüfen: ${attachment.name}`);

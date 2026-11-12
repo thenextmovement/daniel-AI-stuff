@@ -1795,7 +1795,7 @@ function supplierProductionValue(label: string, value: string) {
       schwarz: "Black",
       black: "Black",
     };
-    return colors[normalized] || clean;
+    return colors[normalized] || clean.split(/(\s*\+\s*)/).map(part => colors[supplierProductionKey(part)] || part).join("");
   }
   if (label === "Cable Position") {
     const cablePosition = clean.replace(/[\s❗!]+$/gu, "").trim();
@@ -1842,6 +1842,7 @@ function supplierProductionValue(label: string, value: string) {
   if (label === "Backboard") {
     return clean
       .replace(/Formzuschnitt/gi, "Cut to shape")
+      .replace(/Einzelne Buchstaben/gi, "Loose letters")
       .replace(/Mit UV[- ]?Druck/gi, "With UV print")
       .replace(/Ohne UV[- ]?Druck/gi, "Without UV print")
       .replace(/Acryl(?:glas)?/gi, "Acrylic")
@@ -6486,11 +6487,41 @@ async function reserveSupplierAssignmentAttempt(input: {
 function productionHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
-function productionOrderHash(row: SupplierSaleRow, items: SupplierSaleItemRow[]) {
+/** Shopify preserves this ID even when the import replaces the database rows. */
+function acceptedItemId(item: SupplierSaleItemRow) {
+  const property = arrayRecords(item.raw_line_item.properties).find(p => p.name === "Offer Item ID");
+  return String(property?.value || item.raw_line_item.id || item.line_item_key);
+}
+
+export function productionReviewItems(snapshot: JsonRecord, items: SupplierSaleItemRow[]): SupplierSaleItemRow[] {
+  const accepted = arrayRecords(snapshot.lineItems);
+  const seen = new Set<string>();
+  const mapped = items.map(item => {
+    const id = acceptedItemId(item);
+    const matches = accepted.filter(a => a.id === id);
+    if (matches.length !== 1 || seen.has(id)) throw new QuoteValidationError("Bestellung und angenommenes Angebot lassen sich nicht eindeutig über die Positions-ID zuordnen. Bitte die geänderten Positionen prüfen.", [], 422);
+    seen.add(id);
+    const original = matches[0];
+    if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || Number(original.quantity) !== Number(item.quantity)) throw new QuoteValidationError(`Die Menge von „${item.title}“ fehlt oder wurde nach Angebotsannahme geändert. Bitte zuerst den Bestellabgleich klären.`, [], 422);
+    const description = arrayRecords(item.raw_line_item.properties).find(p => /^(beschreibung|description)$/i.test(String(p.name)))?.value;
+    return { ...item, id, product_type: item.product_type || String(original.section || ""),
+      raw_line_item: { ...original, ...item.raw_line_item,
+        // Only the accepted selection supplies the image; current Shopify content remains visible.
+        purchasedImageId: original.purchasedImageId, purchasedImageUrl: original.purchasedImageUrl,
+        purchasedImageTitle: original.purchasedImageTitle, imageUrl: original.imageUrl,
+        description: description || item.raw_line_item.description || original.description,
+      },
+    };
+  });
+  if (seen.size !== accepted.length) throw new QuoteValidationError("Seit Angebotsannahme wurden Positionen entfernt. Bitte zuerst den Bestellabgleich klären.", [], 422);
+  return mapped;
+}
+
+export function productionOrderHash(row: SupplierSaleRow, items: SupplierSaleItemRow[]) {
   return productionHash({
     offer: row.offer_id, order: row.shopify_order_id, name: row.shopify_order_name,
     email: row.customer_email, request: row.request_id, customerDueDate: row.customer_due_date,
-    snapshot: row.offer_snapshot, items: items.map(i => ({ id: i.id, quantity: i.quantity, raw: i.raw_line_item })).sort((a, b) => a.id.localeCompare(b.id)),
+    snapshot: row.offer_snapshot, items: items.map(i => ({ id: acceptedItemId(i), title: i.title, type: i.product_type, quantity: i.quantity, raw: i.raw_line_item })).sort((a, b) => a.id.localeCompare(b.id)),
     change: jsonRecord(row.metadata.post_order_review),
   });
 }
@@ -6562,10 +6593,13 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
     || (row.assigned_supplier && row.assigned_supplier !== "quentin")) {
     throw new QuoteValidationError("Diese Vergabe ist gesperrt oder bereits in Produktion.", [], 409);
   }
-  const itemRows = await fetchItemsForSale(row.id);
+  if (!row.offer_id) throw new QuoteValidationError("Für diese Shopify-Bestellung liegt kein angenommenes Offers-Angebot vor. Bitte den bestehenden manuellen Vergabeweg verwenden.", [], 422);
+  const currentItemRows = await fetchItemsForSale(row.id);
+  const itemRows = productionReviewItems(row.offer_snapshot, currentItemRows);
   const items = itemRows.map(mapItem);
   const productRows = itemRows.filter(i => Boolean(jsonRecord(i.raw_line_item).purchasedImageId));
-  if (!row.offer_id || !productRows.length || productRows.length > 12) throw new QuoteValidationError("Die gespeicherte Angebotsannahme enthält keine vollständige Zuordnung der gekauften Designs.", [], 422);
+  const missingProductImage = itemRows.some(i => !jsonRecord(i.raw_line_item).purchasedImageId && !/^(zusatzoptionen|zubehör|accessories|versand|lieferung|delivery|shipping)$/i.test(i.product_type || ""));
+  if (missingProductImage || !productRows.length || productRows.length > 12) throw new QuoteValidationError("Die gespeicherte Angebotsannahme enthält keine vollständige Zuordnung der gekauften Designs.", [], 422);
   // Products are selected from the accepted item snapshot, never from a keyword in the whole offer.
   const products: ReviewProduct[] = [];
   for (const productRow of productRows) {
@@ -6574,8 +6608,8 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
     const imageUrl = safeApprovedDesignUrl(raw.purchasedImageUrl || raw.imageUrl);
     if (!imageUrl || item.quantity <= 0) throw new QuoteValidationError("Gekauftes Bild oder Menge fehlt.", [], 422);
     products.push({
-      id: item.id, title: /3d/i.test(item.productType || item.title) ? "3D Sign" : "LED Neon Sign",
-      quantity: item.quantity,
+      id: item.id, title: /lightbox|leuchtbox|leuchtkasten/i.test(item.productType || item.title) ? "Lightbox" : /3d/i.test(item.productType || item.title) ? "3D Sign" : "LED Neon Sign",
+      quantity: item.quantity, orderTitle: item.title,
       fields: item.selectionDetails.map(detail => {
         const [label, ...rest] = detail.replace(/[\u2757\uFE0F]/g, "").split(":");
         return { label: label.trim(), value: rest.join(":").trim() };
@@ -6608,8 +6642,10 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
     ...mails.map(m => ({ id: `mail:${m.id}`, kind: "mail" as const, label: `${m.direction === "inbound" ? "Eingang" : "Ausgang"}: ${m.subject}${m.hasAttachments ? " (mit Anhängen; deren Inhalte wurden nicht gelesen)" : ""}`, text: m.body, at: m.at, href: m.href, threadId: m.threadId })),
   ];
   const analysis = await analyzeProductionReview({ products, sources, orderReference: row.shopify_order_name || row.offer_number || row.sale_key, requestId: row.request_id });
+  const vectorFiles = card.attachments.filter(a => /\.(eps|ai|dxf|svg)$/i.test(a.name || a.fileName || ""));
+  const soleVector = vectorFiles.length === 1 && !/\b(old|alt|draft|entwurf)\b/i.test(vectorFiles[0].name || "") ? vectorFiles[0].id : null;
   const knownApproved = arrayRecords(row.metadata.approved_design_attachments).filter(a => a.card_id === card.id);
-  const orderHash = productionOrderHash(row, itemRows);
+  const orderHash = productionOrderHash(row, currentItemRows);
   const mailHash = productionHash(mails);
   const cardHash = productionCardHash(card);
   const review: ProductionReview = {
@@ -6629,10 +6665,11 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
       id: a.id, name: a.name || a.fileName || "Datei", url: a.url || "", mimeType: a.mimeType || "",
       previewUrl: a.previews?.find(p => p.width && p.width >= 200)?.url || null,
       removable: Boolean(a.isUpload) && (!a.bytes || a.bytes <= Math.min(storage.file_size_limit || Infinity, 25 * 1024 * 1024)),
-      decision: !a.isUpload || knownApproved.some(k => k.attachment_id === a.id && products.some(p => p.id === k.item_id && createHash("sha256").update(p.imageUrl).digest("hex") === k.source_hash)) ? "keep" : "undecided",
+      decision: !a.isUpload || a.id === soleVector || (a.bytes || 0) > Math.min(storage.file_size_limit || Infinity, 25 * 1024 * 1024) || knownApproved.some(k => k.attachment_id === a.id && products.some(p => p.id === k.item_id && createHash("sha256").update(p.imageUrl).digest("hex") === k.source_hash)) ? "keep" : "undecided",
       reason: !a.isUpload ? "Verknüpfte Datei: keine gesicherte Entfernung möglich; behalten."
         : a.bytes && a.bytes > Math.min(storage.file_size_limit || Infinity, 25 * 1024 * 1024) ? "Zu groß für die bestehende Sicherung; behalten."
-        : "Finales Design, technische Zeichnung oder benötigte Referenz behalten; alte Varianten können gesichert entfernt werden.",
+        : a.id === soleVector ? "Einzige Vektordatei: zum Behalten vorausgewählt. Inhalt zusammen mit der Vorschau prüfen."
+        : "Variante oder Referenz prüfen: behalten oder gesichert entfernen.",
     })),
   };
   const latest = await fetchSaleRowById(row.id);

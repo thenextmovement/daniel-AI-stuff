@@ -9,6 +9,7 @@ import {
   acknowledgeSupplierSalePostOrderChange,
   applyNoPaymentReminderShopifyTag,
   assignSupplierSale,
+  productionOrderHash,
   buildShopifyOrderTrelloTitle,
   buildSupplierSaleBoardFromRows,
   buildSupplierSalesDiagnostics,
@@ -5306,9 +5307,7 @@ test("reviewed assignment rejects pending attempts, changed orders, new mail and
     products: [{ id: item.id, title: "LED Neon Sign", quantity: 1, fields: [{label:"Size",value:"120 cm"}], imageUrl: "https://angebote.neontrip.de/image", imageId: "image", imageTitle: "Final", imageHash: "hash" }],
     accessories: [], sources: [], analysis: {summary:"Prüfung",changes:[],threads:[]}, attachments: [], priority:"standard", mailCount:1, blockers:[],
   };
-  review.orderHash = digest({ offer: row.offer_id, order: row.shopify_order_id, name: row.shopify_order_name,
-    email: row.customer_email, request: row.request_id, customerDueDate: row.customer_due_date,
-    snapshot: row.offer_snapshot, items: [{id:item.id,quantity:item.quantity,raw:item.raw_line_item}],change:{} });
+  review.orderHash = productionOrderHash(row, [item]);
   row.metadata.production_review = review;
   const approval = {...defaultReviewApproval(review),confirmed:true};
   const input = {saleId:row.id,supplier:"quentin" as const,requestedDeliveryDate:"2026-11-20",productionApproval:approval};
