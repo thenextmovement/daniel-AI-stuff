@@ -13,17 +13,21 @@ function abridge(input:string|null,max=240) {
   return text.slice(0,max).replace(/\s+\S*$/,"")+"…";
 }
 export function CustomerBrief({id,requestId,context}:{id:string;requestId:string;context:VoiceCustomerContext|null}) {
+  const [channel,setChannel]=useState<"email"|"phone">("email");
+  const [unassigned,setUnassigned]=useState<Entry[]>([]);
   const [page,setPage]=useState<Page|null>(null),[offset,setOffset]=useState(0),[retry,setRetry]=useState(0);
   const [error,setError]=useState(false),[loading,setLoading]=useState(true);
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError(false);
-    const params=new URLSearchParams({history:"1",customerId:id,offset:String(offset),requestId});
+    const params=new URLSearchParams({history:"1",channel,customerId:id,offset:String(offset),requestId});
     void fetch("/api/ops/voice-copilot/context?"+params,{signal:controller.signal,cache:"no-store"})
       .then(async response=>{if(!response.ok)throw Error();return await response.json() as Page;})
-      .then(data=>{if(controller.signal.aborted)return;setPage(old=>offset&&old?{...data,brief:old.brief,entries:[...new Map([...old.entries,...data.entries].map(e=>[e.id,e])).values()]}:data);})
+      .then(data=>{if(controller.signal.aborted)return;
+        if(channel==="email" && !offset)setUnassigned(data.entries.filter(e=>!e.request_ref));
+        setPage(old=>offset&&old?{...data,brief:old.brief,entries:[...new Map([...old.entries,...data.entries].map(e=>[e.id,e])).values()]}:data);})
       .catch(()=>{if(!controller.signal.aborted)setError(true);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return ()=>controller.abort();
-  },[id,requestId,offset,retry]);
+  },[id,requestId,channel,offset,retry]);
   const req=context?.request;
   return <section className={styles.prep} aria-label="Gesprächsüberblick">
     <p className={styles.label}>Vor dem Anruf</p><h3>Auf einen Blick</h3>
@@ -34,19 +38,26 @@ export function CustomerBrief({id,requestId,context}:{id:string;requestId:string
     {page?.brief.map(e=><p key={e.id}><strong>{labels[e.kind]}: </strong>{abridge(e.detail)||e.subject}</p>)}
     {page && requestId && !page.brief.length && <p className={styles.small}>Keine Mail oder Gesprächsnotiz eindeutig dieser Anfrage zugeordnet.</p>}
     {page && !page.brief.some(e=>e.kind==="inbound"||e.kind==="outbound") && ["inbound","outbound"].map(kind=>{
-      const entry=page.entries.find(e=>e.kind===kind && !e.request_ref);
+      const entry=unassigned.find(e=>e.kind===kind);
       return entry && <p key={kind}><strong>{labels[kind]} (ohne Vorgangsverweis): </strong>{abridge(entry.detail)||entry.subject}</p>;
     })}
     {loading && <p role="status">Verlauf wird geladen …</p>}
     {error && <p role="status">Verlauf konnte nicht geladen werden. <button onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>}
     <details><summary className={styles.link}>E-Mail- und Telefonverlauf</summary>
       <p className={styles.small}>Alle Vorgänge dieses Kunden · Neueste zuerst</p>
-      {page?.entries.map(e=><article className={styles.event} key={e.id}>
+      <div className={styles.historyTabs} role="group" aria-label="Verlauf auswählen">
+        {(["email","phone"] as const).map(kind=><button key={kind} type="button" aria-pressed={channel===kind} onClick={()=>{
+          if(kind===channel)return;
+          setPage(old=>old ? {...old,entries:[],nextOffset:null} : null);
+          setError(false);setLoading(true);setOffset(0);setChannel(kind);
+        }}>{kind==="email"?"E-Mail":"Telefon"}</button>)}
+      </div>
+      {page?.entries.map(e=><article className={styles.historyMessage} data-kind={e.kind} key={e.id}>
         <small>{e.occurred_at && new Date(e.occurred_at).toLocaleString("de-DE")} · {labels[e.kind]} · {e.request_ref?"Vorgang "+e.request_ref.slice(0,8):"Ohne Vorgangsverweis"}</small>
         <p><strong>{e.subject || "Ohne Betreff"}</strong></p><p>{e.detail}</p>
         {e.session_id && <a className={styles.link} href={"/ops/voice-copilot?transcript="+encodeURIComponent(e.session_id)} target="_blank" rel="noreferrer">Transkript öffnen ↗</a>}
       </article>)}
-      {page && !page.entries.length && <p>Noch keine Kommunikation gespeichert.</p>}
+      {page && !loading && !error && !page.entries.length && <p>{channel==="email"?"Keine E-Mails gespeichert.":"Keine Telefonate gespeichert."}</p>}
       {page?.nextOffset!=null && <button className={styles.button} disabled={loading} onClick={()=>{if(offset===page.nextOffset)setRetry(n=>n+1);else setOffset(page.nextOffset!);}}>Ältere Einträge laden</button>}
     </details>
   </section>;
