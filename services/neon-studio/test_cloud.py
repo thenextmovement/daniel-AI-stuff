@@ -208,6 +208,21 @@ class CloudTests(unittest.TestCase):
   jobs.fail(p['id'],'Bitte prüfen: Welche Zeile? Zwei wurden genannt.')
   msg='Noch zu klären\n• Welche Zeile? Zwei wurden genannt.'
   t.comment_once.assert_called_once_with('copy',msg,msg)
+ def test_review_reason_without_spec_issues(self):
+  from unittest.mock import Mock
+  from cloud_trello import PROCESSING,HOLDING
+  t=Mock(spec=Trello);jobs=Jobs(self.db,None,t)
+  p=self.db.enqueue('source','event',{})
+  self.db.save(p['id'],{'copy':'copy','copy_verified':True})
+  t.card.return_value={'idBoard':BOARD,'idList':HOLDING,'name':'🤖 '+PROCESSING+'LED Test 🤖'}
+  reason='Nicht alle Neonpfade haben eine Linienart.'
+  jobs.fail(p['id'],reason,public_reason=reason)
+  msg='Auto-Quote angehalten: '+reason
+  t.comment_once.assert_called_once_with('copy',msg,msg)
+  t.reset_mock()
+  jobs.fail(p['id'],'internal-only')
+  self.assertNotIn('internal-only',str(t.comment_once.call_args))
+  self.assertIn('Studio-Projekt',str(t.comment_once.call_args))
  def test_lone_customer_image_is_used(self):
   from unittest.mock import Mock
   from cloud_ai import generate
@@ -242,6 +257,33 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(len(images),1)
   preview=Image.open(io.BytesIO(base64.b64decode(images[0]['image_url'].split(',')[1])))
   self.assertNotEqual(preview.getpixel((0,0)),preview.getpixel((5,5)))
+ def test_unreadable_svg_uses_matching_pngs_for_separate_font_quotes(self):
+  from unittest.mock import Mock,patch
+  from cloud_ai import generate
+  t=Mock();files={}
+  for index,stem in enumerate(['SciFi','NeoTokyo']):
+   out=io.BytesIO();Image.new('RGB',(10,10),(index,0,0)).save(out,'PNG')
+   files[stem+'.png']=out.getvalue();files[stem+'.svg']=b'<svg><mask/></svg>'
+  card=dict(id='card',name='Smallest Size + 23 cm Höhe',desc='2 Fonts so please make 2 Quotes',
+            attachments=[dict(id=k,name=k,isUpload=True) for k in files])
+  t.download.side_effect=lambda _,a:files[a['id']]
+  designs=[dict(design_name=k,source_attachment_ids=[k],svg=SVG.replace('M10',f'M{10+i}'),excluded_regions=[]) for i,k in enumerate(files) if k.endswith('.png')]
+  with patch.dict('os.environ',{'OPENAI_API_KEY':'test'}),patch('cloud_ai.requests.post') as post:
+   def reply(data):post.return_value.json.return_value={'status':'completed','output':[{'content':[{'type':'output_text','text':json.dumps(data)}]}]}
+   reply(designs[0])
+   with self.assertRaisesRegex(Review,'beiden bestellten Designs'):generate(t,card)
+   reply({'designs':designs});result,_=generate(t,card)
+   self.assertEqual(sum(x['type']=='input_image' for x in post.call_args.kwargs['json']['input'][0]['content']),2)
+   self.assertTrue(all(d['heights_mm']==[230] and not d['widths_mm'] and d['size_axis']=='height' for d in result['designs']))
+   with self.assertRaisesRegex(Review,'reine Pfade'):generate(t,card,['SciFi.svg'])
+ def test_exclude_divider_and_only_the_text_below(self):
+  from cloud_ai import apply_motif_exclusions
+  names=['Schriftzug OBEN','Horizontale Trennlinie','Schriftzug UNTEN','Logo']
+  design=dict(excluded_regions=[],svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'+''.join(
+    f'<path id="p{i}" d="M 2 {y} L 65 {y}" fill="none" stroke="red"/>' for i,y in enumerate([5,40,68,90]))+'</svg>',
+    line_plan=[dict(name=n,path_ids=['p'+str(i)],mode='single') for i,n in enumerate(names)])
+  apply_motif_exclusions(design,'Please ignore the line and all text under the line')
+  self.assertEqual([r['name'] for r in design['line_plan']],[names[0],names[3]])
  def test_incomplete_drawing_retries_same_source_once(self):
   from unittest.mock import Mock,patch
   from cloud_ai import generate

@@ -51,7 +51,7 @@ class Jobs:
         title=copy_title(name,prefix)
         if title!=name:self.t.call('PUT',f"cards/{p['copy']}",json={'name':title})
         if comment:self.t.comment_once(p['copy'],comment,comment)
-    def fail(self,id,error):
+    def fail(self,id,error,*,public_reason=None):
         p=self.db.save(id,{'error':error},status='review');self.alert(p,error)
         comment=None
         if error.startswith('Bitte prüfen: ') and p.get('copy_verified'):
@@ -60,6 +60,8 @@ class Jobs:
                 issues=[f"{record['spec']['design_name']}: {issue}" for record in [p,*p['additional_designs']]
                         for issue in record['spec'].get('issues',[])]
             if issues:comment='Noch zu klären\n'+'\n'.join('• '+str(i) for i in issues)
+        if not comment and p.get('copy_verified'):
+            comment='Auto-Quote angehalten: '+(public_reason or 'Technischer Fehler. Bitte die Fehlermeldung im verlinkten Studio-Projekt prüfen.')
         try:self.mark_copy(p,NEEDS_REVIEW,comment)
         except Exception as exc:print('Review title update failed:',type(exc).__name__,flush=True)
     def ingest(self,source,event):
@@ -342,7 +344,7 @@ class Jobs:
                         message=f'Verarbeitung angehalten ({stage}, {type(e).__name__}). Bitte den Schritt im Studio prüfen.'
                     if p.get('reread'):
                         self.db.save(p['id'],{'reread':None,'error':'Neu einlesen fehlgeschlagen. '+message},status='review')
-                    else:self.fail(p['id'],message)
+                    else:self.fail(p['id'],message,public_reason=message if isinstance(e,(Review,SpacingLimitExceeded)) else None)
             time.sleep(2)
     def watch(self):
         while True:

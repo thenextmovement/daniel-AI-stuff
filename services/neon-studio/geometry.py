@@ -1104,7 +1104,10 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
         merged=unary_union([merged,cap])
         merged=Polygon(merged.exterior)
     smoothing=max(1,radius)
-    merged=merged.buffer(smoothing,quad_segs=20).buffer(-smoothing,quad_segs=20)
+    smoothed=merged.buffer(smoothing,quad_segs=20).buffer(-smoothing,quad_segs=20)
+    # Buffer roundoff can split a connected contour. Keep the original verified
+    # envelope rather than dropping islands or losing the acrylic bridge.
+    if smoothed.geom_type=="Polygon" and not smoothed.is_empty:merged=smoothed
     # Keep fitting error small without adding an invisible padding allowance.
     contour=LineString(merged.exterior.coords).simplify(.01,preserve_topology=True)
     points=np.array(contour.coords)
