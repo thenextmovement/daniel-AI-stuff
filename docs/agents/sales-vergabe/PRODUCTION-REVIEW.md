@@ -1,12 +1,83 @@
 # KI-vorbereitete Produktionsvergabe
 
 Aktueller Stand 2026-11-16: Produktionsbasis ist `7d4aba8b89b25b1f83aac7a899d568354a7697ac`.
-Die nachfolgende Korrektur von Produktzuordnung und fehlenden Hinweisen ist lokal
+Die nachfolgenden Korrekturen von Mailzuordnung, Produktzuordnung und fehlenden Hinweisen sind lokal
 geprüft, nicht veröffentlicht. NEONTRIP, Quentin-Board 62bae9b97705e7419ed64593.
 Veröffentlichung benötigt die exakte saubere Commit-SHA. Ältere Abschnitte dokumentieren
 den damaligen Prüf-/Veröffentlichungsstand.
 
+## Stabile Mailzuordnung (16. November, nachfolgende Reparatur)
+
+Ziel: Frühere abgeschlossene Amazon-Vorgänge sollen keine wechselnden Pflichtfragen
+für die neue Bestellung erzeugen. Nachbar: wiederverwendete Threads, echte technische
+Konflikte, vollständiges Quellenprotokoll, gekaufte Bilder/Mengen, Zahlungs- und
+Freigabegrenzen erhalten. Wirkung: ausschließlich lokale Prüfentwürfe; keine
+produktiven Review-, Trello-, Datei-, Kundenmail- oder Vergabeschreibzugriffe.
+Erlaubte Änderung: bestehender KI-Abgleich, zugehöriger Regressionstest und diese Doku.
+
+Ursache: Die bisherige Vorgabe „Bei unbewiesener Projektzuordnung uncertain“ legte
+der KI alle 31 Amazon-Threads gleichrangig vor. 27 davon waren vor der neuen Anfrage
+abgeschlossen. Je nach Modellantwort entstanden zahlreiche unsichere Zuordnungen
+und vermischte historische Belege; derselbe Absender beweist keinen Projektbezug.
+
+Die bestehende Vorbereitung verwendet jetzt exakte aktuelle Auftrags-/Angebotsnummern
+im Betreff und eine eindeutig wörtlich wiedergefundene neue Anfrage aus der Quentin-
+Karte. Nur vollständig davor abgeschlossene Threads ohne aktuelle Referenz werden
+als historische Vorgänge eingeordnet und nicht als Produktionsbelege an die KI
+übergeben. Alle Originalvolltexte bleiben im Prüfprotokoll sichtbar.
+Es gibt keinen pauschalen Zeitfilter und keine Beschränkung auf die letzten N Mails.
+Eine aktuelle Antwort hält einen alten Thread samt vollständigem Verlauf aktiv.
+Fehlende Datierung, mehrere passende Threads, ein nur zitierter Treffer oder eine
+bloße Revision erlauben keinen Ausschluss. Wörtliche ältere Logo-Korrekturen werden
+weiterhin separat zur Zuordnungsentscheidung vorgelegt.
+
+Exakte aktuelle Referenzen und eindeutig gefundene neue Anfrage werden unabhängig
+vom Modell zugeordnet. Mehrere widersprechende Betreffreferenzen bleiben ungeklärt.
+Für übrige Mails verlangt eine Rückfrage einen konkreten möglichen Projektbezug.
+Eine allgemeine Eingangsbestätigung erzeugt allein keine Produktionsentscheidung.
+Der vorhandene Lieferschein-Fallback wird nach der Belegprüfung genau einmal
+angewendet; dadurch entstehen keine doppelten automatisch ergänzten Hinweise.
+
+Drei unabhängige neue Amazon-KI-Aufrufe lieferten dieselbe Mailzuordnung: 3 zugehörige,
+28 andere und **0 ungeklärte Threads**. 88 Volltexte bleiben erhalten; 8 Mails aus
+4 aktuellen Threads werden der KI vorgelegt. Die 27 historischen Threads enthalten
+80 Mails. Der vierte aktuelle Thread ist eine allgemeine Ausgangsbestätigung.
+
+| Fall | Ergebnis des lokalen Echtdaten-Replays | Offene Punkte |
+| --- | --- | --- |
+| #NEONT4857 Amazon | 0 Mailentscheidungen in allen drei Läufen; Lieferschein und Do not split erhalten | 5 / 5 / 7: 1 Lieferscheinprüfung + 4 Dateien; im dritten Lauf zusätzlich 2 blockierte unbelegte Produkttext-Zuordnungen |
+| #NEONT4856 Kinderarztpraxis | 16 Volltexte, 5 zugehörige Threads, 0 Mailentscheidungen; Montageschablone enthalten | 3 bestehende Karten-/Bestellkonflikte und 9 Dateientscheidungen; UI zählt 11 wegen zweier gleichnamiger image.png |
+| #NEONT4849 Apel | 5 Volltexte, 4 zugehörige Threads + allgemeine Ausgangsbestätigung, 0 Mailentscheidungen; Doppellinie erhalten | 2 Dateien, keine inhaltliche Frage |
+
+Die Mailzuordnung ist damit in diesen Wiederholungen stabil; die gesamte KI-Ausgabe
+ist nicht identisch. Unbelegte Produkttext-Zuordnungen werden weiterhin blockiert.
+Amazon ist kein ungeprüfter Ein-Klick-Auftrag: Lieferscheinanhang/Lieferadresse und
+unklare Dateien benötigen eine bewusste Entscheidung. Anhänge werden nicht gelesen.
+Die letzte UI-Prüfung zeigt den dritten Lauf mit sieben Punkten, nicht den günstigsten.
+Dauer der unabhängigen Amazon-Replays: 24,4 / 14,4 / 21,6 s; kein Produktions-SLA.
+
+Verifikation: 1.811 Tests, davon 1.809 bestanden und 2 plattformbedingt übersprungen;
+8 Deployment-Tests, TypeScript, Produktionsbuild und bestehender UI-Smoke bestanden.
+Regressionen prüfen wechselnde Modellantworten, wiederverwendete Threads, fehlende
+Datierung, exakte Referenzen, mehrdeutige/fehlende/zitierte Anfragen, reine Revisionen
+und den erhaltenen Fallback für wörtliche Logo-Korrekturen.
+Die echten lokalen Prüfkomponenten aller drei Fälle wurden bedient: gekaufte Bilder
+sichtbar, Freigabe gesperrt. Positions-/Bild-IDs, Bildhashes, Mengen, Priorität und
+sämtliche gespeicherten Mailvolltexte wurden gegen die Ausgangsdaten abgeglichen.
+
+Aktuelle DB-Snapshots wurden erneut gelesen. Graph/Trello/DB-Zugriffe im lokalen
+Replay stammen aus den heute gespeicherten echten produktiven Review-Quellen;
+OpenAI-Aufrufe und gekaufte Bild-GETs waren echt. Die finalen Code-Replays verwendeten
+die aufgezeichneten Antworten dieser unabhängigen Aufrufe. Das ist kein erneuter
+produktiver Graph-E2E-Test und kein Speichern mit dem neuen Code in Produktion.
+DB-Abschlusskontrolle 16.11.2026, 12:07:59 MEZ: Review-IDs und Zahlungen unverändert,
+kein Produktionshandoff, jeweils null Vergabeversuche. Kein Push oder Deployment.
+Erst nach Freigabe des exakten neuen Commits können die produktiven Entwürfe mit
+„Neu vorbereiten“ neu erstellt werden.
+
 ## Korrektur Produktzuordnung und Liefer-/Montagehinweise (16. November)
+
+Dieser Abschnitt dokumentiert den früheren Prüflauf vor der Mailreparatur oben.
 
 Ziel: Keine automatische Zuordnung von Mail-Aufzählungen zu mehreren gekauften
 Produkten; explizite Lieferschein-Anweisung und bestellte Montageschablone erhalten.
@@ -45,10 +116,9 @@ neuer produktiver Graph-E2E-Test und keine produktive Vorbereitung des neuen Cod
 | #NEONT4856 Kinderarztpraxis, 16 Volltexte | Montageschablone in Produktmerkmalen und fertigem Text | 4 inhaltliche Punkte und 9 Dateientscheidungen; UI zählt 12 statt 13 wegen zweier gleichnamiger image.png |
 | #NEONT4849 Apel, 5 Volltexte | Gleiches Bild, Doppellinie erhalten, alle 5 Threads zugehörig | 1 wiederholter Sonderhinweis und 2 Dateien |
 
-Die schwankende Mailzuordnung beim großen Amazon-Verlauf erreicht das Ziel
+Die damals schwankende Mailzuordnung beim großen Amazon-Verlauf erreichte das Ziel
 „nur prüfen/bestätigen“ noch nicht. Die drei Korrekturen sind belegt; dieser Befund
-wird separat berichtet und nicht durch manuelles Entfernen der Prüfpunkte kaschiert.
-Kein Livegang empfohlen, bevor dieser Bedienungsbefund bewertet wurde.
+wurde separat berichtet und anschließend mit der oben dokumentierten Reparatur behoben.
 
 Verifikation: Original-Amazon-Fehlanalyse erneut validiert (beide falschen
 Produktzuordnungen blockiert); Bild-IDs, Bildhashes und Mengen für alle drei Fälle

@@ -110,6 +110,63 @@ test("model cannot omit a mail thread, invent numeric values, use unrelated mail
   assert.ok(notes.changes.some(c => c.id === "preserve-card-instructions"));
 });
 
+test("proven new inquiry stabilizes historical threads while reused threads and current references stay active", async () => {
+  const oldKey = process.env.OPS_OPENAI_API_KEY; process.env.OPS_OPENAI_API_KEY = "fixture";
+  try {
+    const inquiry = "Ich habe eine neue Anfrage für zwei Schilder mit unserem neuen Logo. Bitte die beiden unterschiedlichen Texte nach den beigefügten Designs anbieten.";
+    const r = review();
+    const mail = (id: string, threadId: string, at: string | null, text: string, label = "Eingang: Anfrage") => ({ id, kind: "mail" as const, label, threadId, at, text, href: null });
+    const sources = [
+      { ...r.sources[0], text: "Original Nachricht (Outlook):\nHallo,\n\n" + inquiry },
+      mail("past", "past-thread", "2026-11-01T10:00:00Z", "HISTORICAL-ONLY Lieferschein bitte mitsenden."),
+      mail("inquiry", "new-thread", "2026-11-10T10:00:00Z", inquiry),
+      mail("reused-old", "reused-thread", "2026-11-01T10:00:00Z", "REUSED-OLD Vollständige ältere Projektdetails."),
+      mail("reused-new", "reused-thread", "2026-11-11T10:00:00Z", "Für das neue Logo bitte den Kabelausgang prüfen."),
+      mail("undated", "undated-thread", null, "UNDATED darf nicht zeitlich ausgeschlossen werden."),
+      mail("exact", "exact-thread", "2026-11-01T10:00:00Z", "EXACT aktuelle Referenz trotz früherem Datum.", "Eingang: A/N 16164"),
+    ];
+    for (const modelChoice of ["uncertain", "related", "unrelated"] as const) {
+      const result = await analyzeProductionReview({ products: r.products, sources, orderReference: "#NEONT4857", offerReference: "A/N 16164", requestId: r.requestId }, async (_url, init) => {
+        const body = JSON.parse(String(init?.body)), input = JSON.parse(body.input);
+        assert.ok(!input.snippets.some((s: {text: string}) => s.text.includes("HISTORICAL-ONLY")));
+        for (const text of ["REUSED-OLD", "UNDATED", "EXACT"]) assert.ok(input.snippets.some((s: {text: string}) => s.text.includes(text)));
+        assert.deepEqual(body.text.format.schema.properties.threads.properties.t1.properties.relevance.enum, ["unrelated"]);
+        return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify({ threads: Object.fromEntries(body.text.format.schema.properties.threads.required.map((id: string) => [id, { relevance: modelChoice, reason: "Schwankender Modellvorschlag" }])), changes: [] }) }] }] });
+      });
+      assert.equal(result.threads.find(t => t.id === "past-thread")?.relevance, "unrelated");
+      assert.equal(result.threads.find(t => t.id === "new-thread")?.relevance, "related");
+      assert.equal(result.threads.find(t => t.id === "exact-thread")?.relevance, "related");
+      assert.equal(result.threads.find(t => t.id === "reused-thread")?.relevance, modelChoice);
+      assert.equal(result.threads.find(t => t.id === "undated-thread")?.relevance, modelChoice);
+      assert.ok(!result.changes.some(c => /delivery note/.test(c.value)));
+    }
+  } finally { if (oldKey === undefined) delete process.env.OPS_OPENAI_API_KEY; else process.env.OPS_OPENAI_API_KEY = oldKey; }
+});
+
+test("history exclusion requires an unambiguous verbatim NEW inquiry, and literal older corrections still surface", async () => {
+  const oldKey = process.env.OPS_OPENAI_API_KEY; process.env.OPS_OPENAI_API_KEY = "fixture";
+  try {
+    const inquiry = "Ich habe eine neue Anfrage für ein weiteres Schild mit unserem neuen Logo und einer anderen Ausführung. Bitte ein Angebot anhand der Datei erstellen.";
+    for (const scenario of ["no-match", "quoted-only", "ambiguous", "revision", "literal-correction"]) {
+      const r = review();
+      const inquiryText = scenario === "revision" ? inquiry.replace("neue Anfrage für ein weiteres Schild", "Rückfrage zum bestehenden Schild") : inquiry;
+      const sources = [
+        { ...r.sources[0], text: "Original Nachricht (Outlook):\n" + inquiryText },
+        { ...r.sources[1], id: "past", threadId: "past", label: "Eingang: Früherer Verlauf", text: scenario === "literal-correction" ? 'Für das Logo bitte "Alpha. Beta." und nicht "Alpha- Beta-" verwenden.' : "HISTORY-MUST-REMAIN frühere Angaben.", at: "2026-11-01T10:00:00Z" },
+        { ...r.sources[1], id: "new", threadId: "new", label: "Eingang: Anfrage", text: scenario === "no-match" ? "Anderer Inhalt" : scenario === "quoted-only" ? "Danke.\n\nVon: Jemand\n" + inquiryText : inquiryText, at: "2026-11-10T10:00:00Z" },
+        ...(scenario === "ambiguous" ? [{ ...r.sources[1], id: "second", threadId: "second", label: "Eingang: Anfrage", text: inquiryText, at: "2026-11-10T11:00:00Z" }] : []),
+      ];
+      const result = await analyzeProductionReview({ products: r.products, sources, orderReference: r.orderName, requestId: r.requestId }, async (_url, init) => {
+        const body = JSON.parse(String(init?.body)), input = JSON.parse(body.input);
+        if (scenario !== "literal-correction") assert.ok(input.snippets.some((s: {text: string}) => s.text.includes("HISTORY-MUST-REMAIN")), scenario);
+        return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify({ threads: Object.fromEntries(body.text.format.schema.properties.threads.required.map((id: string) => [id, { relevance: "uncertain", reason: "Bezug offen" }])), changes: [] }) }] }] });
+      });
+      assert.equal(result.threads.find(t => t.id === "past")?.relevance, "uncertain", scenario);
+      if (scenario === "literal-correction") assert.ok(result.changes.some(c => c.requiresThreadId === "past" && /Alpha/.test(c.value)));
+    }
+  } finally { if (oldKey === undefined) delete process.env.OPS_OPENAI_API_KEY; else process.env.OPS_OPENAI_API_KEY = oldKey; }
+});
+
 test("one structured AI request excludes purchased-image tokens and source links", async () => {
   const old = process.env.OPS_OPENAI_API_KEY; process.env.OPS_OPENAI_API_KEY = "fixture";
   try {
@@ -204,7 +261,7 @@ test("accepted offer reference preserves delivery-note evidence without matching
       ["Eingang: AW: Angebot", "unrelated", "unrelated"],
       ["Eingang: A/N 16164 / A/N 12345", "unrelated", "uncertain"],
       ["Eingang: A/N 16164 #NEONT4662", "unrelated", "uncertain"],
-      ["Eingang: A/N 16164", "uncertain", "uncertain"],
+      ["Eingang: A/N 16164", "uncertain", "related"],
     ] as const) {
       const r = review();
       const source = { ...r.sources[1], label, text: "Lieferschein bitte mitsenden.\n\nVon: Andere Person\nA/N 16164" };
@@ -252,7 +309,7 @@ test("order membership is independent of technical changes and uses exact subjec
       ["Ausgang: Rechnung", "", "unrelated", "unrelated"],
       ["Ausgang: Rechnung #NEONT4849 / #NEONT4839", "", "unrelated", "uncertain"],
       ["Ausgang: Rechnung #NEONT4849", "Eingang: Rechnung #NEONT4839", "unrelated", "uncertain"],
-      ["Ausgang: Rechnung #NEONT4849", "", "uncertain", "uncertain"],
+      ["Ausgang: Rechnung #NEONT4849", "", "uncertain", "related"],
     ]) {
       const r = review();
       const source = { ...r.sources[1], label, text: "Rechnungsversand. Zitierter Verlauf: #NEONT4849." };
