@@ -159,9 +159,19 @@ class Jobs:
                 else:requested=converted
             widths,reports=size_variants(self.store,p['model'],settings,{**spec,'widths_mm':requested})
             if widths:
+                height_notes=[]
+                if spec.get('size_axis')=='height' and spec.get('heights_mm') and spec.get('manual_height_mm') is None:
+                    for height,target in zip(spec['heights_mm'],converted):
+                        if any(abs(w-target)<=.01 for w in widths):continue
+                        reason=f'Wunschhöhe {height/10:g} cm: Die aktuellen Konturen benötigen mehr Platz.'
+                        height_notes.append(reason+' Der Preis gilt für die separat berechnete Mindestgröße.')
+                previous_notes=spec.get('height_fit_notes',[])
+                issues=[i for i in spec.get('issues',[]) if not size_only_issue(i) and i not in previous_notes]
+                if height_notes or previous_notes:
+                    spec['height_fit_notes']=height_notes
                 spec.update(requested_widths_mm=requested,widths_mm=widths,sized_widths_mm=widths)
                 spec.update(auto_minimum_mm=None if spec.get('minimum_width_mm') else reports[0]['recommendedWidth'],minimum_tube_mm=6,
-                            issues=[i for i in spec.get('issues',[]) if not size_only_issue(i)])
+                            issues=issues+height_notes)
                 settings['width']=widths[0]
                 p.update(spec=spec,settings=settings,metrics={**(p.get('metrics') or {}),'manufacturing':reports[0]})
 

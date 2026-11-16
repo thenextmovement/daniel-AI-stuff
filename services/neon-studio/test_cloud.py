@@ -281,6 +281,12 @@ class CloudTests(unittest.TestCase):
    self.assertEqual(sum(x['type']=='input_image' for x in post.call_args.kwargs['json']['input'][0]['content']),2)
    self.assertTrue(all(d['heights_mm']==[230] and not d['widths_mm'] and d['size_axis']=='height' for d in result['designs']))
    with self.assertRaisesRegex(Review,'reine Pfade'):generate(t,card,['SciFi.svg'])
+ def test_explicit_height_in_size_field_and_title_priority(self):
+  from cloud_ai import requested_heights
+  self.assertEqual(requested_heights('Smallest Size','Angefragte Groesse: 23 cm Höhe'),[230])
+  self.assertEqual(requested_heights('23,5 cm hoch','Size: 30 cm Höhe'),[235])
+  self.assertEqual(requested_heights('Smallest Size + 100 cm','Size: 23 cm Höhe'),[])
+  self.assertEqual(requested_heights('100 cm Breite','Size: 23 cm Höhe'),[])
  def test_exclude_divider_and_only_the_text_below(self):
   from cloud_ai import apply_motif_exclusions
   names=['Schriftzug OBEN','Horizontale Trennlinie','Schriftzug UNTEN','Logo']
