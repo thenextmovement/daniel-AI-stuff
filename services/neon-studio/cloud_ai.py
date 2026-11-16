@@ -143,10 +143,11 @@ def manual_minimum_width(spec):
         raise Review('Die manuelle Mindestbreite muss zwischen 8 cm und 20 m liegen.')
     return value
 
-def validate_spec(spec):
+def validate_spec(spec,*,draft=False):
     if not isinstance(spec,dict):raise Review('Vorgaben fehlen.')
-    if spec.get('issues'):raise Review('Bitte prüfen: '+'; '.join(map(str,spec['issues']))[:600])
+    if spec.get('issues') and not draft:raise Review('Bitte prüfen: '+'; '.join(map(str,spec['issues']))[:600])
     spec={**spec,'usage':spec.get('usage') or 'Innen','shape':spec.get('shape') or 'shape','gap':15}
+    if draft and spec.get('issues'):spec['download_draft']=True
     if spec['usage'] not in ('Innen','Außen') or spec['shape'] not in ('shape','rectangle','bottom'):raise Review('Usage oder Zuschnitt unklar.')
     if not isinstance(spec.get('customer_name'),str) or not spec['customer_name'].strip():raise Review('Kundenname fehlt.')
     if isinstance(spec.get('colors'),list) and all(isinstance(c,str) for c in spec['colors']):spec['colors']=' + '.join(c.strip() for c in spec['colors'] if c.strip())
@@ -276,7 +277,7 @@ alle anderen automatisch die nächstpassende verfügbare Neonfarbe. Diese Farbzu
 Ausdrücklich bestellte Leuchtfarben haben Vorrang. Formuliere jede tatsächlich offene Entscheidung als kurze Frage:
 Benenne den betroffenen Motivteil und erkläre in einem zweiten Satz, welche Angabe fehlt oder welche Angaben sich widersprechen.
 Fehlende Usage: Innen; fehlender Zuschnitt: shape. Randabstand später 15mm.
-Falls verbindliche_titelgroessen vorliegen, sind die Größen vollständig geklärt. Keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen. Die geometrische Mindestbreite wird immer automatisch berechnet. Fehlende Mindestbreite ist kein issue. Nur Rückfragen, deren Antwort Zeichnung oder Kalkulation tatsächlich verändert und die weder durch die Vorlage noch durch die vereinbarten Standardwerte geklärt sind, gehören in issues. Reine Erläuterungen, Bestätigungswünsche und allgemeine Produktionshinweise sind keine issues. Pro offenem Sachverhalt genau ein separates issue. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei unklarer Motivwahl frage nur nach, wenn sich aus der Bestellung nicht ergibt, welche Motive angeboten werden sollen. Für die Zeichnung immer 6 mm Neonflex annehmen.
+Falls verbindliche_titelgroessen vorliegen, sind die Größen vollständig geklärt. Keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen. Die geometrische Mindestbreite wird immer automatisch berechnet. Fehlende Mindestbreite ist kein issue. Nur Rückfragen, deren Antwort Zeichnung oder Kalkulation tatsächlich verändert und die weder durch die Vorlage noch durch die vereinbarten Standardwerte geklärt sind, gehören in issues. Reine Erläuterungen, Bestätigungswünsche und allgemeine Produktionshinweise sind keine issues. Pro offenem Sachverhalt genau eine kurze, verständliche Frage auf Deutsch. Erstelle den Entwurf mit der am besten belegten Ausführung und nenne die getroffene Annahme in der Frage. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei unklarer Motivwahl frage nur nach, wenn sich aus der Bestellung nicht ergibt, welche Motive angeboten werden sollen. Für die Zeichnung immer 6 mm Neonflex annehmen.
 Die SVG enthält ausschließlich die tatsächlich benötigten Neonpfade: smooth Mittellinien bei
 Schreibschrift/dünnen Strichen, vorhandene Umrisslinien bei bewusst breiten Outline-Logos.
 Keine Leuchthöfe, Schattierungen, Acrylkontur, Beschriftungen, Bemaßung oder Bildrahmen.

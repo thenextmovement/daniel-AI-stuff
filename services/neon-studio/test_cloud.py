@@ -88,6 +88,11 @@ class CloudTests(unittest.TestCase):
   saved=self.db.get(p['id'])
   self.assertEqual(jobs.store.info(saved['model'])['name'],'Hand.png')
   self.assertEqual(set(saved['spec']['line_plan'][0]['path_ids']),set(saved['settings']['pathColors']))
+ def test_open_question_allows_draft_with_valid_price_inputs(self):
+  spec={'customer_name':'Test','colors':'Warmweiß','widths_mm':[750],'issues':['Ist Warmweiß richtig?']}
+  self.assertTrue(validate_spec(spec,draft=True)['download_draft'])
+  with self.assertRaises(Review):validate_spec(spec)
+  with self.assertRaises(Review):validate_spec({**spec,'widths_mm':[]},draft=True)
  def test_png_centerlines_preserve_double_line_and_ambiguous_sources(self):
   from unittest.mock import Mock
   jobs=Jobs(self.db,None,Mock())

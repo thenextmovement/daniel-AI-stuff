@@ -124,6 +124,9 @@ class Jobs:
         model,part_modes=drawing_model(data)
         info=self.store.add_model(model,'KI-Zeichnung.svg')
         spec={k:v for k,v in data.items() if k!='svg'}
+        if spec.get('usage')=='Außen' and spec.get('waterproof_psus') is None:
+            spec['waterproof_psus']=1
+            spec['issues']=[*(spec.get('issues') or []),'Ein wasserdichtes Netzteil je Schild ist vorläufig eingerechnet. Wie viele werden benötigt?']
         settings={'mode':'single','partModes':part_modes,'shape':spec.get('shape') or 'shape','width':(spec.get('widths_mm') or [600])[0],'gap':15,'tube':6,'radius':3,'depth':20,'reserve':.1,'scale':None}
         if spec.get('colors_from_artwork') is True:
             drawing=self.store.drawing(info['id'],json.dumps(settings,sort_keys=True))
@@ -163,7 +166,7 @@ class Jobs:
                 p.update(spec=spec,settings=settings,metrics={**(p.get('metrics') or {}),'manufacturing':reports[0]})
 
     def design_artifacts(self,p,snapshot):
-        spec=validate_spec(p['spec'])
+        spec=validate_spec(p['spec'],draft=True)
         widths=spec['widths_mm'];settings=dict(p['settings'])
         variants=[]
         for i,width in enumerate(widths):
@@ -250,6 +253,10 @@ class Jobs:
                     batch=[(f'Design_{index}_{name}',mime,data) for name,mime,data in batch]
                     design_notes.append(f"Design {index} · {spec['design_name']} · "+
                         ', '.join(decimal(d['width']/10)+' cm / '+q['total_usd']+' USD' for d,q in zip(drawings,prices)))
+                if spec.get('issues'):
+                    heading=f"Design {index} · " if len(records)>1 else ''
+                    design_notes.append(heading+'Offen im Entwurf ('+spec['colors']+', '+spec['usage']+')')
+                    design_notes.extend('• '+str(question) for question in spec['issues'])
                 files.extend(batch);quotes.extend(prices);variants.extend(drawings);specs.extend([spec]*len(drawings))
             if len(variants)>len(FIELDS):raise Review('Die Karte hat vier Preisfelder. Bitte die Anzahl der Größen je Design reduzieren.')
             spec=specs[0]
