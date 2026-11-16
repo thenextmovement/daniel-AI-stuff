@@ -71,10 +71,28 @@ export function validateReviewAnalysis(value: unknown, sources: ReviewSource[], 
     field: "Additional Information", value: "", reason: "Eine Produktionsangabe ist ausdrücklich noch ungeklärt. Bitte Ergebnis dokumentieren und die Vorschau bei Bedarf anpassen.", evidence: unresolved.evidence,
   });
   preserveLiteralMailCorrections(parsed, sources, products);
+  normalizeOrderShippingInstructions(parsed);
   requireProductBinding(parsed, sources, products);
   preserveCardInstructions(parsed, sources, products);
   preserveDeliveryNoteInstruction(parsed, sources);
   return parsed;
+}
+
+/** Only these fully evidenced logistics clauses are order-wide. Any extra
+ * technical, address or delivery promise keeps the normal product-binding gate. */
+function normalizeOrderShippingInstructions(analysis: ReviewAnalysis) {
+  for (const change of analysis.changes) {
+    if (change.questionOnly || change.kind !== "addition" || change.field !== "Additional Information") continue;
+    const clauses = change.value.split(/[.!;]+/).map(s => s.trim()).filter(Boolean);
+    const kinds = clauses.map(s => /^(?:do not split(?: the (?:order|shipment))?|ship (?:both|all) (?:signs|products|items) together(?: in (?:one|a single) shipment)?)$/i.test(s) ? "together"
+      : /^(?:please )?(?:include|enclose|send) (?:the |the customer's )?delivery note with (?:the )?(?:parcel|shipment)$/i.test(s) ? "note" : null);
+    if (!kinds.length || kinds.includes(null)) continue;
+    const quotes = change.evidence.map(e => e.quote);
+    const togetherProven = quotes.some(q => q.split(/\r?\n/).some(line => /^do not split(?: the (?:order|shipment))?[.!]*$/i.test(cleanCardLine(line))));
+    if (kinds.includes("together") && !togetherProven) continue;
+    if (kinds.includes("note") && !quotes.some(q => explicitDeliveryNote(currentMailText(q)))) continue;
+    change.productId = null;
+  }
 }
 
 /** A real quote proves the instruction, not which purchased image it belongs to.
@@ -154,20 +172,25 @@ function preserveDeliveryNoteInstruction(analysis: ReviewAnalysis, sources: Revi
     .filter(quote => /\b(?:lieferschein|delivery note)\b/i.test(quote)).map(quote => ({ source, quote: quote.trim() })))[0];
   if (!mention || mention.quote.length > 5000) return;
   const { source, quote } = mention;
-  const explicit = /\b(?:bitte|please)\b/i.test(quote) && /\b(?:mit\s*senden|bei\s*legen|bei\s*fügen|include|enclose)\b/i.test(quote)
-    && !/\?|\b(?:nicht|kein\w*|ohne|falls|wenn|not|no|without|if)\b/i.test(quote);
-  if (!explicit) return;
+  if (!explicitDeliveryNote(quote)) return;
   const isNote = (c: ReviewChange) => /\b(?:lieferschein|delivery note)\b/i.test(c.value + " " + c.reason);
   if (!analysis.changes.some(c => !c.questionOnly && c.kind !== "obsolete" && isNote(c))) analysis.changes.push({
     id: "mail-delivery-note", kind: "addition", productId: null, field: "Additional Information",
     value: "Include the customer's delivery note with the shipment.",
     reason: "Die Kundin bittet ausdrücklich darum, ihren Lieferschein mitzusenden.", evidence: [{ sourceId: source.id, quote }],
   });
-  if (!analysis.changes.some(c => c.questionOnly && isNote(c))) analysis.changes.push({
+  // The document reader and confirmation use this stable ID, never free-form wording.
+  if (!analysis.changes.some(c => c.id === "check-delivery-note")) analysis.changes.push({
     id: "check-delivery-note", kind: "conflict", questionOnly: true, productId: null, field: "Additional Information", value: "",
     reason: "Kunden-Lieferschein prüfen: richtigen Mailanhang und Lieferadresse abgleichen und das Ergebnis dokumentieren. Anhanginhalte wurden nicht automatisch gelesen.",
     evidence: [{ sourceId: source.id, quote }],
   });
+}
+
+function explicitDeliveryNote(quote: string) {
+  return /\b(?:lieferschein|delivery note)\b/i.test(quote) && /\b(?:bitte|please)\b/i.test(quote)
+    && /\b(?:mit\s*senden|bei\s*legen|bei\s*fügen|include|enclose)\b/i.test(quote)
+    && !/\?|\b(?:nicht|kein\w*|ohne|falls|wenn|not|no|without|if)\b/i.test(quote);
 }
 
 /** A direct '"X" instead of "Y"' logo correction must not disappear when the model omits it. */
@@ -366,6 +389,7 @@ export async function analyzeProductionReview(input: {
         "Nur produktionsrelevante Ergänzungen und echte Widersprüche melden. Keine Wiederholungen bestellter Produkte, Zubehörmengen oder allgemeiner Geschäftsbedingungen. Automatische Rechnungs-/Versand-/Produktionsfreigabe-Mails ändern keine technischen Felder und erzeugen KEINEN change. Sets nicht eigenmächtig in Streifen umrechnen.",
         "Übernimm explizite Logo-/Textkorrekturen wortgetreu als zusätzliche Produktionsanweisung (z.B. gewünschte Satzzeichen oder Schreibweise), auch wenn die Datei nicht visuell gelesen wurde. Ungeprüfte Anhänge blockieren nicht die Übernahme des expliziten Mailtextes. Ein bestätigter Sonderhinweis wie Doppel-Linien-Ausführung bleibt als Anweisung erhalten; eine historische Anfrage nach Mindestgröße ist durch das spätere angenommene konkrete Maß beantwortet, sofern keine spätere gegenteilige Nachricht vorliegt.",
         "Bei mehreren Produkten ist die Reihenfolge einer Mail-Aufzählung KEINE Zuordnung zu p1/p2. Die gekauften Bilder wurden von dir nicht gelesen. Wenn Texte oder Änderungen keinem bestellten Produkt eindeutig zugeordnet sind, stelle genau eine offene Zuordnungsfrage (questionOnly=true, productId=null, value leer) mit den zu prüfenden Wortlauten im reason; erfinde keine Position. Bereits gekaufte Bildzuordnungen bleiben unverändert.",
+        "Reine Versandhinweise wie Do not split / beide Schilder gemeinsam versenden gelten für den ganzen Auftrag (productId=null), nicht für ein einzelnes Design. Sie erzeugen keine Produktzuordnungsfrage. Produkttexte und logistische Hinweise getrennt behandeln.",
         "Explizite Kundenanweisungen zum Mitsenden eines Lieferscheins sind relevant, auch ohne technische Produktänderung. Der einfache Hinweis zum Beilegen und die manuelle Prüfung von Anhang/Lieferadresse werden deterministisch aus zugeordneten Kundenmails ergänzt: dafür keinen doppelten change erzeugen. Weitergehende oder widersprüchliche Anweisungen weiterhin melden. Bestellte Montageschablonen stehen im Produktfeld Included und bleiben erhalten.",
         "CHECK INFO, UPDATE und Additional Information auch in Markdown vollständig erhalten. Gültige Sonderanweisungen als addition, überholte als obsolete. Spezifische Kabelposition, RAL-Farbe, Logo-Schreibweise und aktuelle EPS-/Montagehinweise beachten. Mehrere Hinweise zum selben Sachverhalt zusammenfassen.",
         "field/value Englisch, summary/reason Deutsch. Zusätzliche Anweisungen in Additional Information. productId nur aus products, null nur auftragsweit. Bestehende Feldnamen nutzen; Kabelausgang ist Cable Position. Produktmaße, Buchstaben-/Rückplattenmaße, Oberflächen-/Lichtfarbe nicht verwechseln.",

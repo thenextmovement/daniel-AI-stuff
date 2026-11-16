@@ -225,6 +225,40 @@ test("explicit delivery-note instruction survives omission while attachment and 
   assert.doesNotMatch(a.description, /address.*verified|Lieferadresse/);
 });
 
+test("a free-form delivery-note question cannot suppress the document reader's canonical check", () => {
+  const r = review();
+  r.sources = [{ ...r.sources[1], label: "Eingang: Angebot", text: "Anbei findest du den Lieferschein mit der Lieferadresse, bitte mitsenden." }];
+  r.analysis = validateReviewAnalysis({ ...r.analysis, changes: [{ id: "question", kind: "conflict", questionOnly: true,
+    productId: null, field: "Additional Information", value: "", reason: "Bitte Lieferschein und Lieferadresse prüfen.",
+    evidence: [{ sourceId: r.sources[0].id, quote: r.sources[0].text }] }] }, r.sources, r.products);
+  assert.equal(r.analysis.changes.filter(c => c.id === "check-delivery-note").length, 1);
+  assert.ok(reviewApprovalIssues(r, defaultReviewApproval(r)).some(i => /Lieferschein/.test(i)));
+});
+
+test("the live Amazon logistics proposal stays order-wide without weakening actual product binding", () => {
+  const r = review(); r.products.push({ ...r.products[0], id: "product-2" });
+  r.sources = [{ ...r.sources[0], text: "CHECK INFO\n**Do not split!!**" },
+    { ...r.sources[1], label: "Eingang: Angebot", text: "Anbei findest du den Lieferschein mit der Lieferadresse, bitte mitsenden." }];
+  const value = "Do not split the order; ship both signs together in one shipment. Please include the delivery note with the parcel.";
+  const proposal = { id: "logistics", kind: "addition" as const, productId: r.products[0].id, field: "Additional Information", value,
+    reason: "Versandhinweise", evidence: r.sources.map(s => ({ sourceId: s.id, quote: s.text })) };
+  r.analysis = validateReviewAnalysis({ ...r.analysis, changes: [proposal] }, r.sources, r.products);
+  const shipping = r.analysis.changes.find(c => c.id === "logistics")!;
+  assert.equal(shipping.productId, null);
+  assert.equal(shipping.questionOnly, undefined);
+  assert.equal(shipping.value, value);
+  assert.ok(!r.analysis.changes.some(c => /Produktzuordnung|Sonderhinweis/.test(c.reason)));
+  assert.equal(r.analysis.changes.filter(c => c.id === "check-delivery-note").length, 1);
+  assert.match(defaultReviewApproval(r).description, /Do not split the order/);
+  for (const unsafe of [value + " Use red letters.", "Do not split the order for the first sign.", "Ship both signs together in one shipment. Change the delivery address."]) {
+    const analysis = validateReviewAnalysis({ ...r.analysis, changes: [{ ...proposal, productId: r.products[0].id, value: unsafe }] }, r.sources, r.products);
+    assert.equal(analysis.changes[0].questionOnly, true, unsafe);
+  }
+  const withoutShippingProof = validateReviewAnalysis({ ...r.analysis, changes: [{ ...proposal, productId: r.products[0].id,
+    evidence: [{ sourceId: r.sources[1].id, quote: r.sources[1].text }] }] }, r.sources, r.products);
+  assert.equal(withoutShippingProof.changes[0].questionOnly, true, "The model cannot invent a joint shipment");
+});
+
 test("a downgraded question cannot silently consume an existing card instruction", () => {
   const r = review();
   r.sources = [{ ...r.sources[0], text: "CHECK INFO\nDo not split!!" }];
@@ -550,7 +584,9 @@ test("one artwork confirmation documents all mapping questions without accepting
   delete r.analysis.changes[0].requiresThreadId;
   r.analysis.changes[0].reason = 'Welcher der beiden gelieferten Texte soll auf p1 (Neonschild) und welcher auf p2 (Design 2) platziert werden: "A" oder "B"?';
   assert.equal(designMappingQuestions(r).length, 2, "The actual fresh Amazon paraphrase must offer the same explicit confirmation");
-  for (const technical of ["Produktzuordnung prüfen: Kabelposition links für das Logo.", "Welcher Text steht auf dem Lieferschein für Produkt 1?", "Produktzuordnung prüfen: Blue."]) {
+  r.analysis.changes[0].reason = 'Bitte Zuordnung der texts bestätigen: "amazon rme contractor point" und "amazon rme red-tag area" – welches gehört zu p1 (180 x 46cm) und welches zu p2 (180 x 42cm)?';
+  assert.equal(designMappingQuestions(r).length, 2, "The live mixed-language question still only confirms the purchased artwork");
+  for (const technical of ["Produktzuordnung prüfen: Kabelposition links für das Logo.", "Welcher Text steht auf dem Lieferschein für Produkt 1?", "Produktzuordnung prüfen: Blue.", "Zuordnung der texts für p1 auf delivery note prüfen.", "Zuordnung der texts für p1 und cable position prüfen."]) {
     r.analysis.changes[0].reason = technical;
     assert.equal(designMappingQuestions(r).length, 1, technical);
   }

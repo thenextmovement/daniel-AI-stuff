@@ -497,3 +497,41 @@ fehlende optionale Farb-/Kabelbeschriftungen erzeugen keine doppelte Rückfrage,
 wenn die Bestellung diese Werte bereits vorgibt. Unbekannte Dokumente bleiben
 manuell, eine ausdrücklich bezeichnete ursprüngliche Angebotsanfrage mit
 Beispielbild wird als Referenz eingeordnet.
+
+### Korrektur Lieferschein und auftragsweite Versandhinweise (2026-11-16)
+
+Ziel: Ein frei formulierter KI-Prüfpunkt darf die Lieferschein-Auswertung nicht
+verhindern. Die belegte Bitte zum Mitsenden erzeugt deshalb immer den kanonischen
+Prüfpunkt `check-delivery-note`; Dokumentauswertung und Bestätigung verwenden
+diese ID. Weitergehende freie Fragen bleiben erhalten. Ein später nachgereichter
+Anhang wird über die bestehenden zugeordneten Eingangsmails gefunden.
+
+Reine, vollständig belegte Hinweise zum gemeinsamen Versand und Beilegen des
+Lieferscheins werden vor der Produktbindung als auftragsweit normalisiert.
+Die erlaubten vollständigen Formulierungen sind eng begrenzt; zusätzliche
+technische Angaben, Adressänderungen, Zusagen oder fehlende Belege bleiben in der
+bisherigen Produktprüfung. Die gemeinsame Bestätigung gekaufter Designs erkennt
+auch die beobachtete Mischform „Zuordnung der texts … p1 … p2“. Englische
+Versand-, Adress- und technische Fragen werden nicht damit quittiert.
+
+Nachbar und Wirkung: Produkt-/Bildzuordnung, Montageschablone, Belege, PDF-Grenzen,
+Archivierung, Zahlungsentscheidung und Produktionsfreigabe bleiben unverändert.
+Diese Korrektur erzeugt ausschließlich interne Vorschläge; sie gibt keinen
+Auftrag frei und übernimmt keinen Lieferschein in Trello.
+
+Verifikation vor Veröffentlichung: 46 fokussierte Tests, Gesamtsuite 1824 bestanden
+(2 Plattform-Skips), 8 Deploy-Tests, Typprüfung und Build erfolgreich. Lokaler
+Replay mit echten aktuellen Auftrags-/Maildaten und den Original-PDFs sowie
+echten KI-Aufrufen: Amazon-Lieferschein vollständig (2 Seiten), Empfängerblock
+passt deterministisch, keine offene Versand-Produktzuordnung; UI 3 → 2 → 1
+Prüfschritt nach Lieferschein- und Bildbestätigung. Die technische Maßabweichung
+bleibt manuell. Schreibzugriffe auf Produktionssysteme waren abgefangen.
+
+Kinderarztpraxis als Gegenprobe: 3 PDFs/4 Seiten gelesen; gekaufte Zuordnung,
+Schablone und Kabelabgang bleiben erhalten. Der frische Modelllauf stellte eine
+zusätzliche Frage zur vormontierten Rückplatte und ließ die alte Referenz manuell
+(6 Schritte, nach PDF-/Bild-Sammelauswahl 4). Dieselbe Antwort liefert mit der
+vorherigen und neuen Validierung identische Ergebnisse; diese Modellschwankung
+ist durch die Amazon-Korrektur nicht behoben. Kein Auftrag wurde freigegeben.
+Der produktive Mail-PDF-Lauf der neuen Fassung steht bis zur ausdrücklich
+genehmigten Veröffentlichung aus.
