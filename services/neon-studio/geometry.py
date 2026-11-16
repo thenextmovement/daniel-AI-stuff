@@ -1009,6 +1009,27 @@ def _letter_bands(lines, names, padding):
     for index,name in enumerate(names):
         if re.search(r'\b(?:schrift\w*|text\w*|wortmarke|wordmark|lettering|buchstaben\w*)\b',name,re.I):
             groups.setdefault(name.split(' · Punkt')[0],[]).append(index)
+    # Plain SVG imports have no line plan. Look for repeated upright glyphs
+    # on a common baseline, separately for every row. Respect named artwork.
+    rows=[]
+    anonymous=[i for i,name in enumerate(names) if not name or re.fullmatch(r'Vektorpfad \d+(?: · Mittellinie)?',name)]
+    bounds_by_index={i:lines[i].bounds for i in anonymous}
+    for i in sorted(anonymous,key=lambda i:bounds_by_index[i][0]):
+        left,top,right,bottom=bounds_by_index[i]
+        height=bottom-top
+        if height<=0 or right-left>1.5*height:continue
+        for row in rows:
+            _,first_top,_,baseline=bounds_by_index[row[0]]
+            typical=baseline-first_top
+            if (.7*typical<=height<=1.4*typical and abs(bottom-baseline)<=typical*.12
+                    and left-bounds_by_index[row[-1]][2]<=2*typical):
+                row.append(i)
+                break
+        else:rows.append([i])
+    for index,row in enumerate(rows):
+        left,top,_,bottom=bounds_by_index[row[0]]
+        if len(row)>=4 and bounds_by_index[row[-1]][2]-left>=3*(bottom-top):
+            groups[index]=row
     bands=[]
     for indices in groups.values():
         bounds=[lines[i].bounds for i in indices]

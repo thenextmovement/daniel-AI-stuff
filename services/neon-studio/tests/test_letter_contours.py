@@ -42,3 +42,20 @@ class LetterContourTests(unittest.TestCase):
         self.assertLessEqual(max(recesses),8.7)
         self.assertGreaterEqual(min(recesses),-.1)
         self.assertEqual(_letter_bands(lines,['Logosymbol']*len(lines),18),[])
+
+    def test_anonymous_svg_with_two_rows_steps_down_to_the_longer_row(self):
+        lines=[box(0,0,40,88).exterior]
+        lines.extend(box(x,10,x+16,38).exterior for x in range(70,166,24))
+        lines.extend(box(x,67,x+16,87).exterior for x in range(70,336,24))
+        names=[f'Vektorpfad {i+1}' for i in range(len(lines))]
+        bands=_letter_bands(lines,names,18)
+        poly=Polygon(sample_path(_full_shape(lines,18,3,20,bands=bands),128))
+        def upper_at(x):
+            return poly.intersection(LineString([(x,-100),(x,200)])).bounds[1]
+        for x in (78,102,126,150):
+            self.assertAlmostEqual(upper_at(x),-8,delta=.1)
+        for x in (198,222,246,270,294,318):
+            self.assertAlmostEqual(upper_at(x),49,delta=.1)
+        for line in lines:
+            self.assertTrue(poly.covers(line))
+            self.assertGreaterEqual(poly.exterior.distance(line),17.9)
