@@ -832,3 +832,56 @@ test('an explicitly titled initial enquiry remains a reference when the model ca
   const unknown = validateDocumentFindings(documentFixture(), ['Unbekannte Datei'], { role: 'other', summary: 'Unbekannt.', recommendation: 'remove', findings: [], recipient: [], evidence: [{ page: 1, quote: 'Unbekannte Datei' }] }, {});
   assert.equal(unknown.recommendation, 'manual');
 });
+
+test('confirmed backboard assembly complements the purchased template instead of replacing Included', () => {
+  const r = review();
+  r.products[0].fields.push({ label: 'Backboard', value: 'Rechteckig Weiß' }, { label: 'Included', value: 'Mounting template' });
+  const text = 'Hallo Frau Trapp,\n\nMir gefällt der Schriftzug auf der vormontierten Platte außerordentlich gut. Es müsste auf türkis angepasst werden.';
+  r.sources = [{ ...r.sources[1], label: 'Eingang: Angebot', text }];
+  const proposal = { id: 'assembly', kind: 'conflict' as const, productId: r.products[0].id, field: 'Included', value: 'Backboard pre-assembled with letters',
+    reason: 'Kundin bestätigt vormontierte Rückplatte; Included listet nur Mounting template.', evidence: [{ sourceId: r.sources[0].id, quote: 'Hallo Frau Trapp,' }] };
+  r.analysis = validateReviewAnalysis({ ...r.analysis, changes: [structuredClone(proposal)] }, r.sources, r.products);
+  assert.equal(r.analysis.changes[0].kind, 'addition');
+  assert.equal(r.analysis.changes[0].field, 'Additional Information');
+  assert.match(r.analysis.changes[0].evidence[0].quote, /gefällt.*vormontierten Platte/);
+  assert.match(defaultReviewApproval(r).description, /Included: Mounting template/);
+  assert.match(defaultReviewApproval(r).description, /Pre-assemble the letters on the ordered backboard/);
+  const drawing = documentFixture({ findings: [
+    'Keine Angabe in der Zeichnung, dass die Rückplatte vormontiert geliefert wird; die Kundin hat jedoch ausdrücklich eine vormontierte Rückplatte bestätigt/gewünscht.',
+    'Datei nennt Loose Letters statt weißer Rückplatte.',
+    'Datei enthält keine eindeutige Bestätigung des im Auftrag genannten Inklusiv-Zubehörs (z. B. vormontierte Rückplatte), nur Produktstichworte; Vorproduktionsfreigabe benötigt.',
+  ] });
+  omitRedundantDocumentQuestions(drawing, r.products, r.analysis);
+  assert.deepEqual(drawing.findings, ['Datei nennt Loose Letters statt weißer Rückplatte.']);
+  const noProof = documentFixture({ findings: ['Keine Angabe zur vormontierten Rückplatte.'] });
+  omitRedundantDocumentQuestions(noProof, r.products); assert.equal(noProof.findings.length, 1);
+  for (const body of ['Könnten Sie einen Kostenvoranschlag mit vormontierter Rückplatte senden?', 'Die vormontierte Platte gefällt mir nicht.', 'Mir gefällt der Schriftzug auf der vormontierten Platte gut. Bitte aber ohne Rückplatte liefern.', 'Bitte ohne Rückplatte.\n\nVon: Kunde\n' + text]) {
+    const result = validateReviewAnalysis({ ...r.analysis, changes: [{ ...proposal, evidence: [{ sourceId: r.sources[0].id, quote: body }] }] }, [{ ...r.sources[0], text: body }], r.products);
+    assert.equal(result.changes[0].kind, 'conflict', body);
+  }
+  const later = { ...r.sources[0], id: 'mail:later', at: '2026-11-15T10:00:00Z', text: 'Bitte ohne Rückplatte liefern.' };
+  assert.equal(validateReviewAnalysis({ ...r.analysis, changes: [structuredClone(proposal)] }, [...r.sources, later], r.products).changes[0].kind, 'conflict');
+  const noBoard = [{ ...r.products[0], fields: r.products[0].fields.filter(f => f.label !== 'Backboard') }];
+  assert.equal(validateReviewAnalysis({ ...r.analysis, changes: [structuredClone(proposal)] }, r.sources, noBoard).changes[0].kind, 'conflict');
+});
+
+test('a superseded initial design reference is a proposal while real reference instructions stay manual', () => {
+  const reference = documentFixture({ id: 'reference', role: 'reference', at: '2026-11-06T08:00:00Z', supersededById: 'current', recommendation: 'manual',
+    findings: ['Frühere Angebotsanfrage mit Wunschgröße 125×28 cm — wird durch spätere Zeichnung ersetzt und ist damit überholt.'],
+    evidence: [{ page: 1, quote: 'Angebotsanfrage: ein Beispielbild als Orientierung für die Gestaltung.' }] });
+  const current = documentFixture({ id: 'current', at: '2026-11-11T08:00:00Z', recommendation: 'manual', findings: ['Outdoor statt Indoor. Loose Letters statt weißer Platte.'] });
+  const initial = structuredClone(reference);
+  guardDrawingRemoval([reference, current], 1);
+  assert.equal(reference.recommendation, 'remove'); assert.deepEqual(reference.findings, []);
+  assert.equal(current.recommendation, 'manual'); assert.equal(current.findings.length, 1);
+  for (const patch of [{ findings: ['Montageinformation fehlt in der späteren Zeichnung.'] }, { findings: ['Frühere Angebotsanfrage ist nicht vollständig ersetzt.'] }, { supersededById: 'missing' }, { at: '2026-11-12T08:00:00Z' }, { evidence: [{ page: 1, quote: 'Eine Montageschablone mit Bohrpositionen.' }] }]) {
+    const unsafe = { ...structuredClone(initial), ...patch }; guardDrawingRemoval([unsafe, current], 1);
+    assert.equal(unsafe.recommendation, 'manual');
+  }
+  const multi = structuredClone(initial); guardDrawingRemoval([multi, current], 2); assert.equal(multi.recommendation, 'manual');
+  const text = ['125.00 cm 41.43 cm Product-Typ:3D Backlit Material: Stainless steel backboard: Loose Letters Depth: 4 cm'];
+  const misclassified = validateDocumentFindings(documentFixture({ id: 'old', at: initial.at, supersededById: 'current' }), text,
+    { role: 'other', recommendation: 'remove', summary: 'Älteres Maßblatt, durch neuere Zeichnung ersetzt.', findings: [], recipient: [], evidence: [{ page: 1, quote: text[0] }] }, {});
+  assert.equal(misclassified.role, 'drawing'); guardDrawingRemoval([misclassified, current], 1); assert.equal(misclassified.recommendation, 'remove');
+  const latest = { ...misclassified, supersededById: undefined }; guardDrawingRemoval([latest], 1); assert.equal(latest.recommendation, 'manual');
+});

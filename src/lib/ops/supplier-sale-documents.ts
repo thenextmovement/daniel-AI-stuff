@@ -38,6 +38,8 @@ export function validateDocumentFindings(document: ReviewDocument, text: string[
     recommendation: v.recommendation as ReviewDocument["recommendation"], findings: v.findings as string[], evidence, recipient: v.recipient as string[], addressMatch: false };
   if (result.role === "other" && /\bAngebotsanfrage\b/i.test(text[0] || "") && /Beispielbild|Gestaltungsidee/i.test(text.join(" "))
     && !/Product[ -]*Typ\s*:/i.test(text.join(" "))) result.role = "reference";
+  if (result.role === "other" && text.some(page => /Product[ -]*Typ\s*:/i.test(page)
+    && /Material\s*:/i.test(page) && /backboard\s*:/i.test(page) && /\b\d+(?:[.,]\d+)?\s*cm\b/i.test(page))) result.role = "drawing";
   // Unresolved technical differences cannot become a one-click removal recommendation.
   if (result.findings.length || result.role === "other") result.recommendation = "manual";
   if (result.role === "delivery_note") {
@@ -49,12 +51,16 @@ export function validateDocumentFindings(document: ReviewDocument, text: string[
 
 /** A purchased raster preview is not a replacement for the sole/latest technical drawing. */
 export function guardDrawingRemoval(documents: ReviewDocument[], productCount: number) {
-  for (const d of documents.filter(d => d.origin === "trello" && d.role === "drawing" && d.supersededById)) {
+  for (const d of documents.filter(d => d.origin === "trello" && d.supersededById && (d.role === "drawing" || d.role === "reference"))) {
     const replacement = documents.find(other => other.id === d.supersededById && other.id !== d.id && other.origin === "trello" && other.role === "drawing" && other.status === "read"
       && d.at && other.at && Date.parse(other.at) > Date.parse(d.at));
-    if (replacement && productCount === 1) {
+    const initialReference = d.role === "reference" && d.status === "read"
+      && d.evidence.some(e => /Angebotsanfrage/i.test(e.quote) && /Beispielbild|Gestaltung/i.test(e.quote))
+      && d.findings.every(f => /frühere? (?:Angebots)?anfrage|Wunschgröße/i.test(f) && /ersetzt|überholt/i.test(f)
+        && !/montage|schablone|bohr|kabel|fehl|ungeklärt|nicht|unvollständig|unklar|offen|abweich|jedoch|aber/i.test(f));
+    if (replacement && productCount === 1 && (d.role === "drawing" || initialReference)) {
       d.recommendation = "remove"; d.findings = [];
-      d.summary = `Ältere Zeichnung; laut Dokumentvergleich durch „${replacement.name}“ ersetzt. ${d.summary}`.slice(0, 600);
+      d.summary = `${initialReference ? "Frühere Gestaltungsanfrage" : "Ältere Zeichnung"}; laut Dokumentvergleich durch „${replacement.name}“ ersetzt. ${d.summary}`.slice(0, 600);
     } else d.supersededById = undefined;
   }
   for (const d of documents.filter(d => d.origin === "trello" && d.role === "drawing" && d.recommendation === "remove")) {
@@ -84,9 +90,13 @@ export function guardDrawingDimensions(document: ReviewDocument, text: string[],
 }
 
 /** A detail omitted from a drawing does not contradict an explicit order value. */
-export function omitRedundantDocumentQuestions(document: ReviewDocument, products: ReviewProduct[]) {
+export function omitRedundantDocumentQuestions(document: ReviewDocument, products: ReviewProduct[], analysis?: ReviewAnalysis) {
   document.findings = document.findings.filter(f => {
     if (/kein(?:e)? (?:Konflikt|Abweichung)|Maße stimmen/i.test(f) && !/aber|jedoch|außer/i.test(f)) return false;
+    if (/^(?:Keine|(?:Die )?(?:Datei|Zeichnung) enthält keine) (?:Angabe|eindeutige Bestätigung)\b/i.test(f) && /vormontiert/i.test(f)
+      && !/statt|abweich|outdoor|indoor|loose|lose buchstaben|bohr|kabel|farbe|maß/i.test(f)
+      && analysis?.changes.some(c => c.kind === "addition" && !c.questionOnly && c.field === "Additional Information"
+        && c.value === "Pre-assemble the letters on the ordered backboard.")) return false;
     if (!/fehlt|fehlen|nicht (?:explizit )?(?:aufgeführt|dokumentiert|angegeben|spezifiziert)/i.test(f)) return true;
     const label = /farb/i.test(f) ? /^(Color|Light Color)$/i : /kabel|anschluss/i.test(f) ? /^Cable Position$/i : null;
     return !label || !products.every(p => p.fields.some(field => label.test(field.label) && field.value.trim()));
@@ -179,6 +189,7 @@ export async function prepareSupplierSaleDocuments(input: {
           "Lies ALLE gezeigten Seiten und vergleiche mit der verbindlich angenommenen Bestellung und ihren gekauften Bildern. Kurz auf Deutsch: Dokumentzweck, Design/Version, Dateivorschlag. Produktzuordnung niemals aus Reihenfolge oder Dateinamen erfinden, gekaufte Zuordnung nicht ändern.",
           "keep: eindeutig benötigte passende aktuelle Zeichnung; remove: eindeutig überholte Zeichnung oder reine frühere Anfrage, deren Ausführung durch Bestellung und aktuelles Design ersetzt ist. Nicht allein wegen Dateiname/Nummer eine Version entfernen. Eigenständige Montageinformationen/Vektoren/Schablonen oder nicht ersetzte Wünsche nicht verwerfen. Unklarheit oder widersprüchliche aktuelle Zeichnung: manual.",
           "findings enthält ausschließlich echte noch zu klärende Abweichungen der AKTUELLEN Datei: z.B. Outdoor vs bestelltes Indoor, Loose Letters vs weiße Platte, Maße oder abweichende Gestaltung. Auch kleine Maßabweichungen exakt nennen. Niemals positive Prüfergebnisse, bloß fehlende freiwillige Angaben oder allgemeine Arbeitsschritte in findings. Eine zusammengesetzte technische Tiefenangabe (z.B. 3+0.5cm) ist nicht automatisch unklar. Fehlende Farbe/Kabelposition im PDF ist KEIN Konflikt, wenn die Bestellung diese bereits vorgibt. Stainless steel kann das Metallgehäuse beschreiben; eine nicht erneut erwähnte Acrylschicht beweist keinen Materialkonflikt. Keine neuen Anforderungen erfinden.",
+          "Eine aus der Korrespondenz bereits belegte Vormontage auf der bestellten Rückplatte muss im PDF nicht nochmals bestätigt werden. Vormontage ersetzt keine Montageschablone. Fehlende Wiederholung dieser Anweisung oder des Inklusiv-Zubehörs ist keine zusätzliche Abweichung; ausdrücklich widersprechende Zeichnungsangaben bleiben dagegen relevant.",
           "Dateien gemeinsam bewerten: Eine frühere Anfrage dient der Ideenfindung. Wenn das spätere gekaufte Design die Gestaltung einschließlich besonderer Elemente sichtbar aufgreift, darf diese Anfrage als überholte Referenz zur gesicherten Entfernung vorgeschlagen werden. Alte Wunschmaße sind dann KEIN offener Konflikt. Eine frühere Zeichnung mit gleichem Motiv, aber alter Höhe/Tiefe und späterer Ersatzzeichnung ist überholt: Unterschiede in summary, findings leer, remove. Die später angenommene Bestellung bleibt maßgeblich. Eine aktuelle abweichende Zeichnung bleibt dagegen manual. Keine alten Angaben als neue Änderungen behandeln.",
           "supersededBy: ID der vollständig ersetzenden neueren Zeichnung desselben Motivs, andernfalls null. Den alten und neuen Stand direkt anhand aller Seiten, Gestaltung und addedAt vergleichen. Bei eindeutiger Ersatzzeichnung alte Maße/Backboard/Use nicht erneut als offene Konflikte behandeln. Für die neueste Zeichnung supersededBy=null.",
           "Beim Lieferschein: alle Produktpositionen, Maße, Mengen, Zubehör, Lieferempfänger gegen Bestellung prüfen; echte Abweichungen in findings. Generischer Produktname wie Design 2 ist kein Konflikt, wenn gekauftes Bild und Maße das benannte Motiv eindeutig belegen. Bei Übereinstimmung findings leer; keine Frage, ob der Lieferschein beigefügt wird. recipient enthält den zusammenhängenden Empfängerblock wortgetreu zeilenweise, NICHT Absender/Footer. Keine Adresse aus der Bestellung abschreiben. country nur wenn im PDF-Block vorhanden. Bei keinem Lieferschein recipient leer.",
@@ -212,6 +223,6 @@ export async function prepareSupplierSaleDocuments(input: {
     });
   } catch { for (const { document } of readable) document.summary = "KI-Dokumentprüfung nicht abgeschlossen. Original manuell prüfen."; }
   guardDrawingRemoval(documents, input.products.length);
-  for (const { document, text } of readable) { omitRedundantDocumentQuestions(document, input.products); guardDrawingDimensions(document, text, input.products); }
+  for (const { document, text } of readable) { omitRedundantDocumentQuestions(document, input.products, input.analysis); guardDrawingDimensions(document, text, input.products); }
   return documents;
 }

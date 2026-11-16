@@ -71,11 +71,35 @@ export function validateReviewAnalysis(value: unknown, sources: ReviewSource[], 
     field: "Additional Information", value: "", reason: "Eine Produktionsangabe ist ausdrücklich noch ungeklärt. Bitte Ergebnis dokumentieren und die Vorschau bei Bedarf anpassen.", evidence: unresolved.evidence,
   });
   preserveLiteralMailCorrections(parsed, sources, products);
+  normalizeBackboardAssembly(parsed, sources, products);
   normalizeOrderShippingInstructions(parsed);
   requireProductBinding(parsed, sources, products);
   preserveCardInstructions(parsed, sources, products);
   preserveDeliveryNoteInstruction(parsed, sources);
   return parsed;
+}
+
+/** Assembly is a production instruction, not a replacement for included accessories.
+ * Only one purchased board and an affirmative current customer statement qualify. */
+function normalizeBackboardAssembly(analysis: ReviewAnalysis, sources: ReviewSource[], products: ReviewProduct[]) {
+  if (products.length !== 1 || !products[0].fields.some(f => f.label === "Backboard"
+    && /^(?:rechteckig|rectangular|cut to shape|formzuschnitt|round|rund)\b/i.test(f.value))) return;
+  const latest = sources.filter(s => s.kind === "mail" && /^Eingang:/.test(s.label)
+    && analysis.threads.some(t => t.id === s.threadId && t.relevance === "related")
+    && /rückplatte|\bplatte\b|backboard/i.test(currentMailText(s.text)))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+  const quote = latest && currentMailText(latest.text).split(/[.!?\n]+/).map(s => s.trim())
+    .filter(s => /rückplatte|\bplatte\b|backboard/i.test(s)).at(-1);
+  if (!latest || !quote || !/gefällt.*vormontiert(?:e|en|er) (?:rück)?platte/i.test(quote)
+    || /\b(?:nicht|kein\w*|ohne|falls|wenn|aber|nur)\b/i.test(quote)) return;
+  for (const c of analysis.changes) {
+    if (c.questionOnly || c.kind === "obsolete" || c.productId !== products[0].id || c.field !== "Included"
+      || !/^(?:Backboard pre-assembled with letters|Pre-assembled backboard)[.!]?$/i.test(c.value.trim())) continue;
+    c.kind = "addition"; c.field = "Additional Information";
+    c.value = "Pre-assemble the letters on the ordered backboard.";
+    c.reason = "Die Kundin bestätigt die Vormontage auf der bestellten Rückplatte. Die Montageschablone bleibt zusätzlich enthalten.";
+    c.evidence = [{ sourceId: latest.id, quote }];
+  }
 }
 
 /** Only these fully evidenced logistics clauses are order-wide. Any extra
@@ -391,6 +415,7 @@ export async function analyzeProductionReview(input: {
         "Bei mehreren Produkten ist die Reihenfolge einer Mail-Aufzählung KEINE Zuordnung zu p1/p2. Die gekauften Bilder wurden von dir nicht gelesen. Wenn Texte oder Änderungen keinem bestellten Produkt eindeutig zugeordnet sind, stelle genau eine offene Zuordnungsfrage (questionOnly=true, productId=null, value leer) mit den zu prüfenden Wortlauten im reason; erfinde keine Position. Bereits gekaufte Bildzuordnungen bleiben unverändert.",
         "Reine Versandhinweise wie Do not split / beide Schilder gemeinsam versenden gelten für den ganzen Auftrag (productId=null), nicht für ein einzelnes Design. Sie erzeugen keine Produktzuordnungsfrage. Produkttexte und logistische Hinweise getrennt behandeln.",
         "Explizite Kundenanweisungen zum Mitsenden eines Lieferscheins sind relevant, auch ohne technische Produktänderung. Der einfache Hinweis zum Beilegen und die manuelle Prüfung von Anhang/Lieferadresse werden deterministisch aus zugeordneten Kundenmails ergänzt: dafür keinen doppelten change erzeugen. Weitergehende oder widersprüchliche Anweisungen weiterhin melden. Bestellte Montageschablonen stehen im Produktfeld Included und bleiben erhalten.",
+        "Vormontierte Buchstaben auf einer bestellten Rückplatte und eine Montageschablone sind kein Widerspruch. Bestätigte Vormontage als addition in Additional Information aufnehmen, niemals Included/Mounting template ersetzen. Bereits bestellte Form/Farbe der Rückplatte nicht erneut fragen. Eine bloße frühere Angebotsfrage ist keine Bestätigung. Als Beleg die konkrete Kundenanweisung oder Bestätigung wählen, niemals nur Begrüßung/Dank oder eine allgemeine Auftragsbestätigung.",
         "CHECK INFO, UPDATE und Additional Information auch in Markdown vollständig erhalten. Gültige Sonderanweisungen als addition, überholte als obsolete. Spezifische Kabelposition, RAL-Farbe, Logo-Schreibweise und aktuelle EPS-/Montagehinweise beachten. Mehrere Hinweise zum selben Sachverhalt zusammenfassen.",
         "field/value Englisch, summary/reason Deutsch. Zusätzliche Anweisungen in Additional Information. productId nur aus products, null nur auftragsweit. Bestehende Feldnamen nutzen; Kabelausgang ist Cable Position. Produktmaße, Buchstaben-/Rückplattenmaße, Oberflächen-/Lichtfarbe nicht verwechseln.",
         "Bei Widerspruch kind=conflict und value nur der konkrete alternative Wert. Wenn nur eine offene Frage oder ein ungelesener Mailanhang vorliegt: questionOnly=true, value leer, field=Additional Information; Klärung im reason. Niemals eine Frage als Size oder Color eintragen. Bestätigte Ergänzungen questionOnly=false.",

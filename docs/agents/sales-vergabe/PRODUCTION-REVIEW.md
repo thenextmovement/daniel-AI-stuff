@@ -535,3 +535,48 @@ vorherigen und neuen Validierung identische Ergebnisse; diese Modellschwankung
 ist durch die Amazon-Korrektur nicht behoben. Kein Auftrag wurde freigegeben.
 Der produktive Mail-PDF-Lauf der neuen Fassung steht bis zur ausdrücklich
 genehmigten Veröffentlichung aus.
+
+### Ergänzung Rückplatte und alte Referenz (2026-11-16)
+
+Ziel: Bestätigte Vormontage auf einer bestellten Rückplatte ergänzt die
+Produktionsanweisung und ersetzt nicht das Feld `Included: Mounting template`.
+Der Mailprompt trennt diese Angaben. Die beobachteten reinen
+`Included`-Vormontagevorschläge werden zusätzlich deterministisch als Ergänzung
+normalisiert, wenn genau ein Produkt mit Rückplatte vorliegt und die letzte
+zugeordnete Kundenäußerung zur Platte die Vormontage positiv bestätigt.
+Der konkrete Satz wird als Beleg ergänzt; eine frühere Angebotsfrage, zitierte
+Historie oder spätere Ablehnung genügt nicht. Weitere technische Angaben werden
+dadurch nicht automatisch akzeptiert.
+
+Eine explizite ursprüngliche Gestaltungsanfrage mit nachweisbar späterer,
+zugeordneter Ersatzzeichnung kann gemeinsam mit der alten Zeichnung zur gesicherten
+Entfernung vorgeschlagen werden. Rein historische Wunschmaße werden dabei nicht
+erneut zu offenen Abweichungen. Eigenständige Montage-/Kabel-/Schablonenhinweise,
+unvollständiger Ersatz, unbekannte Reihenfolge und mehrere Produkte bleiben
+außerhalb dieser Vereinfachung. Technische Maßblätter mit den eindeutigen
+Produkt-/Material-/Rückplattenfeldern und cm-Maßen werden auch dann als Zeichnung
+behandelt, wenn das Modell sie als `other` bezeichnet; der Schutz der
+einzigen/neuesten Zeichnung gilt weiter. Fehlende Wiederholung einer bereits
+belegten Vormontage ist keine zusätzliche PDF-Frage. Widersprechende Angaben
+wie Loose Letters oder Outdoor bleiben sichtbar.
+
+Nachbar/Wirkung: Gekaufte Produktbilder, Felder und Schablone bleiben unverändert;
+kein Schema, Provider, Workflow oder Freigabeschritt ändert sich. Dateivorschläge
+werden weiterhin ausdrücklich im Entwurf bestätigt und erst bei separat
+freigegebener Produktion gesichert/entfernt.
+
+Verifikation vor Veröffentlichung: beide echten Fälle mit frischer Mail- und
+PDF-KI sowie die zuvor fehlerhaften KI-Antworten erneut lokal durchgespielt.
+Kinderarztpraxis: 3 PDFs/4 Seiten gelesen, zwei alte PDFs gemeinsam vorgeschlagen,
+Vormontage/Schablone/Kabelabgang erhalten, UI 4 → 3 → 2 → 1 durch Behalten des
+bestellten Rückplattenwerts, PDF-Sammelbestätigung und Bildauswahl. Offen bleibt
+die aktuelle Zeichnung mit Rückplatten-/Einsatzortabweichung. Amazon: Lieferschein
+2 Seiten gelesen, Adresse passend, UI weiterhin 3 → 2 → 1; genaue Maßabweichung
+bleibt offen. Beide Freigabeschaltflächen blieben gesperrt. Aktuelle
+Bestellsnapshots und Positionsinhalte wurden lesend gegen die Testdaten
+abgeglichen (natürlicher Sync erneuerte nur interne Zeilen-IDs/Zeitstempel).
+Produktive Prüfentwürfe, Supplier und Vergabeversuche blieben unverändert.
+Tests: 48 fokussierte Prüfungen, 1826 bestandene Gesamttests/2 Plattform-Skips,
+8 Deploy-Tests sowie Typprüfung, Build und lokale Bedienprüfung. Neue produktive
+Prüfentwürfe erfordern weiterhin den freigegebenen Livegang; die Tests hier sind
+lokale Replays mit abgefangenen Produktionsschreibzugriffen.
