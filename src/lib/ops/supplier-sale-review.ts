@@ -60,6 +60,48 @@ export function productionPriorityFromDeliveryTitles(titles: string[]): Producti
     && !/\b(kein|ohne|no)\b/i.test(title)) ? "express" : "standard";
 }
 
+/** Human confirmation of purchased artwork, never an inferred text-to-image mapping. */
+export function designMappingQuestions(review: ProductionReview) {
+  return review.products.length > 1 ? review.analysis.changes.filter(c => c.questionOnly && !c.requiresThreadId
+    && /\b(text(?:e|en)?|logo(?:text(?:e|en)?)?|schriftzug)\b/i.test(c.reason)
+    && /\b(produkt\w*|p\d+)\b/i.test(c.reason)
+    && /zuordn|welch|platzier/i.test(c.reason)
+    && !/lieferschein|lieferadresse|versand|montage|kabel|farbe|größe/i.test(c.reason)) : [];
+}
+
+export function confirmPurchasedDesigns(review: ProductionReview, approval: ReviewApproval): ReviewApproval {
+  const decisions = { ...approval.decisions };
+  const designs = review.products.map((p, i) => `Produkt ${i + 1}: ${p.imageTitle} (${p.fields.find(f => f.label === "Size")?.value || p.title})`).join("; ");
+  for (const question of designMappingQuestions(review)) decisions[question.id] = {
+    action: "reject", note: `Gekaufte Designs visuell geprüft: ${designs}. Produktion nach diesen freigegebenen Designs; keine abweichende Textzuordnung aus der Mail-Aufzählung übernehmen.`.slice(0, 2000),
+  };
+  return { ...approval, decisions, confirmed: false };
+}
+
+/** Only unresolved raster images participate. PDFs, vectors and existing choices stay separate. */
+export function openImageVariants(review: ProductionReview, approval: ReviewApproval) {
+  return review.attachments.filter(a => !approval.attachments[a.id] && a.decision === "undecided" && a.removable === true
+    && /\.(png|jpe?g|webp|gif|avif)$/i.test(a.name) && /^image\/(png|jpe?g|webp|gif|avif)$/i.test(a.mimeType));
+}
+
+export function decideImageVariants(review: ProductionReview, approval: ReviewApproval, action: "keep" | "remove"): ReviewApproval {
+  return { ...approval, confirmed: false, attachments: { ...approval.attachments,
+    ...Object.fromEntries(openImageVariants(review, approval).map(a => [a.id, action])),
+  } };
+}
+
+export function reviewAttachmentLabel(review: ProductionReview, attachment: ReviewAttachment) {
+  const sameName = review.attachments.filter(a => a.name === attachment.name);
+  return sameName.length > 1 ? `${attachment.name} (${sameName.findIndex(a => a.id === attachment.id) + 1} von ${sameName.length})` : attachment.name;
+}
+
+/** Count actual human actions: one explicit image-batch decision resolves all of its IDs. */
+export function reviewOpenStepCount(review: ProductionReview, approval: ReviewApproval, issues: string[]) {
+  const images = openImageVariants(review, approval);
+  const mapping = designMappingQuestions(review).filter(c => !approval.decisions[c.id]?.note.trim());
+  return Math.max(0, issues.length - Math.max(0, images.length - 1) - Math.max(0, mapping.length - 1));
+}
+
 export function defaultReviewApproval(review: ProductionReview): ReviewApproval {
   const decisions: ReviewApproval["decisions"] = {};
   for (const change of review.analysis.changes) {
@@ -142,8 +184,8 @@ export function reviewApprovalIssues(review: ProductionReview, approval: ReviewA
     if (!decision || (decision.action === "accept" && !decision.note.trim())) issues.push(`Mailzuordnung klären: ${thread.reason}`);
   }
   for (const attachment of review.attachments) {
-    if (!["keep", "remove"].includes(approval.attachments?.[attachment.id])) issues.push(`Datei prüfen: ${attachment.name}`);
-    if (approval.attachments?.[attachment.id] === "remove" && attachment.removable === false) issues.push(`Diese Datei muss erhalten bleiben: ${attachment.name}`);
+    if (!["keep", "remove"].includes(approval.attachments?.[attachment.id])) issues.push(`Datei prüfen: ${reviewAttachmentLabel(review, attachment)}`);
+    if (approval.attachments?.[attachment.id] === "remove" && attachment.removable === false) issues.push(`Diese Datei muss erhalten bleiben: ${reviewAttachmentLabel(review, attachment)}`);
   }
   return [...new Set(issues)];
 }

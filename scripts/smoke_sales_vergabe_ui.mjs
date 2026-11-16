@@ -676,6 +676,11 @@ async function main() {
     attachments: [{ id: "variant", name: "Variant.png", url: "https://trello.com/fixture", mimeType: "image/png", previewUrl: null, decision: "undecided", reason: "Datei prüfen", removable: true }],
     priority: "standard", mailCount: 1, blockers: [],
   };
+  prepared.products.push({ ...prepared.products[0], id: "product-2", imageId: "image-2", imageTitle: "Second bought design" });
+  prepared.analysis.changes.push({ id: "mapping", kind: "conflict", productId: null, field: "Additional Information", value: "", questionOnly: true,
+    reason: 'Zuordnung der Texte zu den beiden Produkten klären: "A" und "B".', evidence: [{ sourceId: "card", quote: "Cable Position: Bottom left" }] });
+  prepared.attachments.push({ ...prepared.attachments[0], id: "variant-2", name: "Variant-2.png" },
+    { ...prepared.attachments[0], id: "document", name: "Delivery-note.pdf", mimeType: "application/pdf" });
   let reviewHandoff = null; const reviewPosts = [];
   await reviewPage.route("**/api/**", async route => {
     const request = route.request(), url = new URL(request.url());
@@ -695,8 +700,16 @@ async function main() {
   const panel = reviewPage.getByRole("region", { name: "Vorbereitete Produktionsvergabe" });
   const release = panel.getByRole("button", { name: "Geprüft – an Produktion freigeben", exact: true });
   await release.waitFor(); assert(!await release.isEnabled(), "Offene Entscheidungen erlauben Freigabe");
+  assert(await panel.getByText("4 Prüfschritte offen", { exact: true }).isVisible(), "Bildgruppe zählt nicht als eine überprüfbare Aktion");
   await panel.getByRole("button", { name: "Vorschlag übernehmen", exact: true }).click();
-  await panel.getByLabel("Datei: Variant.png").selectOption("remove");
+  await panel.getByRole("button", { name: "Nach gekauften Designs produzieren", exact: true }).click();
+  assert(await panel.getByRole("button", { name: "Gekaufte Designs bestätigt", exact: true }).getAttribute("aria-pressed") === "true", "Designvergleich nicht bestätigt");
+  await panel.getByRole("button", { name: "2 Bilddateien sichern und entfernen", exact: true }).click();
+  assert(await panel.getByLabel("Datei: Variant.png").inputValue() === "remove", "Bildpaket setzt erste Variante nicht");
+  assert(await panel.getByLabel("Datei: Variant-2.png").inputValue() === "remove", "Bildpaket setzt zweite Variante nicht");
+  assert(await panel.getByLabel("Datei: Delivery-note.pdf").inputValue() === "", "Bildpaket entscheidet einen ungeprüften Lieferschein");
+  assert(!await release.isEnabled() && reviewPosts.length === 0, "Prüfentscheidungen lösen bereits Übergabe aus oder umgehen Dokumentprüfung");
+  await panel.getByLabel("Datei: Delivery-note.pdf").selectOption("keep");
   assert((await panel.innerText()).includes("Cable Position: Bottom left"), "Auswahl aktualisiert die Produktionsvorschau nicht");
   assert(await release.isEnabled(), "Belegte Auswahl verlangt unnötig Freitext");
   for (const width of [390, 1440]) {
@@ -710,6 +723,9 @@ async function main() {
   await panel.getByText(/Übergabe bestätigt/).waitFor();
   assert(reviewPosts.length === 1 && reviewPosts[0].productionApproval.confirmed === true, "Explizite Endfreigabe fehlt");
   assert(reviewPosts[0].productionApproval.attachments.variant === "remove", "Dateientscheidung fehlt");
+  assert(reviewPosts[0].productionApproval.attachments["variant-2"] === "remove", "Zweite Bilddateientscheidung fehlt");
+  assert(reviewPosts[0].productionApproval.attachments.document === "keep", "Individuelle Dokumententscheidung fehlt");
+  assert(reviewPosts[0].productionApproval.decisions.mapping.action === "reject" && /Produkt 2: Second bought design/.test(reviewPosts[0].productionApproval.decisions.mapping.note), "Gekaufte Designzuordnung wird nicht nachvollziehbar dokumentiert");
   assert(reviewPosts[0].productionApproval.decisions.cable.note === "", "Belegte Auswahl fordert unnötige Begründung");
   assert(dialogs.some(d => d.action === "review-payment-cancel" && /Zahlung/.test(d.message)), "Zahlungswarnung fehlt");
   await reviewPage.close();

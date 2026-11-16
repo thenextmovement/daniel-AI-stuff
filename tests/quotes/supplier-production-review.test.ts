@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { defaultReviewApproval, renderProductionReview, reviewApprovalIssues, productionPriorityFromDeliveryTitles, QUENTIN_REVIEW_BOARD, PRODUCTION_LISTS, type ProductionReview } from "@/lib/ops/supplier-sale-review";
+import { defaultReviewApproval, renderProductionReview, reviewApprovalIssues, productionPriorityFromDeliveryTitles, QUENTIN_REVIEW_BOARD, PRODUCTION_LISTS, designMappingQuestions, confirmPurchasedDesigns, openImageVariants, decideImageVariants, reviewAttachmentLabel, reviewOpenStepCount, type ProductionReview } from "@/lib/ops/supplier-sale-review";
 import { analyzeProductionReview, validateReviewAnalysis } from "@/lib/ops/supplier-sale-review-ai";
 import { executeProductionHandoff, approvedDesignAttachmentName, type HandoffDependencies, type ProductionHandoff } from "@/lib/ops/supplier-sale-handoff";
 import { readSupplierSaleMail } from "@/lib/ops/supplier-sale-mail";
@@ -488,6 +488,93 @@ test("bold UPDATE and Additional Information survive; placeholders and equivalen
   assert.ok(!a.changes.some(c => c.field === "Size"));
   r.sources[0].text = "Size: 120x45cm";
   assert.equal(validateReviewAnalysis({ summary: "Geprüft", changes: [], threads: [] }, r.sources, r.products).changes.length, 0);
+});
+
+test("old width alone and an already ordered white-backboard note do not create false questions", () => {
+  for (const supplied of [false, true]) {
+    const r = review(); r.products[0].fields = [{ label: "Size", value: "125x43cm" }, { label: "Backboard", value: "Rechteckig Weiß" }];
+    r.sources = [{ ...r.sources[0], text: "UPDATE:\nUpdate white backboard\nSize: 125cm\nBackboard: Loose Letters" }];
+    const changes = supplied ? [
+      { id: "size", kind: "conflict" as const, productId: "product-1", field: "Size", value: "125cm", reason: "Alte Größe", evidence: [{ sourceId: "card", quote: "Size: 125cm" }] },
+      { id: "white", kind: "conflict" as const, productId: null, field: "Additional Information", value: "Update white backboard", reason: "Hinweis prüfen", evidence: [{ sourceId: "card", quote: "Update white backboard" }] },
+    ] : [];
+    const result = validateReviewAnalysis({ summary: "Geprüft", threads: [], changes }, r.sources, r.products);
+    assert.equal(result.changes.filter(c => c.kind !== "addition").length, 1);
+    assert.equal(result.changes.find(c => c.kind === "conflict")?.field, "Backboard");
+    assert.ok(result.changes.some(c => c.kind === "addition" && c.value === "Use a white backboard."));
+    r.analysis = result;
+    assert.match(defaultReviewApproval(r).description, /CHECK INFO\nUse a white backboard/);
+    assert.match(defaultReviewApproval(r).description, /Size: 125x43cm/);
+  }
+  for (const size of ["124cm", "43cm", "125 x 45cm", "125cm maximum"]) {
+    const r = review(); r.products[0].fields = [{ label: "Size", value: "125x43cm" }];
+    r.sources = [{ ...r.sources[0], text: `Size: ${size}` }];
+    assert.ok(validateReviewAnalysis({ summary: "Geprüft", threads: [], changes: [] }, r.sources, r.products).changes.some(c => c.field === "Size"), size);
+  }
+  for (const note of ["Update black backboard", "Do not use white backboard", "Update white backboard, cable left"]) {
+    const r = review(); r.products[0].fields = [{ label: "Backboard", value: "Rechteckig Weiß" }];
+    r.sources = [{ ...r.sources[0], text: "CHECK INFO\n" + note }];
+    assert.ok(validateReviewAnalysis({ summary: "Geprüft", threads: [], changes: [] }, r.sources, r.products).changes.some(c => c.kind === "conflict"), note);
+  }
+  const mail = review(); mail.products[0].fields = [{ label: "Size", value: "125x43cm" }];
+  mail.sources[0].text = "No technical values."; mail.sources[1].text = "Size: 125cm";
+  const result = validateReviewAnalysis({ ...mail.analysis, changes: [{ id: "new-width", kind: "conflict", productId: "product-1", field: "Size", value: "125cm", reason: "Neue Mailangabe", evidence: [{ sourceId: "mail:old", quote: "Size: 125cm" }] }] }, mail.sources, mail.products);
+  assert.ok(result.changes.some(c => c.id === "new-width"), "A mail instruction is not an old-card placeholder");
+});
+
+test("one artwork confirmation documents all mapping questions without accepting guessed text or releasing", () => {
+  const r = review(); r.products.push({ ...r.products[0], id: "product-2", imageId: "image2", imageTitle: "Second bought image" });
+  r.analysis.changes = [
+    { id: "mapping", kind: "conflict", questionOnly: true, productId: null, field: "Additional Information", value: "", reason: 'Zuordnung der Texte zu den beiden Produkten klären: "A" und "B".', evidence: [{ sourceId: "mail:old", quote: r.sources[1].text }] },
+    { id: "mapping-2", kind: "conflict", questionOnly: true, productId: null, field: "Additional Information", value: "", reason: "Produktzuordnung prüfen: ungeprüfter Text.", evidence: [{ sourceId: "mail:old", quote: r.sources[1].text }] },
+    { id: "delivery-note", kind: "conflict", questionOnly: true, productId: null, field: "Additional Information", value: "", reason: "Lieferschein und Lieferadresse prüfen", evidence: [{ sourceId: "mail:old", quote: r.sources[1].text }] },
+  ];
+  const before = defaultReviewApproval(r), after = confirmPurchasedDesigns(r, before);
+  assert.equal(designMappingQuestions(r).length, 2);
+  assert.equal(after.confirmed, false);
+  assert.deepEqual(before.decisions, {});
+  for (const id of ["mapping", "mapping-2"]) {
+    assert.equal(after.decisions[id].action, "reject");
+    assert.match(after.decisions[id].note, /Produkt 1: Final design/);
+    assert.match(after.decisions[id].note, /Produkt 2: Second bought image/);
+  }
+  assert.equal(after.decisions["delivery-note"], undefined);
+  assert.equal(after.title, before.title); assert.equal(after.description, before.description);
+  assert.ok(reviewApprovalIssues(r, { ...after, confirmed: true }).some(i => /Lieferschein/.test(i)));
+  r.analysis.changes[0].requiresThreadId = "old-offer";
+  assert.equal(designMappingQuestions(r).length, 1, "Mail linkage cannot be bypassed by artwork confirmation");
+  delete r.analysis.changes[0].requiresThreadId;
+  r.analysis.changes[0].reason = 'Welcher der beiden gelieferten Texte soll auf p1 (Neonschild) und welcher auf p2 (Design 2) platziert werden: "A" oder "B"?';
+  assert.equal(designMappingQuestions(r).length, 2, "The actual fresh Amazon paraphrase must offer the same explicit confirmation");
+  for (const technical of ["Produktzuordnung prüfen: Kabelposition links für das Logo.", "Welcher Text steht auf dem Lieferschein für Produkt 1?", "Produktzuordnung prüfen: Blue."]) {
+    r.analysis.changes[0].reason = technical;
+    assert.equal(designMappingQuestions(r).length, 1, technical);
+  }
+});
+
+test("image batch decisions preserve documents, vectors, protected files and individual choices", () => {
+  const r = review();
+  const image = { ...r.attachments[0], name: "image.png", mimeType: "image/png", removable: true };
+  r.attachments = [{ ...image, id: "one" }, { ...image, id: "two" },
+    { ...image, id: "chosen" }, { ...image, id: "protected", removable: false },
+    { ...image, id: "vector", name: "Logo.svg", mimeType: "image/svg+xml", decision: "keep" },
+    { ...image, id: "document", name: "Lieferschein.pdf", mimeType: "application/pdf" },
+    { ...image, id: "unknown", name: "Unknown.jpg", mimeType: "application/octet-stream" }];
+  const before = defaultReviewApproval(r); before.attachments.chosen = "keep";
+  assert.deepEqual(openImageVariants(r, before).map(a => a.id), ["one", "two"]);
+  const labels = r.attachments.filter(a => a.name === "image.png").map(a => reviewAttachmentLabel(r, a));
+  assert.equal(new Set(labels).size, 4);
+  const issues = reviewApprovalIssues(r, { ...before, confirmed: true });
+  assert.equal(issues.filter(i => /Datei prüfen: image.png/.test(i)).length, 3);
+  assert.equal(reviewOpenStepCount(r, before, issues), issues.length - 1);
+  for (const action of ["keep", "remove"] as const) {
+    const after = decideImageVariants(r, before, action);
+    assert.deepEqual(after.attachments, { vector: "keep", chosen: "keep", one: action, two: action });
+    assert.equal(after.confirmed, false);
+    assert.equal(after.description, before.description);
+    assert.ok(reviewApprovalIssues(r, { ...after, confirmed: true }).some(i => /Lieferschein.pdf/.test(i)));
+  }
+  assert.deepEqual(before.attachments, { vector: "keep", chosen: "keep" });
 });
 
 test("source choices need a click, open questions need a documented result and never replace a field", () => {

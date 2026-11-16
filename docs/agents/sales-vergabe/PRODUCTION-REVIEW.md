@@ -392,3 +392,55 @@ Abschließende DB-Gegenprüfung: auf allen sechs Testfällen weiterhin keine
 `production_review` und keine `production_handoff`. Keine Kundenmail, Vergabe, Shopify-
 oder Trello-Mutation wurde ausgelöst. Die Mailprüfung bleibt bei fehlenden Volltexten,
 nicht abgedeckten Suchtreffern oder überschrittenen Grenzen ausdrücklich offen.
+
+## Vereinfachte Prüfschritte (16. November 2026, Kandidat vor Livegang)
+
+Produkttext-Zuordnungsfragen bei mehreren gekauften Designs werden gemeinsam neben
+nummerierten Bildern und Größen angezeigt. „Nach gekauften Designs produzieren“ ist
+eine ausdrückliche visuelle Mitarbeiterentscheidung: Die bestehende Prüfnotiz hält die
+gekauften Bildnamen und Größen fest, die unbewiesene Textzuordnung aus der Mail wird
+nicht übernommen. Abweichungen können weiterhin einzeln dokumentiert werden.
+Mailzuordnungs-, Lieferschein- und technische Fragen bleiben getrennte Entscheidungen.
+
+Noch offene, entfernbar markierte Rasterbilder können gemeinsam zum Behalten oder
+gesicherten Entfernen ausgewählt werden. Dateiendung und MIME-Typ müssen passen.
+PDFs, Vektoren, geschützte Dateien und bereits getroffene Entscheidungen werden nicht
+überschrieben. Gleichnamige Dateien tragen unterscheidbare Nummern. Der Zähler zeigt
+die tatsächlichen Prüfschritte; serverseitig muss weiterhin jede Datei-ID entschieden
+sein. Die Sammelknöpfe ändern nur den Entwurf. Sicherung, Entfernen, Zahlungsbestätigung
+und Produktionsfreigabe bleiben am bestehenden Freigabeablauf.
+
+Eine alte Kartenbreite wie 125 cm ist kein Konflikt zur bestellten Größe 125 × 43 cm.
+Nur die exakt gleiche erste Dimension wird normalisiert; neue Mailangaben, andere Maße
+oder zusätzliche Einschränkungen bleiben offen. Der exakte alte Hinweis „Update white
+backboard“ wird bei genau einem ausdrücklich mit weißer Rückseite bestellten Produkt
+als belegtes CHECK INFO erhalten. „Loose Letters“ gegen „Rechteckig Weiß“ bleibt ein
+echter Konflikt. Montageschablone und hintere Kabelführung bleiben erhalten.
+
+Lokale Replays mit den vollständigen gespeicherten produktiven Quellen und je einem
+neuen echten KI-Aufruf, anschließend Bedienprüfung der lokalen Maske:
+
+| Fall | Volltexte | Offene Prüfschritte | Nach zwei ausdrücklichen Auswahlen | Dauer Vorbereitung |
+| --- | ---: | ---: | --- | ---: |
+| Amazon #NEONT4857 | 88 | 4 | Lieferschein und 1 PDF offen; Designs bestätigt, 3 Bilder ausgewählt | 17,7 s |
+| Kinderarztpraxis #NEONT4856 | 16 | 5 | 3 PDFs offen; bestellte Rückseite bestätigt, 6 Bilder ausgewählt | 15,3 s |
+| Apel #NEONT4849 | 5 | 2 | unverändert Bild und PDF offen; EPS behalten, Double line lighting erhalten | 11,2 s |
+
+Alle drei Läufe haben null ungeklärte Mailzuordnungen. Produkt- und Bildidentitäten,
+Bild-Hashes, Mengen, Bestell-/Mail-Hashes sowie sämtliche Quelltexte bleiben identisch.
+Die lokale Kartenrekonstruktion enthält keine ursprünglichen Trello-Dateigrößen und
+Vorschaubild-Arrays; ihr Karten-Hash ist deshalb kein erneuter Live-Aktualitätsnachweis.
+Anhanginhalte wurden nicht neu analysiert. Die Zeiten messen lokale Vorbereitung mit
+echter KI und Bildabruf, nicht einen neuen produktiven Graph-/Storage-Durchlauf.
+
+Verifikation: 34 fokussierte Tests; Gesamtsuite 1.812 bestanden, 2 Plattform-Skips,
+0 Fehler; 8 Deployment-Tests, TypeScript, Produktionsbuild und erweiterter UI-Smoke
+bestanden. Der UI-Smoke prüft die Bildgruppe, separate PDF-Pflichtentscheidung, weiterhin
+gesperrte Freigabe und unveränderte Zahlungsbestätigung; 390 px ohne Überlauf.
+Beim Gesamtlauf wurde der TAP-Reporter explizit gesetzt, weil der bestehende verschachtelte
+QC-Test dessen Ausgabeformat erwartet. Keine fachliche Änderung dafür.
+
+Abschließende produktive Leseprüfung um 11:57:44 UTC: alle drei Aufträge unzugeordnet,
+keine Übergabe und je null Vergabeversuche; gespeicherte Prüfentwürfe unverändert.
+Amazon und Kinderarztpraxis weiterhin Zahlung offen, Apel bezahlt/bestätigt.
+Dieser Kandidat wurde nicht gepusht oder veröffentlicht und kein Auftrag freigegeben.

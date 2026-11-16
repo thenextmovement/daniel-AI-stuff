@@ -54,6 +54,12 @@ export function validateReviewAnalysis(value: unknown, sources: ReviewSource[], 
   }
   parsed.changes = parsed.changes.filter(c => {
     const existing = products.find(p => p.id === c.productId)?.fields.find(f => fieldKey(f.label) === fieldKey(c.field));
+    const cardOnly = c.evidence.every(e => bySource.get(e.sourceId)?.kind === "card");
+    if (cardOnly && existing && fieldKey(c.field) === "size" && oldWidthMatchesOrder(c.value, existing.value)) return false;
+    if (cardOnly && c.field === "Additional Information" && orderedWhiteBackboardNote(c.value, products)) {
+      c.kind = "addition"; c.value = "Use a white backboard.";
+      c.reason = "Der vorhandene Hinweis ist bereits durch die bestellte weiße Rückseite belegt.";
+    }
     if (c.kind === "obsolete" && existing && comparable(existing.value) !== comparable(c.value)) return false;
     if (!c.questionOnly && c.kind === "addition" && existing && comparable(existing.value) === comparable(c.value)) return false;
     // Already-rendered order-wide accessory/delivery lines are not new technical instructions.
@@ -205,6 +211,22 @@ function comparable(v: string): string {
   return text.replace(/cool\s*white|kaltwei(?:ß|ss)/g, "coldwhite").replace(/warmwei(?:ß|ss)/g, "warmwhite").replace(/\brot\b/g, "red").replace(/\bblau\b/g, "blue").replace(/\bgrün\b/g, "green").replace(/einzelne buchstaben/g, "loose letters").replace(/cut to shape/g, "shapecut").replace(/\s+/g, "").replace(/^rightbottom$/, "bottomright").replace(/^righttop$/, "topright").split("+").sort().join("+");
 }
 
+/** A prior width alone does not contradict the same width plus an ordered height.
+ * Only old card data may be superseded this way; new mail instructions stay explicit.
+ */
+function oldWidthMatchesOrder(oldValue: string, orderedValue: string) {
+  const clean = (v: string) => cleanCardLine(v).toLowerCase().replace(/×/g, "x").replace(/(\d),(\d)/g, "$1.$2");
+  const old = /^(\d+(?:\.\d+)?)\s*(cm|mm)$/.exec(clean(oldValue));
+  const ordered = /^(\d+(?:\.\d+)?)\s*x\s*\d+(?:\.\d+)?\s*(cm|mm)$/.exec(clean(orderedValue));
+  return Boolean(old && ordered && Number(old[1]) * (old[2] === "cm" ? 10 : 1) === Number(ordered[1]) * (ordered[2] === "cm" ? 10 : 1));
+}
+
+function orderedWhiteBackboardNote(note: string, products: ReviewProduct[]) {
+  if (products.length !== 1 || !/^(?:update\s*:?\s*)?white backboard[.!]?$/i.test(cleanCardLine(note))) return false;
+  const backboard = products[0].fields.find(f => fieldKey(f.label) === "backboard")?.value.trim().toLowerCase().replace(/weiß|weiss/g, "white");
+  return /^(white|rectangular white|white rectangular|rechteckig white)$/.test(backboard || "");
+}
+
 /** Missing model findings must not silently erase explicit instructions from the old card. */
 function preserveCardInstructions(analysis: ReviewAnalysis, sources: ReviewSource[], products: ReviewProduct[]) {
   const card = sources.find(s => s.kind === "card");
@@ -216,7 +238,8 @@ function preserveCardInstructions(analysis: ReviewAnalysis, sources: ReviewSourc
       const line = lines.find(l => l.text.includes(":") && fieldKey(l.text.split(":")[0]) === fieldKey(field.label));
       if (!line) continue;
       const value = line.text.slice(line.text.indexOf(":") + 1).trim();
-      if (!value || /^(as logo|color as design|as design|smallest size|any position)$/i.test(value) || comparable(value) === comparable(field.value)) continue;
+      if (!value || /^(as logo|color as design|as design|smallest size|any position)$/i.test(value) || comparable(value) === comparable(field.value)
+        || (fieldKey(field.label) === "size" && oldWidthMatchesOrder(value, field.value))) continue;
       const proposed = analysis.changes.find(c => c.productId === products[0].id && fieldKey(c.field) === fieldKey(field.label));
       if (proposed) { if (proposed.kind === "addition") proposed.kind = "conflict"; continue; }
       analysis.changes.push({ id: `card-field-${analysis.changes.length}`, kind: "conflict", productId: products[0].id,
@@ -238,7 +261,16 @@ function preserveCardInstructions(analysis: ReviewAnalysis, sources: ReviewSourc
     if (/^(Product \d|LED Neon|3D Sign|Size:|Backboard|Light Color:|Color:|Quantity:|Request-ID:|Indoor\/Outdoor:|---|Original Nachricht|AI Message)/i.test(line.text)) inNotes = false;
     if (line.text && (inNotes || /^\*\*[^:]+\*\*$/.test(line.original)) && !/^(LED|3D) .*\|/.test(line.text)) notes.push(line);
   }
-  const remaining = notes.filter(line => !covered(line.text));
+  const remaining = notes.filter(line => {
+    if (covered(line.text)) return false;
+    if (!orderedWhiteBackboardNote(line.text, products)) return true;
+    analysis.changes.push({ id: `ordered-card-note-${analysis.changes.length}`, kind: "addition", productId: null,
+      field: "Additional Information", value: "Use a white backboard.",
+      reason: "Der vorhandene Hinweis ist bereits durch die bestellte weiße Rückseite belegt.",
+      evidence: [{ sourceId: card.id, quote: line.original }],
+    });
+    return false;
+  });
   // Keep fallback evidence bounded while preserving every uncovered instruction.
   for (let index = 0; index < remaining.length; index += 6) {
     const group = remaining.slice(index, index + 6);

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, RefreshCcw, X } from "lucide-react";
 import {
   defaultReviewApproval, renderProductionReview, reviewApprovalIssues, PRODUCTION_LISTS,
+  designMappingQuestions, confirmPurchasedDesigns, openImageVariants, decideImageVariants, reviewAttachmentLabel, reviewOpenStepCount,
   type ProductionReview, type ReviewApproval, type ProductionPriority,
 } from "@/lib/ops/supplier-sale-review";
 import type { ProductionHandoff } from "@/lib/ops/supplier-sale-handoff";
@@ -63,6 +64,10 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
     update({ decisions, ...(!edited ? rendered(review, decisions) : {}) });
   }
   const issues = review && approval ? reviewApprovalIssues(review, { ...approval, confirmed: true }) : [];
+  const designQuestions = review ? designMappingQuestions(review) : [];
+  const openImages = review && approval ? openImageVariants(review, approval) : [];
+  const openSteps = review && approval ? reviewOpenStepCount(review, approval, issues) : 0;
+  const designsConfirmed = designQuestions.length > 0 && designQuestions.every(c => approval?.decisions[c.id]?.note.startsWith("Gekaufte Designs visuell geprüft:"));
   const locked = busy || saving || handoff?.status === "pending" || handoff?.status === "synced";
   async function release() {
     if (!review || !approval || issues.length || blockReason) return;
@@ -96,11 +101,20 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
         <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
           <div className="min-w-0 space-y-4">
             <div className="rounded-lg border border-stone-200 bg-white p-3 text-sm">
-              <p className="font-semibold">{issues.length ? `${issues.length} Punkte noch prüfen` : "Vorbereitet – bereit für deine Freigabe"}</p><p className="mt-2">{review.analysis.summary}</p>
+              <p className="font-semibold">{issues.length ? `${openSteps} Prüfschritte offen` : "Vorbereitet – bereit für deine Freigabe"}</p><p className="mt-2">{review.analysis.summary}</p>
               <p className="mt-2 text-xs text-stone-500">{review.mailCount} E-Mail-Volltexte · vorbereitet {new Date(review.preparedAt).toLocaleString("de-DE")}</p>
               <a href={safeLink(review.cardUrl)} target="_blank" rel="noreferrer" className="mt-2 inline-block text-violet-800 underline">Zugeordnete Quentin-Karte öffnen</a>
             </div>
-            {review.analysis.changes.filter(c => c.kind !== "addition" || c.questionOnly).map(change => {
+            {designQuestions.length ? <div className={`rounded-lg border p-3 text-sm ${designsConfirmed ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+              <h4 className="font-semibold">Produkttexte mit den gekauften Designs abgleichen</h4>
+              <p className="mt-2">Produktnummer, Größe und gekauftes Bild stehen rechts. Die Mail-Reihenfolge ändert diese Zuordnung nicht. Bestätige die Designs, wenn sie dem Kundenwunsch entsprechen.</p>
+              {designQuestions.map(c => <p key={c.id} className="mt-2 text-xs text-stone-600">{c.reason}</p>)}
+              <button type="button" disabled={locked} aria-pressed={designsConfirmed} className={`${buttonClass} mt-3`} onClick={() => update(confirmPurchasedDesigns(review, approval))}>{designsConfirmed ? "Gekaufte Designs bestätigt" : "Nach gekauften Designs produzieren"}</button>
+              <details className="mt-3"><summary className="cursor-pointer text-xs font-medium">Abweichung oder offene Zuordnung dokumentieren</summary>
+                {designQuestions.map(c => <label key={c.id} className="mt-2 block text-xs">{c.reason}<input disabled={locked} aria-label={`Klärung: ${c.reason}`} placeholder="Geprüftes Ergebnis; nötige Textänderung in der Vorschau übernehmen" value={approval.decisions[c.id]?.note || ""} onChange={e => decide(c.id, "reject", e.target.value)} className={`${fieldClass} mt-1`} /></label>)}
+              </details>
+            </div> : null}
+            {review.analysis.changes.filter(c => (c.kind !== "addition" || c.questionOnly) && !designQuestions.some(q => q.id === c.id)).map(change => {
               const decision = approval.decisions[change.id];
               const current = review.products.find(p => p.id === change.productId)?.fields.find(f => f.label.toLowerCase() === change.field.toLowerCase())?.value;
               return <div key={change.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
@@ -132,11 +146,18 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
             </details>
           </div>
           <div className="min-w-0 space-y-4">
-            <fieldset disabled={locked}><legend className="mb-2 text-sm font-semibold">Gekauftes Design und Cover</legend><div className="grid grid-cols-2 gap-2">{review.products.map(product => <label key={product.id} className="min-w-0 rounded-lg border border-stone-200 bg-white p-2"><img src={product.imageUrl} alt={product.imageTitle} className="h-32 w-full object-contain" /><p className="mt-2 break-words text-xs">{product.title} · {product.imageTitle}</p><span className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name={`cover-${saleId}`} checked={approval.coverProductId === product.id} onChange={() => update({ coverProductId: product.id })} />Als Cover</span></label>)}</div></fieldset>
+            <fieldset disabled={locked}><legend className="mb-2 text-sm font-semibold">Gekauftes Design und Cover</legend><div className="grid grid-cols-2 gap-2">{review.products.map((product, index) => <div key={product.id} className="min-w-0 rounded-lg border border-stone-200 bg-white p-2"><p className="mb-2 text-xs font-semibold">Produkt {index + 1} · {product.fields.find(f => f.label === "Size")?.value || product.title}</p><a href={safeLink(product.imageUrl)} target="_blank" rel="noreferrer" aria-label={`Gekauftes Design ${index + 1} öffnen: ${product.imageTitle}`}><img src={product.imageUrl} alt={product.imageTitle} className="h-32 w-full object-contain" /></a><p className="mt-2 break-words text-xs">{product.title} · {product.imageTitle}</p><label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name={`cover-${saleId}`} checked={approval.coverProductId === product.id} onChange={() => update({ coverProductId: product.id })} />Als Cover</label></div>)}</div></fieldset>
             <div><h4 className="text-sm font-semibold">Dateien auf der Karte</h4><p className="mt-1 text-xs text-stone-500">Entfernte Dateien werden zuvor in der privaten Ablage bytegleich gesichert.</p>
+              {openImages.length > 1 ? <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm">
+                <p className="font-semibold">{openImages.length} offene Bilddateien gemeinsam entscheiden</p>
+                <p className="mt-2 text-xs">Die gekauften Designs oben werden bei der Freigabe auf die Karte übernommen. Prüfe die Bilddateien unten und wähle, ob sie zusätzlich gebraucht werden. PDFs, Vektordateien und bereits getroffene Entscheidungen bleiben unverändert.</p>
+                <p className="mt-2 break-words text-xs text-stone-600">{openImages.map(a => reviewAttachmentLabel(review, a)).join(" · ")}</p>
+                <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={locked} className={buttonClass} onClick={() => update(decideImageVariants(review, approval, "remove"))}>{openImages.length} Bilddateien sichern und entfernen</button><button type="button" disabled={locked} className={buttonClass} onClick={() => update(decideImageVariants(review, approval, "keep"))}>{openImages.length} Bilddateien behalten</button></div>
+                <p className="mt-2 text-xs text-stone-500">Speichert hier nur deine Auswahl. Dateien werden erst bei der Produktionsfreigabe gesichert und entfernt.</p>
+              </div> : null}
               {review.attachments.map(a => <div key={a.id} className="mt-2 rounded-lg border border-stone-200 bg-white p-3">
-                <div className="flex gap-3">{a.previewUrl ? <img src={a.previewUrl} alt="" className="h-14 w-20 object-contain" /> : null}<div className="min-w-0"><a href={safeLink(a.url)} target="_blank" rel="noreferrer" className="break-words text-sm font-medium underline">{a.name}</a><p className="mt-1 text-xs text-stone-500">{a.reason}</p></div></div>
-                <select disabled={locked} aria-label={`Datei: ${a.name}`} className={`${fieldClass} mt-2`} value={approval.attachments[a.id] || ""} onChange={e => update({ attachments: { ...approval.attachments, [a.id]: e.target.value as "keep" | "remove" } })}>
+                <div className="flex gap-3">{a.previewUrl ? <img src={a.previewUrl} alt="" className="h-14 w-20 object-contain" /> : null}<div className="min-w-0"><a href={safeLink(a.url)} target="_blank" rel="noreferrer" className="break-words text-sm font-medium underline">{reviewAttachmentLabel(review, a)}</a><p className="mt-1 text-xs text-stone-500">{a.reason}</p></div></div>
+                <select disabled={locked} aria-label={`Datei: ${reviewAttachmentLabel(review, a)}`} className={`${fieldClass} mt-2`} value={approval.attachments[a.id] || ""} onChange={e => update({ attachments: { ...approval.attachments, [a.id]: e.target.value as "keep" | "remove" } })}>
                   <option value="">Bitte prüfen</option><option value="keep">Behalten</option><option value="remove" disabled={a.removable === false}>Sichern und entfernen</option>
                 </select>
               </div>)}
