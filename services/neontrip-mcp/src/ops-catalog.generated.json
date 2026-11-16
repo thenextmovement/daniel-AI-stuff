@@ -9613,7 +9613,7 @@
     },
     {
       "source": "src/app/api/ops/supplier-sales/route.ts",
-      "sha256": "ac1f1db1322876d4a72067573260eb047057bf78165018efac4bae0114390086",
+      "sha256": "6371434091300859eaba3d9d0f429da426a06aa1857e87662c0715834488e467",
       "methods": [
         "GET",
         "POST"
@@ -9944,7 +9944,7 @@
     },
     {
       "source": "src/lib/quotes/trello.ts",
-      "sha256": "ca8aa0f92a8eca96631a04b9d0f79ca461db110078f4f4d7eb372a957d7ed549"
+      "sha256": "2bd49438c1357684e687e20910dbb633f8c19f6ce00acc01d5aa950577c4e734"
     },
     {
       "source": "src/app/api/ops/company-brain/actions/route.ts",
@@ -10088,7 +10088,7 @@
     },
     {
       "source": "src/lib/ops/supplier-sales.ts",
-      "sha256": "80049ae2dc85d65bd0ad09e074166519107f36dcc4e7481d103d0ebefb587eb0"
+      "sha256": "4f82e1d0e676c7b1d064a042f665c4858f8ffcfbd4c33842288b116da2543a30"
     },
     {
       "source": "src/lib/ops/voice-knowledge.ts",
