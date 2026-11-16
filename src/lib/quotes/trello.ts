@@ -808,12 +808,12 @@ export async function updateTrelloCard(
 export type ProductionTrelloCard = {
   id: string; idBoard: string; idList: string; name: string; desc: string;
   pos: number; closed: boolean; idAttachmentCover: string | null;
-  attachments: Array<TrelloAttachment & { bytes?: number; isUpload?: boolean }>;
+  attachments: Array<TrelloAttachment & { bytes?: number; isUpload?: boolean; date?: string }>;
 };
 
 export async function readProductionTrelloCard(cardId: string): Promise<ProductionTrelloCard> {
   return trelloFetch<ProductionTrelloCard>(
-    `/cards/${encodeURIComponent(cardId)}?fields=id,idBoard,idList,name,desc,pos,closed,idAttachmentCover&attachments=true&attachment_fields=id,name,fileName,url,mimeType,previews,bytes,isUpload`,
+    `/cards/${encodeURIComponent(cardId)}?fields=id,idBoard,idList,name,desc,pos,closed,idAttachmentCover&attachments=true&attachment_fields=id,name,fileName,url,mimeType,previews,bytes,isUpload,date`,
   );
 }
 

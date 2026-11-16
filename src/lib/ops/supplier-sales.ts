@@ -2,7 +2,8 @@ import { orderConfirmationFromBillingCase, orderConfirmationFromSnapshot, orderC
 import { normalizeOpsListPage } from "@/lib/ops/list-pagination";
 import { createHash, randomUUID } from "node:crypto";
 import { analyzeProductionReview } from "./supplier-sale-review-ai";
-import { readSupplierSaleMail } from "./supplier-sale-mail";
+import { readSupplierSaleMail, readSupplierSaleMailPdfs } from "./supplier-sale-mail";
+import { prepareSupplierSaleDocuments, mailDocumentSourcesMatch } from "./supplier-sale-documents";
 import { backupSupplierFile, checkSupplierFileStorage, readSupplierFileBackup, type SupplierFileBackup } from "./supplier-sale-files";
 import { executeProductionHandoff, type ProductionHandoff } from "./supplier-sale-handoff";
 import {
@@ -6625,11 +6626,14 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
   if (missingProductImage || !productRows.length || productRows.length > 12) throw new QuoteValidationError("Die gespeicherte Angebotsannahme enthält keine vollständige Zuordnung der gekauften Designs.", [], 422);
   // Products are selected from the accepted item snapshot, never from a keyword in the whole offer.
   const products: ReviewProduct[] = [];
+  const productImages: string[] = [];
   for (const productRow of productRows) {
     const raw = jsonRecord(productRow.raw_line_item);
     const item = items.find(i => i.id === productRow.id)!;
     const imageUrl = safeApprovedDesignUrl(raw.purchasedImageUrl || raw.imageUrl);
     if (!imageUrl || item.quantity <= 0) throw new QuoteValidationError("Gekauftes Bild oder Menge fehlt.", [], 422);
+    const purchasedImage = await readPurchasedProductionImage(imageUrl);
+    productImages.push(`data:${purchasedImage.contentType};base64,${Buffer.from(purchasedImage.bytes).toString("base64")}`);
     products.push({
       id: item.id, title: /lightbox|leuchtbox|leuchtkasten/i.test(item.productType || item.title) ? "Lightbox" : /3d/i.test(item.productType || item.title) ? "3D Sign" : "LED Neon Sign",
       quantity: item.quantity, orderTitle: item.title,
@@ -6638,7 +6642,7 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
         return { label: label.trim(), value: rest.join(":").trim() };
       }).filter(f => f.value && !/^(Product Type|Section|SKU)$/i.test(f.label)),
       imageUrl, imageId: String(raw.purchasedImageId), imageTitle: String(raw.purchasedImageTitle || "Gekauftes Design"),
-      imageHash: (await readPurchasedProductionImage(imageUrl)).hash,
+      imageHash: purchasedImage.hash,
     });
   }
   const card = await productionReviewCard(row);
@@ -6665,6 +6669,14 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
     ...mails.map(m => ({ id: `mail:${m.id}`, kind: "mail" as const, label: `${m.direction === "inbound" ? "Eingang" : "Ausgang"}: ${m.subject}${m.hasAttachments ? " (mit Anhängen; deren Inhalte wurden nicht gelesen)" : ""}`, text: m.body, at: m.at, href: m.href, threadId: m.threadId })),
   ];
   const analysis = await analyzeProductionReview({ products, sources, orderReference: row.shopify_order_name || row.offer_number || row.sale_key, offerReference: row.offer_number, requestId: row.request_id });
+  const documents = await prepareSupplierSaleDocuments({ card, mails, analysis, products, productImages, accessories, address: jsonRecord(row.offer_snapshot.deliveryAddress) });
+  for (const source of sources.filter(s => documents.some(d => d.origin === "mail" && d.status === "read" && d.mailId && `mail:${d.mailId}` === s.id))) {
+    source.label = source.label.replace("mit Anhängen; deren Inhalte wurden nicht gelesen", "mit Anhängen; gelesene PDFs siehe Dokumentprüfung");
+  }
+  const deliveryCheck = analysis.changes.find(c => c.id === "check-delivery-note");
+  if (deliveryCheck && documents.some(d => d.origin === "mail" && d.role === "delivery_note" && d.status === "read")) {
+    deliveryCheck.reason = "Kunden-Lieferschein: ausgewerteten Anhang, Empfänger und Lieferadresse unten prüfen. Beilage zum Versand separat bereitstellen.";
+  }
   const vectorFiles = card.attachments.filter(a => /\.(eps|ai|dxf|svg)$/i.test(a.name || a.fileName || ""));
   const soleVector = vectorFiles.length === 1 && !/\b(old|alt|draft|entwurf)\b/i.test(vectorFiles[0].name || "") ? vectorFiles[0].id : null;
   const knownApproved = arrayRecords(row.metadata.approved_design_attachments).filter(a => a.card_id === card.id);
@@ -6678,7 +6690,7 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
     requestId: row.request_id, cardId: card.id, cardUrl: `https://trello.com/c/${card.id}`,
     originalTitle: card.name, originalDescription: card.desc, originalListId: card.idList,
     originalCoverId: card.idAttachmentCover || null, originalPos: card.pos,
-    products, accessories, sources, analysis, priority, mailCount: mails.length,
+    products, accessories, sources, analysis, documents, priority, mailCount: mails.length,
     blockers: [
       ...(!mails.length || analysis.threads.every(t => t.relevance === "unrelated") ? ["Keine auftragsbezogene Korrespondenz gefunden. Mailzuordnung prüfen."] : []),
       ...(!deliveryRows.length ? ["Die bestellte Lieferleistung ist nicht eindeutig im Annahme-Snapshot enthalten."] : []),
@@ -6746,6 +6758,15 @@ async function assignReviewedSupplierSale(input: SupplierSaleAssignInput, decisi
       || productionOrderHash(current, await fetchItemsForSale(input.saleId)) !== review.orderHash) throw new QuoteValidationError("Die Bestellung hat sich geändert. Bitte neu vorbereiten.", [], 409);
     const mails = await readSupplierSaleMail({ email: current.customer_email || "", requestId: current.request_id });
     if (productionHash(mails) !== review.mailHash) throw new QuoteValidationError("Neue oder geänderte E-Mail gefunden. Bitte neu vorbereiten und prüfen.", [], 409);
+    for (const mailId of new Set((review.documents || []).filter(d => d.origin === "mail" && d.status === "read").map(d => d.mailId))) {
+      const mail = mails.find(m => m.id === mailId);
+      if (!mail) throw new QuoteValidationError("Die Dokumentquelle fehlt. Bitte neu vorbereiten.", [], 409);
+      const currentPdfs = await readSupplierSaleMailPdfs(mail);
+      const previousPdfs = review.documents!.filter(d => d.origin === "mail" && d.mailId === mailId);
+      if (!mailDocumentSourcesMatch(previousPdfs, currentPdfs)) {
+        throw new QuoteValidationError("Die Mailanhänge haben sich geändert oder sind nicht mehr lesbar. Bitte neu vorbereiten.", [], 409);
+      }
+    }
   };
   await checkSources();
   if (!prior || prior.reviewId !== review.id) {

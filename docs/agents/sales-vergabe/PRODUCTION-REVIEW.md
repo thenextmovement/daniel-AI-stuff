@@ -444,3 +444,56 @@ Abschließende produktive Leseprüfung um 11:57:44 UTC: alle drei Aufträge unzu
 keine Übergabe und je null Vergabeversuche; gespeicherte Prüfentwürfe unverändert.
 Amazon und Kinderarztpraxis weiterhin Zahlung offen, Apel bezahlt/bestätigt.
 Dieser Kandidat wurde nicht gepusht oder veröffentlicht und kein Auftrag freigegeben.
+
+## PDF- und Lieferscheinprüfung (Kandidat 2026-11-16, vor Livegang)
+
+Der vorhandene Prüfentwurf erhält optional `documents`; keine Datenbankmigration,
+neue Queue oder neue Anbindung. Nach dem bestehenden Mailabgleich liest Ops die
+hochgeladenen Trello-PDFs und – bei belegtem Lieferscheinwunsch – PDF-Anhänge der
+zugeordneten eingehenden Nachrichten über dieselbe Graph-Identität. Signaturen,
+verknüpfte Dateien und andere Kundenverläufe werden nicht als PDFs geladen.
+
+Der zusätzliche strukturierte OpenAI-Aufruf sieht alle gelesenen PDF-Seiten,
+extrahierten Text und die unverändert gebundenen gekauften Bilder. Belege werden
+über erlaubte, dokumentgebundene Snippet-IDs auf Originaltext/Seiten zurückgeführt.
+Maximal sechs Dokumente, sechs Seiten pro Datei, sechzehn Seiten insgesamt,
+10 MiB pro PDF und 1600 Pixel pro gerenderter Seite; Überschreitung, unlesbare
+Dateien, Providerfehler oder unbelegte Ausgabe bleiben ausdrücklich manuell.
+Der optionale Pixeldeckel im bestehenden PDF-Renderer verändert dessen bisherige
+Versandetikett-Defaults nicht.
+
+PDF-Vorschläge sind zunächst **nicht ausgewählt**. Die Mitarbeiterin übernimmt
+belegte Behalten-/Entfernen-Vorschläge ausdrücklich gemeinsam oder entscheidet
+einzeln. Aktuelle technische Abweichungen bleiben separat sichtbar. Die einzige
+bzw. neueste technische Zeichnung wird nicht allein aufgrund eines KI-Vorschlags
+zur Sammelentfernung angeboten; bei mehreren Produkten wird kein Ersatz zwischen
+verschiedenen Produktzeichnungen unterstellt. Bestehende Entscheidungen und
+nicht sicherbare Dateien werden nicht überschrieben.
+
+Beim Lieferschein ist die Ein-Klick-Bestätigung nur verfügbar, wenn genau ein
+vollständig ausgewerteter Lieferschein ohne offene Abweichung vorliegt und sein
+zusammenhängender Empfängerblock Name/Firma, Zusatz, Straße, PLZ und Ort der
+angenommenen Lieferadresse enthält. Der Block muss im PDF-Text belegt sein;
+Absender-/Fußzeilen dürfen keinen Treffer liefern. Keine Adresse wird geändert.
+Die interne Prüfnote wird erst beim Klick gesetzt. **Dies ist keine Dateiübernahme
+auf die Trello-Karte und kein Beleg, dass der Lieferschein der Sendung beiliegt.**
+Die UI weist auf das separate Bereitstellen der Versandbeilage hin.
+
+Vor einer späteren freigegebenen Übergabe werden die ausgewerteten Maildateien
+über ihre exakten IDs erneut gelesen und per SHA256 verglichen; neue/fehlende
+Anhänge oder geänderte Bytes verlangen einen neuen Entwurf. Der bestehende
+manuelle Fallback bleibt für nicht KI-ausgewertete Dateien erhalten. Titel,
+Produktfelder, Zahlung und Freigabe werden aus Dokumentvorschlägen nie automatisch
+geändert. Die vorhandene private Sicherung und Verifikation vor tatsächlichem
+Trello-Löschen bleibt unverändert.
+
+Die genaue Maßprüfung verwendet zusätzlich den PDF-Vektortext: ausdrücklich
+angegebene cm-Maße werden ohne Rundung gegen die angenommenen Produktmaße
+verglichen, sofern die vollständige Dimensionsmenge vorliegt. Die KI darf etwa
+46,09 cm nicht als identisch mit 46 cm darstellen. Unterschiede werden nicht zur
+Neuzuordnung von Produkten verwendet. Eine durch eine konkret benannte spätere
+Zeichnung ersetzte Einprodukt-Zeichnung bleibt als ältere Version erkennbar;
+fehlende optionale Farb-/Kabelbeschriftungen erzeugen keine doppelte Rückfrage,
+wenn die Bestellung diese Werte bereits vorgibt. Unbekannte Dokumente bleiben
+manuell, eine ausdrücklich bezeichnete ursprüngliche Angebotsanfrage mit
+Beispielbild wird als Referenz eingeordnet.

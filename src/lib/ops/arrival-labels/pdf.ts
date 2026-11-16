@@ -144,9 +144,10 @@ export async function renderPdfFirstPageToPng(pdf: Uint8Array, scale = 3) {
   }
 }
 
-export async function renderPdfPagesToPng(pdf: Uint8Array, scale = 2, maximumPages = 20) {
+export async function renderPdfPagesToPng(pdf: Uint8Array, scale = 2, maximumPages = 20, maximumDimension?: number) {
   if (!Number.isFinite(scale) || scale < 1 || scale > 5) throw new Error("PDF-Render-Skalierung muss zwischen 1 und 5 liegen.");
   if (!Number.isInteger(maximumPages) || maximumPages < 1 || maximumPages > 50) throw new Error("Ungueltige maximale PDF-Seitenzahl.");
+  if (maximumDimension !== undefined && (!Number.isInteger(maximumDimension) || maximumDimension < 320 || maximumDimension > 3000)) throw new Error("Ungültige PDF-Vorschaugröße.");
   ensurePdfGlobals();
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const task = pdfjs.getDocument({ data: new Uint8Array(pdf), disableWorker: true } as never);
@@ -156,7 +157,9 @@ export async function renderPdfPagesToPng(pdf: Uint8Array, scale = 2, maximumPag
     const rendered: Buffer[] = [];
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber);
-      const viewport = page.getViewport({ scale });
+      const original = page.getViewport({ scale });
+      const boundedScale = maximumDimension ? scale * Math.min(1, maximumDimension / Math.max(original.width, original.height)) : scale;
+      const viewport = page.getViewport({ scale: boundedScale });
       const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
       const context = canvas.getContext("2d");
       await page.render({ canvas, canvasContext: context, viewport } as never).promise;

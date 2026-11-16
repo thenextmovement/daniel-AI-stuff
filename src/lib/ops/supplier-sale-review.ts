@@ -33,6 +33,16 @@ export type ReviewMail = {
   direction: "inbound" | "outbound"; href: string | null;
   hasAttachments?: boolean;
 };
+/** Read-only document findings. Recommendations never preselect removal. */
+export type ReviewDocument = {
+  id: string; name: string; origin: "trello" | "mail"; href: string | null;
+  attachmentId: string; mailId?: string; status: "read" | "manual";
+  sha256?: string; at?: string; supersededById?: string; pages: number; summary: string;
+  role: "drawing" | "reference" | "delivery_note" | "other";
+  recommendation: "keep" | "remove" | "manual";
+  findings: string[]; evidence: Array<{ page: number; quote: string }>;
+  recipient: string[]; addressMatch: boolean;
+};
 export type ReviewAnalysis = {
   summary: string; changes: ReviewChange[];
   threads: Array<{ id: string; relevance: "related" | "unrelated" | "uncertain"; reason: string }>;
@@ -46,6 +56,7 @@ export type ProductionReview = {
   products: ReviewProduct[]; accessories: string[]; sources: ReviewSource[];
   analysis: ReviewAnalysis; attachments: ReviewAttachment[];
   priority: ProductionPriority; mailCount: number; blockers: string[];
+  documents?: ReviewDocument[];
 };
 export type ReviewApproval = {
   reviewId: string; title: string; description: string;
@@ -95,11 +106,37 @@ export function reviewAttachmentLabel(review: ProductionReview, attachment: Revi
   return sameName.length > 1 ? `${attachment.name} (${sameName.findIndex(a => a.id === attachment.id) + 1} von ${sameName.length})` : attachment.name;
 }
 
+export function openDocumentSuggestions(review: ProductionReview, approval: ReviewApproval) {
+  return (review.documents || []).filter(d => d.origin === "trello" && d.status === "read" && d.recommendation !== "manual"
+    && !approval.attachments[d.attachmentId] && review.attachments.some(a => a.id === d.attachmentId && (d.recommendation !== "remove" || a.removable === true)));
+}
+
+export function confirmDocumentSuggestions(review: ProductionReview, approval: ReviewApproval): ReviewApproval {
+  return { ...approval, confirmed: false, attachments: { ...approval.attachments,
+    ...Object.fromEntries(openDocumentSuggestions(review, approval).map(d => [d.attachmentId, d.recommendation as "keep" | "remove"])),
+  } };
+}
+
+export function reviewedDeliveryNote(review: ProductionReview) {
+  if (review.documents?.some(d => d.origin === "mail" && d.status !== "read")) return null;
+  const notes = (review.documents || []).filter(d => d.origin === "mail" && d.role === "delivery_note");
+  return notes.length === 1 && notes[0].status === "read" && notes[0].addressMatch && !notes[0].findings.length ? notes[0] : null;
+}
+
+export function confirmDeliveryNote(review: ProductionReview, approval: ReviewApproval): ReviewApproval {
+  const document = reviewedDeliveryNote(review);
+  if (!document || !review.analysis.changes.some(c => c.id === "check-delivery-note" && c.questionOnly)) return approval;
+  return { ...approval, confirmed: false, decisions: { ...approval.decisions, "check-delivery-note": {
+    action: "reject", note: `Lieferschein ${document.name} (${document.pages} Seiten) geprüft; Empfänger und Lieferadresse stimmen mit der Bestellung überein. Beilage zum Versand separat bereitstellen. SHA256: ${document.sha256}`.slice(0, 2000),
+  } } };
+}
+
 /** Count actual human actions: one explicit image-batch decision resolves all of its IDs. */
 export function reviewOpenStepCount(review: ProductionReview, approval: ReviewApproval, issues: string[]) {
   const images = openImageVariants(review, approval);
   const mapping = designMappingQuestions(review).filter(c => !approval.decisions[c.id]?.note.trim());
-  return Math.max(0, issues.length - Math.max(0, images.length - 1) - Math.max(0, mapping.length - 1));
+  const documents = openDocumentSuggestions(review, approval);
+  return Math.max(0, issues.length - Math.max(0, images.length - 1) - Math.max(0, mapping.length - 1) - Math.max(0, documents.length - 1));
 }
 
 export function defaultReviewApproval(review: ProductionReview): ReviewApproval {

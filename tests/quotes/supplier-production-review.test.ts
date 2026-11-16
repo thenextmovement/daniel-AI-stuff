@@ -4,7 +4,11 @@ import test from "node:test";
 import { defaultReviewApproval, renderProductionReview, reviewApprovalIssues, productionPriorityFromDeliveryTitles, QUENTIN_REVIEW_BOARD, PRODUCTION_LISTS, designMappingQuestions, confirmPurchasedDesigns, openImageVariants, decideImageVariants, reviewAttachmentLabel, reviewOpenStepCount, type ProductionReview } from "@/lib/ops/supplier-sale-review";
 import { analyzeProductionReview, validateReviewAnalysis } from "@/lib/ops/supplier-sale-review-ai";
 import { executeProductionHandoff, approvedDesignAttachmentName, type HandoffDependencies, type ProductionHandoff } from "@/lib/ops/supplier-sale-handoff";
-import { readSupplierSaleMail } from "@/lib/ops/supplier-sale-mail";
+import { readSupplierSaleMail, readSupplierSaleMailPdfs } from "@/lib/ops/supplier-sale-mail";
+import { deliveryAddressMatches, validateDocumentFindings, guardDrawingRemoval, guardDrawingDimensions, omitRedundantDocumentQuestions, mailDocumentSourcesMatch } from "@/lib/ops/supplier-sale-documents";
+import { confirmDocumentSuggestions, openDocumentSuggestions, confirmDeliveryNote, reviewedDeliveryNote, type ReviewDocument } from "@/lib/ops/supplier-sale-review";
+import { renderPdfPagesToPng } from "@/lib/ops/arrival-labels/pdf";
+import { PDFDocument } from "pdf-lib";
 import { backupSupplierFile, type SupplierFileBackup } from "@/lib/ops/supplier-sale-files";
 import { supplierSaleVisibleInActiveOverview, supplierSaleReadyForProduction } from "@/lib/ops/supplier-sale-completion";
 import { productionReviewItems, productionOrderHash, type SupplierSaleItemRow } from "@/lib/ops/supplier-sales";
@@ -649,4 +653,146 @@ test("an unresolved production detail stays a mandatory question even inside an 
   proposed.changes[1].value = "Mounting positions require clarification with the customer.";
   const analysis = validateReviewAnalysis(proposed, r.sources, r.products);
   assert.ok(analysis.changes.some(c => c.id === "unresolved-production-detail" && c.questionOnly));
+});
+
+const documentFixture = (overrides: Partial<ReviewDocument> = {}): ReviewDocument => ({
+  id: 'trello:old', name: 'Drawing.pdf', origin: 'trello', attachmentId: 'old', href: 'https://trello.com/file',
+  status: 'read', sha256: 'a'.repeat(64), pages: 2, role: 'drawing', recommendation: 'keep', summary: 'Passende Zeichnung.',
+  findings: [], evidence: [{ page: 1, quote: '120 x 45 cm' }], recipient: [], addressMatch: false, ...overrides,
+});
+
+test('PDF recommendations need a human click; unresolved, protected and previously selected files stay untouched', () => {
+  const r = review();
+  r.attachments[0].removable = true;
+  r.attachments.push({ ...r.attachments[0], id: 'conflict', name: 'Current.pdf' }, { ...r.attachments[0], id: 'protected', removable: false });
+  r.documents = [documentFixture({ recommendation: 'remove' }), documentFixture({ id: 'trello:conflict', attachmentId: 'conflict', recommendation: 'manual', findings: ['Outdoor statt Indoor'] }), documentFixture({ id: 'trello:protected', attachmentId: 'protected', recommendation: 'remove' })];
+  const a = defaultReviewApproval(r);
+  assert.equal(a.attachments.old, undefined);
+  assert.equal(openDocumentSuggestions(r, a).length, 1);
+  const confirmed = confirmDocumentSuggestions(r, { ...a, confirmed: true });
+  assert.equal(confirmed.attachments.old, 'remove');
+  assert.equal(confirmed.attachments.conflict, undefined);
+  assert.equal(confirmed.attachments.protected, undefined);
+  assert.equal(confirmed.confirmed, false);
+  assert.equal(confirmDocumentSuggestions(r, { ...a, attachments: { old: 'keep' } }).attachments.old, 'keep');
+  assert.deepEqual(r.products, review().products);
+});
+
+test('document findings validate exact page evidence; technical differences never become batch removals', () => {
+  const value = { role: 'drawing', summary: 'Andere Ausführung', recommendation: 'remove', findings: ['Outdoor statt Indoor'], recipient: [], evidence: [{ page: 2, quote: 'Outdoor' }] };
+  assert.equal(validateDocumentFindings(documentFixture(), ['Zeichnung', 'Use: Outdoor'], value, {}).recommendation, 'manual');
+  assert.throws(() => validateDocumentFindings(documentFixture(), ['Outdoor', 'Other'], value, {}), /beleg/i);
+  assert.throws(() => validateDocumentFindings(documentFixture(), ['Zeichnung', 'Outdoor'], { ...value, evidence: [{ page: 2, quote: 'Indoor' }] }, {}), /beleg/i);
+  assert.throws(() => validateDocumentFindings(documentFixture(), ['Outdoor'], { ...value, role: 'approved' }, {}), /Ungültig/);
+});
+
+test('delivery note confirmation requires a unique complete recipient block and no unresolved mail attachment', () => {
+  const address = { name: 'Frau Beispiel', company: 'Firma GmbH', note: 'Lager 2', street: 'Teststraße 10', zip: '12345', city: 'Teststadt' };
+  const recipient = ['Firma GmbH', 'Lager 2', 'Frau Beispiel', 'Teststraße 10', '12345 Teststadt'];
+  const pages = ['Absender Andere Firma ' + recipient.join('\n') + '\nLieferschein'];
+  assert.equal(deliveryAddressMatches(recipient, pages, address), true);
+  assert.equal(deliveryAddressMatches(recipient, pages, { ...address, street: 'Teststraße 11' }), false);
+  assert.equal(deliveryAddressMatches(recipient, ['Firma GmbH Footer Lager 2 Footer Frau Beispiel Teststraße 10 12345 Teststadt'], address), false);
+  assert.equal(deliveryAddressMatches(recipient, pages, { ...address, zip: '' }), false);
+  const r = review();
+  r.analysis.changes.push({ id: 'check-delivery-note', kind: 'conflict', questionOnly: true, field: 'Additional Information', value: '', productId: null, reason: 'Lieferschein prüfen', evidence: [] });
+  r.documents = [documentFixture({ origin: 'mail', role: 'delivery_note', addressMatch: true, recipient })];
+  const a = defaultReviewApproval(r);
+  assert.equal(a.decisions['check-delivery-note'], undefined);
+  const checked = confirmDeliveryNote(r, a);
+  assert.match(checked.decisions['check-delivery-note'].note, /Beilage zum Versand separat/);
+  assert.equal(checked.confirmed, false);
+  r.documents.push(documentFixture({ id: 'other', origin: 'mail', status: 'manual' }));
+  assert.equal(reviewedDeliveryNote(r), null);
+  assert.deepEqual(confirmDeliveryNote(r, a), a);
+  r.documents = [documentFixture({ origin: 'mail', role: 'delivery_note', addressMatch: true, findings: ['Menge weicht ab'] })];
+  assert.equal(reviewedDeliveryNote(r), null);
+});
+
+test('Graph PDF reader binds the existing mailbox/message, excludes inline signatures and rejects foreign pagination', async () => {
+  const old = process.env.MICROSOFT_GRAPH_MAILBOX;
+  process.env.MICROSOFT_GRAPH_MAILBOX = 'support@neontrip.de';
+  const mail = { id: 'immutable+id/==', threadId: 'related', subject: 'Lieferschein', body: '', at: '2026-11-16', direction: 'inbound' as const, href: null };
+  const calls: string[] = [];
+  const fixtureFetch: typeof fetch = async (url, init) => {
+    calls.push(String(url)); assert.equal(init?.method || 'GET', 'GET'); assert.equal(init?.redirect, 'error');
+    assert.equal(new Headers(init?.headers).get('Prefer'), 'IdType="ImmutableId"');
+    if (String(url).endsWith('/$value')) return new Response('%PDF-test');
+    return Response.json({ value: [
+      { id: 'signature', name: 'logo.pdf', contentType: 'application/pdf', size: 10, isInline: true, '@odata.type': '#microsoft.graph.fileAttachment' },
+      { id: 'pdf/id', name: 'Lieferschein.pdf', contentType: 'application/pdf', size: 9, isInline: false, '@odata.type': '#microsoft.graph.fileAttachment' },
+      { id: 'logo', name: 'logo.png', contentType: 'image/png', size: 10, isInline: false, '@odata.type': '#microsoft.graph.fileAttachment' },
+    ] });
+  };
+  try {
+    const result = await readSupplierSaleMailPdfs(mail, { token: async () => 'test', fetch: fixtureFetch });
+    assert.equal(result.length, 1); assert.equal(calls.length, 2);
+    assert.match(calls[1], /messages\/immutable%2Bid%2F%3D%3D\/attachments\/pdf%2Fid\/\$value$/);
+    await assert.rejects(readSupplierSaleMailPdfs(mail, { token: async () => 'test', fetch: async () => Response.json({ value: [], '@odata.nextLink': 'https://other.example/attachments' }) }), /vollständig/);
+    process.env.MICROSOFT_GRAPH_MAILBOX = 'other@example.com';
+    await assert.rejects(readSupplierSaleMailPdfs(mail, { token: async () => { throw new Error('must not request token'); } }), /Dokumentquelle/);
+  } finally { if (old === undefined) delete process.env.MICROSOFT_GRAPH_MAILBOX; else process.env.MICROSOFT_GRAPH_MAILBOX = old; }
+});
+
+test('bounded review renderer reads every page of oversized vector artwork without changing default label geometry', async () => {
+  const pdf = await PDFDocument.create(); pdf.addPage([11666, 6737]); pdf.addPage([595, 842]);
+  const bytes = await pdf.save();
+  const images = await renderPdfPagesToPng(bytes, 2, 6, 1600);
+  assert.equal(images.length, 2);
+  for (const image of images) { assert.ok(image.readUInt32BE(16) <= 1600 && image.readUInt32BE(20) <= 1600); }
+  await assert.rejects(renderPdfPagesToPng(bytes, 2, 1, 1600), /Seitenzahl/);
+  const single = await PDFDocument.create(); single.addPage([100, 200]);
+  const original = await renderPdfPagesToPng(await single.save(), 2, 1);
+  assert.equal(original[0].readUInt32BE(16), 200); assert.equal(original[0].readUInt32BE(20), 400);
+});
+
+
+test('model cannot discard the latest/sole technical drawing or infer replacement across multiple products', () => {
+  const old = documentFixture({ id: 'old', at: '2026-11-09T08:00:00Z', recommendation: 'remove' });
+  const current = documentFixture({ id: 'current', at: '2026-11-11T08:00:00Z', recommendation: 'remove' });
+  guardDrawingRemoval([old, current], 1);
+  assert.equal(old.recommendation, 'remove'); assert.equal(current.recommendation, 'manual');
+  assert.ok(current.findings.length);
+  const multi = { ...old, recommendation: 'remove' as const };
+  guardDrawingRemoval([multi, current], 2); assert.equal(multi.recommendation, 'manual');
+});
+
+
+test('mail-document freshness rejects changed/missing/new files before any handoff and preserves manual fallback', () => {
+  const bytes = Buffer.from('actual PDF bytes');
+  const previous = [documentFixture({ origin: 'mail', attachmentId: 'read', sha256: createHash('sha256').update(bytes).digest('hex') }), documentFixture({ origin: 'mail', attachmentId: 'manual', status: 'manual', sha256: undefined })];
+  const current = [{ attachment: { id: 'read' }, bytes }, { attachment: { id: 'manual' }, bytes: null }];
+  assert.equal(mailDocumentSourcesMatch(previous, current), true);
+  assert.equal(mailDocumentSourcesMatch(previous, [{ ...current[0], bytes: Buffer.from('changed') }, current[1]]), false);
+  assert.equal(mailDocumentSourcesMatch(previous, current.slice(0, 1)), false);
+  assert.equal(mailDocumentSourcesMatch(previous, [...current, { attachment: { id: 'new' }, bytes }]), false);
+  assert.equal(mailDocumentSourcesMatch(previous, [{ ...current[0], bytes: null }, current[1]]), false);
+});
+
+
+test('precise PDF dimensions cannot be rounded away by a model match verdict', () => {
+  const d = documentFixture({ recommendation: 'keep', summary: 'Alles stimmt überein' });
+  const products = [ { ...review().products[0], fields: [{ label: 'Size', value: '180 x 46cm' }] }, { ...review().products[0], id: 'p2', fields: [{ label: 'Size', value: '180 x 42cm' }] } ];
+  guardDrawingDimensions(d, ['180.00 cm 46.09 cm 180.00 cm 42.53 cm Product-Typ: neon flex Depth: 2cm'], products);
+  assert.equal(d.recommendation, 'manual'); assert.match(d.findings[0], /46.09 cm/); assert.match(d.findings[0], /42.53 cm/);
+  assert.doesNotMatch(d.summary, /stimmt/);
+  const matching = documentFixture(); guardDrawingDimensions(matching, ['120.00 cm 45.00 cm Product-Typ: neon flex'], review().products);
+  assert.equal(matching.recommendation, 'keep');
+  const old = documentFixture({ supersededById: 'new', recommendation: 'remove' }); guardDrawingDimensions(old, ['120cm 40cm Product-Typ: neon flex'], review().products);
+  assert.equal(old.recommendation, 'remove');
+});
+
+
+test('missing drawing labels and positive matches do not duplicate explicit order choices', () => {
+  const doc = documentFixture({ findings: ['Farbangabe ist im PDF nicht dokumentiert.', 'Kabelposition ist nicht angegeben.', 'Maße stimmen, kein Konflikt.', 'PDF nennt Outdoor statt bestelltem Indoor.'] });
+  omitRedundantDocumentQuestions(doc, [{ ...review().products[0], fields: [...review().products[0].fields, { label: 'Color', value: 'Blue' }] }]);
+  assert.deepEqual(doc.findings, ['PDF nennt Outdoor statt bestelltem Indoor.']);
+});
+
+test('an explicitly titled initial enquiry remains a reference when the model calls it other', () => {
+  const text = ['Angebotsanfrage: Schriftzug. Beispielbild / Gestaltungsidee.'];
+  const d = validateDocumentFindings(documentFixture(), text, { role: 'other', summary: 'Frühere Anfrage.', recommendation: 'remove', findings: [], recipient: [], evidence: [{ page: 1, quote: 'Angebotsanfrage' }] }, {});
+  assert.equal(d.role, 'reference'); assert.equal(d.recommendation, 'remove');
+  const unknown = validateDocumentFindings(documentFixture(), ['Unbekannte Datei'], { role: 'other', summary: 'Unbekannt.', recommendation: 'remove', findings: [], recipient: [], evidence: [{ page: 1, quote: 'Unbekannte Datei' }] }, {});
+  assert.equal(unknown.recommendation, 'manual');
 });

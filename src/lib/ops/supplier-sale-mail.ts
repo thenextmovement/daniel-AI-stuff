@@ -1,6 +1,7 @@
 import { microsoftGraphToken } from "@/lib/ops/arrival-labels/clients";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import type { ReviewMail } from "./supplier-sale-review";
+import { readBoundedResponseBytes } from "./arrival-labels/printing";
 
 type Recipient = { emailAddress?: { address?: string } };
 type GraphMessage = {
@@ -12,6 +13,36 @@ const SELECT = "id,conversationId,internetMessageId,subject,body,receivedDateTim
 const SEED_SELECT = SELECT.split(",").filter(field => field !== "body").join(",");
 const escapeFilter = (value: string) => value.replace(/'/g, "''");
 const address = (r?: Recipient) => String(r?.emailAddress?.address || "").toLowerCase();
+
+/** Existing Graph identity, exact related message only; no inline logos or linked files. */
+export async function readSupplierSaleMailPdfs(mail: ReviewMail, dependencies?: { token?: () => Promise<string>; fetch?: typeof fetch }) {
+  const mailbox = String(process.env.MICROSOFT_GRAPH_MAILBOX || "").trim().toLowerCase();
+  if (mailbox !== "support@neontrip.de" || mail.direction !== "inbound" || !mail.id) throw new Error("Ungültige Dokumentquelle.");
+  const token = await (dependencies?.token || microsoftGraphToken)();
+  const fetcher = dependencies?.fetch || fetch;
+  const endpoint = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(mail.id)}/attachments`;
+  const headers = { Authorization: `Bearer ${token}`, Prefer: 'IdType="ImmutableId"' };
+  type Attachment = { id: string; name: string; contentType: string; size: number; isInline: boolean; "@odata.type": string };
+  const found: Attachment[] = [];
+  let next: string | null = `${endpoint}?$select=id,name,contentType,size,isInline&$top=50`;
+  for (let page = 0; next; page++) {
+    const url = new URL(next);
+    if (page >= 4 || url.origin !== "https://graph.microsoft.com" || decodeURIComponent(url.pathname) !== decodeURIComponent(new URL(endpoint).pathname) || url.username || url.password || url.hash) throw new Error("Mailanhänge sind nicht vollständig prüfbar.");
+    const response = await fetcher(url, { headers, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) throw new Error(`Mailanhänge konnten nicht gelesen werden (HTTP ${response.status}).`);
+    const payload = JSON.parse(Buffer.from(await readBoundedResponseBytes(response, 512 * 1024)).toString()) as { value?: Attachment[]; "@odata.nextLink"?: string };
+    if (!Array.isArray(payload.value)) throw new Error("Ungültige Mailanhänge.");
+    found.push(...payload.value.filter(a => !a.isInline && (/\.pdf$/i.test(a.name) || a.contentType === "application/pdf")));
+    next = payload["@odata.nextLink"] || null;
+  }
+  if (found.length > 6) throw new Error("Mehr als sechs PDF-Mailanhänge: manuell prüfen.");
+  return Promise.all(found.map(async a => {
+    if (a["@odata.type"] !== "#microsoft.graph.fileAttachment" || !a.id || a.size > 10 * 1024 * 1024) return { attachment: a, bytes: null };
+    const response = await fetcher(`${endpoint}/${encodeURIComponent(a.id)}/$value`, { headers, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) throw new Error(`PDF-Mailanhang konnte nicht gelesen werden (HTTP ${response.status}).`);
+    return { attachment: a, bytes: await readBoundedResponseBytes(response, 10 * 1024 * 1024) };
+  }));
+}
 
 /** All pages or an explicit error; never present a truncated search as a completed mail review. */
 export async function readSupplierSaleMail(input: { email: string; requestId: string | null; since?: string }, dependencies?: {

@@ -9944,7 +9944,7 @@
     },
     {
       "source": "src/lib/quotes/trello.ts",
-      "sha256": "2bd49438c1357684e687e20910dbb633f8c19f6ce00acc01d5aa950577c4e734"
+      "sha256": "784bd6754c8b19d96d395ff35bac585766703350454c30a325cff678ae5f0153"
     },
     {
       "source": "src/app/api/ops/company-brain/actions/route.ts",
@@ -10088,7 +10088,7 @@
     },
     {
       "source": "src/lib/ops/supplier-sales.ts",
-      "sha256": "4f82e1d0e676c7b1d064a042f665c4858f8ffcfbd4c33842288b116da2543a30"
+      "sha256": "3292125716eff58f4ce6697ea20d815e458dd55841c9ad39a866a1e651aeceb3"
     },
     {
       "source": "src/lib/ops/voice-knowledge.ts",

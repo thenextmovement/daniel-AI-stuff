@@ -144,9 +144,8 @@ function reviewThreadScope(input: { sources: ReviewSource[]; orderReference: str
   return { fixed, historical };
 }
 
-/** Logistics needed on the production card must not disappear as "non-technical" mail.
- * The actual attachment/address remains a human check; it is not read by this integration.
- */
+/** Logistics must not disappear as "non-technical" mail. The document pass may
+ * prepare this check; until then the explicit human question remains unchanged. */
 function preserveDeliveryNoteInstruction(analysis: ReviewAnalysis, sources: ReviewSource[]) {
   const relatedIncoming = sources.filter(s => s.kind === "mail" && /^Eingang:/.test(s.label)
     && analysis.threads.some(t => t.id === s.threadId && t.relevance === "related"))
