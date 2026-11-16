@@ -1,7 +1,66 @@
 # KI-vorbereitete Produktionsvergabe
 
-Stand 2026-11-12: lokal implementiert, nicht veröffentlicht. NEONTRIP, Quentin-Board
-62bae9b97705e7419ed64593. Veröffentlichung benötigt die exakte saubere Commit-SHA.
+Aktueller Stand 2026-11-16: Produktionsbasis ist `7d4aba8b89b25b1f83aac7a899d568354a7697ac`.
+Die nachfolgende Korrektur von Produktzuordnung und fehlenden Hinweisen ist lokal
+geprüft, nicht veröffentlicht. NEONTRIP, Quentin-Board 62bae9b97705e7419ed64593.
+Veröffentlichung benötigt die exakte saubere Commit-SHA. Ältere Abschnitte dokumentieren
+den damaligen Prüf-/Veröffentlichungsstand.
+
+## Korrektur Produktzuordnung und Liefer-/Montagehinweise (16. November)
+
+Ziel: Keine automatische Zuordnung von Mail-Aufzählungen zu mehreren gekauften
+Produkten; explizite Lieferschein-Anweisung und bestellte Montageschablone erhalten.
+Nachbar: angenommene Positions-/Bild-IDs, Mengen, Sonderhinweise, Zahlungsentscheidung,
+Dateiauswahl und Produktionsfreigabe unverändert. Wirkung im Test: ausschließlich
+lokale Entwürfe; alle DB-/Trello-Schreibzugriffe abgefangen.
+
+- Bei mehreren Produkten benötigen produktbezogene KI-Änderungen einen Beleg aus
+  genau dieser bestellten Position. Mail-/Kartenreihenfolge beweist keine Bildzuordnung.
+  Unbelegte Zuordnungen werden zu offenen Fragen ohne Produktionswert. Die vorhandene
+  Zuordnung von angenommener Positions-ID und gekauftem Bild bleibt unverändert.
+- Die angenommene Angebotsnummer wird zusätzlich zur Shopify-Nummer übermittelt.
+  Ein exakter Betreffbezug auf diese A/N kann eine falsche `unrelated`-Einordnung
+  korrigieren. Ähnliche Nummern, zitierter Body und Betreffe mit mehreren Referenzen
+  reichen nicht für eine automatische eindeutige Zuordnung.
+- Die ausdrückliche Bitte aus einer zugeordneten eingehenden Mail, den Lieferschein
+  mitzusenden, wird unabhängig vom KI-Befund übernommen. Zitierte Historie, fremde
+  Aufträge, Fragen und negierte/bedingte Bitten erzeugen keinen automatischen Hinweis.
+  Datei und Lieferadresse bleiben ausdrücklich zu prüfen; Anhänge werden nicht gelesen.
+- Vermischt ein Vorschlag zugehörige und fremde/ungeklärte Belege, wird sein Wert
+  verworfen und eine offene Frage mit ausschließlich zugehörigen Belegen erzeugt.
+  Fehlende Beleg-IDs oder ausschließlich fremde Belege brechen weiterhin ab.
+  Eine solche Frage darf keinen vorhandenen Karten-Sonderhinweis als erledigt verdecken.
+- `Inklusive: Montageschablone` wird als `Included: Mounting template` übernommen.
+  Optionale/negierte Erwähnungen werden nicht als bestellt dargestellt.
+
+Echtdatenprüfung: aktuelle Sale-/Annahmedaten und die am selben Tag in Produktion
+gespeicherten vollständigen Mail-/Kartenquellen wurden lokal erneut durch die
+Vorbereitung verarbeitet. Neue KI-Aufrufe und echte Bild-GETs; Graph/Trello/DB wurden
+aus diesen Snapshots beantwortet, Schreibzugriffe nur lokal simuliert. Dies ist kein
+neuer produktiver Graph-E2E-Test und keine produktive Vorbereitung des neuen Codes.
+
+| Fall | Ergebnis | Noch offene Prüfung im letzten neuen KI-Lauf |
+| --- | --- | --- |
+| #NEONT4857 Amazon, 88 Volltexte | Mockup6027 bleibt Produkt 1, Mockup6028 Produkt 2; keine geratenen Textzuordnungen; Lieferschein und Do not split erhalten | 23 Punkte: 17 unsichere Mailzuordnungen, 1 gemischter KI-Beleg, 1 Lieferscheinprüfung, 4 Dateien |
+| #NEONT4856 Kinderarztpraxis, 16 Volltexte | Montageschablone in Produktmerkmalen und fertigem Text | 4 inhaltliche Punkte und 9 Dateientscheidungen; UI zählt 12 statt 13 wegen zweier gleichnamiger image.png |
+| #NEONT4849 Apel, 5 Volltexte | Gleiches Bild, Doppellinie erhalten, alle 5 Threads zugehörig | 1 wiederholter Sonderhinweis und 2 Dateien |
+
+Die schwankende Mailzuordnung beim großen Amazon-Verlauf erreicht das Ziel
+„nur prüfen/bestätigen“ noch nicht. Die drei Korrekturen sind belegt; dieser Befund
+wird separat berichtet und nicht durch manuelles Entfernen der Prüfpunkte kaschiert.
+Kein Livegang empfohlen, bevor dieser Bedienungsbefund bewertet wurde.
+
+Verifikation: Original-Amazon-Fehlanalyse erneut validiert (beide falschen
+Produktzuordnungen blockiert); Bild-IDs, Bildhashes und Mengen für alle drei Fälle
+identisch. 1.809 Tests: 1.807 bestanden, 2 plattformbedingt übersprungen; 8 Deployment-
+Tests, TypeScript, Build und vorhandener UI-Smoke bestanden. Echte lokale Prüfkomponente
+für alle drei Fälle bedient; Freigabeknöpfe gesperrt. Produktionsdaten zurückgelesen:
+alte Review-IDs unverändert, kein Handoff, jeweils null Assignment Attempts.
+
+Gespeicherte produktive Entwürfe werden durch die Codeänderung nicht rückwirkend
+verändert. Erst nach einem separat genehmigten Deployment ist „Neu vorbereiten“ mit
+dem neuen Code möglich. Es wurden weder Karten, Dateien, Nachrichten noch Aufträge
+verändert. Keine Migration, neue Anbindung oder Workflow-Änderung.
 
 ## Vertrag und Bedienung
 

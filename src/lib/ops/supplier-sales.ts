@@ -1715,6 +1715,8 @@ const SUPPLIER_PRODUCTION_LABELS: Record<string, string> = {
   mounting: "Mounting",
   wallmount: "Wall mount",
   material: "Material",
+  inklusive: "Included",
+  included: "Included",
   oberflaechegehaeusefarbe: "Surface color",
   oberflachegehausefarbe: "Surface color",
   surfacecolor: "Surface color",
@@ -1756,6 +1758,8 @@ function supplierProductionKey(value: string) {
 function supplierProductionValue(label: string, value: string) {
   const clean = value.trim().replace(/_/g, " ").replace(/\s+/g, " ");
   const normalized = supplierProductionKey(clean);
+  // Only carry the explicitly purchased template; optional/negated mentions are not inclusions.
+  if (label === "Included") return clean.split(/[,;+]/).some(part => /^(montageschablone|bohrschablone|mounting template|drilling template)$/i.test(part.trim())) ? "Mounting template" : null;
   const accessory = ["Adhesive mounting kit", "Hanging set"].includes(label);
   if (accessory && /^(nein|no|false|0|none|nichtgewaehlt)$/.test(normalized)) return null;
   if (accessory && /^(ja|yes|true|1|gewaehlt)$/.test(normalized)) return "YES ❗";
@@ -6660,7 +6664,7 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
     { id: "card", kind: "card", label: "Aktuelle Quentin-Karte", text: `${card.name}\n${card.desc}`, at: null, href: `https://trello.com/c/${card.id}` },
     ...mails.map(m => ({ id: `mail:${m.id}`, kind: "mail" as const, label: `${m.direction === "inbound" ? "Eingang" : "Ausgang"}: ${m.subject}${m.hasAttachments ? " (mit Anhängen; deren Inhalte wurden nicht gelesen)" : ""}`, text: m.body, at: m.at, href: m.href, threadId: m.threadId })),
   ];
-  const analysis = await analyzeProductionReview({ products, sources, orderReference: row.shopify_order_name || row.offer_number || row.sale_key, requestId: row.request_id });
+  const analysis = await analyzeProductionReview({ products, sources, orderReference: row.shopify_order_name || row.offer_number || row.sale_key, offerReference: row.offer_number, requestId: row.request_id });
   const vectorFiles = card.attachments.filter(a => /\.(eps|ai|dxf|svg)$/i.test(a.name || a.fileName || ""));
   const soleVector = vectorFiles.length === 1 && !/\b(old|alt|draft|entwurf)\b/i.test(vectorFiles[0].name || "") ? vectorFiles[0].id : null;
   const knownApproved = arrayRecords(row.metadata.approved_design_attachments).filter(a => a.card_id === card.id);

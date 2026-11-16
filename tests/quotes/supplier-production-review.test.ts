@@ -126,6 +126,121 @@ test("one structured AI request excludes purchased-image tokens and source links
   } finally { if (old === undefined) delete process.env.OPS_OPENAI_API_KEY; else process.env.OPS_OPENAI_API_KEY = old; }
 });
 
+test("mail enumeration cannot assign texts to purchased products, even with reordered product arrays", () => {
+  for (const reverse of [false, true]) {
+    const r = review();
+    r.products = [
+      { ...r.products[0], id: "red-tag", imageId: "image-red", imageTitle: "Mockup-A.jpg", fields: [] },
+      { ...r.products[0], id: "contractor", imageId: "image-contractor", imageTitle: "Mockup-B.jpg", fields: [] },
+    ];
+    if (reverse) r.products.reverse();
+    r.sources = [{ ...r.sources[1], label: "Eingang: Bestellung", text: 'Zwei Schilder: "contractor point", "red-tag area", jeweils eins.' }];
+    const changes = r.products.map((p, i) => ({ id: `guess-${i}`, kind: "addition" as const, productId: p.id,
+      field: "Additional Information", value: `Logo text: "${i ? "red-tag area" : "contractor point"}"`, reason: "Text aus Mail",
+      evidence: [{ sourceId: r.sources[0].id, quote: r.sources[0].text }] }));
+    r.analysis = validateReviewAnalysis({ ...r.analysis, changes: structuredClone(changes) }, r.sources, r.products);
+    assert.ok(r.analysis.changes.every(c => c.questionOnly && c.productId === null && !c.value));
+    const a = defaultReviewApproval(r);
+    assert.doesNotMatch(a.description, /contractor point|red-tag area/);
+    assert.ok(reviewApprovalIssues(r, a).some(issue => issue.includes("Produktzuordnung")));
+    assert.equal(r.products.find(p => p.id === "red-tag")?.imageId, "image-red");
+    assert.equal(r.products.find(p => p.id === "contractor")?.imageId, "image-contractor");
+    const acceptedSource = { id: "order:red-tag", kind: "order" as const, label: "Gekauft", text: 'Text: "red-tag area"', at: null, href: null };
+    const bound = validateReviewAnalysis({ summary: "Bestellt", threads: [], changes: [{ ...changes[0], productId: "red-tag", value: 'Logo text: "red-tag area"', evidence: [{ sourceId: acceptedSource.id, quote: acceptedSource.text }] }] }, [acceptedSource], r.products);
+    assert.equal(bound.changes[0].kind, "addition");
+    assert.equal(bound.changes[0].productId, "red-tag");
+  }
+});
+
+test("explicit delivery-note instruction survives omission while attachment and address require review", () => {
+  const r = review();
+  r.sources = [{ ...r.sources[1], label: "Eingang: Angebot", text: "Anbei findest du den Lieferschein mit der Lieferadresse, bitte mitsenden." }];
+  r.analysis = validateReviewAnalysis({ ...r.analysis, changes: [] }, r.sources, r.products);
+  const a = defaultReviewApproval(r);
+  assert.match(a.description, /Include the customer's delivery note with the shipment/);
+  assert.ok(r.analysis.changes.some(c => c.questionOnly && /Lieferadresse/.test(c.reason)));
+  assert.ok(reviewApprovalIssues(r, a).some(issue => /Lieferschein/.test(issue)));
+  assert.equal(r.analysis.changes.filter(c => c.kind === "addition").length, 1);
+  assert.doesNotMatch(a.description, /address.*verified|Lieferadresse/);
+});
+
+test("a downgraded question cannot silently consume an existing card instruction", () => {
+  const r = review();
+  r.sources = [{ ...r.sources[0], text: "CHECK INFO\nDo not split!!" }];
+  const analysis = validateReviewAnalysis({ summary: "Offen", threads: [], changes: [{ id: "mixed", kind: "conflict", questionOnly: true, productId: null,
+    field: "Additional Information", value: "", reason: "Belege vermischt", evidence: [{ sourceId: "card", quote: r.sources[0].text }] }] }, r.sources, r.products);
+  assert.ok(analysis.changes.some(c => !c.questionOnly && c.value === "Do not split!!" && c.kind === "conflict"));
+});
+
+test("delivery-note fallback excludes unrelated, outgoing, quoted, conditional and canceled instructions", () => {
+  for (const [label, text, relevance] of [
+    ["Eingang: Andere Bestellung", "Lieferschein bitte mitsenden.", "unrelated"],
+    ["Ausgang: Angebot", "Lieferschein bitte mitsenden.", "related"],
+    ["Eingang: Angebot", "Vielen Dank.\n\nVon: Jemand\nLieferschein bitte mitsenden.", "related"],
+    ["Eingang: Angebot", "Lieferschein bitte nicht mitsenden.", "related"],
+    ["Eingang: Angebot", "Falls nötig, den Lieferschein bitte mitsenden.", "related"],
+    ["Eingang: Angebot", "Könnt ihr bitte den Lieferschein mitsenden?", "related"],
+  ] as const) {
+    const r = review();
+    const sources = [{ ...r.sources[1], label, text }];
+    const result = validateReviewAnalysis({ ...r.analysis, threads: [{ ...r.analysis.threads[0], relevance }], changes: [] }, sources, r.products);
+    assert.deepEqual(result.changes, [], text);
+  }
+  const r = review();
+  const sources = [
+    { ...r.sources[1], label: "Eingang: Angebot", text: "Lieferschein bitte mitsenden.", at: "2026-11-01" },
+    { ...r.sources[1], id: "mail:new", label: "Eingang: Angebot", text: "Lieferschein bitte nicht mitsenden.", at: "2026-11-02" },
+  ];
+  assert.deepEqual(validateReviewAnalysis({ ...r.analysis, changes: [] }, sources, r.products).changes, []);
+});
+
+test("accepted offer reference preserves delivery-note evidence without matching old orders or quoted body references", async () => {
+  const old = process.env.OPS_OPENAI_API_KEY; process.env.OPS_OPENAI_API_KEY = "fixture";
+  try {
+    for (const [label, relevance, expected] of [
+      ["Eingang: AW: Angebot A/N 16164", "unrelated", "related"],
+      ["Eingang: AW: Angebot A/N 161640", "unrelated", "unrelated"],
+      ["Eingang: AW: Angebot A/N 12345", "unrelated", "unrelated"],
+      ["Eingang: AW: Angebot", "unrelated", "unrelated"],
+      ["Eingang: A/N 16164 / A/N 12345", "unrelated", "uncertain"],
+      ["Eingang: A/N 16164 #NEONT4662", "unrelated", "uncertain"],
+      ["Eingang: A/N 16164", "uncertain", "uncertain"],
+    ] as const) {
+      const r = review();
+      const source = { ...r.sources[1], label, text: "Lieferschein bitte mitsenden.\n\nVon: Andere Person\nA/N 16164" };
+      const result = await analyzeProductionReview({ products: r.products, sources: [source], orderReference: "#NEONT4857", offerReference: "A/N 16164", requestId: r.requestId }, async (_url, init) => {
+        assert.equal(JSON.parse(JSON.parse(String(init?.body)).input).offerReference, "A/N 16164");
+        return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify({ threads: { t1: { relevance, reason: "Keine technischen Änderungen" } }, changes: [] }) }] }] });
+      });
+      assert.equal(result.threads[0].relevance, expected, label);
+      assert.equal(result.changes.some(c => c.id === "mail-delivery-note"), expected === "related", label);
+    }
+  } finally { if (old === undefined) delete process.env.OPS_OPENAI_API_KEY; else process.env.OPS_OPENAI_API_KEY = old; }
+});
+
+test("mixed-order citations become an open question while the explicit current delivery instruction survives", async () => {
+  const old = process.env.OPS_OPENAI_API_KEY; process.env.OPS_OPENAI_API_KEY = "fixture";
+  try {
+    const r = review();
+    const sources = [
+      { ...r.sources[1], label: "Eingang: A/N 16164", text: "Anbei der Lieferschein mit der Lieferadresse, bitte mitsenden." },
+      { ...r.sources[1], id: "mail:foreign", threadId: "foreign", label: "Eingang: A/N 11111", text: "Lieferschein bitte mitsenden." },
+    ];
+    const run = (value: string, current: boolean) => analyzeProductionReview({ products: r.products, sources, orderReference: "#NEONT4857", offerReference: current ? "A/N 16164" : null, requestId: r.requestId }, async (_url, init) => {
+      const foreign = JSON.parse(JSON.parse(String(init?.body)).input).snippets.find((s: {text: string}) => s.text === sources[1].text);
+      return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify({ threads: { t1: { relevance: "unrelated", reason: "Historisch" }, t2: { relevance: "unrelated", reason: "Andere Bestellung" } }, changes: [{ kind: "addition", productId: null, field: "Additional Information", value, reason: "Mitsenden", questionOnly: false, evidence: [foreign.id, ...(current ? [JSON.parse(JSON.parse(String(init?.body)).input).snippets.find((s: {text: string}) => s.text.startsWith('Anbei der Lieferschein')).id] : [])] }] }) }] }] });
+    });
+    const result = await run("Send delivery note with shipment.", true);
+    assert.equal(result.changes.filter(c => c.kind === "addition").length, 1);
+    assert.ok(result.changes.every(c => c.evidence.every(e => e.sourceId === sources[0].id)));
+    assert.ok(result.changes.some(c => c.questionOnly));
+    await assert.rejects(run("Send delivery note with shipment.", false), /nicht zugeordneten/);
+    const unsafe = await run("Send delivery note with shipment and change the address.", true);
+    assert.ok(unsafe.changes.some(c => c.questionOnly && /vermischt/.test(c.reason)));
+    assert.ok(unsafe.changes.every(c => !/change the address/.test(c.value)));
+  } finally { if (old === undefined) delete process.env.OPS_OPENAI_API_KEY; else process.env.OPS_OPENAI_API_KEY = old; }
+});
+
 test("order membership is independent of technical changes and uses exact subject references", async () => {
   const old = process.env.OPS_OPENAI_API_KEY; process.env.OPS_OPENAI_API_KEY = "fixture";
   try {

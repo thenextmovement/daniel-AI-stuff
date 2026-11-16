@@ -1027,6 +1027,25 @@ test("supplier production details keep all manufacturing options and remove non-
   assert.doesNotMatch(description, /Must not reach supplier|379|Hanging set|Height|Sonderangebot|Power plug/);
 });
 
+test("purchased mounting template survives production detail normalization without inventing optional accessories", () => {
+  for (const [description, expected] of [
+    ["Inklusive: Montageschablone", true],
+    ["Inklusive: Schrauben, Montageschablone", true],
+    ["Included: Mounting template", true],
+    ["Inklusive: keine Montageschablone", false],
+    ["Inklusive: Montageschablone optional", false],
+    ["Optional: Montageschablone", false],
+    ["Beschreibung: Montageschablone auf Anfrage", false],
+  ] as const) {
+    const board = buildSupplierSaleBoardFromRows([saleRow({ id: "sale-template" })], [itemRow({
+      sale_id: "sale-template", title: "3D Schild", product_type: "3D-Leuchtschild", raw_line_item: { description },
+    })]);
+    const item = board.items[0].items[0];
+    assert.equal(item.selectionDetails.includes("Included: Mounting template"), expected, description);
+    assert.equal(supplierProductionDescription([item]).includes("Included: Mounting template"), expected, description);
+  }
+});
+
 test("supplier production description supports normal offers and multiple products", () => {
   const board = buildSupplierSaleBoardFromRows(
     [saleRow({ id: "sale-normal-offer", source: "neontrip-offers" })],

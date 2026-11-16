@@ -64,9 +64,61 @@ export function validateReviewAnalysis(value: unknown, sources: ReviewSource[], 
     id: "unresolved-production-detail", kind: "conflict", questionOnly: true, productId: unresolved.productId,
     field: "Additional Information", value: "", reason: "Eine Produktionsangabe ist ausdrücklich noch ungeklärt. Bitte Ergebnis dokumentieren und die Vorschau bei Bedarf anpassen.", evidence: unresolved.evidence,
   });
-  preserveCardInstructions(parsed, sources, products);
   preserveLiteralMailCorrections(parsed, sources, products);
+  requireProductBinding(parsed, sources, products);
+  preserveCardInstructions(parsed, sources, products);
+  preserveDeliveryNoteInstruction(parsed, sources);
   return parsed;
+}
+
+/** A real quote proves the instruction, not which purchased image it belongs to.
+ * Only an accepted item's own source supplies a deterministic product binding.
+ * Mail/card enumeration order must never silently overwrite the image association.
+ */
+function requireProductBinding(analysis: ReviewAnalysis, sources: ReviewSource[], products: ReviewProduct[]) {
+  if (products.length < 2) return;
+  for (const change of analysis.changes) {
+    if (change.questionOnly || change.kind === "obsolete" || !change.productId) continue;
+    if (change.evidence.every(e => e.sourceId === `order:${change.productId}` && sources.some(s => s.id === e.sourceId && s.kind === "order"))) continue;
+    change.reason = `Produktzuordnung prüfen: „${change.value.slice(0,900)}“. Der Beleg verknüpft diese Angabe nicht eindeutig mit einer gekauften Position. Mit den gekauften Designs abgleichen und das Ergebnis dokumentieren.`;
+    change.productId = null;
+    change.kind = "conflict";
+    change.questionOnly = true;
+    change.field = "Additional Information";
+    change.value = "";
+  }
+}
+
+/** This fallback reads only the new message, never quoted history from other orders. */
+function currentMailText(text: string) {
+  return text.split(/^(?:\s*(?:Von|From|Gesendet|Sent):|\s*-{2,}\s*(?:Original|Ursprüngliche)|\s*On .+wrote:|\s*Am .+schrieb.+:|\s*>)/mi)[0];
+}
+
+/** Logistics needed on the production card must not disappear as "non-technical" mail.
+ * The actual attachment/address remains a human check; it is not read by this integration.
+ */
+function preserveDeliveryNoteInstruction(analysis: ReviewAnalysis, sources: ReviewSource[]) {
+  const relatedIncoming = sources.filter(s => s.kind === "mail" && /^Eingang:/.test(s.label)
+    && analysis.threads.some(t => t.id === s.threadId && t.relevance === "related"))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  const mention = relatedIncoming.flatMap(source => currentMailText(source.text).split(/\r?\n[ \t]*\r?\n/)
+    .filter(quote => /\b(?:lieferschein|delivery note)\b/i.test(quote)).map(quote => ({ source, quote: quote.trim() })))[0];
+  if (!mention || mention.quote.length > 5000) return;
+  const { source, quote } = mention;
+  const explicit = /\b(?:bitte|please)\b/i.test(quote) && /\b(?:mit\s*senden|bei\s*legen|bei\s*fügen|include|enclose)\b/i.test(quote)
+    && !/\?|\b(?:nicht|kein\w*|ohne|falls|wenn|not|no|without|if)\b/i.test(quote);
+  if (!explicit) return;
+  const isNote = (c: ReviewChange) => /\b(?:lieferschein|delivery note)\b/i.test(c.value + " " + c.reason);
+  if (!analysis.changes.some(c => !c.questionOnly && c.kind !== "obsolete" && isNote(c))) analysis.changes.push({
+    id: "mail-delivery-note", kind: "addition", productId: null, field: "Additional Information",
+    value: "Include the customer's delivery note with the shipment.",
+    reason: "Die Kundin bittet ausdrücklich darum, ihren Lieferschein mitzusenden.", evidence: [{ sourceId: source.id, quote }],
+  });
+  if (!analysis.changes.some(c => c.questionOnly && isNote(c))) analysis.changes.push({
+    id: "check-delivery-note", kind: "conflict", questionOnly: true, productId: null, field: "Additional Information", value: "",
+    reason: "Kunden-Lieferschein prüfen: richtigen Mailanhang und Lieferadresse abgleichen und das Ergebnis dokumentieren. Anhanginhalte wurden nicht automatisch gelesen.",
+    evidence: [{ sourceId: source.id, quote }],
+  });
 }
 
 /** A direct '"X" instead of "Y"' logo correction must not disappear when the model omits it. */
@@ -114,7 +166,7 @@ function preserveCardInstructions(analysis: ReviewAnalysis, sources: ReviewSourc
   const card = sources.find(s => s.kind === "card");
   if (!card) return;
   const lines = card.text.split("\n").map(original => ({ original: original.trim(), text: cleanCardLine(original) }));
-  const covered = (text: string) => analysis.changes.some(c => c.evidence.some(e => e.sourceId === card.id && normalize(cleanCardLine(e.quote)).includes(normalize(text))));
+  const covered = (text: string) => analysis.changes.some(c => !c.questionOnly && c.evidence.some(e => e.sourceId === card.id && normalize(cleanCardLine(e.quote)).includes(normalize(text))));
   if (products.length === 1) {
     for (const field of products[0].fields) {
       const line = lines.find(l => l.text.includes(":") && fieldKey(l.text.split(":")[0]) === fieldKey(field.label));
@@ -185,7 +237,7 @@ function compactEvidence(sources: ReviewSource[]) {
 
 /** One structured call; no tools, execution, hidden fallback, or model-authored citations. */
 export async function analyzeProductionReview(input: {
-  products: ReviewProduct[]; sources: ReviewSource[]; orderReference: string; requestId: string | null;
+  products: ReviewProduct[]; sources: ReviewSource[]; orderReference: string; requestId: string | null; offerReference?: string | null;
 }, fetcher: typeof fetch = fetch): Promise<ReviewAnalysis> {
   const key = String(process.env.OPS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "").trim();
   if (!key) throw new Error("Die vorhandene OpenAI-Anbindung ist nicht konfiguriert.");
@@ -213,7 +265,7 @@ export async function analyzeProductionReview(input: {
     },
   };
   const sourceText = JSON.stringify({
-    orderReference: input.orderReference, requestId: input.requestId,
+    orderReference: input.orderReference, offerReference: input.offerReference || null, requestId: input.requestId,
     products: input.products.map(({ title, orderTitle, quantity, fields }, i) => ({ id: `p${i + 1}`, title, orderTitle, quantity, fields })),
     sources: compactSources.map(s => ({ ...s, threadId: s.threadId ? Object.keys(threads).find(t => threads[t] === s.threadId) : undefined })),
     snippets: snippets.map(({ id, text }) => ({ id, text })),
@@ -236,11 +288,13 @@ export async function analyzeProductionReview(input: {
         "Überholte strukturierte Platzhalter wie As Logo/color as design/alte Größen werden bereits durch die bestellten Felder ersetzt und benötigen KEINEN change. Keine bloße Mitteilung, dass ein Logo angehängt ist. Konkrete Dateiwechsel oder ungeklärte Montage sind dagegen relevant. Teilkorrekturen an einem Logo-Claim gehören als genaue Anweisung in Additional Information; Text nur verwenden, wenn der gesamte bestellte Text ersetzt werden soll.",
         "Nur produktionsrelevante Ergänzungen und echte Widersprüche melden. Keine Wiederholungen bestellter Produkte, Zubehörmengen oder allgemeiner Geschäftsbedingungen. Automatische Rechnungs-/Versand-/Produktionsfreigabe-Mails ändern keine technischen Felder und erzeugen KEINEN change. Sets nicht eigenmächtig in Streifen umrechnen.",
         "Übernimm explizite Logo-/Textkorrekturen wortgetreu als zusätzliche Produktionsanweisung (z.B. gewünschte Satzzeichen oder Schreibweise), auch wenn die Datei nicht visuell gelesen wurde. Ungeprüfte Anhänge blockieren nicht die Übernahme des expliziten Mailtextes. Ein bestätigter Sonderhinweis wie Doppel-Linien-Ausführung bleibt als Anweisung erhalten; eine historische Anfrage nach Mindestgröße ist durch das spätere angenommene konkrete Maß beantwortet, sofern keine spätere gegenteilige Nachricht vorliegt.",
+        "Bei mehreren Produkten ist die Reihenfolge einer Mail-Aufzählung KEINE Zuordnung zu p1/p2. Die gekauften Bilder wurden von dir nicht gelesen. Wenn Texte oder Änderungen keinem bestellten Produkt eindeutig zugeordnet sind, stelle genau eine offene Zuordnungsfrage (questionOnly=true, productId=null, value leer) mit den zu prüfenden Wortlauten im reason; erfinde keine Position. Bereits gekaufte Bildzuordnungen bleiben unverändert.",
+        "Explizite Kundenanweisungen zum Mitsenden eines Lieferscheins sind relevant, auch ohne technische Produktänderung. Der einfache Hinweis zum Beilegen und die manuelle Prüfung von Anhang/Lieferadresse werden deterministisch aus zugeordneten Kundenmails ergänzt: dafür keinen doppelten change erzeugen. Weitergehende oder widersprüchliche Anweisungen weiterhin melden. Bestellte Montageschablonen stehen im Produktfeld Included und bleiben erhalten.",
         "CHECK INFO, UPDATE und Additional Information auch in Markdown vollständig erhalten. Gültige Sonderanweisungen als addition, überholte als obsolete. Spezifische Kabelposition, RAL-Farbe, Logo-Schreibweise und aktuelle EPS-/Montagehinweise beachten. Mehrere Hinweise zum selben Sachverhalt zusammenfassen.",
         "field/value Englisch, summary/reason Deutsch. Zusätzliche Anweisungen in Additional Information. productId nur aus products, null nur auftragsweit. Bestehende Feldnamen nutzen; Kabelausgang ist Cable Position. Produktmaße, Buchstaben-/Rückplattenmaße, Oberflächen-/Lichtfarbe nicht verwechseln.",
         "Bei Widerspruch kind=conflict und value nur der konkrete alternative Wert. Wenn nur eine offene Frage oder ein ungelesener Mailanhang vorliegt: questionOnly=true, value leer, field=Additional Information; Klärung im reason. Niemals eine Frage als Size oder Color eintragen. Bestätigte Ergänzungen questionOnly=false.",
         "Jeder value muss auf Englisch sein. Nur wörtliche Logotexte dürfen deutsch bleiben. Beschreibe ausschließlich die im zugehörigen Beleg enthaltene Anweisung; niemals weiteres Zubehör oder Leistungen hinzufügen. Keine Markdown-Überschriften in value.",
-        "evidence enthält ausschließlich passende Snippet-IDs, keine selbst geschriebenen Zitate. Konflikte nach Möglichkeit mit beiden Seiten belegen. Zahlen in value müssen in diesen Belegen stehen. Keine Datei-/Listenentscheidung und keine Freigabe erfinden.",
+        "evidence enthält ausschließlich passende Snippet-IDs, keine selbst geschriebenen Zitate. Jeder Mailbeleg muss mindestens eine source in einem von dir als related eingeordneten Thread haben. Gleichlautende Lieferschein- oder Textwünsche aus unrelated/uncertain Threads anderer Bestellungen sind KEINE zusätzlichen Belege. Konflikte nach Möglichkeit mit beiden Seiten belegen. Zahlen in value müssen in diesen Belegen stehen. Keine Datei-/Listenentscheidung und keine Freigabe erfinden.",
       ].join("\n"),
       input: sourceText, max_output_tokens: 9000,
       text: { format: { type: "json_schema", name: "supplier_production_review", strict: true, schema: responseSchema } },
@@ -267,16 +321,36 @@ export async function analyzeProductionReview(input: {
       ? `Der Betreff nennt #${orderNumber}; auch ohne technische Änderung gehört die Mail zum Auftrag.`
       : `Der Verlauf nennt #${orderNumber} und weitere Bestellnummern. Bitte die Zuordnung prüfen.`;
   }
+  // The accepted offer number is canonical, unlike a guessed link between mail texts.
+  // Its exact subject match keeps delivery instructions in the actual offer thread visible.
+  const offerNumber = /^A\s*\/\s*N\s*(\d+)$/i.exec(input.offerReference?.trim() || "")?.[1];
+  if (offerNumber) for (const thread of classified) {
+    if (thread.relevance !== "unrelated") continue;
+    const labels = input.sources.filter(s => s.kind === "mail" && s.threadId === thread.id).map(s => s.label);
+    const references = new Set(labels.flatMap(label => [...label.matchAll(/\bA\s*[/-]\s*N\s*[-:]?\s*(\d+)\b/gi)].map(m => m[1])));
+    if (!references.has(offerNumber)) continue;
+    const otherOrders = labels.some(label => [...label.matchAll(/\bNEONT\d+\b/gi)].some(m => m[0].toUpperCase() !== orderNumber));
+    thread.relevance = references.size === 1 && !otherOrders ? "related" : "uncertain";
+    thread.reason = thread.relevance === "related"
+      ? `Der Betreff nennt das angenommene Angebot A/N ${offerNumber}; der Verlauf gehört zum Auftrag.`
+      : `Der Verlauf nennt das angenommene Angebot A/N ${offerNumber} und weitere Referenzen. Bitte die Zuordnung prüfen.`;
+  }
+  const deliveryNotes: ReviewAnalysis = { summary: "Belegte Lieferschein-Anweisung", threads: classified, changes: [] };
+  preserveDeliveryNoteInstruction(deliveryNotes, input.sources);
   const converted = wire.changes.map((c, i): ReviewChange => {
     if (!fields.includes(c.field) || (c.productId !== null && !products[c.productId]) || typeof c.questionOnly !== "boolean" || !Array.isArray(c.evidence)) throw new Error("Ungültiger KI-Änderungsvorschlag.");
-    return { ...c, id: `change-${i + 1}`, productId: c.productId ? products[c.productId] : null,
-      evidence: c.evidence.map(id => {
-        const snippet = snippets.find(s => s.id === id);
-        const original = snippet?.originals.find(e => { const source = input.sources.find(s => s.id === e.sourceId)!; return !source.threadId || classified.find(t => t.id === source.threadId)?.relevance === "related"; });
-        if (!original) throw new Error("Ein KI-Beleg fehlt oder gehört zu einem nicht zugeordneten Mail-Thread.");
-        return original;
-      }),
+    const evidence = c.evidence.flatMap(id => {
+      const snippet = snippets.find(s => s.id === id);
+      if (!snippet) throw new Error("Ein KI-Beleg fehlt.");
+      const original = snippet.originals.find(e => { const source = input.sources.find(s => s.id === e.sourceId)!; return !source.threadId || classified.find(t => t.id === source.threadId)?.relevance === "related"; });
+      return original ? [original] : [];
+    });
+    if (!evidence.length) throw new Error("Ein KI-Beleg fehlt oder gehört zu einem nicht zugeordneten Mail-Thread.");
+    if (evidence.length !== c.evidence.length) return {
+      id: `change-${i + 1}`, productId: null, kind: "conflict", questionOnly: true, field: "Additional Information", value: "", evidence,
+      reason: "Die KI hat Auftragsbelege mit anderen oder ungeklärten Mailverläufen vermischt. Der Vorschlag wurde nicht übernommen. Zugehörige Originalangaben prüfen und das Ergebnis dokumentieren.",
     };
+    return { ...c, id: `change-${i + 1}`, productId: c.productId ? products[c.productId] : null, evidence };
   });
   for (const change of converted) {
     const issue = proposalValueIssue(change.value, change.evidence.map(e => e.quote));
@@ -285,7 +359,7 @@ export async function analyzeProductionReview(input: {
       change.reason = `${issue} Bitte die Originalangabe im Beleg prüfen und das Ergebnis dokumentieren.`;
     }
   }
-  const analysis = validateReviewAnalysis({ summary: "Vollständiger Quellenabgleich", changes: converted, threads: classified }, input.sources, input.products);
+  const analysis = validateReviewAnalysis({ summary: "Vollständiger Quellenabgleich", changes: [...converted, ...deliveryNotes.changes], threads: classified }, input.sources, input.products);
   const open = analysis.changes.filter(c => c.kind !== "addition" || c.questionOnly).length + analysis.threads.filter(t => t.relevance === "uncertain" && !analysis.changes.some(c => c.requiresThreadId === t.id)).length;
   analysis.summary = `${input.products.length} bestellte${input.products.length === 1 ? "s Produkt" : " Produkte"} vorbereitet. ${analysis.changes.filter(c => c.kind === "addition").length} belegte Hinweise übernommen. ${open ? `${open} inhaltliche Punkte benötigen eine Entscheidung.` : "Keine offenen inhaltlichen Widersprüche gefunden."}`;
   return analysis;
