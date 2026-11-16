@@ -28,6 +28,32 @@ Produktionslisten werden nicht erneut vorbereitet.
 
 ## Vorhandene Anbindungen
 
+### Korrekturen aus der angemeldeten Apel-Prüfung (16. November 2026)
+
+Die Mailzuordnung unterscheidet Auftragszugehörigkeit von technischen Änderungen.
+Eine als fremd eingestufte Rechnung/Auftragsbestätigung mit exakt der aktuellen
+NEONT-Nummer im Betreff wird dem Auftrag zugeordnet, auch ohne Änderungsvorschlag.
+Zitierte Mailtexte und ähnliche Nummern sind kein Zuordnungsbeleg. Enthalten die
+Betreffe eines Threads mehrere Bestellnummern, bleibt eine manuelle Entscheidung
+offen; vorhandene `uncertain`-Entscheidungen werden nicht automatisch aufgehoben.
+
+Die ältere Aktion „Approved Design pruefen“ und deren Upload verwenden ebenfalls
+die vorhandene exakte `Offer Item ID`-Zuordnung zum angenommenen Snapshot. Das
+gekaufte Bild ersetzt dort einen fehlenden/veralteten Import-Bildverweis. Fehlende,
+doppelte, entfernte Positionen, Mengenänderungen und fehlende gekaufte Bild-IDs
+blockieren weiterhin. Ohne Annahme-Positionen bleibt der bisherige manuelle
+Bildpfad erhalten. Datenbank-Positions-ID und Upload-Idempotenz bleiben unverändert.
+
+Verifiziert mit den am 16. November gelesenen Apel-Daten (#NEONT4849) und den fünf
+vollständigen Mailquellen des produktiven Prüfentwurfs: neuer KI-Aufruf, alle fünf
+Threads zugehörig, „Logo in double line“ erhalten, „Mockup6006.jpg“ in beiden
+Bildpfaden identisch. Vorbereitung 9,6 Sekunden im isolierten Replay; kein Benchmark
+der produktiven Graph-/Trello-Latenz. Nur `image.png` und `aoe.pdf` benötigen noch
+Dateientscheidungen. Provider-Schreibzugriffe wurden lokal abgefangen, keine
+Produktionsfreigabe ausgeführt. Dieser Korrekturkandidat ist noch nicht live.
+Gespeicherte ältere Entwürfe werden nicht rückwirkend geändert; nach einem
+freigegebenen Deployment lädt „Neu vorbereiten“ die aktuellen Quellen neu.
+
 - Graph verwendet microsoftGraphToken aus arrival-labels/clients. Ausschließlich
   support@neontrip.de, /users/{mailbox}/messages, vollständige Text-Bodies inklusive
   ausgehender Nachrichten. Teilnehmer-Suche plus bestehende Request-ID-Verknüpfungen,

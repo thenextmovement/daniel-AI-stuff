@@ -4998,17 +4998,17 @@ async function readExactQuentinCard(row: SupplierSaleRow) {
 
 function trelloDescriptionSnapshot(
   row: SupplierSaleRow,
-  items: SupplierSaleItem[],
+  items: SupplierSaleItemRow[],
   cardId: string,
   card: Awaited<ReturnType<typeof getTrelloCard>>,
 ): SupplierSaleTrelloDescriptionSnapshot {
-  const approvedDesignSelection = supplierApprovedDesignSelection(items);
+  const approvedDesignSelection = saleApprovedDesignSelection(row, items);
   return {
     cardId,
     cardUrl: `https://trello.com/c/${cardId}`,
     cardName: nullableText(card.name, 500),
     description: String(card.desc || ""),
-    suggestedPrependText: supplierProductionDescription(items, row.assignment_note),
+    suggestedPrependText: supplierProductionDescription(items.map(mapItem), row.assignment_note),
     approvedDesigns: approvedDesignSelection.designs,
     approvedDesignIssue: approvedDesignSelection.issue,
     fetchedAt: new Date().toISOString(),
@@ -5018,7 +5018,7 @@ function trelloDescriptionSnapshot(
 export async function readSupplierSaleTrelloDescription(saleId: string) {
   const row = await fetchSaleRowById(saleId);
   if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
-  const items = (await fetchItemsForSale(row.id)).map(mapItem);
+  const items = await fetchItemsForSale(row.id);
   const { cardId, card } = await readExactQuentinCard(row);
   return trelloDescriptionSnapshot(row, items, cardId, card);
 }
@@ -5026,7 +5026,7 @@ export async function readSupplierSaleTrelloDescription(saleId: string) {
 export async function lookupSupplierSaleTrelloDescription(saleId: string) {
   const row = await fetchSaleRowById(saleId);
   if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
-  const items = (await fetchItemsForSale(row.id)).map(mapItem);
+  const items = await fetchItemsForSale(row.id);
   const lookup = await lookupExactQuentinCard(row);
   if (lookup.cardId && lookup.card) {
     return {
@@ -5088,7 +5088,7 @@ export async function setSupplierSaleQuentinTrelloCard(
     ], 422);
   }
 
-  const items = (await fetchItemsForSale(row.id)).map(mapItem);
+  const items = await fetchItemsForSale(row.id);
   const previousCardId = trelloCardIdFromValue(row.supplier_trello_card_id);
   if (previousCardId === cardId) {
     return {
@@ -5143,7 +5143,7 @@ export async function prependSupplierSaleTrelloDescription(
 ) {
   const row = await fetchSaleRowById(input.saleId);
   if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
-  const items = (await fetchItemsForSale(row.id)).map(mapItem);
+  const items = await fetchItemsForSale(row.id);
 
   // Trello is deliberately re-read immediately before every write. The latest
   // existing description is always appended unchanged behind the new block.
@@ -5212,8 +5212,8 @@ export async function uploadSupplierSaleApprovedDesign(
     ], 409);
   }
 
-  const items = (await fetchItemsForSale(row.id)).map(mapItem);
-  const selection = supplierApprovedDesignSelection(items);
+  const items = await fetchItemsForSale(row.id);
+  const selection = saleApprovedDesignSelection(row, items);
   if (selection.issue || !selection.designs.length) {
     throw new QuoteValidationError("Approved Design ist nicht eindeutig zugeordnet.", [
       selection.issue || "Kein geeignetes Produktbild gefunden.",
@@ -5547,6 +5547,22 @@ function safeApprovedDesignUrl(value: unknown) {
     return url.toString();
   } catch {
     return null;
+  }
+}
+
+/** Preview and upload share the accepted item/image mapping used by the review. */
+function saleApprovedDesignSelection(row: SupplierSaleRow, items: SupplierSaleItemRow[]): SupplierSaleApprovedDesignSelection {
+  if (!arrayRecords(row.offer_snapshot.lineItems).length) return supplierApprovedDesignSelection(items.map(mapItem));
+  try {
+    const accepted = productionReviewItems(row.offer_snapshot, items);
+    return supplierApprovedDesignSelection(accepted.map((item, index) => {
+      const imageUrl = safeApprovedDesignUrl(item.raw_line_item.purchasedImageUrl || item.raw_line_item.imageUrl);
+      return { ...mapItem(item), id: items[index].id, imageUrl,
+        imageIsItemSpecific: Boolean(item.raw_line_item.purchasedImageId && imageUrl) };
+    }));
+  } catch (error) {
+    if (error instanceof QuoteValidationError) return { designs: [], issue: error.message };
+    throw error;
   }
 }
 

@@ -230,6 +230,7 @@ export async function analyzeProductionReview(input: {
         "Bestellte Produkte und Felder sind die Grundlage. Die Quellen enthalten vollständige Mailtexte als deduplizierte Zeilen (snippets). Die Zuordnung jeder Zeile zu Nachrichten, Richtung, Datum und Thread bleibt erhalten. Wiederholungen aus zitiertem Verlauf sind keine neuen Kundenwünsche.",
         "Ordne JEDEN Thread zu. Frühere Angebotsnummern können zum selben Projekt gehören. Ein Thread kann zunächst ein altes geliefertes Logo und DANACH eine neue Bestellung behandeln. Lies den Inhalt: ein anderer Betreff oder ein altes Produkt am Anfang macht spätere Anweisungen zum aktuellen Logo NICHT irrelevant. Aktuelle Produktnamen stehen auch in order-Quellen.",
         "Eigenständige Rechnung/Proforma/Auftragsbestätigung mit einer anderen Bestellnummer ohne technische Änderungsanweisung ist unrelated, nicht uncertain. Dasselbe gilt für rein logistische Nachfragen zu einem ausdrücklich anderen, schon gelieferten Logo.",
+        "Projektzuordnung und technische Änderungen sind getrennt: Rechnung oder Auftragsbestätigung zur AKTUELLEN Bestellnummer ist related, auch ohne technische Änderungen. Ein zugehöriger Thread darf keine changes haben.",
         "Bei unbewiesener Projektzuordnung uncertain. Nur belegte Anweisungen verwenden, keine Fragen als bestätigte Änderungen. Ein älterer Wunsch nach Mindestgröße ist kein Konflikt zur später angenommenen konkreten Größe. Alte Platzhalter wie As Logo, Color as design, Smallest size sind keine gegenteilige Bestellung.",
         "Antworte knapp: reason pro Thread höchstens ein kurzer Satz zur Projektzuordnung, reason pro Änderung höchstens zwei kurze Sätze. Keine Quellen-ID-Listen in reason. Nicht über Preise, Zahlung oder Freigabe berichten.",
         "Überholte strukturierte Platzhalter wie As Logo/color as design/alte Größen werden bereits durch die bestellten Felder ersetzt und benötigen KEINEN change. Keine bloße Mitteilung, dass ein Logo angehängt ist. Konkrete Dateiwechsel oder ungeklärte Montage sind dagegen relevant. Teilkorrekturen an einem Logo-Claim gehören als genaue Anweisung in Additional Information; Text nur verwenden, wenn der gesamte bestellte Text ersetzt werden soll.",
@@ -253,6 +254,19 @@ export async function analyzeProductionReview(input: {
   const wire = JSON.parse(raw) as { summary: string; threads: Record<string, { relevance: "related" | "unrelated" | "uncertain"; reason: string }>; changes: Array<Omit<ReviewChange, "id" | "evidence"> & { evidence: string[] }> };
   if (!wire.threads || Object.keys(wire.threads).length !== threadIds.length || Object.keys(threads).some(id => !wire.threads[id]) || !Array.isArray(wire.changes)) throw new Error("Die KI hat nicht alle Mail-Threads zugeordnet.");
   const classified = Object.entries(threads).map(([short, id]) => ({ ...wire.threads[short], id }));
+  // Subject references establish order membership, not a production change. Do not
+  // use quoted body history or prefix matches as proof of the current order.
+  const orderNumber = /^#?(NEONT\d+)$/i.exec(input.orderReference.trim())?.[1].toUpperCase();
+  if (orderNumber) for (const thread of classified) {
+    if (thread.relevance !== "unrelated") continue;
+    const references = new Set(input.sources.filter(s => s.kind === "mail" && s.threadId === thread.id)
+      .flatMap(s => [...s.label.matchAll(/\bNEONT\d+\b/gi)].map(m => m[0].toUpperCase())));
+    if (!references.has(orderNumber)) continue;
+    thread.relevance = references.size === 1 ? "related" : "uncertain";
+    thread.reason = references.size === 1
+      ? `Der Betreff nennt #${orderNumber}; auch ohne technische Änderung gehört die Mail zum Auftrag.`
+      : `Der Verlauf nennt #${orderNumber} und weitere Bestellnummern. Bitte die Zuordnung prüfen.`;
+  }
   const converted = wire.changes.map((c, i): ReviewChange => {
     if (!fields.includes(c.field) || (c.productId !== null && !products[c.productId]) || typeof c.questionOnly !== "boolean" || !Array.isArray(c.evidence)) throw new Error("Ungültiger KI-Änderungsvorschlag.");
     return { ...c, id: `change-${i + 1}`, productId: c.productId ? products[c.productId] : null,

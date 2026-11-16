@@ -1406,6 +1406,76 @@ test("approved design upload targets only the verified Quentin card and is idemp
   assert.equal(currentRow.metadata.approved_design_card_id, cardId);
 });
 
+test("approved design preview and upload resolve the accepted image by Offer Item ID", async () => {
+  const cardId = "abcdef1234567890abcdef12";
+  let row = saleRow({ id: "accepted-design", supplier_trello_card_id: cardId,
+    offer_snapshot: { lineItems: [{ id: "offer-item", quantity: 1, purchasedImageId: "bought-image", purchasedImageUrl: "https://cdn.test/accepted.png" }] } });
+  const item = itemRow({ id: "reimported-row", sale_id: row.id, line_item_key: "shopify-line", title: "Purchased LED Neon Design",
+    image_url: "https://cdn.test/stale.png", raw_line_item: { properties: [{ name: "Offer Item ID", value: "offer-item" }] } });
+  const attachments: Array<Record<string, unknown>> = [];
+  let uploads = 0;
+  await withMockedAssignmentFetch(async (url, init) => {
+    const method = String(init?.method || "GET");
+    if (url.hostname === "api.trello.com") {
+      if (url.pathname.endsWith("/customFields")) return Response.json([]);
+      if (url.pathname.endsWith("/attachments") && method === "POST") {
+        assert.equal(url.searchParams.get("url"), "https://cdn.test/accepted.png");
+        const attachment = { id: `attachment-${++uploads}`, name: url.searchParams.get("name"), url: url.searchParams.get("url"), previews: [] };
+        attachments.push(attachment); return Response.json(attachment);
+      }
+      assert.equal(method, "GET");
+      return Response.json({ id: cardId, idBoard: QUENTIN_REVIEW_BOARD, name: "Order", desc: "Keep note", customFieldItems: [], attachments, actions: [] });
+    }
+    assert.equal(url.origin, "https://supabase.test");
+    if (url.pathname.endsWith("/supplier_sales") && method === "GET") return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sale_items")) return Response.json([item]);
+    if (url.pathname.endsWith("/supplier_sales") && method === "PATCH") { row = { ...row, ...JSON.parse(String(init?.body)) }; return Response.json([row]); }
+    return Response.json([]);
+  }, async () => {
+    const preview = await readSupplierSaleTrelloDescription(row.id);
+    assert.equal(preview.approvedDesignIssue, null);
+    assert.equal(preview.approvedDesigns[0].imageUrl, "https://cdn.test/accepted.png");
+    assert.equal(preview.approvedDesigns[0].itemId, "reimported-row");
+    assert.equal(preview.approvedDesigns[0].lineItemKey, "shopify-line");
+    assert.equal(uploads, 0, "preview is read only");
+    assert.equal((await uploadSupplierSaleApprovedDesign({ saleId: row.id })).approvedDesignUpload.uploaded, 1);
+    assert.equal((await uploadSupplierSaleApprovedDesign({ saleId: row.id })).approvedDesignUpload.alreadyPresent, 1);
+  });
+  assert.equal(uploads, 1);
+});
+
+test("accepted design mismatches block both preview selection and upload before any Trello write", async () => {
+  const accepted = { id: "offer-item", quantity: 1, purchasedImageId: "bought-image", purchasedImageUrl: "https://cdn.test/accepted.png" };
+  for (const lineItems of [
+    [{ ...accepted, purchasedImageId: null }],
+    [{ ...accepted, quantity: 2 }],
+    [accepted, accepted],
+    [accepted, { ...accepted, id: "removed-item" }],
+    [{ ...accepted, id: "other-item" }],
+  ]) {
+    const row = saleRow({ id: "invalid-accepted-design", supplier_trello_card_id: "abcdef1234567890abcdef12", offer_snapshot: { lineItems } });
+    let trelloReads = 0;
+    await withMockedAssignmentFetch(async (url, init) => {
+      assert.equal(init?.method || "GET", "GET", "no external write on invalid mapping");
+      if (url.hostname === "api.trello.com") {
+        trelloReads++;
+        if (url.pathname.endsWith("/customFields")) return Response.json([]);
+        return Response.json({ id: row.supplier_trello_card_id, idBoard: QUENTIN_REVIEW_BOARD, name: "Order", desc: "", customFieldItems: [], attachments: [], actions: [] });
+      }
+      if (url.pathname.endsWith("/supplier_sales")) return Response.json([row]);
+      if (url.pathname.endsWith("/supplier_sale_items")) return Response.json([itemRow({ raw_line_item: { properties: [{ name: "Offer Item ID", value: "offer-item" }] } })]);
+      return Response.json([]);
+    }, async () => {
+      const preview = await readSupplierSaleTrelloDescription(row.id);
+      assert.ok(preview.approvedDesignIssue);
+      assert.deepEqual(preview.approvedDesigns, []);
+      const readsBeforeUpload = trelloReads;
+      await assert.rejects(uploadSupplierSaleApprovedDesign({ saleId: row.id }), /nicht eindeutig zugeordnet/);
+      assert.equal(trelloReads, readsBeforeUpload, "invalid upload stops before Trello access");
+    });
+  }
+});
+
 test("approved design upload stops before Trello access when the product image is missing", async () => {
   const row = saleRow({ id: "sale-approved-design-missing", supplier_trello_card_id: "abcdef1234567890abcdef12" });
   let trelloRequestCount = 0;

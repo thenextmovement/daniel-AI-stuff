@@ -126,6 +126,30 @@ test("one structured AI request excludes purchased-image tokens and source links
   } finally { if (old === undefined) delete process.env.OPS_OPENAI_API_KEY; else process.env.OPS_OPENAI_API_KEY = old; }
 });
 
+test("order membership is independent of technical changes and uses exact subject references", async () => {
+  const old = process.env.OPS_OPENAI_API_KEY; process.env.OPS_OPENAI_API_KEY = "fixture";
+  try {
+    for (const [label, extraLabel, modelRelevance, expected] of [
+      ["Ausgang: Rechnung #NEONT4849 – NEONTRIP", "", "unrelated", "related"],
+      ["Ausgang: Auftragsbestätigung und Rechnung #neont4849", "", "unrelated", "related"],
+      ["Ausgang: Rechnung #NEONT48490", "", "unrelated", "unrelated"],
+      ["Ausgang: Rechnung #NEONT4839", "", "unrelated", "unrelated"],
+      ["Ausgang: Rechnung", "", "unrelated", "unrelated"],
+      ["Ausgang: Rechnung #NEONT4849 / #NEONT4839", "", "unrelated", "uncertain"],
+      ["Ausgang: Rechnung #NEONT4849", "Eingang: Rechnung #NEONT4839", "unrelated", "uncertain"],
+      ["Ausgang: Rechnung #NEONT4849", "", "uncertain", "uncertain"],
+    ]) {
+      const r = review();
+      const source = { ...r.sources[1], label, text: "Rechnungsversand. Zitierter Verlauf: #NEONT4849." };
+      const sources = [source, ...(extraLabel ? [{ ...source, id: "mail:second", label: extraLabel }] : [])];
+      const result = await analyzeProductionReview({ products: r.products, sources, orderReference: "#NEONT4849", requestId: r.requestId }, async () =>
+        Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify({ threads: { t1: { relevance: modelRelevance, reason: "Keine technischen Änderungen." } }, changes: [] }) }] }] }));
+      assert.equal(result.threads[0].relevance, expected, label + extraLabel);
+      assert.deepEqual(result.changes, [], "order membership must not invent technical changes");
+    }
+  } finally { if (old === undefined) delete process.env.OPS_OPENAI_API_KEY; else process.env.OPS_OPENAI_API_KEY = old; }
+});
+
 test("release occurs only after verified backup, content, Shopify and fresh mail; cover matches purchased image", async () => {
   const r = review(), h = harness(r);
   await executeProductionHandoff(r, approved(r), h.state, h.deps);
