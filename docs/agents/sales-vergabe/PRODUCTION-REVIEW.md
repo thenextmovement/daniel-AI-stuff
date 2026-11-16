@@ -28,6 +28,35 @@ Produktionslisten werden nicht erneut vorbereitet.
 
 ## Vorhandene Anbindungen
 
+### Zahlungsstatus beim Angebots-Replay (16. November 2026)
+
+Ursache der vorübergehenden falschen Apel-Zahlungswarnung: Der bestehende
+Completed-Offers-Abgleich importiert zuerst den Annahme-Snapshot und liest erst
+danach aktuelle Shopify-Bestellungen. Ein Snapshot ohne Zahlungsangabe setzte
+bereits verknüpfte Sales zwischenzeitlich von `paid / paid_confirmed` auf
+`unknown / pending`. Die anschließende Shopify-Phase reparierte den Stand; eine
+inzwischen geladene Übersicht behielt die falsche Anzeige bis zum nächsten Lesen.
+
+Am natürlichen Lauf `12217608` von Workflow `xFQTm4E7qw38C9cF` wurde dies rein
+lesend nachgewiesen: Apel war um 09:14:03 UTC bezahlt, ab dem Write um 09:14:11.580
+UTC unbekannt und ab 09:14:49.335 UTC wieder bezahlt. `raw_shopify.financial_status`
+blieb währenddessen durchgehend `paid`. Der aktive veröffentlichte Workflow
+(`bcdd0785-7beb-440c-b060-4d6f6f7b9304`) wurde weder geändert noch manuell ausgeführt.
+
+Der lokale Korrekturkandidat erhält beim `offer.completed`-Import für bereits mit
+einer Shopify-Order verknüpfte Sales den vorhandenen Zahlungsstatus und die
+Zahlungsentscheidung. Neue/unverknüpfte Angebote behalten ihr bisheriges Verhalten.
+Aktuelle Shopify-Imports dürfen weiterhin Zahlungen, Rückerstattungen und Stornos
+übernehmen; eine bekannte Zahlung wird nicht dauerhaft festgeschrieben. Der
+bestehende `updated_at`-Vergleich schützt weiter gegen konkurrierende Writes.
+
+Mit den echten Apel-Annahmedaten isoliert wiederholt: alter Code schreibt
+`unknown / pending`, Kandidat bleibt bei `paid / paid_confirmed`, auch ohne
+anschließende Shopify-Reparatur. Eine simulierte neue Shopify-Erstattung setzt
+weiterhin `refunded / refunded` und `canceled`. Keine echte Zahlung, Vergabe,
+Trello-Karte oder Nachricht wurde im Test verändert. Dieser Zahlungs-Kandidat
+ist noch nicht veröffentlicht; eine neue exakte Commit-Freigabe ist erforderlich.
+
 ### Korrekturen aus der angemeldeten Apel-Prüfung (16. November 2026)
 
 Die Mailzuordnung unterscheidet Auftragszugehörigkeit von technischen Änderungen.

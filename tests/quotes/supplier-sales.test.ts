@@ -3058,6 +3058,69 @@ test("supplier payment reminder duplicate reservation does not resend webhook", 
   assert.equal(supplierSalePatchCount, 0);
 });
 
+test("offer replays preserve the linked Shopify payment state while Shopify updates remain authoritative", async () => {
+  const cases: Array<{
+    source: "neontrip-offers" | "shopify";
+    linked: boolean;
+    current: SupplierSaleRow["shopify_payment_status"];
+    decision: SupplierSaleRow["payment_decision_status"];
+    incoming: SupplierSaleRow["shopify_payment_status"];
+    expected: SupplierSaleRow["shopify_payment_status"];
+    expectedDecision: SupplierSaleRow["payment_decision_status"];
+  }> = [
+    { source: "neontrip-offers", linked: true, current: "paid", decision: "paid_confirmed", incoming: "unknown", expected: "paid", expectedDecision: "paid_confirmed" },
+    { source: "neontrip-offers", linked: true, current: "paid", decision: "paid_confirmed", incoming: "pending", expected: "paid", expectedDecision: "paid_confirmed" },
+    { source: "neontrip-offers", linked: true, current: "refunded", decision: "refunded", incoming: "paid", expected: "refunded", expectedDecision: "refunded" },
+    { source: "neontrip-offers", linked: true, current: "partially_refunded", decision: "refunded", incoming: "unknown", expected: "partially_refunded", expectedDecision: "refunded" },
+    { source: "neontrip-offers", linked: true, current: "voided", decision: "canceled", incoming: "unknown", expected: "voided", expectedDecision: "canceled" },
+    { source: "neontrip-offers", linked: true, current: "pending", decision: "manual_approved_unpaid", incoming: "unknown", expected: "pending", expectedDecision: "manual_approved_unpaid" },
+    { source: "neontrip-offers", linked: true, current: "pending", decision: "wait_for_payment", incoming: "paid", expected: "pending", expectedDecision: "wait_for_payment" },
+    { source: "neontrip-offers", linked: true, current: "unknown", decision: "pending", incoming: "unknown", expected: "unknown", expectedDecision: "pending" },
+    { source: "neontrip-offers", linked: false, current: "unknown", decision: "pending", incoming: "unknown", expected: "unknown", expectedDecision: "pending" },
+    { source: "shopify", linked: true, current: "paid", decision: "paid_confirmed", incoming: "refunded", expected: "refunded", expectedDecision: "refunded" },
+    { source: "shopify", linked: true, current: "paid", decision: "paid_confirmed", incoming: "partially_refunded", expected: "partially_refunded", expectedDecision: "refunded" },
+    { source: "shopify", linked: true, current: "paid", decision: "paid_confirmed", incoming: "voided", expected: "voided", expectedDecision: "canceled" },
+    { source: "shopify", linked: true, current: "paid", decision: "paid_confirmed", incoming: "pending", expected: "pending", expectedDecision: "pending" },
+    { source: "shopify", linked: true, current: "pending", decision: "pending", incoming: "paid", expected: "paid", expectedDecision: "paid_confirmed" },
+  ];
+  for (const scenario of cases) {
+    let row = saleRow({ source: "neontrip-offers", shopify_order_id: scenario.linked ? "1001" : null,
+      shopify_payment_status: scenario.current, payment_decision_status: scenario.decision,
+      raw_shopify: scenario.linked ? { id: "1001", financial_status: scenario.current } : {} });
+    const originalMetadata = row.metadata;
+    const paymentWrites: Array<[string, string]> = [];
+    await withMockedAssignmentFetch(async (url, init) => {
+      assert.equal(url.origin, "https://supabase.test", "no customer, supplier or workflow side effects");
+      const method = init?.method || "GET";
+      if (url.pathname.endsWith("/supplier_sales")) {
+        if (method === "GET") return Response.json([row]);
+        assert.equal(method, "PATCH", "an offer replay must not create a new sale");
+        assert.equal(url.searchParams.get("updated_at"), `eq.${row.updated_at}`);
+        const patch = JSON.parse(String(init?.body));
+        if (patch.shopify_payment_status) paymentWrites.push([patch.shopify_payment_status, patch.payment_decision_status]);
+        row = { ...row, ...patch }; return Response.json([row]);
+      }
+      if (url.pathname.endsWith("/supplier_sale_items") && method === "POST") return Response.json([itemRow({ sale_id: row.id })]);
+      return Response.json([]);
+    }, async () => {
+      delete process.env.TRELLO_API_KEY;
+      process.env.SUPPLIER_ASSIGNMENT_TASKS_ENABLED = "false";
+      const parsed = scenario.source === "neontrip-offers"
+        ? buildSupplierSaleInputFromPayload({ source: scenario.source, event: "offer.completed", offer: { id: row.offer_id }, financialStatus: scenario.incoming,
+          lineItems: [{ id: "item-1", title: "LED Neon Logo", quantity: 1 }], totals: { totalGross: 1190 } })
+        : buildSupplierSaleInputFromPayload({ id: "1001", financial_status: scenario.incoming, line_items: [{ id: "item-1", title: "LED Neon Logo", quantity: 1 }] });
+      const sale = await upsertSupplierSale(parsed.sale);
+      assert.deepEqual(paymentWrites, [[scenario.expected, scenario.expectedDecision]], JSON.stringify(scenario));
+      assert.equal(sale.shopifyPaymentStatus, scenario.expected);
+      assert.equal(sale.paymentDecisionStatus, scenario.expectedDecision);
+      assert.equal(sale.assignedSupplier, null);
+      assert.equal(row.shopify_tag_sync_status, "not_started");
+      assert.equal(row.metadata.production_handoff, originalMetadata.production_handoff);
+      if (scenario.expectedDecision === "refunded" || scenario.expectedDecision === "canceled") assert.equal(sale.assignmentStatus, "canceled");
+    });
+  }
+});
+
 test("completed offers pull imports offer.completed payloads idempotently", async () => {
   let offersFeedCount = 0;
   let salePostCount = 0;

@@ -3356,10 +3356,13 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
     nullableText(existing?.metadata?.shopify_cancel_reason, 120) ||
     existingCancellation.cancelReason;
   const shopifyCanceled = Boolean(shopifyCancelledAt || shopifyCancelReason);
-  const paymentStatus = normalizeShopifyPaymentStatus(input.shopifyPaymentStatus);
+  // A completed offer is an acceptance snapshot, not fresh payment evidence.
+  // Once linked, only Shopify reconciliation may replace that order's status.
+  const preserveShopifyPayment = completedOfferSource && Boolean(existing?.shopify_order_id);
+  const paymentStatus = preserveShopifyPayment ? existing!.shopify_payment_status : normalizeShopifyPaymentStatus(input.shopifyPaymentStatus);
   const paymentDecision = shopifyCanceled
     ? "canceled"
-    : derivePaymentDecisionStatus(paymentStatus, existing?.payment_decision_status);
+    : preserveShopifyPayment ? existing!.payment_decision_status : derivePaymentDecisionStatus(paymentStatus, existing?.payment_decision_status);
   const taggedSupplier = assignedSupplierFromShopifyTags(input);
   const assignedSupplier = existing?.assigned_supplier || taggedSupplier || null;
   const detectedTagValue = taggedSupplier ? supplierTagValue(taggedSupplier) : null;
