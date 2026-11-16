@@ -7979,6 +7979,7 @@
       "method": "GET",
       "pathParameters": [],
       "queryParameters": [
+        "channel",
         "customerId",
         "directory",
         "history",
@@ -9673,7 +9674,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/context/route.ts",
-      "sha256": "943a4c3ec3f7dfb46511be9a9923b0753c7c388a8e0e5876867f20f4422663da",
+      "sha256": "9d6322cd68bf6b04cf6b8144a5410e5f98dee2ac7d5265e7e2de2f83d836d18e",
       "methods": [
         "GET"
       ],
