@@ -31,9 +31,13 @@ node('Zeitplan','scheduleTrigger',1.2,{rule:{interval:[{field:'minutes',minutesI
 post('Reservieren',rpc+'claim_voice_placetel_recording','{}',header,db,{response:{response:{fullResponse:true}}});
 code('Auftrag prüfen',"const b=$json.body;if(!b) return [];if(b.expired_reservation===true && b.session_id && b.notify===true && b.status==='rejected') return [{json:b}];if(!b.session_id||!b.lease_id||!b.phone||!b.dialed_at) throw Error('Ungültiger OPS-Auftrag');return [{json:b}];");
 gate('Wahlauftrag abgelaufen',"={{ $json.expired_reservation === true }}");
+node('Mitarbeiterzuordnung','httpRequest',4.2,{url:'https://klibiejfisijpagzkxls.supabase.co/rest/v1/voice_placetel_calls',...header,sendQuery:true,
+ queryParameters:{parameters:[{name:'select',value:'voice_staff!inner(placetel_target_id,placetel_employee_id,extension)'},
+ {name:'session_id',value:"={{ 'eq.' + $json.session_id }}"}]},options:full},db);
+node('Anschluss abfragen','httpRequest',4.2,{url:"={{ 'https://api.placetel.de/v2/sip_users/' + (/^[1-9][0-9]*$/.test($json.body?.[0]?.voice_staff?.placetel_target_id) ? $json.body[0].voice_staff.placetel_target_id : '0') }}",...header,options:full},phone);
 node('Aufnahmen abfragen','httpRequest',4.2,{url:'https://api.placetel.de/v2/recordings',...header,sendQuery:true,
- queryParameters:{parameters:[{name:'filter[to]',value:'={{ $json.phone }}'},{name:'per_page',value:'100'},{name:'order',value:'desc'}]},options:full},phone);
-code('Zuordnung',matchRecording.toString()+"\nreturn [{json:matchRecording($('Auftrag prüfen').first().json,$json)}];");
+ queryParameters:{parameters:[{name:'filter[to]',value:"={{ $('Auftrag prüfen').first().json.phone.replace(/^[+]49/, '0') }}"},{name:'per_page',value:'100'},{name:'order',value:'desc'}]},options:full},phone);
+code('Zuordnung',matchRecording.toString()+"\nreturn [{json:matchRecording($('Auftrag prüfen').first().json,$json,$('Mitarbeiterzuordnung').first().json,$('Anschluss abfragen').first().json)}];");
 gate('Genau eine Aufnahme',"={{ $json.outcome === 'found' }}");
 node('Audio laden','httpRequest',4.2,{url:'={{ $json.url }}',options:{redirect:{redirect:{followRedirects:false}},
   response:{response:{responseFormat:'file',outputPropertyName:'data',fullResponse:true,neverError:true}},timeout:120000}});
@@ -44,6 +48,11 @@ if(data.length<128 || data.length>25*1024*1024) return [{json:{outcome:'failed'}
 const magic=data.toString('ascii',0,12);
 const audio=magic.startsWith('ID3')||(data[0]===255 && (data[1]&224)===224)||magic.startsWith('RIFF')||magic.includes('ftyp')||magic.startsWith('OggS')||magic.startsWith('fLaC')||data.readUInt32BE(0)===0x1a45dfa3;
 if(!audio) return [{json:{outcome:'failed'}}];
+if(magic.startsWith('ID3')||(data[0]===255 && (data[1]&224)===224)){
+  item.binary.data.fileName='recording.mp3';
+  item.binary.data.mimeType='audio/mpeg';
+  item.binary.data.fileExtension='mp3';
+}
 return [{json:{outcome:'audio'},binary:item.binary}];`);
 gate('Audio verfügbar',"={{ $json.outcome === 'audio' }}");
 node('Transkribieren','httpRequest',4.2,{method:'POST',url:'https://api.openai.com/v1/audio/transcriptions',...ai,
@@ -64,6 +73,8 @@ gate('Interner Hinweis',"={{ $json.notify === true }}");
 node('Support informieren','microsoftOutlook',2,{resource:'message',operation:'send',toRecipients:'support@neontrip.de',
  subject:'OPS – Placetel-Gesprächsdokumentation prüfen',bodyContent:"={{ 'Hallo Team,\\n\\n'+($json.status==='rejected'?'der Placetel-Wahlauftrag ist abgelaufen, bevor eine Wahl bestätigt wurde. Bitte prüft die Verbindung der Telefonzentrale zur Wahlsteuerung.':'OPS konnte die Placetel-Gesprächsdokumentation nicht vollständig bestätigen. Status: '+$json.status+'. Bitte prüft die Aufzeichnungsfreigabe und den Verarbeitungsstatus in der Telefonzentrale.')+'\\n\\nNEONTRIP OPS' }}",additionalFields:{}},outlook);
 for(const [a,b] of [['Zeitplan','Reservieren'],['Reservieren','Auftrag prüfen'],['Auftrag prüfen','Wahlauftrag abgelaufen'],['Wahlauftrag abgelaufen','Interner Hinweis'],['Aufnahmen abfragen','Zuordnung'],['Zuordnung','Genau eine Aufnahme'],['Genau eine Aufnahme','Audio laden'],['Audio laden','Audiodatei prüfen'],['Audiodatei prüfen','Audio verfügbar'],['Audio verfügbar','Transkribieren'],['Transkribieren','Sprecher prüfen'],['Sprecher prüfen','Transkript vorhanden'],['Transkript vorhanden','Kurzfassung'],['Kurzfassung','Ergebnis aufbereiten'],['Ergebnis aufbereiten','In OPS abschließen'],['In OPS abschließen','Interner Hinweis'],['Interner Hinweis','Support informieren']]) link(a,b);
-link('Wahlauftrag abgelaufen','Aufnahmen abfragen',1);
+link('Wahlauftrag abgelaufen','Mitarbeiterzuordnung',1);
+link('Mitarbeiterzuordnung','Anschluss abfragen');
+link('Anschluss abfragen','Aufnahmen abfragen');
 for (const name of ['Genau eine Aufnahme','Audio verfügbar','Transkript vorhanden']) link(name,'In OPS abschließen',1);
 export const workflow={name:'OPS – Placetel-Mitarbeitergespräche nachbereiten',nodes,connections,settings:{executionOrder:'v1',timezone:'Europe/Berlin',executionTimeout:900,saveDataSuccessExecution:'none',saveDataErrorExecution:'none',saveManualExecutions:false,saveExecutionProgress:false,errorWorkflow:'M4uG1HAtN9Zggxww'}};
