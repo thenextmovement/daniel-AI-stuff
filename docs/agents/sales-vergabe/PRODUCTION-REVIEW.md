@@ -1,10 +1,47 @@
 # KI-vorbereitete Produktionsvergabe
 
-Zuletzt am 2026-11-16 produktiv verifiziert: `03888746bfb99b10735b15b824fd570cbf909e59`,
-einschließlich der unten dokumentierten Mail-, Produkt-, Lieferschein- und Rückplattenkorrekturen.
+Zuletzt am 2026-11-17 produktiv verifiziert: `1d19264cfa6c5f088b858a368f04cc59d706749b`,
+einschließlich UPDATE NEW SIZE; neue interne Prüfentwürfe für Amazon und Kinderarztpraxis,
+keine Produktionsfreigabe.
 NEONTRIP, Quentin-Board 62bae9b97705e7419ed64593.
 Veröffentlichung benötigt die exakte saubere Commit-SHA. Ältere Abschnitte dokumentieren
 den damaligen Prüf-/Veröffentlichungsstand.
+
+## Englische Produkttext-Zuordnungsfrage (2026-11-17, noch nicht veröffentlicht)
+
+Ziel: Die beobachteten Amazon-Fragen „which text belongs to which product“ und
+„Which product uses the text …“ sollen dieselbe vorhandene Designbestätigung
+anbieten wie deutsche Fragen. Ursache war die nur deutsche Produkterkennung
+in designMappingQuestions; außerdem fehlte das englische Fragewort.
+Der bestehende Filter erkennt nun zusätzlich product/products und which.
+Weder Prompt noch Modell, Datenbankschema oder Produktionsablauf werden geändert.
+
+Die Mitarbeiterin vergleicht weiterhin Produktnummer, Größe und gekauftes Bild
+und klickt „Nach gekauften Designs produzieren“. Die bestehende Funktion
+dokumentiert die Bildnamen und Bestellmaße und verwirft eine abweichende Zuordnung
+aus der Mail-Reihenfolge; sie übernimmt keine erfundene Textänderung.
+Es wird keine Entscheidung automatisch gesetzt und kein Titel oder Produkt verändert.
+
+Nachbar: Nur questionOnly-Fragen bei mehreren Produkten ohne offene Threadbindung
+sind geeignet. Konkrete Korrekturen sowie Fragen zu Lieferschein, Adresse, Versand,
+Montage, Kabel, Farbe und Größe bleiben außerhalb der Sammelbestätigung.
+Wirkung: vorhandene lokale Approval-Entscheidung; confirmed bleibt false,
+Dateiauswahl und separate Produktions-/Zahlungsbestätigung bleiben erhalten.
+Betroffen sind nur supplier-sale-review.ts, die bestehenden Tests und diese Doku.
+
+Verifikation vor Livegang: Der Regressionstest schlug mit dem unveränderten
+Live-Code für die echte Amazon-Formulierung fehl und besteht nach der Korrektur.
+57 fokussierte Tests, 1839 Gesamttests bestanden (2 bestehende Plattform-Skips),
+8 Deployment-Tests, Produktionsbuild und anschließende Typprüfung erfolgreich.
+Lokaler Replay und echte UI mit den am 17.11. um 12:19/12:22 Uhr produktiv
+vorbereiteten, aktuell zurückgelesenen Entwürfen: Amazon 4 → 3 Designbestätigung
+→ 2 Größen-Update → 1 Lieferschein → 0 Bildauswahl. Keine zusätzliche Freitextfrage;
+UPDATE NEW SIZE und gekaufte Produkt-/Bildzuordnung bleiben korrekt.
+Kinderarztpraxis unverändert 4 → 1 durch bestehende Rückplatten-/PDF-/Bildbestätigungen;
+Nina Nachname2.pdf mit Rückplatten-/Indoor-Widerspruch bleibt offen.
+Montageschablone, Vormontage und hinterer Kabelabgang bleiben erhalten.
+Keine neuen produktiven Entwürfe oder KI-Aufrufe für diesen lokalen Test.
+Alle API-Schreibaktionen der Vorschau werden abgefangen; kein Auftrag freigegeben.
 
 ## Klare Empfehlung für aktuelle abweichende Zeichnungen (2026-11-17, vor Livegang)
 

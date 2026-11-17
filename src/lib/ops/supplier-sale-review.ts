@@ -75,8 +75,8 @@ export function productionPriorityFromDeliveryTitles(titles: string[]): Producti
 export function designMappingQuestions(review: ProductionReview) {
   return review.products.length > 1 ? review.analysis.changes.filter(c => c.questionOnly && !c.requiresThreadId
     && /\b(text(?:e|en|s)?|logo(?:text(?:e|en|s)?)?|schriftzug)\b/i.test(c.reason)
-    && /\b(produkt\w*|p\d+)\b/i.test(c.reason)
-    && /zuordn|welch|platzier/i.test(c.reason)
+    && /\b(produkt\w*|products?|p\d+)\b/i.test(c.reason)
+    && /zuordn|welch|platzier|\bwhich\b/i.test(c.reason)
     && !/lieferschein|lieferadresse|versand|montage|kabel|farbe|größe|delivery note|address|shipping|shipment|mounting|cable|colou?r|size/i.test(c.reason)) : [];
 }
 

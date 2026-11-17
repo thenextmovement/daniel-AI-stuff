@@ -586,10 +586,46 @@ test("one artwork confirmation documents all mapping questions without accepting
   assert.equal(designMappingQuestions(r).length, 2, "The actual fresh Amazon paraphrase must offer the same explicit confirmation");
   r.analysis.changes[0].reason = 'Bitte Zuordnung der texts bestätigen: "amazon rme contractor point" und "amazon rme red-tag area" – welches gehört zu p1 (180 x 46cm) und welches zu p2 (180 x 42cm)?';
   assert.equal(designMappingQuestions(r).length, 2, "The live mixed-language question still only confirms the purchased artwork");
+  for (const reason of [
+    'Bitte zuordnen: which text belongs to which product? Options: "amazon rme contractor point" and "amazon rme red-tag area"; two signs ordered.',
+    'Bitte zuordnen: Which product uses the text "amazon rme contractor point" and which uses "amazon rme red-tag area"?',
+    'Which of the two products uses each logo text?',
+  ]) {
+    r.analysis.changes[0].reason = reason;
+    assert.equal(designMappingQuestions(r).length, 2, reason);
+    const confirmed = confirmPurchasedDesigns(r, defaultReviewApproval(r));
+    assert.equal(confirmed.decisions.mapping.action, "reject");
+    assert.equal(confirmed.confirmed, false);
+    assert.equal(confirmed.title, before.title); assert.equal(confirmed.description, before.description);
+    assert.deepEqual(confirmed.attachments, before.attachments);
+    assert.equal(confirmed.decisions["delivery-note"], undefined);
+    assert.ok(!reviewApprovalIssues(r, { ...confirmed, confirmed: true }).some(i => i.includes(reason)));
+  }
   for (const technical of ["Produktzuordnung prüfen: Kabelposition links für das Logo.", "Welcher Text steht auf dem Lieferschein für Produkt 1?", "Produktzuordnung prüfen: Blue.", "Zuordnung der texts für p1 auf delivery note prüfen.", "Zuordnung der texts für p1 und cable position prüfen."]) {
     r.analysis.changes[0].reason = technical;
     assert.equal(designMappingQuestions(r).length, 1, technical);
   }
+});
+
+test("English artwork confirmation does not absorb technical questions, real corrections or uncertain mail linkage", () => {
+  const r = review(); r.products.push({ ...r.products[0], id: "product-2" });
+  const question = { id: "mapping", kind: "conflict" as const, questionOnly: true, productId: null, field: "Additional Information", value: "",
+    reason: "Which product uses each logo text?", evidence: [{ sourceId: "mail:old", quote: r.sources[1].text }] };
+  const excluded = [
+    ...["delivery note", "delivery address", "shipping", "mounting", "cable position", "colour", "color", "size"].map(detail => ({ ...question, reason: `Which product uses this logo text and ${detail}?` })),
+    { ...question, questionOnly: false, productId: "product-1", value: "Replace the logo text with the customer's correction." },
+    { ...question, requiresThreadId: "old-offer" },
+    { ...question, reason: "Which production deadline applies to this text?" },
+  ];
+  for (const change of excluded) {
+    r.analysis.changes = [change];
+    const before = defaultReviewApproval(r), after = confirmPurchasedDesigns(r, before);
+    assert.deepEqual(designMappingQuestions(r), [], change.reason);
+    assert.deepEqual(after.decisions, before.decisions, change.reason);
+    assert.ok(reviewApprovalIssues(r, { ...after, confirmed: true }).some(i => i.includes(change.reason)), change.reason);
+  }
+  r.products.pop(); r.analysis.changes = [question];
+  assert.deepEqual(designMappingQuestions(r), [], "A single product is not a cross-product text mapping");
 });
 
 test("image batch decisions preserve documents, vectors, protected files and individual choices", () => {
