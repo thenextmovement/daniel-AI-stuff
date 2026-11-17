@@ -14,6 +14,7 @@ excluded={
  'voice-phone':'Physical phone enrollment and browser device cookies; no server-side device impersonation.',
  'voice-phone/token':'Short-lived browser phone credential, not a business record.',
  'voice-phone/calls':'Personal phone device session required; use customer-records/calls for call records.',
+ 'voice-phone/placetel':'Personal enrolled phone device and operator consent required for an outbound call.',
  'voice-phone/captures':'Personal phone recording device and consent session required.',
  'voice-phone/incoming':'Personal phone device session required to accept or reject a live call.',
  'voice-phone/mobile':'Personal enrolled mobile device session required.',

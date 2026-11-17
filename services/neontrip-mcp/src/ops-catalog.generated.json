@@ -3012,11 +3012,110 @@
       ]
     },
     {
+      "id": "customer_records_notes_get",
+      "path": "/api/ops/customer-records/notes",
+      "method": "GET",
+      "pathParameters": [],
+      "queryParameters": [
+        "requestId"
+      ],
+      "bodyFields": [],
+      "actionValues": [],
+      "requestTypes": [],
+      "source": "src/app/api/ops/customer-records/notes/route.ts",
+      "readOnly": true,
+      "notes": "Canonical Ops route validates input and applies its existing role, version, approval, payment and idempotency guards. Non-GET may send messages, publish, create paid jobs or change production state. No automatic retry after an uncertain result.",
+      "inputContracts": [
+        {
+          "name": "addCustomerOpsNote",
+          "parameters": [
+            "requestId: string",
+            "input: string | CustomerOpsNoteInput",
+            "actor: UpdateActor | undefined"
+          ],
+          "source": "src/lib/ops/customer-records.ts"
+        },
+        {
+          "name": "listCustomerOpsNotes",
+          "parameters": [
+            "requestId: string"
+          ],
+          "source": "src/lib/ops/customer-records.ts"
+        },
+        {
+          "name": "createOpsInternalTask",
+          "parameters": [
+            "input: { title?: string; description?: string | null; status?: OpsInternalTaskStatus; priority?: OpsInternalTaskPriority; category?: OpsInternalTaskCategory; assigneeLabel?: string | null; dueAt?: string | null; requestId?: string | null; customerName?: string | null; customerEmail?: string | null; trelloCardId?: string | null; sourceApp?: string | null; sourceRef?: string | null; metadata?: Record<string, unknown>; }",
+            "actor: OpsInternalTaskActor | undefined"
+          ],
+          "source": "src/lib/ops/internal-tasks.ts"
+        },
+        {
+          "name": "OpsInternalTask",
+          "type": "export type OpsInternalTask = {\n  id: string;\n  title: string;\n  description: string | null;\n  status: OpsInternalTaskStatus;\n  priority: OpsInternalTaskPriority;\n  category: OpsInternalTaskCategory;\n  assigneeLabel: string | null;\n  dueAt: string | null;\n  requestId: string | null;\n  customerName: string | null;\n  customerEmail: string | null;\n  trelloCardId: string | null;\n  sourceApp: string;\n  sourceRef: string | null;\n  createdBy: string | null;\n  updatedBy: string | null;\n  completedBy: string | null;\n  completedAt: string | null;\n  metadata: Record<string, unknown>;\n  createdAt: string;\n  updatedAt: string;\n};",
+          "resolvedType": "{ id: string; title: string; description: string | null; status: OpsInternalTaskStatus; priority: OpsInternalTaskPriority; category: OpsInternalTaskCategory; assigneeLabel: string | null; dueAt: string | null; requestId: string | null; customerName: string | null; customerEmail: string | null; trelloCardId: string | null; sourceApp: string; sourceRef: string | null; createdBy: string | null; updatedBy: string | null; completedBy: string | null; completedAt: string | null; metadata: Record<string, unknown>; createdAt: string; updatedAt: string; }",
+          "source": "src/lib/ops/internal-tasks.ts"
+        }
+      ],
+      "inputTypes": [
+        {
+          "name": "CustomerOpsNoteInput",
+          "type": "export type CustomerOpsNoteInput = {\n  note: string;\n  kind?: CustomerOpsNote[\"kind\"] | null;\n  assigneeLabel?: string | null;\n};",
+          "resolvedType": "{ note: string; kind?: CustomerOpsNote[\"kind\"] | null; assigneeLabel?: string | null; }",
+          "source": "src/lib/ops/customer-records.ts"
+        },
+        {
+          "name": "CustomerOpsNote",
+          "type": "export type CustomerOpsNote = {\n  id: string;\n  note: string;\n  kind: \"note\" | \"task\" | \"update\";\n  assigneeLabel: string | null;\n  mentions: string[];\n  authorLabel: string | null;\n  createdAt: string | null;\n  updatedAt: string | null;\n};",
+          "resolvedType": "{ id: string; note: string; kind: \"note\" | \"task\" | \"update\"; assigneeLabel: string | null; mentions: string[]; authorLabel: string | null; createdAt: string | null; updatedAt: string | null; }",
+          "source": "src/lib/ops/customer-records.ts"
+        },
+        {
+          "name": "UpdateActor",
+          "type": "export type UpdateActor = {\n  host?: string | null;\n  mode?: \"local_bypass\" | \"ops_session\" | \"automation\";\n  userAgent?: string | null;\n  operatorName?: string | null;\n};",
+          "resolvedType": "{ host?: string | null; mode?: \"local_bypass\" | \"ops_session\" | \"automation\"; userAgent?: string | null; operatorName?: string | null; }",
+          "source": "src/lib/ops/customer-records.ts"
+        },
+        {
+          "name": "OpsInternalTaskInput",
+          "type": "export type OpsInternalTaskInput = {\n  title?: string;\n  description?: string | null;\n  status?: OpsInternalTaskStatus;\n  priority?: OpsInternalTaskPriority;\n  category?: OpsInternalTaskCategory;\n  assigneeLabel?: string | null;\n  dueAt?: string | null;\n  requestId?: string | null;\n  customerName?: string | null;\n  customerEmail?: string | null;\n  trelloCardId?: string | null;\n  sourceApp?: string | null;\n  sourceRef?: string | null;\n  metadata?: Record<string, unknown>;\n};",
+          "resolvedType": "{ title?: string; description?: string | null; status?: OpsInternalTaskStatus; priority?: OpsInternalTaskPriority; category?: OpsInternalTaskCategory; assigneeLabel?: string | null; dueAt?: string | null; requestId?: string | null; customerName?: string | null; customerEmail?: string | null; trelloCardId?: string | null; sourceApp?: string | null; sourceRef?: string | null; metadata?: Record<string, unknown>; }",
+          "source": "src/lib/ops/internal-tasks.ts"
+        },
+        {
+          "name": "OpsInternalTaskStatus",
+          "type": "export type OpsInternalTaskStatus = \"open\" | \"in_progress\" | \"waiting\" | \"done\" | \"archived\";",
+          "resolvedType": "\"open\" | \"in_progress\" | \"waiting\" | \"done\" | \"archived\"",
+          "source": "src/lib/ops/internal-tasks.ts"
+        },
+        {
+          "name": "OpsInternalTaskPriority",
+          "type": "export type OpsInternalTaskPriority = \"low\" | \"normal\" | \"high\" | \"urgent\";",
+          "resolvedType": "\"low\" | \"high\" | \"normal\" | \"urgent\"",
+          "source": "src/lib/ops/internal-tasks.ts"
+        },
+        {
+          "name": "OpsInternalTaskCategory",
+          "type": "export type OpsInternalTaskCategory = \"customer\" | \"call\" | \"problem\" | \"product_restock\" | \"offer\" | \"admin\" | \"other\";",
+          "resolvedType": "\"other\" | \"customer\" | \"call\" | \"problem\" | \"product_restock\" | \"offer\" | \"admin\"",
+          "source": "src/lib/ops/internal-tasks.ts"
+        },
+        {
+          "name": "OpsInternalTaskActor",
+          "type": "export type OpsInternalTaskActor = {\n  operatorName?: string | null;\n};",
+          "resolvedType": "{ operatorName?: string | null; }",
+          "source": "src/lib/ops/internal-tasks.ts"
+        }
+      ]
+    },
+    {
       "id": "customer_records_notes_post",
       "path": "/api/ops/customer-records/notes",
       "method": "POST",
       "pathParameters": [],
-      "queryParameters": [],
+      "queryParameters": [
+        "requestId"
+      ],
       "bodyFields": [
         "assigneeLabel",
         "kind",
@@ -3036,6 +3135,13 @@
             "requestId: string",
             "input: string | CustomerOpsNoteInput",
             "actor: UpdateActor | undefined"
+          ],
+          "source": "src/lib/ops/customer-records.ts"
+        },
+        {
+          "name": "listCustomerOpsNotes",
+          "parameters": [
+            "requestId: string"
           ],
           "source": "src/lib/ops/customer-records.ts"
         },
@@ -7998,7 +8104,7 @@
           "name": "getVoiceCustomerContext",
           "parameters": [
             "requestIdInput: unknown",
-            "options: { customerId?: string | null; } | undefined"
+            "options: { customerId?: string | null; mailQuestion?: string; } | undefined"
           ],
           "source": "src/lib/ops/voice-knowledge.ts"
         },
@@ -8010,6 +8116,23 @@
           "source": "src/lib/ops/voice-knowledge.ts"
         },
         {
+          "name": "requireVoiceUuid",
+          "parameters": [
+            "value: unknown",
+            "label: string"
+          ],
+          "source": "src/lib/ops/voice-platform-contract.ts"
+        },
+        {
+          "name": "supabaseRequest",
+          "parameters": [
+            "path: string",
+            "init: RequestInit",
+            "query: Record<string, QueryValue> | undefined"
+          ],
+          "source": "src/lib/quotes/supabase-rest.ts"
+        },
+        {
           "name": "listVoiceDirectory",
           "parameters": [
             "query: string",
@@ -8019,7 +8142,14 @@
           "source": "src/lib/ops/voice-directory.ts"
         }
       ],
-      "inputTypes": []
+      "inputTypes": [
+        {
+          "name": "QueryValue",
+          "type": "type QueryValue = string | number | boolean | null;",
+          "resolvedType": "string | number | boolean | null",
+          "source": "src/lib/quotes/supabase-rest.ts"
+        }
+      ]
     },
     {
       "id": "voice_copilot_knowledge_email_review_post",
@@ -9119,12 +9249,14 @@
     },
     {
       "source": "src/app/api/ops/customer-records/notes/route.ts",
-      "sha256": "19001435dd3f7d12d4ad29012b64c409eb9952f3b314f7b62246e16e244964c6",
+      "sha256": "3bf4e0ef12d9207300839c94d5dd10ae5bab6c46d53ea61190d1028713b42d79",
       "methods": [
+        "GET",
         "POST"
       ],
       "coverage": "ops_catalog",
       "operations": [
+        "customer_records_notes_get",
         "customer_records_notes_post"
       ]
     },
@@ -9825,6 +9957,14 @@
       "coverage": "Personal enrolled mobile device session required."
     },
     {
+      "source": "src/app/api/ops/voice-phone/placetel/route.ts",
+      "sha256": "41cb3c9c2d514b0a2bfd3cf2376ae533d058806462fac8f1ec2e32738322fb09",
+      "methods": [
+        "POST"
+      ],
+      "coverage": "Personal enrolled phone device and operator consent required for an outbound call."
+    },
+    {
       "source": "src/app/api/ops/voice-phone/route.ts",
       "sha256": "5e4fc4becc2cf101dbaa3ed6b443b566c1ed509fb2d12b2c3d084131aba8cd22",
       "methods": [
@@ -9912,7 +10052,7 @@
     },
     {
       "source": "src/lib/ops/customer-records.ts",
-      "sha256": "cdc720df573e688c2ee3284c5b64af93f3e3cd89ef365b276fd7af7cc5f51f32"
+      "sha256": "1b3d578bfe9a7cc0212cfdbedad5adee241aef26c7d001a4353c6ccac006cd7f"
     },
     {
       "source": "src/lib/ops/customer-call-module.ts",
@@ -10092,7 +10232,11 @@
     },
     {
       "source": "src/lib/ops/voice-knowledge.ts",
-      "sha256": "12902c69cb6c6ca98a6098646675946442f8e6ec373ecfa563f769a8d9973594"
+      "sha256": "c1f21780b59acd4e30023aa3b107bbf9a40b1d19434e19b8edc6ac674f940e35"
+    },
+    {
+      "source": "src/lib/ops/voice-platform-contract.ts",
+      "sha256": "3d29ecc20e2b45673c6bf4168e06bfee8f7c9fe742d333b9ea9882dd4402db60"
     },
     {
       "source": "src/lib/ops/voice-directory.ts",
@@ -10108,11 +10252,7 @@
     },
     {
       "source": "src/lib/ops/voice-history.ts",
-      "sha256": "c6f08f8adb25df7bde2c488cc27f75b4316cbda9aaedcd4c4ce5b3e7d8811d95"
-    },
-    {
-      "source": "src/lib/ops/voice-platform-contract.ts",
-      "sha256": "3d29ecc20e2b45673c6bf4168e06bfee8f7c9fe742d333b9ea9882dd4402db60"
+      "sha256": "f025223bab67d471c7441606b92aa82375284578e85a586505ddfc59dc1b46fe"
     },
     {
       "source": "src/lib/ops/voice-phone-contract.ts",
