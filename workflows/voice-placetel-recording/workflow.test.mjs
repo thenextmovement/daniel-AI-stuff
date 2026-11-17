@@ -10,7 +10,6 @@ test('only a unique match of both parties, direction and time yields media',()=>
  const r=match([record]);assert.equal(r.outcome,'found');assert.equal(r.recording.from,claim.source_phone);
  for(const patch of [{from:'0301999999'},{to:'015119999999'},{direction:'in'},{time:'2026-11-17T09:02:01Z'}])
    assert.equal(match([{...record,...patch}]).outcome,'missing');
- assert.deepEqual(match([{...record,duration:3}]),{outcome:'ambiguous'});
  assert.equal(match([record,record]).outcome,'ambiguous');
  assert.equal(match(Array(100).fill(record)).outcome,'ambiguous');
  assert.equal(matchRecording({...claim,source_phone:null},{statusCode:200,body:[record]}).outcome,'ambiguous');

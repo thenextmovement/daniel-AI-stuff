@@ -33,8 +33,6 @@ export function matchRecording(claim, response, binding, endpoint) {
       signed[2].split('&').some(part => part.startsWith(key + '=') && part.length > key.length + 1)));
   if (!/^[1-9]\d*$/.test(String(r.id)) || !(Number(r.duration)>0) ||
       !allowedMedia) return {outcome:'failed'};
-  // Placetel can create a three-second media file even when a callback was declined.
-  if (Number(r.duration) <= 3) return {outcome:'ambiguous'};
   return {outcome:'found',url:r.file,recording:{id:String(r.id),from,to,direction:'out',time:r.time,duration:Number(r.duration)}};
 }
 
