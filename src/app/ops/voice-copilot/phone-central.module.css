@@ -773,3 +773,6 @@
 .currentBrief { margin: .85rem 0; padding: .9rem; border-radius: .65rem; background: #f1f6f3; }
 .currentBrief p { white-space: pre-line; margin: .4rem 0 0; }
 .countBadge { display: inline-block; min-width: 1.35em; padding: .04em .35em; border-radius: 1em; background: #e0e8e4; color: #234b3d; font-size: .8em; font-variant-numeric: tabular-nums; }
+.recentCall { display: grid; gap: .18rem; padding: .65rem .25rem; width: 100%; border-bottom: 1px solid #dce4df; text-align: left; }
+.recentCall small { color: #52605a; }
+.recentCall:hover { background: #f1f6f3; }

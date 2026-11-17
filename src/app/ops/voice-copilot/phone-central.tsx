@@ -5,6 +5,7 @@ import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import { CallNotes } from "./call-notes";
 import { PlacetelCallButton } from "./placetel-call-button";
+import { RecentCalls } from "./recent-calls";
 import { CustomerBrief } from "./customer-brief";
 import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
@@ -491,6 +492,7 @@ export function PhoneCentral(props: Props) {
               {props.children}
             </section>
             <aside className={styles.context} aria-label="Kundenübersicht">
+              {!briefCustomerId && <RecentCalls busy={busy} onSelect={select} onNumber={phone=>{changeNumber(phone);setPanel("dial");}}/>}
               {briefCustomerId && <CustomerBrief key={briefCustomerId + ":" + briefRequestId}
                 id={briefCustomerId} requestId={briefRequestId} context={selected} revision={callHistoryRevision} onNoteTarget={(callId,time)=>{
                   selectNoteTarget(callId,time); document.getElementById("voice-call-note")?.focus();

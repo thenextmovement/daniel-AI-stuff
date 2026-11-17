@@ -4,6 +4,7 @@ import { getVoiceCustomerContext, searchVoiceCustomerContexts } from "@/lib/ops/
 
 import { requireVoiceUuid } from "@/lib/ops/voice-platform-contract";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { listRecentPhoneCalls } from "@/lib/ops/voice-recent-calls";
 import { listVoiceDirectory } from "@/lib/ops/voice-directory";
 
 import { listPhoneHistoryNotes } from "@/lib/ops/customer-records";
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
   const authError = await authorizeVoiceCopilotApi(request);
   if (authError) return authError;
   try {
+    if (request.nextUrl.searchParams.get("recentCalls") === "1") return NextResponse.json({ok:true,calls:await listRecentPhoneCalls()},{headers:{"cache-control":"no-store"}});
     if (request.nextUrl.searchParams.get("history") === "1") {
       const id = requireVoiceUuid(request.nextUrl.searchParams.get("customerId"), "Kunde");
       const offset = Number(request.nextUrl.searchParams.get("offset") || 0);
