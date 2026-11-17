@@ -47,6 +47,7 @@ function initials(value: string) {
 }
 export function PhoneCentral(props: Props) {
   const { selected } = props;
+  const [callHistoryRevision, setCallHistoryRevision] = useState(0);
   const [phoneAdminOpen,setPhoneAdminOpen]=useState(false);
   const [phoneIdentity,setPhoneIdentity]=useState<PhoneIdentity|null>(null);
   const browserPhone=useBrowserPhone(phoneIdentity,props.busy);
@@ -402,7 +403,7 @@ export function PhoneCentral(props: Props) {
             <div className={styles.actions}>
               {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
                 <PlacetelCallButton key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
-                  requestId={briefRequestId} disabled={busy || contextLoading} />}
+                  requestId={briefRequestId} disabled={busy || contextLoading} onDial={() => setCallHistoryRevision(n => n + 1)} />}
               {customer && !readySession && props.workspace !== "prepare" && (props.workspace === "assist" ? (
                 <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
                   disabled={busy || contextLoading || !selected}>
@@ -486,7 +487,7 @@ export function PhoneCentral(props: Props) {
               {props.children}
             </section>
             <aside className={styles.context} aria-label="Kundenübersicht">
-              {briefCustomerId && <CustomerBrief key={briefCustomerId + ":" + briefRequestId}
+              {briefCustomerId && <CustomerBrief key={briefCustomerId + ":" + briefRequestId + ":" + callHistoryRevision}
                 id={briefCustomerId} requestId={briefRequestId} context={selected}/>}
               {selected && props.hints.length ? (
                 <div aria-live="polite">
