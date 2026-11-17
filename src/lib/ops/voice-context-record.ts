@@ -6,7 +6,7 @@ import type { CustomerCommunicationEntry, CustomerQuoteSummary, CustomerRequestS
 type RequestRow = {
   id: string; request_id: string; customer_id: string | null;
   title: string | null; description: string | null; status: string | null;
-  segment: string | null; size: string | null; color: string[] | null;
+  product_type: string | null; segment: string | null; size: string | null; color: string[] | null;
   application: string | null; delivery_time: string | null;
   trello_card_id: string | null; trello_card_url: string | null;
 };
@@ -29,7 +29,7 @@ type MessageRow = {
 export type VoiceContextRecord = {
   requestId: string; masterCustomerId: string; displayName: string | null;
   company: string | null; email: string | null; phone: string | null;
-  request: Pick<CustomerRequestSummary, "title" | "description" | "status" | "segment" | "size" | "colors" | "application" | "deliveryTime" | "trelloCardId" | "trelloCardUrl">;
+  request: Pick<CustomerRequestSummary, "title" | "description" | "status" | "segment" | "size" | "colors" | "application" | "deliveryTime" | "trelloCardId" | "trelloCardUrl"> & {productType?: string | null};
   quote: CustomerQuoteSummary | null; offerTracking: { offerId: string } | null;
   communications: CustomerCommunicationEntry[]; outlookCommunications: CustomerCommunicationEntry[];
   optionalSources: { offer: boolean; outlook: boolean };
@@ -52,7 +52,7 @@ export async function loadVoiceContextRecord(requestId: string, expectedCustomer
   const read = <T>(table: string, query: Record<string, string | number>) =>
     supabaseRequest<T[]>(table, { signal }, query);
   const requests = await read<RequestRow>("master_requests", {
-    select: "id,request_id,customer_id,title,description,status,segment,size,color,application,delivery_time,trello_card_id,trello_card_url",
+    select: "id,request_id,customer_id,title,description,status,product_type,segment,size,color,application,delivery_time,trello_card_id,trello_card_url",
     request_id: "eq." + requestId, limit: 2,
   });
   if (!requests.length) invalid("voice_request_not_found", "Dieser Vorgang wurde nicht gefunden.", 404);
@@ -112,7 +112,7 @@ export async function loadVoiceContextRecord(requestId: string, expectedCustomer
     company: text(customer.company) || text(customer.company_name), email, phone: text(customer.phone),
     request: {
       title: text(request.title), description: text(request.description), status: text(request.status),
-      segment: text(request.segment), size: text(request.size), colors: (request.color || []).filter(x => typeof x === "string"),
+      productType: text(request.product_type), segment: text(request.segment), size: text(request.size), colors: (request.color || []).filter(x => typeof x === "string"),
       application: text(request.application), deliveryTime: text(request.delivery_time),
       trelloCardId: text(request.trello_card_id), trelloCardUrl: text(request.trello_card_url),
     },

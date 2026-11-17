@@ -81,6 +81,7 @@ export type VoiceCustomerContext = {
   recentCalls?: Array<{ id: string; startedAt: string | null; summary: string | null; excerpt: string; incomplete: boolean; sourceUrl: string }>;
   historyStatus?: "ok" | "unavailable";
   request: {
+    productType?: string | null;
     title: string | null;
     description: string | null;
     status: string | null;
@@ -91,6 +92,7 @@ export type VoiceCustomerContext = {
     deliveryTime: string | null;
   };
   offer: {
+    thumbnailUrl?: string | null;
     source: "offers" | "archive";
     offerId: string | null;
     offerNumber: string | null;
@@ -585,9 +587,26 @@ function voicePriceAmount(value: unknown): number | null {
   const amount = Number(value);
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
+function offerThumbnail(offer: OpsOfferSnapshot) {
+  const origin = process.env.NEONTRIP_OFFERS_BASE_URL || offer.publicUrl;
+  for (const image of [...(offer.images || [])].filter(image => image.enabled).sort((a,b) => a.sortOrder - b.sortOrder)) {
+    for (const value of [image.localUrl, image.sourceUrl]) {
+      if (!value) continue;
+      try {
+        const url = new URL(value, origin);
+        if (url.protocol === "https:" && !url.username && !url.password &&
+            (url.origin === new URL(origin).origin || url.hostname === "offers.neontrip.de" ||
+             url.origin === (process.env.SUPABASE_URL && new URL(process.env.SUPABASE_URL).origin))) return url.href;
+      } catch { continue; }
+    }
+  }
+  return null;
+}
+
 function mapOfferForVoice(offer: OpsOfferSnapshot | null): VoiceCustomerContext["offer"] {
   if (!offer) return null;
   return {
+    thumbnailUrl: offerThumbnail(offer),
     source: "offers",
     offerId: offer.offerId,
     offerNumber: offer.offerNumber,
@@ -824,6 +843,7 @@ export async function getVoiceCustomerContext(requestIdInput: unknown, options?:
     },
     recentCalls, historyStatus,
     request: {
+      productType: record.request?.productType || null,
       title: record.request?.title || null,
       description: cleanText(record.request?.description, 1200) || null,
       status: record.request?.status || null,

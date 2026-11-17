@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import type {VoiceCustomerContext} from "@/lib/ops/voice-knowledge";
+import {currentEmailReply} from "@/lib/ops/voice-email-reply";
 import styles from "./phone-central.module.css";
 
 import { VoiceHistoryPanel } from "./voice-history-panel";
@@ -11,6 +12,9 @@ type Entry={callNotes?:CustomerOpsNote[];id:string;occurred_at:string|null;kind:
 type Page={entries:Entry[];brief:Entry[];nextOffset:number|null};
 const labels:Record<string,string>={inbound:"Kunde schreibt",outbound:"Unsere Antwort",note:"Interne Notiz",transcript:"Gesprächsnotiz",call:"Anruf"};
 function phoneEntry(entry:Entry) {
+  if (entry.kind === "inbound" || entry.kind === "outbound") return {
+    label:labels[entry.kind], subject:entry.subject, detail:currentEmailReply(entry.detail) || "Kein eigener Nachrichtentext.", transcript:false,
+  };
   const state=entry.placetel;
   if(!state) return {label:labels[entry.kind],subject:entry.subject,detail:entry.detail,transcript:Boolean(entry.session_id)};
   const recorded=state.recording==="complete" || state.recording==="single_speaker";
@@ -81,16 +85,29 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
   },[channel,offset,waiting]);
   const req=context?.request;
   return <section className={styles.prep} aria-label="Gesprächsüberblick">
-    <p className={styles.label}>Vor dem Anruf</p><h3>Auf einen Blick</h3>
+    <header className={styles.overviewHeader}>
+      <div><p className={styles.label}>Vor dem Anruf</p><h3>Auf einen Blick</h3></div>
+      {context?.offer?.thumbnailUrl && <img key={context.offer.thumbnailUrl} className={styles.offerThumb} src={context.offer.thumbnailUrl}
+        alt={"Vorschau "+context.offer.label} referrerPolicy="no-referrer" onError={event=>{event.currentTarget.hidden=true;}}/>}
+    </header>
     {context && <p className={styles.small}>{[context.customer.email,context.customer.phone].filter(Boolean).join(" · ")}</p>}
-    {req ? <><p><strong>{req.title || "Anfrage"} · {requestId.slice(0,8)}</strong></p>
-      <p>{abridge(req.description,320)||"Keine Beschreibung hinterlegt."}</p>
-      <p>{[req.size,...req.colors,req.application,req.deliveryTime].filter(Boolean).join(" · ")}</p></> : <p>{requestId ? "Ausgewählter Vorgang · " + requestId.slice(0,8) : "Kein Vorgang ausgewählt."}</p>}
-    {page?.brief.map(e=><p key={e.id}><strong>{phoneEntry(e).label}: </strong>{abridge(phoneEntry(e).detail)||e.subject}</p>)}
+    {req ? <div className={styles.caseFacts}>
+      <strong>{req.title || "Anfrage"} · {requestId.slice(0,8)}</strong>
+      <dl><dt>Produktart:</dt><dd>{req.productType || "Keine Angabe"}</dd>
+        {context?.offer && <><dt>Angebot:</dt><dd>{context.offer.label}</dd></>}
+      </dl>
+      {(req.size || req.colors.length>0 || req.application || req.deliveryTime || req.description) && <details>
+        <summary>Produktdetails</summary><dl>
+          {[["Größe",req.size],["Farbe",req.colors.join(", ")],["Einsatzort",req.application],["Liefertermin",req.deliveryTime],["Anfrage",req.description]].filter(([,value])=>value).map(([label,value])=>
+            <div key={label}><dt>{label}:</dt><dd>{value}</dd></div>)}
+        </dl>
+      </details>}
+    </div> : <p>{requestId ? "Ausgewählter Vorgang · " + requestId.slice(0,8) : "Kein Vorgang ausgewählt."}</p>}
+    {page?.brief.map(e=>{const display=phoneEntry(e);return <div className={styles.briefEntry} key={e.id}><strong>{display.label}</strong><p>{abridge(display.detail)||e.subject}</p></div>;})}
     {page && requestId && !page.brief.length && <p className={styles.small}>Keine Mail oder Gesprächsnotiz eindeutig dieser Anfrage zugeordnet.</p>}
     {page && !page.brief.some(e=>e.kind==="inbound"||e.kind==="outbound") && ["inbound","outbound"].map(kind=>{
       const entry=unassigned.find(e=>e.kind===kind);
-      return entry && <p key={kind}><strong>{labels[kind]} (ohne Vorgangsverweis): </strong>{abridge(entry.detail)||entry.subject}</p>;
+      return entry && <p key={kind}><strong>{labels[kind]} (ohne Vorgangsverweis): </strong>{abridge(phoneEntry(entry).detail)||entry.subject}</p>;
     })}
     {loading && <p role="status">Verlauf wird geladen …</p>}
     {error && <p role="status">Verlauf konnte nicht geladen werden. <button onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>}

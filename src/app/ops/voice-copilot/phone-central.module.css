@@ -758,3 +758,14 @@
 .roleChoice { font-size:.8rem; color:#4c5650; }
 .roleChoice summary { cursor:pointer; }
 .roleChoice button { margin:.35rem .25rem 0 0; text-align:left; }
+
+.overviewHeader { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.overviewHeader h3, .overviewHeader p { margin:0; }
+.offerThumb { width:4.75rem; height:4.75rem; object-fit:contain; border:1px solid #dce1e0; border-radius:.6rem; background:white; }
+.caseFacts, .briefEntry { border-top:1px solid #dce1e0; padding:.8rem 0; overflow-wrap:anywhere; }
+.caseFacts dl { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:.4rem .9rem; margin:.6rem 0; }
+.caseFacts dl > div { display:contents; }
+.caseFacts dd { margin:0; }
+.caseFacts dt { color:#515761; }
+.caseFacts summary { cursor:pointer; }
+.briefEntry p { margin:.25rem 0 0; }
