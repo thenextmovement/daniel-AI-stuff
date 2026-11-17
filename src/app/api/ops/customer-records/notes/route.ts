@@ -5,6 +5,8 @@ import { createOpsInternalTask, type OpsInternalTask } from "@/lib/ops/internal-
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
 
+import { currentPhoneDevice } from "@/lib/ops/voice-phone-identity";
+
 export const dynamic = "force-dynamic";
 
 function unauthorized() {
@@ -48,8 +50,12 @@ export async function GET(request: NextRequest) {
   if (!isOpsPortalConfigured(host)) return notConfigured();
   if (!isOpsPortalBypassed(host) && !(await hasOpsSession(host, request.headers))) return unauthorized();
   try {
-    const notes = await listCustomerOpsNotes(request.nextUrl.searchParams.get("requestId") || "");
-    return NextResponse.json({ ok: true, notes }, { headers: { "cache-control": "no-store" } });
+    const params = request.nextUrl.searchParams;
+    const offset = Number(params.get("offset") || 0);
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new QuoteValidationError("Ungültige Seite.");
+    const paged = params.has("offset");
+    const notes = await listCustomerOpsNotes(params.get("requestId") || "", paged ? {offset, limit:21, notesOnly:true} : undefined);
+    return NextResponse.json({ ok: true, notes:paged ? notes.slice(0,20) : notes, nextOffset:paged && notes.length>20 ? offset+20 : null }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     return failureResponse(error);
   }
@@ -64,6 +70,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       requestId?: string;
       note?: string;
+      callId?: string;
       kind?: "note" | "task" | "update";
       assigneeLabel?: string | null;
       operatorName?: string | null;
@@ -74,10 +81,12 @@ export async function POST(request: NextRequest) {
       {
         note: String(body.note || ""),
         kind: body.kind,
+        callId: body.callId,
         assigneeLabel: body.assigneeLabel,
       },
       {
         host,
+        ...(body.callId ? {operatorName:(await currentPhoneDevice())?.staff.display_name} : {}),
         mode: isOpsPortalBypassed(host) ? "local_bypass" : "ops_session",
         userAgent: request.headers.get("user-agent"),
       },

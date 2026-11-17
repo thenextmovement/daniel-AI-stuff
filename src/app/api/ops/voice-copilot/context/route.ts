@@ -6,6 +6,8 @@ import { requireVoiceUuid } from "@/lib/ops/voice-platform-contract";
 import { supabaseRequest } from "@/lib/quotes/supabase-rest";
 import { listVoiceDirectory } from "@/lib/ops/voice-directory";
 
+import { listPhoneHistoryNotes } from "@/lib/ops/customer-records";
+
 export const dynamic = "force-dynamic";
 
 type HistoryEvent = { id: string; session_id: string | null; occurred_at: string | null };
@@ -41,12 +43,14 @@ export async function GET(request: NextRequest) {
         select:"id,created_at,context_snapshot,voice_placetel_calls(provider_ended_at,dispatch_status,recording_status,dialed_at,reserved_at)",
         id:"in.("+ids.join(",")+")", idempotency_key:"like.placetel:*", "context_snapshot->>placetel_customer_id":"eq."+id,
       }) : [];
+      const notes = channel === "phone" ? await listPhoneHistoryNotes(ids) : [];
       const byId = new Map(sessions.map(session => [session.id,session]));
       function withCallStatus(event: HistoryEvent) {
         const session = event.session_id && byId.get(event.session_id);
-        if (!session) return event;
+        const callNotes = notes.filter(note => note.callId === event.session_id);
+        if (!session) return {...event, callNotes};
         const call = session.voice_placetel_calls;
-        return { ...event, occurred_at: event.occurred_at || call?.dialed_at || call?.reserved_at || session.created_at,
+        return { ...event, callNotes, occurred_at: event.occurred_at || call?.dialed_at || call?.reserved_at || session.created_at,
           placetel: { endedAt: call?.provider_ended_at ?? null, dispatch: call?.dispatch_status === "rejected" && call.recording_status === "expired" && !call.dialed_at
             ? "expired" : session.context_snapshot?.placetel_direct && call?.dispatch_status === "accepted" ? "softphone" : call?.dispatch_status ?? "unreserved", recording: call?.recording_status ?? "pending" } };
       }

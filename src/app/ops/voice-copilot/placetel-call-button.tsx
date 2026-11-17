@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { Phone, PhoneOff } from "lucide-react";
 import styles from "./phone-central.module.css";
 
-export function PlacetelCallButton({ customerId, requestId, disabled, onCallChange }: {
-  customerId: string; requestId: string; disabled: boolean; onCallChange: () => void;
+export function PlacetelCallButton({ customerId, requestId, disabled, onCallChange, onNoteTarget }: {
+  customerId: string; requestId: string; disabled: boolean; onCallChange: () => void; onNoteTarget: (callId:string) => void;
 }) {
   const key = useRef<string | null>(null);
   const sending = useRef(false);
@@ -91,6 +91,7 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onCallChan
         return;
       }
       setCallId(data.callId);
+      onNoteTarget(data.callId);
       expires.current = data.expiresAt;
       setPhone(data.dialedPhone);
       onCallChange();
@@ -114,7 +115,7 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onCallChan
     <p className={styles.small}>Mit dem Anruf bestätigst du die Einwilligung zur Aufzeichnung und Mitschrift.</p>
     {message && <p role="status" className={styles.small}>{message}</p>}
     {(status === "opened" || status === "ended") && <button type="button" className={styles.link} onClick={() => {
-      key.current = null; setCallId(""); setPhone(""); setStatus("ready"); setMessage("");
+      key.current = null; onNoteTarget(""); setCallId(""); setPhone(""); setStatus("ready"); setMessage("");
     }}>Weiteren Anruf vorbereiten</button>}
   </div>;
 }

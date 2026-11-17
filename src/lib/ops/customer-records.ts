@@ -618,6 +618,8 @@ export type CustomerAuditEntry = {
 };
 
 export type CustomerOpsNote = {
+  callStartedAt?: string | null;
+  callId?: string | null;
   id: string;
   note: string;
   kind: "note" | "task" | "update";
@@ -629,6 +631,7 @@ export type CustomerOpsNote = {
 };
 
 export type CustomerOpsNoteInput = {
+  callId?: string | null;
   note: string;
   kind?: CustomerOpsNote["kind"] | null;
   assigneeLabel?: string | null;
@@ -2152,6 +2155,8 @@ function mapNoteEntry(row: WorkflowAuditRow): CustomerOpsNote {
     id: row.id,
     note: typeof metadata.note_text === "string" ? metadata.note_text : row.error_message || "",
     kind,
+    callId: auditText(metadata, "voice_session_id"),
+    callStartedAt: auditText(metadata, "voice_started_at"),
     assigneeLabel: auditText(metadata, "assignee_label"),
     mentions: Array.isArray(metadata.mentions)
       ? metadata.mentions.map((entry) => String(entry || "").trim()).filter(Boolean)
@@ -7004,7 +7009,7 @@ export async function duplicateCustomerTrelloCard(
   }
 }
 
-export async function listCustomerOpsNotes(requestId: string) {
+export async function listCustomerOpsNotes(requestId: string, page?: {offset:number; limit:number; notesOnly?:boolean}) {
   if (!requestId.trim() || requestId.length > 160) {
     throw new QuoteValidationError("Ungültige Vorgangsnummer.");
   }
@@ -7014,9 +7019,25 @@ export async function listCustomerOpsNotes(requestId: string) {
     workflow_name: `eq.${CUSTOMER_RECORDS_WORKFLOW_NAME}`,
     action: `eq.${CUSTOMER_RECORDS_NOTE_ACTION}`,
     order: "created_at.desc,id.desc",
-    limit: 50,
+    limit: page?.limit ?? 50,
+    offset: page?.offset ?? 0,
+    ...(page?.notesOnly ? {"metadata->>note_kind":"eq.note"} : {}),
   });
   return rows.map(mapNoteEntry);
+}
+
+export async function listPhoneHistoryNotes(sessionIds: string[]) {
+  if (!sessionIds.length) return [];
+  const notes: CustomerOpsNote[] = [];
+  for (let offset = 0; ; offset += 100) {
+    const rows = await supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
+      select: "id,created_at,metadata", workflow_name: "eq." + CUSTOMER_RECORDS_WORKFLOW_NAME,
+      action: "eq." + CUSTOMER_RECORDS_NOTE_ACTION, "metadata->>voice_session_id": "in.(" + sessionIds.join(",") + ")",
+      order: "created_at.desc,id.desc", offset, limit: 100,
+    });
+    notes.push(...rows.map(mapNoteEntry));
+    if (rows.length < 100) return notes;
+  }
 }
 
 export async function addCustomerOpsNote(requestId: string, input: string | CustomerOpsNoteInput, actor?: UpdateActor) {
@@ -7030,6 +7051,16 @@ export async function addCustomerOpsNote(requestId: string, input: string | Cust
   }
 
   const context = await fetchCustomerContextByRequestId(normalizedRequestId);
+  const callId = typeof input === "string" ? null : input.callId;
+  let callStartedAt: string | null = null;
+  if (callId) {
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(callId)) throw new QuoteValidationError("Ungültige Anrufkennung.");
+    const [session] = await supabaseRequest<Array<{id:string;created_at:string}>>("voice_call_sessions", undefined, {
+      select:"id,created_at", id:"eq."+callId, bound_request_id:"eq."+context.master.request_id, limit:1,
+    });
+    if (!session) throw new QuoteValidationError("Das Telefonat gehört zu einem anderen Vorgang.");
+    callStartedAt = session.created_at;
+  }
   const mentions = extractNoteMentions(normalizedNote, assigneeLabel);
   const rows = await supabaseRequest<WorkflowAuditRow[]>(
     "workflow_audit_log",
@@ -7044,6 +7075,7 @@ export async function addCustomerOpsNote(requestId: string, input: string | Cust
           metadata: {
             request_id: context.master.request_id,
             note_text: normalizedNote,
+            ...(callId ? {voice_session_id:callId, voice_started_at:callStartedAt} : {}),
             note_kind: kind,
             assignee_label: assigneeLabel,
             mentions,

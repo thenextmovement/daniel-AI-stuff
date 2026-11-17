@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CustomerOpsNote } from "@/lib/ops/customer-records";
 import styles from "./phone-central.module.css";
 
-export function CallNotes({ requestId }: { requestId: string }) {
+export function CallNotes({ requestId, target, onSaved }: { requestId: string; target:{callId:string; time:string} | null; onSaved:()=>void }) {
   const [notes, setNotes] = useState<CustomerOpsNote[]>([]);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -29,12 +29,13 @@ export function CallNotes({ requestId }: { requestId: string }) {
     try {
       const response = await fetch("/api/ops/customer-records/notes", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ requestId, note: draft.trim(), kind: "note" }),
+        body: JSON.stringify({ requestId, note: draft.trim(), kind: "note", callId:target?.callId || undefined }),
       });
       if (!response.ok) throw Error();
       const { note } = await response.json();
       setNotes(old => [note, ...old.filter(n => n.id !== note.id)]);
       setDraft("");
+      onSaved();
     } catch {
       setError("Speichern unbestätigt. Bitte lade die Notizen vor einem weiteren Versuch erneut.");
     } finally {
@@ -45,7 +46,8 @@ export function CallNotes({ requestId }: { requestId: string }) {
   return <section className={styles.prep} aria-label="Notizen zum Vorgang">
     <h3>Notizen zum Vorgang</h3>
     <form onSubmit={event => { event.preventDefault(); void save(); }}>
-      <textarea aria-label="Gesprächsnotiz" placeholder="Was habt ihr besprochen?" rows={3}
+      <label htmlFor="voice-call-note">{target?.callId ? "Notiz zum Telefonat vom " + new Date(target.time).toLocaleString("de-DE") : "Notiz zum Vorgang"}</label>
+      <textarea id="voice-call-note" aria-label="Gesprächsnotiz" placeholder="Was habt ihr besprochen?" rows={3}
         className={styles.callNoteInput} disabled={saving} value={draft} onChange={e => setDraft(e.target.value)} />
       <button className={styles.button} disabled={saving || !draft.trim()}>{saving ? "Speichert …" : "Notiz speichern"}</button>
     </form>

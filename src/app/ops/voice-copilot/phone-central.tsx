@@ -69,6 +69,9 @@ export function PhoneCentral(props: Props) {
   const [activeContact, setActiveContact] = useState<VoiceDirectoryContact | null>(null);
   const briefCustomerId = selected?.masterCustomerId || activeContact?.customerId;
   const briefRequestId = selected?.requestId || activeContact?.requestId || "";
+  const [noteTarget, setNoteTarget] = useState<{requestId:string; callId:string; time:string} | null>(null);
+  const selectNoteTarget = (callId:string, time = new Date().toISOString()) => setNoteTarget({requestId:briefRequestId, callId, time});
+  const selectedNoteCall = noteTarget?.requestId === briefRequestId ? noteTarget : null;
   const [panel, setPanel] = useState<"contacts" | "dial">("contacts");
   const [number, setNumber] = useState("");
   const [offset, setOffset] = useState(0);
@@ -404,7 +407,7 @@ export function PhoneCentral(props: Props) {
             <div className={styles.actions}>
               {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
                 <PlacetelCallButton key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
-                  requestId={briefRequestId} disabled={busy || contextLoading} onCallChange={refreshCallHistory} />}
+                  requestId={briefRequestId} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} />}
               {customer && !readySession && props.workspace !== "prepare" && (props.workspace === "assist" ? (
                 <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
                   disabled={busy || contextLoading || !selected}>
@@ -482,14 +485,16 @@ export function PhoneCentral(props: Props) {
                           : "Wähle links einen Kontakt. Hier findest du seine letzten Absprachen, Nachrichten und Vorgänge."}
                     </p>
                   </div>
-                  {selected?.requestId && <CallNotes key={selected.requestId} requestId={selected.requestId}/>}
+                  {selected?.requestId && <CallNotes key={selected.requestId} requestId={selected.requestId} target={selectedNoteCall} onSaved={refreshCallHistory}/>}
                 </>
               ) : null}
               {props.children}
             </section>
             <aside className={styles.context} aria-label="Kundenübersicht">
-              {briefCustomerId && <CustomerBrief key={briefCustomerId + ":" + briefRequestId + ":" + callHistoryRevision}
-                id={briefCustomerId} requestId={briefRequestId} context={selected}/>}
+              {briefCustomerId && <CustomerBrief key={briefCustomerId + ":" + briefRequestId}
+                id={briefCustomerId} requestId={briefRequestId} context={selected} revision={callHistoryRevision} onNoteTarget={(callId,time)=>{
+                  selectNoteTarget(callId,time); document.getElementById("voice-call-note")?.focus();
+                }}/>}
               {selected && props.hints.length ? (
                 <div aria-live="polite">
                   {props.hints.map((hint, index) => (
