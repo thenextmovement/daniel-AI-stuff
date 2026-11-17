@@ -26,3 +26,12 @@ PR234 betrifft den bereits vorhandenen separaten Configurator-Zweig desselben Fo
 
 ## Prüfung
 Fünf Verhaltenstests zuerst rot gegen den Livecode; acht Tests nach Korrektur grün, einschließlich echter Adapter-/Router-/Bündelungslogik. Syntaxprüfung erfolgreich. Live-Test und dauerhafte Rücklesung ausstehend.
+
+## Abschluss 17.11.2026
+Live publiziert und vollständig zurückgelesen: ArT3LN25Mb1PAuBE / ae779380-da08-4e66-bd00-0c209d5cc314, aktiv. Nur Format Error Data um Bank-Zweig ergänzt; alle anderen Nodes, Verbindungen und Einstellungen exakt unverändert. Neun Tests gegen den zurückgelesenen aktiven Code bestanden, vier fremde Formatter-Zweige im Vorher/Nachher-Replay identisch. Lange Texte je 200 Zeichen begrenzt, damit Beschreibung und Code innerhalb der dauerhaften 500-Zeichen-Ablage erhalten bleiben.
+
+Echter Testlauf 12351833: Supabase-Vorfall 46823e70-f99b-40f3-b0ee-754cb252791e mit Schritt, Timeout und Code 57014; Nachricht um 21:32:22 CET im Posteingang support@neontrip.de bestätigt und in Outlook visuell mit Absatzabständen geprüft. Testvorfall über bestehende Transition-Funktion als erledigt markiert; Fehlerdetails danach erneut aus Datenbank gelesen. Temporären Helper PONrwMQMbCo3AFXi entfernt, NOT_FOUND bestätigt. Kein echter Bankfehler ausgelöst.
+
+MCP-Teilupdate/Activation scheitert an bestehender API-Schema-Inkompatibilität. Helper über konfigurierte API aktiviert; Produktionsänderung erfolgreich über MCP-Full-Update nach frischem Versionsvergleich, anschließend vollständiger Inhaltsvergleich. Keine Credentials oder Infrastruktur geändert.
+
+Quellnachweis PR275 https://github.com/thenextmovement/daniel-AI-stuff/pull/275 als Draft erhalten: main-Merge würde ein nicht benötigtes OPS-App-Deployment starten. Servicekorrektur ist unabhängig davon live; eigener sauberer Aufgabenbranch/Worktree bleibt für Nachweis erhalten. Keine Kundennachricht, Bankbuchung oder App-Veröffentlichung.
