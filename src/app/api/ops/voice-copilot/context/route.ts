@@ -47,7 +47,8 @@ export async function GET(request: NextRequest) {
         if (!session) return event;
         const call = session.voice_placetel_calls;
         return { ...event, occurred_at: event.occurred_at || call?.dialed_at || call?.reserved_at || session.created_at,
-          placetel: { dispatch: call?.dispatch_status ?? "unreserved", recording: call?.recording_status ?? "pending" } };
+          placetel: { dispatch: call?.dispatch_status === "rejected" && call.recording_status === "expired" && !call.dialed_at
+            ? "expired" : call?.dispatch_status ?? "unreserved", recording: call?.recording_status ?? "pending" } };
       }
       return NextResponse.json({ok:true,brief:brief.map(withCallStatus),entries:page.map(withCallStatus),nextOffset:rows.length>20?offset+20:null}, {headers:{"cache-control":"no-store"}});
     }

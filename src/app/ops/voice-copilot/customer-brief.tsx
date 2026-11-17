@@ -52,6 +52,15 @@ export function CustomerBrief({id,requestId,context}:{id:string;requestId:string
       .catch(()=>{if(!controller.signal.aborted)setError(true);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return ()=>controller.abort();
   },[id,requestId,channel,offset,retry]);
+  const waiting=page?.entries.some(({placetel})=>placetel && ["reserved","dispatched","uncertain","accepted"].includes(placetel.dispatch) &&
+    ["pending","missing","failed"].includes(placetel.recording));
+  useEffect(()=>{
+    if(channel!=="phone" || offset!==0 || !waiting) return;
+    const timer=window.setInterval(()=>{
+      if(document.visibilityState==="visible") setRetry(n=>n+1);
+    },30000);
+    return ()=>window.clearInterval(timer);
+  },[channel,offset,waiting]);
   const req=context?.request;
   return <section className={styles.prep} aria-label="Gesprächsüberblick">
     <p className={styles.label}>Vor dem Anruf</p><h3>Auf einen Blick</h3>
