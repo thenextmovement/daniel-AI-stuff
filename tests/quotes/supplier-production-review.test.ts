@@ -6,7 +6,7 @@ import { analyzeProductionReview, validateReviewAnalysis } from "@/lib/ops/suppl
 import { executeProductionHandoff, approvedDesignAttachmentName, type HandoffDependencies, type ProductionHandoff } from "@/lib/ops/supplier-sale-handoff";
 import { readSupplierSaleMail, readSupplierSaleMailPdfs } from "@/lib/ops/supplier-sale-mail";
 import { deliveryAddressMatches, validateDocumentFindings, guardDrawingRemoval, guardDrawingDimensions, omitRedundantDocumentQuestions, mailDocumentSourcesMatch } from "@/lib/ops/supplier-sale-documents";
-import { confirmDocumentSuggestions, openDocumentSuggestions, confirmDeliveryNote, reviewedDeliveryNote, drawingReviewRecommendation, type ReviewDocument } from "@/lib/ops/supplier-sale-review";
+import { confirmDocumentSuggestions, openDocumentSuggestions, confirmDeliveryNote, reviewedDeliveryNote, drawingReviewRecommendation, drawingSizeUpdate, confirmDrawingSizeUpdate, type ReviewDocument } from "@/lib/ops/supplier-sale-review";
 import { renderPdfPagesToPng } from "@/lib/ops/arrival-labels/pdf";
 import { PDFDocument } from "pdf-lib";
 import { backupSupplierFile, type SupplierFileBackup } from "@/lib/ops/supplier-sale-files";
@@ -695,6 +695,99 @@ const documentFixture = (overrides: Partial<ReviewDocument> = {}): ReviewDocumen
   id: 'trello:old', name: 'Drawing.pdf', origin: 'trello', attachmentId: 'old', href: 'https://trello.com/file',
   status: 'read', sha256: 'a'.repeat(64), pages: 2, role: 'drawing', recommendation: 'keep', summary: 'Passende Zeichnung.',
   findings: [], evidence: [{ page: 1, quote: '120 x 45 cm' }], recipient: [], addressMatch: false, ...overrides,
+});
+
+function sizeUpdateFixture() {
+  const r = review(), d = documentFixture();
+  guardDrawingDimensions(d, ['120 cm 45.09 cm Product-Typ: neon flex'], r.products);
+  r.documents = [d];
+  return { r, d };
+}
+
+test('size confirmation prepares one coherent update without approving production or changing bought data', async () => {
+  const { r, d } = sizeUpdateFixture(), original = structuredClone(r);
+  const base = approved(r);
+  assert.doesNotMatch(base.title, /UPDATE NEW SIZE/);
+  const a = confirmDrawingSizeUpdate(r, base, d.id);
+  assert.equal(a.confirmed, false);
+  assert.equal(a.attachments.old, 'keep');
+  assert.deepEqual(r, original);
+  assert.match(a.title, /^KEY KUNDE \| #NEONT-TEST \| UPDATE NEW SIZE \| CHECK INFO/);
+  assert.match(a.description, /^UPDATE NEW SIZE\nProduct 1: 120 x 45 cm\nProduce at the sizes stated above/);
+  assert.match(a.description, /Disregard conflicting dimensions in the attached drawing "Drawing.pdf"/);
+  assert.match(a.description, /Size: 120 x 45 cm/);
+  assert.match(a.description, /Cable Position: Bottom right/);
+  assert.equal(a.title.split(r.orderName).length, 2);
+  assert.deepEqual(reviewApprovalIssues(r, { ...a, confirmed: true }), []);
+  assert.deepEqual(confirmDrawingSizeUpdate(r, a, d.id), a);
+  const h = harness(r);
+  await executeProductionHandoff(r, { ...a, confirmed: true }, h.state, h.deps);
+  assert.equal(h.card.desc, a.description); assert.equal(h.card.name, a.title);
+  assert.ok(h.card.attachments.some(f => f.id === 'old'));
+  assert.ok(!h.calls.includes('remove'));
+  assert.equal(h.calls.filter(c => c === 'release').length, 1);
+});
+
+test('size update preserves product order even when PDF dimensions occur in another order', () => {
+  const { r, d } = sizeUpdateFixture();
+  r.products.push({ ...r.products[0], id: 'second', imageId: 'second', imageTitle: 'Second design',
+    fields: [{ label: 'Size', value: '180 x 42cm' }] });
+  guardDrawingDimensions(d, ['180 cm 42.53 cm 120 cm 45.09 cm Product-Typ: neon flex'], r.products);
+  const a = confirmDrawingSizeUpdate(r, approved(r), d.id);
+  assert.match(a.description, /Product 1: 120 x 45 cm\nProduct 2: 180 x 42cm/);
+  assert.doesNotMatch(a.description, /45.09|42.53/);
+  assert.deepEqual(drawingSizeUpdate(r, d, a.decisions)?.sizes.map(s => s.imageTitle), ['Final design', 'Second design']);
+});
+
+test('unread, unbound, old, free-form and mixed technical findings never get a size shortcut', () => {
+  const { r, d } = sizeUpdateFixture();
+  for (const patch of [{ status: 'manual' }, { sha256: undefined }, { evidence: [] }, { origin: 'mail' },
+    { attachmentId: 'foreign' }, { supersededById: 'new' }, { findings: ['New size 150cm, trust the PDF'] },
+    { findings: [...d.findings, 'Outdoor statt Indoor.'] }] as Partial<ReviewDocument>[]) {
+    r.documents = [{ ...d, ...patch }];
+    const a = approved(r);
+    assert.equal(drawingSizeUpdate(r, r.documents[0], a.decisions), null);
+    assert.deepEqual(confirmDrawingSizeUpdate(r, a, d.id), a);
+  }
+});
+
+test('accepted mail size creates update; changing a decision invalidates prior PDF size confirmation', () => {
+  const { r, d } = sizeUpdateFixture();
+  r.analysis.changes.push({ id: 'mail-size', kind: 'conflict', productId: r.products[0].id,
+    field: 'Size', value: '130 x 50 cm', reason: 'Neue Größe per Mail', evidence: [{ sourceId: 'mail:old', quote: '130 x 50 cm' }] });
+  let a = approved(r);
+  a.decisions['mail-size'] = { action: 'reject', note: '' };
+  a = confirmDrawingSizeUpdate(r, a, d.id);
+  a.decisions['mail-size'] = { action: 'accept', note: '' };
+  Object.assign(a, renderProductionReview(r, a.decisions));
+  assert.ok(reviewApprovalIssues(r, { ...a, confirmed: true }).some(s => /erneut bestätigen/.test(s)));
+  assert.match(a.description, /^UPDATE NEW SIZE\nProduct 1: 130 x 50 cm/);
+  assert.match(a.description, /Size: 130 x 50 cm/);
+  a = confirmDrawingSizeUpdate(r, a, d.id);
+  assert.deepEqual(reviewApprovalIssues(r, { ...a, confirmed: true }), []);
+  const noPdf = { ...r, documents: [] };
+  const accepted = approved(noPdf); accepted.decisions['mail-size'] = { action: 'accept', note: '' };
+  assert.match(renderProductionReview(noPdf, accepted.decisions).title, /UPDATE NEW SIZE/);
+  accepted.decisions['mail-size'].action = 'reject';
+  assert.doesNotMatch(renderProductionReview(noPdf, accepted.decisions).title, /UPDATE NEW SIZE/);
+});
+
+test('server rejects mismatched update text, changed PDF and removing its reference; other questions stay open', () => {
+  const { r, d } = sizeUpdateFixture();
+  const a = { ...confirmDrawingSizeUpdate(r, approved(r), d.id), confirmed: true };
+  for (const patch of [{ title: a.title.replace('UPDATE NEW SIZE | ', '') },
+    { description: a.description.replace('Size: 120 x 45 cm', 'Size: 999 x 999 cm') },
+    { description: a.description.replace('UPDATE NEW SIZE', 'CHECK INFO') }]) {
+    assert.ok(reviewApprovalIssues(r, { ...a, ...patch }).some(s => /müssen übereinstimmen/.test(s)));
+  }
+  assert.ok(reviewApprovalIssues(r, { ...a, attachments: { old: 'remove' } }).some(s => /Zeichnung behalten/.test(s)));
+  const before = d.sha256; d.sha256 = 'b'.repeat(64);
+  assert.ok(reviewApprovalIssues(r, a).some(s => /erneut bestätigen/.test(s))); d.sha256 = before;
+  r.analysis.changes.push({ id: 'mapping', kind: 'conflict', productId: null, field: 'Additional Information',
+    value: '', questionOnly: true, reason: 'Zuordnung offen', evidence: [] });
+  assert.ok(reviewApprovalIssues(r, a).some(s => /Zuordnung offen/.test(s)));
+  r.analysis.threads[0].relevance = 'uncertain';
+  assert.ok(reviewApprovalIssues(r, a).some(s => /Mailzuordnung/.test(s)));
 });
 
 test('drawing advice keeps exact purchased values and image identities while differences remain unresolved', () => {

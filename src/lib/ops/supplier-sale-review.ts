@@ -156,6 +156,54 @@ export function confirmDeliveryNote(review: ProductionReview, approval: ReviewAp
   } } };
 }
 
+const sizeField = /^(Size|Backboard Size|Letter Size)$/i;
+const sizeValue = /^\s*\d+(?:[.,]\d+)?(?:\s*(?:x|×)\s*\d+(?:[.,]\d+)?){0,2}\s*(?:mm|cm|m)\s*$/i;
+
+/** Only order values and explicitly accepted, validated changes determine production sizes. */
+function productionSizes(review: ProductionReview, decisions: ReviewApproval["decisions"]) {
+  return review.products.flatMap((product, index) => {
+    const fields = product.fields.filter(f => sizeField.test(f.label)).map(field => {
+      const accepted = review.analysis.changes.filter(c => c.productId === product.id && c.field.toLowerCase() === field.label.toLowerCase()
+        && c.kind !== "obsolete" && !c.questionOnly && decisions[c.id]?.action === "accept");
+      return { label: field.label, value: accepted.at(-1)?.value || field.value };
+    });
+    return fields.map(field => ({ productId: product.id, productLabel: `Product ${index + 1}`, imageTitle: product.imageTitle, ...field }));
+  });
+}
+
+/** Use the existing deterministic cm finding, never infer PDF-to-product order. */
+export function drawingSizeUpdate(review: ProductionReview, document: ReviewDocument, decisions: ReviewApproval["decisions"]) {
+  if (!drawingReviewRecommendation(review, document) || document.findings.length !== 1
+    || !/^Maßangaben im PDF: (?:\d+(?:\.\d+)? cm · )*\d+(?:\.\d+)? cm\. Bestellt: .+\. Keine Rundung oder neue Produktzuordnung übernommen\.$/.test(document.findings[0])) return null;
+  const sizes = productionSizes(review, decisions);
+  if (!sizes.length || review.products.some(p => !sizes.some(s => s.productId === p.id)) || sizes.some(s => !sizeValue.test(s.value))) return null;
+  const id = `drawing-size:${document.id}`;
+  const note = JSON.stringify({ document: document.id, sha256: document.sha256, sizes: sizes.map(s => [s.productId, s.label, s.value]) });
+  if (note.length > 2000) return null;
+  return { id, note, sizes, confirmed: decisions[id]?.action === "accept" && decisions[id]?.note === note };
+}
+
+export function confirmDrawingSizeUpdate(review: ProductionReview, approval: ReviewApproval, documentId: string): ReviewApproval {
+  const document = review.documents?.find(d => d.id === documentId);
+  const update = document && drawingSizeUpdate(review, document, approval.decisions);
+  if (!document || !update) return approval;
+  const decisions = { ...approval.decisions, [update.id]: { action: "accept" as const, note: update.note } };
+  return { ...approval, decisions, attachments: { ...approval.attachments, [document.attachmentId]: "keep" },
+    ...renderProductionReview(review, decisions), confirmed: false };
+}
+
+function sizeUpdateBlock(review: ProductionReview, decisions: ReviewApproval["decisions"]) {
+  const drawings = (review.documents || []).filter(d => drawingSizeUpdate(review, d, decisions)?.confirmed);
+  const changed = review.analysis.changes.filter(c => c.kind === "conflict" && !c.questionOnly && c.productId
+    && sizeField.test(c.field) && sizeValue.test(c.value) && decisions[c.id]?.action === "accept"
+    && review.products.find(p => p.id === c.productId)?.fields.some(f => f.label.toLowerCase() === c.field.toLowerCase() && f.value !== c.value));
+  const sizes = productionSizes(review, decisions).filter(s => drawings.length || changed.some(c => c.productId === s.productId && c.field.toLowerCase() === s.label.toLowerCase()));
+  if (!sizes.length) return "";
+  return ["UPDATE NEW SIZE", ...sizes.map(s => `${s.productLabel}: ${s.label === "Size" ? "" : s.label + ": "}${s.value}`),
+    "Produce at the sizes stated above.",
+    ...drawings.map(d => `Disregard conflicting dimensions in the attached drawing "${d.name.replace(/[\r\n"]/g, " ")}". Other specifications remain unchanged.`)].join("\n");
+}
+
 /** Count actual human actions: one explicit image-batch decision resolves all of its IDs. */
 export function reviewOpenStepCount(review: ProductionReview, approval: ReviewApproval, issues: string[]) {
   const images = openImageVariants(review, approval);
@@ -201,14 +249,16 @@ export function renderProductionReview(review: ProductionReview, decisions: Revi
     return [p.quantity > 1 ? `${p.quantity}x` : "", p.title, ...fields.map(f => f.value)].filter(Boolean).join(" / ");
   }).join(" + ");
   const keyCustomer = /\bKEY KUNDE\b/i.test(review.originalTitle) ? "KEY KUNDE | " : "";
+  const sizeUpdate = sizeUpdateBlock(review, decisions);
   const marker = notes.length ? "CHECK INFO | " : "";
-  const title = `${keyCustomer}${review.orderName} | ${marker}${review.customerName} | ${summary}`;
+  const title = `${keyCustomer}${review.orderName} | ${sizeUpdate ? "UPDATE NEW SIZE | " : ""}${marker}${review.customerName} | ${summary}`;
   const blocks = products.map((p, i) => [
     products.length > 1 ? `Product ${i + 1}: ${p.title}` : p.title,
     ...p.fields.map(f => `${f.label}: ${f.value}`),
     `Quantity: ${p.quantity} Piece${p.quantity === 1 ? "" : "s"}`,
   ].join("\n"));
   const description = [
+    sizeUpdate || null,
     notes.length ? `CHECK INFO\n${notes.join("\n")}` : null,
     ...blocks,
     review.accessories.length ? `Ordered accessories (quantities as ordered):\n${review.accessories.join("\n")}` : null,
@@ -223,9 +273,25 @@ export function reviewApprovalIssues(review: ProductionReview, approval: ReviewA
   if (!record(approval) || !(["reviewId", "title", "description", "coverProductId", "priority", "priorityReason", "operatorNote"] as const).every(k => typeof approval[k] === "string")
     || typeof approval.confirmed !== "boolean" || !record(approval.decisions) || !record(approval.attachments)) return ["Ungültiges Freigabeformat."];
   const decisionIds = new Set([...review.analysis.changes.map(c => c.id), ...review.analysis.threads.filter(t => t.relevance === "uncertain").map(t => `thread:${t.id}`)]);
+  for (const d of review.documents || []) {
+    const update = drawingSizeUpdate(review, d, approval.decisions);
+    if (!update) continue;
+    decisionIds.add(update.id);
+    if (approval.decisions[update.id] && (!update.confirmed || approval.attachments[d.attachmentId] !== "keep")) issues.push("Größen-Update erneut bestätigen und die referenzierte Zeichnung behalten.");
+  }
   if (Object.entries(approval.decisions).some(([id, d]) => !decisionIds.has(id) || !record(d) || !["accept", "reject"].includes(String(d.action)) || typeof d.note !== "string" || d.note.length > 2000)
     || Object.keys(approval.attachments).some(id => !review.attachments.some(a => a.id === id))
     || approval.priorityReason.length > 2000 || approval.operatorNote.length > 4000) return ["Ungültige oder zu lange Prüfentscheidung."];
+  const updateBlock = sizeUpdateBlock(review, approval.decisions);
+  if (updateBlock) {
+    const expected = renderProductionReview(review, approval.decisions);
+    // Extra assignment notes may sit between the update and the unchanged production body.
+    if (approval.title.replace("CHECK INFO | ", "") !== expected.title.replace("CHECK INFO | ", "")
+      || !approval.description.startsWith(updateBlock + "\n\n")
+      || !approval.description.endsWith(expected.description.slice(updateBlock.length + 2))) {
+      issues.push("Größen-Update, Titel und Produktionsmaße müssen übereinstimmen. Automatische Vorschau wiederherstellen.");
+    }
+  }
   if (approval.reviewId !== review.id) issues.push("Die Vorbereitung ist nicht mehr aktuell.");
   if (!approval.confirmed) issues.push("Bitte die vollständige Vorschau bestätigen.");
   if (!approval.title?.trim() || approval.title.length > 1000 || !approval.description?.trim() || approval.description.length > 16000) issues.push("Titel oder Beschreibung fehlt oder ist zu lang.");

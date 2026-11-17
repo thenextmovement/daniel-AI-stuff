@@ -8,6 +8,75 @@ den damaligen Prüf-/Veröffentlichungsstand.
 
 ## Klare Empfehlung für aktuelle abweichende Zeichnungen (2026-11-17, vor Livegang)
 
+### Ergänzung: bestätigtes UPDATE NEW SIZE (2026-11-17, noch nicht veröffentlicht)
+
+Ziel: Bei einer reinen, belegten Maßabweichung kann die Mitarbeiterin die gültigen
+Produktionsmaße bestätigen und mit eindeutigem Größen-Update weiterarbeiten.
+Die vorhandene cm-Prüfung liefert den PDF-Befund. Die Maßwerte kommen weiterhin
+aus der Bestellung und ausdrücklich übernommenen, bereits validierten Änderungen;
+PDF-Reihenfolge und PDF-Zahlen werden niemals automatisch Produkten zugewiesen.
+
+Der Button „Maße bestätigen und Update vorbereiten“ setzt eine Entscheidung im
+bestehenden Approval, behält die benannte PDF als Referenz und rendert gemeinsam:
+UPDATE NEW SIZE im Titel, den Update-Block ganz oben und die passenden Produktmaße.
+Der englische Block weist den Supplier ausdrücklich an, nach diesen Maßen zu
+produzieren und abweichende Maße der benannten Zeichnung zu ignorieren. Andere
+Spezifikationen bleiben bestehen. CHECK INFO, KEY KUNDE, Zubehör, Request-ID und
+genau eine Bestellreferenz bleiben erhalten. Eine akzeptierte Größenänderung im
+bestehenden Konfliktabgleich erhält ebenfalls automatisch den Größen-Update-Block.
+
+Nur aktuelle, vollständig gelesene, belegte und hashgebundene Zeichnungen mit
+genau dem deterministischen Größenbefund bekommen diesen Shortcut. Gemischte,
+unvollständige oder freie KI-Befunde sowie Rückplatte/Indoor/Farbe bleiben im
+vorhandenen manuellen Ablauf. Weitere offene Mail- und Produktentscheidungen
+werden durch die Größenbestätigung nicht erledigt.
+
+Die neue Entscheidung nutzt den vorhandenen decisions-Vertrag, gebunden an
+Dokument-ID, Dateihash, Produkt-ID und die gerade gewählten Maßwerte. Ändert sich
+ein Maß, ist eine neue Bestätigung nötig. Dieselbe serverseitige Freigabeprüfung
+weist veraltete Bestätigungen, eine entfernte Referenzdatei und widersprüchliche
+Titel/Beschreibungen zurück. Der generierte Produktionsblock muss erhalten bleiben.
+Manuell bearbeitete Texte werden nicht überschrieben; die Mitarbeiterin kann die
+automatische Vorschau ausdrücklich wiederherstellen. Das Bestätigen setzt keine
+Produktionsfreigabe.
+
+Nachbar: Zahlungsentscheidung, Rückplatte/Indoor, Mailzuordnung, Dateisicherung,
+Cover und Listenwahl bleiben unverändert. Wirkung: ausschließlich lokaler
+Approval/Vorschautext bis zur bestehenden separaten Produktionsfreigabe.
+Keine Migration, neue Anbindung, KI-Anfrage oder Änderung des KI-Ausgabeformats.
+Betroffene Dateien: supplier-sale-review.ts, production-review.tsx, bestehende
+supplier-production-review.test.ts und diese Dokumentation.
+
+Verifiziert mit den am 17. November aus Ops gelesenen, heute gespeicherten
+Prüfentwürfen (keine neuen produktiven KI-Aufrufe): Amazon bestätigt 180 × 46 und
+180 × 42 cm, hält die PDF und zeigt den Update-Block. 4 → 3 Schritte durch
+Größenbestätigung, danach 3 → 2 → 1 durch Lieferschein/Bildauswahl. Die bekannte
+englische Produktzuordnungsfrage bleibt offen und wurde nicht mit diesem Auftrag
+repariert. Praxis bleibt bei Rückplatte/Indoor ohne Größen-Shortcut; unverändert
+4 → 1 nach ihren bestehenden Bestätigungen. Beide Freigabeknöpfe bleiben gesperrt.
+Browser: manuelle Textänderung erhalten, Inkonsistenz blockiert, ausdrückliche
+Wiederherstellung funktioniert, Wiederöffnen setzt lokale Entscheidungen zurück,
+keine Konsolenfehler. Produktions-API-Schreibzugriffe in der lokalen Vorschau
+gesperrt. Keine echten Aufträge freigegeben.
+
+Gezielte Tests: 56 erfolgreich, darunter explizite Bestätigung, mehrere Produkte,
+unvollständige/gemischte Dokumente, bestätigte Mailgröße, veraltete Entscheidungen,
+manuelle Widersprüche sowie Übergabe mit simulierten Providern. Gesamtsuite vor
+Main-Abgleich: 1837 bestanden, 2 bestehende Plattform-Skips; acht Deployment-Tests,
+Typprüfung und Build erfolgreich. Ein bestehender verschachtelter QC-Test benötigt
+unter lokalem Node den TAP-Reporter; mit NODE_OPTIONS=--test-reporter=tap grün.
+Nach konfliktfreiem Abgleich mit origin/main 7682043f (nur zusätzliche Telefonie):
+1838 Tests bestanden, zwei bestehende Plattform-Skips, acht Deployment-Tests,
+Build und anschließende Typprüfung erfolgreich. Eigene Änderung laut range-diff
+unverändert. Datenbank-Abschlusslesung: beide echten Fälle weiterhin unzugeordnet,
+ohne Produktionshandoff und mit null Vergabeversuchen; gespeicherte Prüfentwürfe
+und Zahlungsstände unverändert. Veröffentlichung weiterhin offen.
+
+Rollback: gezielter Revert dieses Commits über die bestehenden Release-Gates.
+Vorhandene gespeicherte Größen-Update-Approvals müssen vor einem späteren
+Produktionsversuch erneut vorbereitet werden; keine Kunden- oder Kartendaten
+automatisch zurücksetzen.
+
 Ziel: Die Mitarbeiterin sieht zur verbleibenden PDF-Prüfung direkt die Empfehlung,
 die exakten Abweichungen, die gekauften Sollwerte und den nächsten Arbeitsschritt.
 Die bestehende belegte KI-Auswertung wird dafür dargestellt; kein weiterer

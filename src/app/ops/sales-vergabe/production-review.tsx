@@ -6,6 +6,7 @@ import {
   defaultReviewApproval, renderProductionReview, reviewApprovalIssues, PRODUCTION_LISTS,
   designMappingQuestions, confirmPurchasedDesigns, openImageVariants, decideImageVariants, reviewAttachmentLabel, reviewOpenStepCount,
   openDocumentSuggestions, confirmDocumentSuggestions, reviewedDeliveryNote, confirmDeliveryNote, drawingReviewRecommendation,
+  drawingSizeUpdate, confirmDrawingSizeUpdate,
   type ProductionReview, type ReviewApproval, type ProductionPriority,
 } from "@/lib/ops/supplier-sale-review";
 import type { ProductionHandoff } from "@/lib/ops/supplier-sale-handoff";
@@ -31,7 +32,9 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
     const text = renderProductionReview(r, decisions);
     const note = typeof assignment.assignmentNote === "string" ? assignment.assignmentNote.trim() : "";
     if (note) {
-      text.description = `CHECK INFO\n${note}\n\n${text.description}`;
+      const blocks = text.description.split("\n\n");
+      blocks.splice(blocks[0]?.startsWith("UPDATE NEW SIZE\n") ? 1 : 0, 0, `CHECK INFO\n${note}`);
+      text.description = blocks.join("\n\n");
       if (!text.title.includes("CHECK INFO")) text.title = text.title.replace(r.orderName + " |", r.orderName + " | CHECK INFO |");
     }
     return text;
@@ -71,7 +74,8 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
   const deliveryNote = review ? reviewedDeliveryNote(review) : null;
   const drawingRecommendations = review ? (review.documents || []).flatMap(document => {
     const recommendation = drawingReviewRecommendation(review, document);
-    return recommendation ? [{ document, recommendation }] : [];
+    const sizeUpdate = approval ? drawingSizeUpdate(review, document, approval.decisions) : null;
+    return recommendation ? [{ document, recommendation, sizeUpdate }] : [];
   }) : [];
   const openSteps = review && approval ? reviewOpenStepCount(review, approval, issues) : 0;
   const designsConfirmed = designQuestions.length > 0 && designQuestions.every(c => approval?.decisions[c.id]?.note.startsWith("Gekaufte Designs visuell geprüft:"));
@@ -153,7 +157,7 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
               <div className="mb-3 flex items-center justify-between gap-2"><h4 className="text-sm font-semibold">Fertige Trello-Karte</h4><button type="button" className={buttonClass} disabled={locked} onClick={() => setEditText(!editText)}>{editText ? "Vorschau anzeigen" : "Text anpassen"}</button></div>
               {editText ? <><label className="block text-sm font-medium">Kartentitel<input disabled={locked} className={`${fieldClass} mt-1`} value={approval.title} onChange={e => { setEdited(true); update({ title: e.target.value }); }} /></label><label className="mt-3 block text-sm font-medium">Produktionsbeschreibung (English)<textarea disabled={locked} className={`${fieldClass} mt-1 min-h-80 font-mono text-xs`} value={approval.description} onChange={e => { setEdited(true); update({ description: e.target.value }); }} /></label></> : <><p className="break-words text-sm font-semibold">{approval.title}</p><pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm text-stone-700">{approval.description}</pre></>}
             </div>
-            {edited ? <p className="text-xs text-stone-600">Der Text wurde manuell angepasst. Weitere Entscheidungen werden nicht automatisch in diesen Text eingetragen.</p> : null}
+            {edited ? <div className="text-xs text-stone-600"><p>Der Text wurde manuell angepasst. Weitere Entscheidungen werden nicht automatisch in diesen Text eingetragen.</p><button type="button" disabled={locked} className={buttonClass} onClick={() => { update(rendered(review, approval.decisions)); setEdited(false); setEditText(false); }}>Automatische Vorschau wiederherstellen</button></div> : null}
             <details className="rounded-lg border border-stone-200 bg-white p-3 text-sm"><summary className="cursor-pointer font-medium">Bisheriger Titel und Beschreibung</summary><p className="mt-3 font-semibold">{review.originalTitle}</p><pre className="mt-2 whitespace-pre-wrap break-words font-sans text-xs">{review.originalDescription}</pre></details>
             <details className="rounded-lg border border-stone-200 bg-white p-3 text-sm"><summary className="cursor-pointer font-medium">Geprüfte Korrespondenz und Zuordnung</summary>
               {review.analysis.threads.map(t => <div key={t.id} className="mt-3 border-t pt-3"><p className="font-semibold">{t.relevance === "related" ? "Dieser Auftrag" : t.relevance === "unrelated" ? "Andere Bestellung" : "Zuordnung offen"}: {t.reason}</p>{review.sources.filter(s => s.threadId === t.id).map(s => <details key={s.id} className="mt-2"><summary className="cursor-pointer text-xs">{s.label} · {s.at ? new Date(s.at).toLocaleString("de-DE") : ""}</summary><pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs">{s.text}</pre></details>)}</div>)}
@@ -162,16 +166,25 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
           <div className="min-w-0 space-y-4">
             <fieldset disabled={locked}><legend className="mb-2 text-sm font-semibold">Gekauftes Design und Cover</legend><div className="grid grid-cols-2 gap-2">{review.products.map((product, index) => <div key={product.id} className="min-w-0 rounded-lg border border-stone-200 bg-white p-2"><p className="mb-2 text-xs font-semibold">Produkt {index + 1} · {product.fields.find(f => f.label === "Size")?.value || product.title}</p><a href={safeLink(product.imageUrl)} target="_blank" rel="noreferrer" aria-label={`Gekauftes Design ${index + 1} öffnen: ${product.imageTitle}`}><img src={product.imageUrl} alt={product.imageTitle} className="h-32 w-full object-contain" /></a><p className="mt-2 break-words text-xs">{product.title} · {product.imageTitle}</p><label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name={`cover-${saleId}`} checked={approval.coverProductId === product.id} onChange={() => update({ coverProductId: product.id })} />Als Cover</label></div>)}</div></fieldset>
             <div><h4 className="text-sm font-semibold">Dateien auf der Karte</h4><p className="mt-1 text-xs text-stone-500">Entfernte Dateien werden zuvor in der privaten Ablage bytegleich gesichert.</p>
-              {drawingRecommendations.map(({ document, recommendation }) => <section key={document.id} aria-label={`PDF-Empfehlung: ${document.name}`} className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+              {drawingRecommendations.map(({ document, recommendation, sizeUpdate }) => <section key={document.id} aria-label={`PDF-Empfehlung: ${document.name}`} className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
                 <p className="text-xs font-medium text-amber-900">Empfehlung aus der KI-PDF-Prüfung</p>
-                <h5 className="mt-1 font-semibold">{recommendation.title}</h5>
+                <h5 className="mt-1 font-semibold">{sizeUpdate?.confirmed ? "UPDATE NEW SIZE vorbereitet" : sizeUpdate ? "Produktionsmaße bestätigen und Größen-Update vorbereiten" : recommendation.title}</h5>
                 <a href={safeLink(document.href)} target="_blank" rel="noreferrer" className="mt-2 inline-block break-words text-xs underline">{document.name}</a>
                 <p className="mt-3 text-xs font-semibold">Abweichung in der Zeichnung</p>
                 {document.findings.map((finding, i) => <p key={i} className="mt-1 text-xs">{finding}</p>)}
                 <p className="mt-3 text-xs font-semibold">Bestellt – Zuordnung wie beim gekauften Design</p>
                 {recommendation.orderedProducts.map(product => <div key={product.id} className="mt-2 rounded border border-amber-200 bg-white p-2 text-xs"><p className="break-words font-medium">{product.label} · {product.imageTitle}</p>{product.fields.map((field, i) => <p key={i} className="mt-1"><span className="font-medium">{field.label}:</span> {field.value}</p>)}</div>)}
-                <p className="mt-3 text-xs"><strong>Nächster Schritt:</strong> {recommendation.nextStep}</p>
-                <p className="mt-2 text-xs text-amber-900">PDF bis zur Korrektur behalten. „Behalten“ entscheidet nur über die Datei auf der Karte; die technische Abweichung ist damit nicht geklärt.</p>
+                {sizeUpdate ? <div className="mt-3 rounded border border-amber-200 bg-white p-2 text-xs">
+                  <p className="font-semibold">Gültige Produktionsmaße bestätigen</p>
+                  <p className="mt-1">Aus der Bestellung und den ausdrücklich übernommenen Änderungen. Die Reihenfolge der PDF-Maße ändert die Produktzuordnung nicht.</p>
+                  {sizeUpdate.sizes.map(s => <p key={s.productId + s.label} className="mt-2"><strong>{s.productLabel} · {s.imageTitle}</strong><br />{s.label}: {s.value}</p>)}
+                  <button type="button" disabled={locked} aria-pressed={sizeUpdate.confirmed} className={`${buttonClass} mt-3`} onClick={() => {
+                    const next = confirmDrawingSizeUpdate(review, approval, document.id);
+                    update({ decisions: next.decisions, attachments: next.attachments, ...(!edited ? rendered(review, next.decisions) : {}) });
+                  }}>{sizeUpdate.confirmed ? "Produktionsmaße bestätigt" : "Maße bestätigen und Update vorbereiten"}</button>
+                  <p className="mt-2">{sizeUpdate.confirmed ? edited ? "Maße bestätigt. Den manuell bearbeiteten Kartentext unten abgleichen oder die automatische Vorschau wiederherstellen." : "Titel und Beschreibung enthalten die bestätigten Maße und UPDATE NEW SIZE." : "Bereitet UPDATE NEW SIZE in Titel und Beschreibung vor. Die PDF bleibt als Referenz; ihre abweichenden Maße werden ausdrücklich übersteuert."} Andere Prüfpunkte und die Produktionsfreigabe bleiben separat.</p>
+                </div> : <><p className="mt-3 text-xs"><strong>Nächster Schritt:</strong> {recommendation.nextStep}</p>
+                <p className="mt-2 text-xs text-amber-900">PDF bis zur Korrektur behalten. „Behalten“ entscheidet nur über die Datei auf der Karte; die technische Abweichung ist damit nicht geklärt.</p></>}
                 <details className="mt-2 text-xs"><summary className="cursor-pointer font-medium">PDF-Belege ansehen</summary>{document.evidence.map((e, i) => <p key={i} className="mt-2 whitespace-pre-wrap">Seite {e.page}: {e.quote}</p>)}</details>
               </section>)}
               {openDocuments.length ? <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm">
