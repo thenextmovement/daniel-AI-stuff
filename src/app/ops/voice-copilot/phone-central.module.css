@@ -105,6 +105,11 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+.hangup {
+  color: #a32532;
+  margin-inline-start: .5rem;
+  text-decoration: none;
+}
 .primary {
   background: var(--green);
   color: #fff;

@@ -15,15 +15,15 @@ const webhook = "https://fuajob.online/webhook/ops-placetel-dial-v1";
 const headers = { "cache-control": "no-store" };
 
 async function result(callId: string) {
-  const [row] = await supabaseRequest<Array<{dispatch_status: string; recording_status: string; dialed_at: string | null}>>("voice_placetel_calls", {}, {
-    select: "dispatch_status,recording_status,dialed_at", session_id: "eq." + callId, limit: 1,
+  const [row] = await supabaseRequest<Array<{phone: string; dispatch_status: string; recording_status: string; dialed_at: string | null}>>("voice_placetel_calls", {}, {
+    select: "phone,dispatch_status,recording_status,dialed_at", session_id: "eq." + callId, limit: 1,
   });
   const state = row?.dispatch_status;
   if (state === "rejected" && row.recording_status === "expired" && !row.dialed_at) {
     throw new QuoteValidationError("Der Wählauftrag ist vor der Übergabe an Placetel abgelaufen. Es wurde kein Anruf ausgelöst.", ["placetel_dispatch_expired"], 409);
   }
   if (state === "rejected") throw new QuoteValidationError("Placetel hat den Anruf abgelehnt. Bitte prüfe deinen Anschluss.", ["placetel_rejected"], 409);
-  return NextResponse.json({ ok: true, callId, state: state === "accepted" ? "accepted" : "pending" }, { headers });
+  return NextResponse.json({ ok: true, callId, dialedPhone: row?.dialed_at ? row.phone : null, state: state === "accepted" ? "accepted" : "pending" }, { headers });
 }
 
 export async function POST(request: NextRequest) {

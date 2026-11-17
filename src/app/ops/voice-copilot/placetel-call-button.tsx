@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import { Phone } from "lucide-react";
+import { Phone, PhoneOff } from "lucide-react";
 import styles from "./phone-central.module.css";
 
 export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: {
@@ -10,6 +10,7 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: 
   const sending = useRef(false);
   const [status, setStatus] = useState<"ready" | "sending" | "accepted" | "pending" | "error" | "rejected">("ready");
   const [message, setMessage] = useState("");
+  const [dialedPhone, setDialedPhone] = useState<string | null>(null);
   async function dial() {
     if (sending.current || disabled) return;
     sending.current = true;
@@ -28,6 +29,9 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: 
         setMessage(Array.isArray(data.issues) && typeof data.error === "string" ? data.error : "Wählauftrag unbestätigt. Bitte prüfe die Verbindung zu Placetel.");
         return;
       }
+      if (typeof data.dialedPhone === "string" && /^\+[1-9]\d{6,14}$/.test(data.dialedPhone)) {
+        setDialedPhone(data.dialedPhone);
+      }
       setStatus(data.state);
       onDial();
       setMessage(data.state === "accepted" ? "Placetel hat den Wählauftrag angenommen. Nimm den Rückruf an deinem Telefon an." : "Wählauftrag übermittelt. Die Bestätigung von Placetel steht noch aus.");
@@ -44,10 +48,14 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: 
       <Phone size={17}/>{status === "sending" ? "Wählauftrag läuft …" : status === "accepted" ? "Wählauftrag angenommen" : status === "rejected" ? "Wählauftrag abgelehnt" :
         status === "pending" || status === "error" ? "Wählauftrag prüfen" : "Mit Placetel anrufen"}
     </button>
+    {dialedPhone && <a className={styles.button + " " + styles.hangup} href={"hangup://" + dialedPhone}
+      onClick={() => setMessage("Prüfe in Placetel, ob das Klingeln oder Gespräch beendet ist.")}>
+      <PhoneOff size={17}/>Abbrechen / Auflegen
+    </a>}
     <p className={styles.small}>Mit dem Anruf bestätigst du die Einwilligung zur Aufzeichnung und Mitschrift.</p>
     {message && <p role="status" className={styles.small}>{message}</p>}
     {(status === "accepted" || status === "rejected") && <button type="button" className={styles.link} onClick={() => {
-      key.current = null; setStatus("ready"); setMessage("");
+      key.current = null; setDialedPhone(null); setStatus("ready"); setMessage("");
     }}>Weiteren Anruf vorbereiten</button>}
   </div>;
 }
