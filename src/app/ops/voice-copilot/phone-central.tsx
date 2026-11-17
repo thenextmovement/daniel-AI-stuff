@@ -335,7 +335,7 @@ export function PhoneCentral(props: Props) {
             {number && !freeDialPhone ? <p className={styles.small}>Bitte eine vollständige Telefonnummer eingeben.</p> : null}
           </section>}
           <div className={styles.providerNote}>
-            <Phone size={16}/><p><strong>Telefon-App auf diesem Gerät</strong>Placetel ist noch nicht mit dem CRM verbunden. Annehmen und Übernehmen folgen mit dem Anschluss.</p>
+            <Phone size={16}/><p><strong>Telefon-App auf diesem Gerät</strong>Für die Direktwahl muss Placetel auf diesem Gerät als Telefon-App eingerichtet sein.</p>
           </div>
           {phoneTeam.length ? <section className={styles.phoneTeam} aria-label="Telefonteam">
             <h3>Dein Team</h3>
@@ -415,7 +415,7 @@ export function PhoneCentral(props: Props) {
               ))}
               {canDial && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
                 disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
-              {customer && dialPhone && (!busy || assistedDialReady) ? (
+              {props.workspace === "prepare" && briefCustomerId && briefRequestId && dialPhone ? null : customer && dialPhone && (!busy || assistedDialReady) ? (
                 <button type="button" className={assistedDialReady ? styles.button + " " + styles.primary : styles.button} onClick={event => openPhoneApp(event, dialPhone)}>
                   <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "In Telefon-App anrufen"}
                 </button>

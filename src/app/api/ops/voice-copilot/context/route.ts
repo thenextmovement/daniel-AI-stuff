@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 type HistoryEvent = { id: string; session_id: string | null; occurred_at: string | null };
 type PlacetelState = { dispatch_status: string; recording_status: string; dialed_at: string | null; reserved_at: string };
-type PlacetelSession = { id: string; created_at: string; voice_placetel_calls: PlacetelState | null };
+type PlacetelSession = { context_snapshot: {placetel_direct?:boolean}|null; id: string; created_at: string; voice_placetel_calls: PlacetelState | null };
 
 export async function GET(request: NextRequest) {
   const authError = await authorizeVoiceCopilotApi(request);
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       const page = rows.slice(0,20);
       const ids = [...new Set([...page,...brief].flatMap(event => event.session_id ? [event.session_id] : []))];
       const sessions = ids.length ? await supabaseRequest<PlacetelSession[]>("voice_call_sessions", {signal:AbortSignal.timeout(12000)}, {
-        select:"id,created_at,voice_placetel_calls(dispatch_status,recording_status,dialed_at,reserved_at)",
+        select:"id,created_at,context_snapshot,voice_placetel_calls(dispatch_status,recording_status,dialed_at,reserved_at)",
         id:"in.("+ids.join(",")+")", idempotency_key:"like.placetel:*", "context_snapshot->>placetel_customer_id":"eq."+id,
       }) : [];
       const byId = new Map(sessions.map(session => [session.id,session]));
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
         const call = session.voice_placetel_calls;
         return { ...event, occurred_at: event.occurred_at || call?.dialed_at || call?.reserved_at || session.created_at,
           placetel: { dispatch: call?.dispatch_status === "rejected" && call.recording_status === "expired" && !call.dialed_at
-            ? "expired" : call?.dispatch_status ?? "unreserved", recording: call?.recording_status ?? "pending" } };
+            ? "expired" : session.context_snapshot?.placetel_direct && call?.dispatch_status === "accepted" ? "softphone" : call?.dispatch_status ?? "unreserved", recording: call?.recording_status ?? "pending" } };
       }
       return NextResponse.json({ok:true,brief:brief.map(withCallStatus),entries:page.map(withCallStatus),nextOffset:rows.length>20?offset+20:null}, {headers:{"cache-control":"no-store"}});
     }

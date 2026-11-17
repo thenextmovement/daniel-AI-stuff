@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Phone, PhoneOff } from "lucide-react";
 import styles from "./phone-central.module.css";
 
@@ -8,10 +8,23 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: 
 }) {
   const key = useRef<string | null>(null);
   const sending = useRef(false);
-  const [status, setStatus] = useState<"ready" | "sending" | "accepted" | "pending" | "error" | "rejected">("ready");
+  const mounted = useRef(true);
+  const [status, setStatus] = useState<"ready" | "sending" | "retry" | "prepared" | "opened" | "ended">("ready");
   const [message, setMessage] = useState("");
-  const [dialedPhone, setDialedPhone] = useState<string | null>(null);
-  async function dial() {
+  const [phone, setPhone] = useState("");
+  const expires = useRef(0);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  function open(number: string) {
+    if (Date.now() >= expires.current) {
+      setStatus("ended");
+      setMessage("Die Vorbereitung ist abgelaufen. Bitte bereite den Anruf erneut vor.");
+      return;
+    }
+    setStatus("opened");
+    window.location.assign("tel:" + number);
+    setMessage("Nummer an Placetel übergeben. Die Gesprächsdokumentation erscheint hier, sobald die Aufnahme vorliegt.");
+  }
+  async function prepare() {
     if (sending.current || disabled) return;
     sending.current = true;
     key.current ??= crypto.randomUUID();
@@ -19,43 +32,46 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: 
     setMessage("");
     try {
       const response = await fetch("/api/ops/voice-phone/placetel", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ requestKey: key.current, customerId, requestId, recordingConsent: true }),
-        signal: AbortSignal.timeout(30000),
+        method:"POST", headers:{"content-type":"application/json"},
+        body:JSON.stringify({mode:"softphone", requestKey:key.current, customerId, requestId, recordingConsent:true}),
+        signal:AbortSignal.timeout(30000),
       });
       const data = await response.json();
-      if (!response.ok || !data.ok || !["accepted", "pending"].includes(data.state)) {
-        setStatus((data.issues?.includes("placetel_rejected") || data.issues?.includes("placetel_dispatch_expired")) ? "rejected" : "error");
-        setMessage(Array.isArray(data.issues) && typeof data.error === "string" ? data.error : "Wählauftrag unbestätigt. Bitte prüfe die Verbindung zu Placetel.");
+      if (!mounted.current) return;
+      if (!response.ok || !data.ok) {
+        setStatus(response.status === 409 ? "ended" : "retry");
+        setMessage(typeof data.error === "string" ? data.error : "Der Anruf konnte nicht vorbereitet werden.");
         return;
       }
-      if (typeof data.dialedPhone === "string" && /^\+[1-9]\d{6,14}$/.test(data.dialedPhone)) {
-        setDialedPhone(data.dialedPhone);
+      if (data.direct !== true || data.state !== "accepted" || !/^\+[1-9]\d{6,14}$/.test(data.dialedPhone ?? "") || !Number.isFinite(data.expiresAt)) {
+        setStatus("retry");
+        setMessage("Die Bestätigung für die Direktwahl steht aus.");
+        return;
       }
-      setStatus(data.state);
+      expires.current = data.expiresAt;
+      setPhone(data.dialedPhone);
       onDial();
-      setMessage(data.state === "accepted" ? "Placetel hat den Wählauftrag angenommen. Nimm den Rückruf an deinem Telefon an." : "Wählauftrag übermittelt. Die Bestätigung von Placetel steht noch aus.");
+      if (navigator.userActivation?.isActive) open(data.dialedPhone);
+      else {
+        setStatus("prepared");
+        setMessage("Der Vorgang ist zugeordnet. Öffne jetzt das Softphone.");
+      }
     } catch {
-      setStatus("error");
-      setMessage("Die Antwort von Placetel fehlt. Prüfe die Telefon-App, bevor du den Status erneut abfragst.");
-    } finally {
-      sending.current = false;
-    }
+      if (mounted.current) { setStatus("retry"); setMessage("Die Vorbereitung konnte nicht bestätigt werden. Bitte prüfe den Status."); }
+    } finally { sending.current = false; }
   }
   return <div>
-    <button type="button" className={styles.button + " " + styles.primary}
-      disabled={disabled || status === "sending" || (status === "accepted" || status === "rejected")} onClick={() => void dial()}>
-      <Phone size={17}/>{status === "sending" ? "Wählauftrag läuft …" : status === "accepted" ? "Wählauftrag angenommen" : status === "rejected" ? "Wählauftrag abgelehnt" :
-        status === "pending" || status === "error" ? "Wählauftrag prüfen" : "Mit Placetel anrufen"}
-    </button>
-    {dialedPhone && <a className={styles.button + " " + styles.hangup} href={"hangup://" + dialedPhone}
-      onClick={() => setMessage("Prüfe in Placetel, ob das Klingeln oder Gespräch beendet ist.")}>
-      <PhoneOff size={17}/>Abbrechen / Auflegen
-    </a>}
+    {status === "opened" ? <a className={styles.button + " " + styles.hangup} href={"hangup://" + phone}
+      onClick={() => setMessage("Auflegen an Placetel übergeben. Den Gesprächsstatus siehst du im Softphone.")}>
+      <PhoneOff size={17}/>Abbrechen / Auflegen</a> :
+      status !== "ended" && <button className={styles.button + " " + styles.primary} type="button" disabled={disabled || status === "sending"}
+        onClick={() => status === "prepared" ? open(phone) : void prepare()}>
+        <Phone size={17}/>{status === "sending" ? "Anruf wird vorbereitet …" : status === "retry" ? "Status prüfen" : status === "prepared" ? "Placetel-Softphone öffnen" : "Mit Placetel-Softphone anrufen"}
+      </button>}
     <p className={styles.small}>Mit dem Anruf bestätigst du die Einwilligung zur Aufzeichnung und Mitschrift.</p>
     {message && <p role="status" className={styles.small}>{message}</p>}
-    {(status === "accepted" || status === "rejected") && <button type="button" className={styles.link} onClick={() => {
-      key.current = null; setDialedPhone(null); setStatus("ready"); setMessage("");
+    {(status === "opened" || status === "ended") && <button type="button" className={styles.link} onClick={() => {
+      key.current = null; setPhone(""); setStatus("ready"); setMessage("");
     }}>Weiteren Anruf vorbereiten</button>}
   </div>;
 }

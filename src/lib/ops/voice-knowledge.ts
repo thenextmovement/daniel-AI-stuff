@@ -864,7 +864,7 @@ export async function createVoiceCallSession(input: {
   operatorName?: unknown;
   mode: VoiceCopilotMode;
   context: (Pick<VoiceCustomerContext, "requestId" | "offer"> & Partial<Pick<VoiceCustomerContext, "sourceStatus">>) | null;
-  placetel?: { requestKey: string; staffId: string; customerId: string; phone: string };
+  placetel?: { requestKey: string; staffId: string; customerId: string; phone: string; direct?: boolean };
   knowledgeMatches: VoiceKnowledgeMatch[];
   consentStatus?: unknown;
   interactionMode?: VoiceCopilotInteractionMode;
@@ -905,7 +905,7 @@ export async function createVoiceCallSession(input: {
       knowledge_version_ids: Array.from(new Set(input.knowledgeMatches.map((match) => match.versionId))),
       context_snapshot: {
         interaction_mode: input.interactionMode || "voice_agent",
-        ...(input.placetel ? { placetel_staff_id: input.placetel.staffId, placetel_customer_id: input.placetel.customerId, placetel_phone: input.placetel.phone } : {}),
+        ...(input.placetel ? { placetel_staff_id: input.placetel.staffId, placetel_customer_id: input.placetel.customerId, placetel_phone: input.placetel.phone, placetel_direct: input.placetel.direct === true } : {}),
         consent_evidence: input.consentEvidence || null,
         request_id: input.context?.requestId || null,
         offer_id: input.context?.offer?.offerId || null,

@@ -75,7 +75,7 @@
         0
       ],
       "parameters": {
-        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_voice_placetel_dial",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_voice_placetel_dial_mode",
         "method": "POST",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
@@ -326,7 +326,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "const outcome = $('Verify personal SIP identity').first().json.verified ? $('Classify provider response').first().json.outcome : 'rejected';\nif (outcome !== 'accepted') throw new Error('Placetel-Wahl nicht bestätigt. OPS-Anrufstatus und persönlichen Anschluss prüfen; nicht automatisch erneut wählen.');\nreturn [{json:{ok:true} }];"
+        "jsCode": "const outcome = $('Verify personal SIP identity').first().json.verified ? ($('Claim once').first().json.direct === true ? 'accepted' : $('Classify provider response').first().json.outcome) : 'rejected';\nif (outcome !== 'accepted') throw new Error('Placetel-Wahl nicht bestätigt. OPS-Anrufstatus und persönlichen Anschluss prüfen; nicht automatisch erneut wählen.');\nreturn [{json:{ok:true} }];"
       }
     },
     {
@@ -340,6 +340,53 @@
       ],
       "parameters": {
         "jsCode": "return [{json:{ok:false} }];"
+      }
+    },
+    {
+      "id": "softphone-handoff",
+      "name": "Softphone handoff",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1660,
+        -160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid",
+              "leftValue": "={{ $('Claim once').first().json.direct === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "prepare-softphone",
+      "name": "Prepare softphone",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        -260
+      ],
+      "parameters": {
+        "jsCode": "return [{json:{outcome:'accepted',providerId:null}}];"
       }
     }
   ],
@@ -439,7 +486,7 @@
       "main": [
         [
           {
-            "node": "Dial once",
+            "node": "Softphone handoff",
             "type": "main",
             "index": 0
           }
@@ -491,6 +538,35 @@
         [
           {
             "node": "Acknowledge or notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Softphone handoff": {
+      "main": [
+        [
+          {
+            "node": "Prepare softphone",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dial once",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare softphone": {
+      "main": [
+        [
+          {
+            "node": "Record dispatch outcome",
             "type": "main",
             "index": 0
           }

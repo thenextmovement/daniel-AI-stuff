@@ -33,7 +33,7 @@ test("an uncertain provider reply never retries the outbound dial", () => {
   const dial = flow.nodes.find(n => n.name === "Dial once");
   assert.ok(dial && !("retryOnFail" in dial && dial.retryOnFail));
   assert.equal(dial.parameters.url,"https://api.placetel.de/v2/calls");
-  assert.deepEqual(flow.connections["Identity verified"].main.map(outputs=>outputs[0].node),["Dial once","Refuse wrong target"]);
+  assert.deepEqual(flow.connections["Identity verified"].main.map(outputs=>outputs[0].node),["Softphone handoff","Refuse wrong target"]);
 });
 
 test("a public webhook cannot provide a phone, staff identity or SIP target", () => {
@@ -42,4 +42,12 @@ test("a public webhook cannot provide a phone, staff identity or SIP target", ()
   }
   assert.deepEqual(flow.connections["Valid key"].main.map(outputs=>outputs[0].node),["Claim once","No dialing"]);
   assert.deepEqual(flow.connections["Reserved by OPS"].main.map(outputs=>outputs[0].node),["Read personal Placetel target","No dialing"]);
+});
+
+test("direct softphone calls verify the source and enter post-processing without requesting an office callback", () => {
+  const connections = flow.connections;
+  assert.deepEqual(connections["Softphone handoff"].main.map(branch => branch[0].node), ["Prepare softphone", "Dial once"]);
+  assert.deepEqual(evaluate("Prepare softphone", {}), {outcome:"accepted", providerId:null});
+  assert.equal(connections["Prepare softphone"].main[0][0].node, "Record dispatch outcome");
+  assert.match(flow.nodes.find(n => n.name === "Claim once")!.parameters.url!, /claim_voice_placetel_dial_mode$/);
 });

@@ -22,6 +22,7 @@ function phoneEntry(entry:Entry) {
     reserved:"Die Wahl ist vorgemerkt. Eine Übergabe an Placetel ist nicht bestätigt.",
     dispatched:"Die Übergabe an Placetel wurde gestartet. Eine Bestätigung steht aus.",
     uncertain:"Ob Placetel die Wahl angenommen hat, ist unklar.",
+    softphone:"Direktwahl im Softphone vorbereitet. Die Aufnahme steht noch aus.",
     accepted:"Placetel hat den Wählauftrag angenommen. Die Aufnahme steht noch aus.",
     rejected:"Der Wählauftrag wurde abgelehnt.",
     expired:"Der Wählauftrag ist vor der Übergabe an Placetel abgelaufen.",
@@ -52,7 +53,7 @@ export function CustomerBrief({id,requestId,context}:{id:string;requestId:string
       .catch(()=>{if(!controller.signal.aborted)setError(true);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return ()=>controller.abort();
   },[id,requestId,channel,offset,retry]);
-  const waiting=page?.entries.some(({placetel})=>placetel && ["reserved","dispatched","uncertain","accepted"].includes(placetel.dispatch) &&
+  const waiting=page?.entries.some(({placetel})=>placetel && ["reserved","dispatched","uncertain","accepted","softphone"].includes(placetel.dispatch) &&
     ["pending","missing","failed"].includes(placetel.recording));
   useEffect(()=>{
     if(channel!=="phone" || offset!==0 || !waiting) return;
