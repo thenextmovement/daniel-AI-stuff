@@ -740,3 +740,7 @@
 .historyMessage[data-kind="outbound"] { margin-left:auto; background:#eaf5ed; border-color:#c7ddcd; }
 .historyMessage small { display:block; color:#4c5650; }
 .historyMessage p { margin:.35rem 0 0; white-space:pre-wrap; }
+
+.callNoteInput { width: 100%; resize: vertical; border: 1px solid #c8d1cd; border-radius: .5rem; padding: .7rem; margin: .5rem 0; }
+.callNote { padding: .7rem 0; border-bottom: 1px solid #e0e5e2; }
+.callNote p { white-space: pre-wrap; overflow-wrap: anywhere; }

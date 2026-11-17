@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "re
 import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
+import { CallNotes } from "./call-notes";
+import { PlacetelCallButton } from "./placetel-call-button";
 import { CustomerBrief } from "./customer-brief";
 import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
@@ -153,7 +155,7 @@ export function PhoneCentral(props: Props) {
     setActiveContact(contact);
     setNumber(contact.phone || "");
     props.onSelect(null);
-    props.onWorkspaceChange(contact.requestId ? "assist" : "prepare");
+    props.onWorkspaceChange("prepare");
     setNotice("");
     setContextError("");
     setContextLoading(Boolean(contact.requestId));
@@ -398,7 +400,10 @@ export function PhoneCentral(props: Props) {
               </span>
             ) : null}
             <div className={styles.actions}>
-              {customer && !readySession && (props.workspace === "assist" ? (
+              {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
+                <PlacetelCallButton key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
+                  requestId={briefRequestId} disabled={busy || contextLoading} />}
+              {customer && !readySession && props.workspace !== "prepare" && (props.workspace === "assist" ? (
                 <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
                   disabled={busy || contextLoading || !selected}>
                   <Headphones size={17}/> Einwilligung bestätigen und Begleitung starten
@@ -411,7 +416,7 @@ export function PhoneCentral(props: Props) {
                 disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
               {customer && dialPhone && (!busy || assistedDialReady) ? (
                 <button type="button" className={assistedDialReady ? styles.button + " " + styles.primary : styles.button} onClick={event => openPhoneApp(event, dialPhone)}>
-                  <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "Ohne Mitschrift anrufen"}
+                  <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "In Telefon-App anrufen"}
                 </button>
               ) : customer ? (
                 <button className={styles.button + " " + styles.primary} disabled>
@@ -475,9 +480,7 @@ export function PhoneCentral(props: Props) {
                           : "Wähle links einen Kontakt. Hier findest du seine letzten Absprachen, Nachrichten und Vorgänge."}
                     </p>
                   </div>
-                  <p className={styles.small}>
-                    Für eine Mitschrift mit Placetel zuerst „Gespräch begleiten“ öffnen, die Einwilligung bestätigen und Placetel-Audio teilen. Sobald die Begleitung live ist, erscheint „Mit Live-Mitschrift anrufen“.
-                  </p>
+                  {selected?.requestId && <CallNotes key={selected.requestId} requestId={selected.requestId}/>}
                 </>
               ) : null}
               {props.children}

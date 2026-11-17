@@ -7004,6 +7004,21 @@ export async function duplicateCustomerTrelloCard(
   }
 }
 
+export async function listCustomerOpsNotes(requestId: string) {
+  if (!requestId.trim() || requestId.length > 160) {
+    throw new QuoteValidationError("Ungültige Vorgangsnummer.");
+  }
+  const rows = await supabaseRequest<WorkflowAuditRow[]>("workflow_audit_log", undefined, {
+    select: "id,created_at,metadata",
+    document_id: `eq.${requestId}`,
+    workflow_name: `eq.${CUSTOMER_RECORDS_WORKFLOW_NAME}`,
+    action: `eq.${CUSTOMER_RECORDS_NOTE_ACTION}`,
+    order: "created_at.desc,id.desc",
+    limit: 50,
+  });
+  return rows.map(mapNoteEntry);
+}
+
 export async function addCustomerOpsNote(requestId: string, input: string | CustomerOpsNoteInput, actor?: UpdateActor) {
   const normalizedRequestId = normalizeRequestSearch(requestId);
   const normalizedNote = trimNullable(typeof input === "string" ? input : input.note);

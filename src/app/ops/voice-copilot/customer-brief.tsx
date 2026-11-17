@@ -13,7 +13,7 @@ function abridge(input:string|null,max=240) {
   return text.slice(0,max).replace(/\s+\S*$/,"")+"…";
 }
 export function CustomerBrief({id,requestId,context}:{id:string;requestId:string;context:VoiceCustomerContext|null}) {
-  const [channel,setChannel]=useState<"email"|"phone">("email");
+  const [channel,setChannel]=useState<"email"|"phone">("phone");
   const [unassigned,setUnassigned]=useState<Entry[]>([]);
   const [page,setPage]=useState<Page|null>(null),[offset,setOffset]=useState(0),[retry,setRetry]=useState(0);
   const [error,setError]=useState(false),[loading,setLoading]=useState(true);
@@ -43,8 +43,9 @@ export function CustomerBrief({id,requestId,context}:{id:string;requestId:string
     })}
     {loading && <p role="status">Verlauf wird geladen …</p>}
     {error && <p role="status">Verlauf konnte nicht geladen werden. <button onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>}
-    <details><summary className={styles.link}>E-Mail- und Telefonverlauf</summary>
+    <section aria-label="Kommunikationsverlauf"><h3>E-Mail- und Telefonverlauf</h3>
       <p className={styles.small}>Alle Vorgänge dieses Kunden · Neueste zuerst</p>
+      <button type="button" className={styles.link} disabled={loading} onClick={()=>{setOffset(0);setRetry(n=>n+1);}}>Verlauf aktualisieren</button>
       <div className={styles.historyTabs} role="group" aria-label="Verlauf auswählen">
         {(["email","phone"] as const).map(kind=><button key={kind} type="button" aria-pressed={channel===kind} onClick={()=>{
           if(kind===channel)return;
@@ -59,6 +60,6 @@ export function CustomerBrief({id,requestId,context}:{id:string;requestId:string
       </article>)}
       {page && !loading && !error && !page.entries.length && <p>{channel==="email"?"Keine E-Mails gespeichert.":"Keine Telefonate gespeichert."}</p>}
       {page?.nextOffset!=null && <button className={styles.button} disabled={loading} onClick={()=>{if(offset===page.nextOffset)setRetry(n=>n+1);else setOffset(page.nextOffset!);}}>Ältere Einträge laden</button>}
-    </details>
+    </section>
   </section>;
 }

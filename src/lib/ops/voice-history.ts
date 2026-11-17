@@ -213,7 +213,7 @@ export async function getVoiceTranscript(sessionId: unknown, offset = 0, fromEnd
   const segments = await supabaseRequest<
     Array<{
       source_item_id: string;
-      speaker: TranscriptSegment["speaker"];
+      speaker: TranscriptSegment["speaker"] | "speaker_1" | "speaker_2";
       text: string;
       is_final: boolean;
       start_ms: number;

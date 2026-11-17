@@ -163,18 +163,15 @@ export function VoiceHistoryPanel({
               Schließen
             </button>
           </div>
+          {transcript.session.summary && <p><strong>Zusammenfassung</strong><br/>{transcript.session.summary}</p>}
           <p className="text-xs text-stone-500">
-            Automatische Transkription; Erkennungsfehler sind möglich.
+            Automatische Transkription. Erkennungsfehler sind möglich.
           </p>
           <div className="max-h-96 space-y-3 overflow-y-auto">
             {transcript.segments.map((segment) => (
               <div key={segment.source_item_id}>
                 <p className="text-xs font-semibold text-stone-500">
-                  {segment.speaker === "customer"
-                    ? "Kunde"
-                    : segment.speaker === "assistant"
-                      ? "KI-Assistent"
-                      : "Mitarbeiter"}{" "}
+                  {({customer: "Kunde", operator: "Mitarbeiter", assistant: "KI-Assistent", speaker_1: "Stimme 1", speaker_2: "Stimme 2"} as Record<string,string>)[segment.speaker] || "Gesprächsteilnehmer"}{" "}
                   · {Math.floor(segment.start_ms / 60000)}:
                   {String(Math.floor(segment.start_ms / 1000) % 60).padStart(
                     2,

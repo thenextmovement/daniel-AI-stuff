@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
-import { addCustomerOpsNote } from "@/lib/ops/customer-records";
+import { addCustomerOpsNote, listCustomerOpsNotes } from "@/lib/ops/customer-records";
 import { createOpsInternalTask, type OpsInternalTask } from "@/lib/ops/internal-tasks";
 import { SupabaseRestError } from "@/lib/quotes/supabase-rest";
 import { QuoteValidationError } from "@/lib/quotes/validation";
@@ -41,6 +41,18 @@ function getOpsHost(request: NextRequest) {
 function taskTitleFromNote(note: string) {
   const firstLine = note.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "Customer-Records-Aufgabe";
   return firstLine.length > 120 ? `${firstLine.slice(0, 117)}...` : firstLine;
+}
+
+export async function GET(request: NextRequest) {
+  const host = getOpsHost(request);
+  if (!isOpsPortalConfigured(host)) return notConfigured();
+  if (!isOpsPortalBypassed(host) && !(await hasOpsSession(host, request.headers))) return unauthorized();
+  try {
+    const notes = await listCustomerOpsNotes(request.nextUrl.searchParams.get("requestId") || "");
+    return NextResponse.json({ ok: true, notes }, { headers: { "cache-control": "no-store" } });
+  } catch (error) {
+    return failureResponse(error);
+  }
 }
 
 export async function POST(request: NextRequest) {
