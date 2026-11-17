@@ -3,6 +3,8 @@ import {useEffect,useState} from "react";
 import type {VoiceCustomerContext} from "@/lib/ops/voice-knowledge";
 import styles from "./phone-central.module.css";
 
+import { VoiceHistoryPanel } from "./voice-history-panel";
+
 type Entry={id:string;occurred_at:string|null;kind:string;subject:string|null;detail:string|null;request_ref:string|null;session_id:string|null;placetel?:{dispatch:string;recording:string;endedAt:string|null}};
 type Page={entries:Entry[];brief:Entry[];nextOffset:number|null};
 const labels:Record<string,string>={inbound:"Kunde schreibt",outbound:"Unsere Antwort",transcript:"Gesprächsnotiz",call:"Anruf"};
@@ -43,6 +45,7 @@ function abridge(input:string|null,max=240) {
   return text.slice(0,max).replace(/\s+\S*$/,"")+"…";
 }
 export function CustomerBrief({id,requestId,context}:{id:string;requestId:string;context:VoiceCustomerContext|null}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [channel,setChannel]=useState<"email"|"phone">("phone");
   const [unassigned,setUnassigned]=useState<Entry[]>([]);
   const [page,setPage]=useState<Page|null>(null),[offset,setOffset]=useState(0),[retry,setRetry]=useState(0);
@@ -88,6 +91,7 @@ export function CustomerBrief({id,requestId,context}:{id:string;requestId:string
       <div className={styles.historyTabs} role="group" aria-label="Verlauf auswählen">
         {(["email","phone"] as const).map(kind=><button key={kind} type="button" aria-pressed={channel===kind} onClick={()=>{
           if(kind===channel)return;
+          setExpanded(null);
           setPage(old=>old ? {...old,entries:[],nextOffset:null} : null);
           setError(false);setLoading(true);setOffset(0);setChannel(kind);
         }}>{kind==="email"?"E-Mail":"Telefon"}</button>)}
@@ -95,7 +99,8 @@ export function CustomerBrief({id,requestId,context}:{id:string;requestId:string
       {page?.entries.map(e=>{const display=phoneEntry(e);return <article className={styles.historyMessage} data-kind={e.kind} key={e.id}>
         <small>{e.occurred_at && new Date(e.occurred_at).toLocaleString("de-DE")} · {display.label} · {e.request_ref?"Vorgang "+e.request_ref.slice(0,8):"Ohne Vorgangsverweis"}</small>
         <p><strong>{display.subject || "Ohne Betreff"}</strong></p><p>{display.detail}</p>
-        {display.transcript && e.session_id && <a className={styles.link} href={"/ops/voice-copilot?transcript="+encodeURIComponent(e.session_id)} target="_blank" rel="noreferrer">Transkript öffnen ↗</a>}
+        {display.transcript && e.session_id && <><button type="button" className={styles.link} aria-expanded={expanded===e.id} onClick={()=>setExpanded(expanded===e.id ? null : e.id)}>{expanded===e.id ? "Transkription einklappen" : "Transkription anzeigen"}</button>
+          {expanded===e.id && <VoiceHistoryPanel key={e.session_id} initialSessionId={e.session_id} inline/>}</>}
       </article>;})}
       {page && !loading && !error && !page.entries.length && <p>{channel==="email"?"Keine E-Mails gespeichert.":"Keine Telefonate gespeichert."}</p>}
       {page?.nextOffset!=null && <button className={styles.button} disabled={loading} onClick={()=>{if(offset===page.nextOffset)setRetry(n=>n+1);else setOffset(page.nextOffset!);}}>Ältere Einträge laden</button>}

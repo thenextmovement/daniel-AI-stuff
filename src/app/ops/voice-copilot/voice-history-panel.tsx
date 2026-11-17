@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { VoiceHistoryEntry } from "@/lib/ops/voice-history";
 
+import { TranscriptMessages } from "./transcript-messages";
+
 type Transcript = {
   session: VoiceHistoryEntry;
   segments: Array<{
@@ -16,9 +18,11 @@ type Transcript = {
 export function VoiceHistoryPanel({
   requestId,
   initialSessionId,
+  inline = false,
 }: {
   requestId?: string;
   initialSessionId?: string;
+  inline?: boolean;
 }) {
   const [entries, setEntries] = useState<VoiceHistoryEntry[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
@@ -88,8 +92,9 @@ export function VoiceHistoryPanel({
     };
   }, [requestId, initialSessionId]);
   return (
-    <section className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4">
-      <div className="flex justify-between gap-3">
+    <section className={inline ? "grid min-w-0 gap-2" : "grid gap-3 rounded-lg border border-stone-200 bg-white p-4"}>
+      {inline && !transcript && !error && <p role="status">Mitschrift wird geladen …</p>}
+      {!inline && <div className="flex justify-between gap-3">
         <h3 className="font-semibold text-stone-950">Bisherige Telefonate</h3>
         {requestId ? (
           <button
@@ -100,10 +105,10 @@ export function VoiceHistoryPanel({
             Aktualisieren
           </button>
         ) : null}
-      </div>
+      </div>}
       {error ? (
         <p role="alert" className="text-sm text-amber-800">
-          {error}
+          {error} {inline && initialSessionId && <button type="button" onClick={() => void open(initialSessionId)}>Erneut versuchen</button>}
         </p>
       ) : null}
       {!entries.length && !error && !initialSessionId ? (
@@ -145,7 +150,7 @@ export function VoiceHistoryPanel({
       ) : null}
       {transcript ? (
         <article className="grid gap-3 border-t border-stone-200 pt-3">
-          <div className="flex justify-between gap-2">
+          {!inline && <div className="flex justify-between gap-2">
             <h4 className="text-sm font-semibold">
               Telefontranskript ·{" "}
               {transcript.session.startedAt
@@ -162,29 +167,12 @@ export function VoiceHistoryPanel({
             >
               Schließen
             </button>
-          </div>
-          {transcript.session.summary && <p><strong>Zusammenfassung</strong><br/>{transcript.session.summary}</p>}
+          </div>}
+          {!inline && transcript.session.summary && <p><strong>Zusammenfassung</strong><br/>{transcript.session.summary}</p>}
           <p className="text-xs text-stone-500">
             Automatische Transkription. Erkennungsfehler sind möglich.
           </p>
-          <div className="max-h-96 space-y-3 overflow-y-auto">
-            {transcript.segments.map((segment) => (
-              <div key={segment.source_item_id}>
-                <p className="text-xs font-semibold text-stone-500">
-                  {({customer: "Kunde", operator: "Mitarbeiter", assistant: "KI-Assistent", speaker_1: "Stimme 1", speaker_2: "Stimme 2"} as Record<string,string>)[segment.speaker] || "Gesprächsteilnehmer"}{" "}
-                  · {Math.floor(segment.start_ms / 60000)}:
-                  {String(Math.floor(segment.start_ms / 1000) % 60).padStart(
-                    2,
-                    "0",
-                  )}
-                  {segment.is_final ? "" : " · vorläufig"}
-                </p>
-                <p className="whitespace-pre-wrap text-sm text-stone-900">
-                  {segment.text}
-                </p>
-              </div>
-            ))}
-          </div>
+          <TranscriptMessages key={transcript.session.id} sessionId={transcript.session.id} employee={transcript.session.operatorName} passages={transcript.segments}/>
           {transcript.nextOffset !== null ? (
             <button
               type="button"

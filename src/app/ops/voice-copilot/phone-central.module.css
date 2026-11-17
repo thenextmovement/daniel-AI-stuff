@@ -749,3 +749,12 @@
 .callNoteInput { width: 100%; resize: vertical; border: 1px solid #c8d1cd; border-radius: .5rem; padding: .7rem; margin: .5rem 0; }
 .callNote { padding: .7rem 0; border-bottom: 1px solid #e0e5e2; }
 .callNote p { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.historyMessage[data-kind="transcript"], .historyMessage[data-kind="call"] { width:100%; max-width:100%; background:transparent; }
+.historyMessage[data-kind="outbound"] { border-bottom-right-radius:.2rem; }
+.historyMessage[data-kind="inbound"] { border-bottom-left-radius:.2rem; }
+.transcriptMessages { min-width:0; }
+.transcriptMessages .historyMessage { max-width:88%; }
+.roleChoice { font-size:.8rem; color:#4c5650; }
+.roleChoice summary { cursor:pointer; }
+.roleChoice button { margin:.35rem .25rem 0 0; text-align:left; }
