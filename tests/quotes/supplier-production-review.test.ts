@@ -6,7 +6,7 @@ import { analyzeProductionReview, validateReviewAnalysis } from "@/lib/ops/suppl
 import { executeProductionHandoff, approvedDesignAttachmentName, type HandoffDependencies, type ProductionHandoff } from "@/lib/ops/supplier-sale-handoff";
 import { readSupplierSaleMail, readSupplierSaleMailPdfs } from "@/lib/ops/supplier-sale-mail";
 import { deliveryAddressMatches, validateDocumentFindings, guardDrawingRemoval, guardDrawingDimensions, omitRedundantDocumentQuestions, mailDocumentSourcesMatch } from "@/lib/ops/supplier-sale-documents";
-import { confirmDocumentSuggestions, openDocumentSuggestions, confirmDeliveryNote, reviewedDeliveryNote, type ReviewDocument } from "@/lib/ops/supplier-sale-review";
+import { confirmDocumentSuggestions, openDocumentSuggestions, confirmDeliveryNote, reviewedDeliveryNote, drawingReviewRecommendation, type ReviewDocument } from "@/lib/ops/supplier-sale-review";
 import { renderPdfPagesToPng } from "@/lib/ops/arrival-labels/pdf";
 import { PDFDocument } from "pdf-lib";
 import { backupSupplierFile, type SupplierFileBackup } from "@/lib/ops/supplier-sale-files";
@@ -695,6 +695,45 @@ const documentFixture = (overrides: Partial<ReviewDocument> = {}): ReviewDocumen
   id: 'trello:old', name: 'Drawing.pdf', origin: 'trello', attachmentId: 'old', href: 'https://trello.com/file',
   status: 'read', sha256: 'a'.repeat(64), pages: 2, role: 'drawing', recommendation: 'keep', summary: 'Passende Zeichnung.',
   findings: [], evidence: [{ page: 1, quote: '120 x 45 cm' }], recipient: [], addressMatch: false, ...overrides,
+});
+
+test('drawing advice keeps exact purchased values and image identities while differences remain unresolved', () => {
+  const r = review();
+  r.products[0].fields = [{ label: 'Size', value: '180 x 46cm' }, { label: 'Use', value: 'Indoor' }];
+  r.products.push({ ...r.products[0], id: 'product-2', imageId: 'image2', imageTitle: 'Second purchased design', fields: [{ label: 'Size', value: '180 x 42cm' }] });
+  const d = documentFixture({ recommendation: 'manual', findings: ['PDF: 180 cm · 46.09 cm · 180 cm · 42.53 cm.'] });
+  r.documents = [d];
+  const before = structuredClone(r), approval = defaultReviewApproval(r), issues = reviewApprovalIssues(r, approval);
+  const advice = drawingReviewRecommendation(r, d)!;
+  assert.match(advice.title, /Bestellwerte beibehalten/);
+  assert.deepEqual(advice.orderedProducts.map(p => [p.id, p.imageTitle, p.fields[0].value]), [
+    ['product-1', 'Final design', '180 x 46cm'], ['product-2', 'Second purchased design', '180 x 42cm'],
+  ]);
+  assert.deepEqual(r, before);
+  assert.deepEqual(reviewApprovalIssues(r, approval), issues);
+  assert.equal(openDocumentSuggestions(r, approval).length, 0);
+  assert.equal(approval.attachments.old, undefined);
+  assert.equal(approval.confirmed, false);
+  r.products = [{ ...r.products[0], fields: [{ label: 'Size', value: '125x43cm' }, { label: 'Backboard', value: 'Rechteckig Weiß' }, { label: 'Use', value: 'Indoor' }] }];
+  d.findings = ['Loose Letters statt weißer Rückplatte.', 'Outdoor statt Indoor.'];
+  assert.deepEqual(drawingReviewRecommendation(r, d)?.orderedProducts[0].fields.map(f => f.value), ['125x43cm', 'Rechteckig Weiß', 'Indoor']);
+});
+
+test('drawing advice does not treat incomplete, superseded, or unbound documents as a proven current conflict', () => {
+  const r = review(), d = documentFixture({ recommendation: 'manual', findings: ['Abweichung'] });
+  for (const patch of [{ status: 'manual' }, { sha256: undefined }, { evidence: [] }, { findings: [] },
+    { supersededById: 'new' }, { attachmentId: 'foreign' }, { origin: 'mail' }, { role: 'other' }, { recommendation: 'remove' }] as Partial<ReviewDocument>[]) {
+    assert.equal(drawingReviewRecommendation(r, { ...d, ...patch }), null);
+  }
+});
+
+test('customer changes and uncertain mail must be clarified before drawing advice treats order values as final', () => {
+  const r = review(), d = documentFixture({ recommendation: 'manual', findings: ['Kabelposition abweichend'] });
+  r.analysis.changes[0].evidence = [{ sourceId: 'mail:old', quote: 'Bitte ändern' }];
+  assert.match(drawingReviewRecommendation(r, d)!.title, /Kundenänderung klären/);
+  r.analysis.changes = [];
+  r.analysis.threads[0].relevance = 'uncertain';
+  assert.match(drawingReviewRecommendation(r, d)!.nextStep, /Zuerst diese Entscheidung/);
 });
 
 test('PDF recommendations need a human click; unresolved, protected and previously selected files stay untouched', () => {

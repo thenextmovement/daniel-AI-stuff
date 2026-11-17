@@ -1,10 +1,50 @@
 # KI-vorbereitete Produktionsvergabe
 
-Aktueller Stand 2026-11-16: Produktionsbasis ist `7d4aba8b89b25b1f83aac7a899d568354a7697ac`.
-Die nachfolgenden Korrekturen von Mailzuordnung, Produktzuordnung und fehlenden Hinweisen sind lokal
-geprüft, nicht veröffentlicht. NEONTRIP, Quentin-Board 62bae9b97705e7419ed64593.
+Zuletzt am 2026-11-16 produktiv verifiziert: `03888746bfb99b10735b15b824fd570cbf909e59`,
+einschließlich der unten dokumentierten Mail-, Produkt-, Lieferschein- und Rückplattenkorrekturen.
+NEONTRIP, Quentin-Board 62bae9b97705e7419ed64593.
 Veröffentlichung benötigt die exakte saubere Commit-SHA. Ältere Abschnitte dokumentieren
 den damaligen Prüf-/Veröffentlichungsstand.
+
+## Klare Empfehlung für aktuelle abweichende Zeichnungen (2026-11-17, vor Livegang)
+
+Ziel: Die Mitarbeiterin sieht zur verbleibenden PDF-Prüfung direkt die Empfehlung,
+die exakten Abweichungen, die gekauften Sollwerte und den nächsten Arbeitsschritt.
+Die bestehende belegte KI-Auswertung wird dafür dargestellt; kein weiterer
+Modellaufruf, keine neue Ausgabestruktur und keine neue Datenbankpersistenz.
+
+Vollständig gelesene, mit Belegen und Dateihash gebundene aktuelle technische
+Zeichnungen mit offenen Abweichungen erhalten die Empfehlung „Bestellwerte
+beibehalten, Zeichnung korrigieren lassen“. Produktnummer, Bildname und Sollwerte
+stammen unverändert aus den angenommenen Produkten, nicht aus der PDF-Reihenfolge.
+Die PDF bleibt bis zur Korrektur erhalten; das bloße Behalten ist keine technische
+Freigabe. Anschließend muss die korrigierte Datei geprüft und der Entwurf neu
+vorbereitet werden. Relevante Mailkonflikte oder ungeklärte Threads ändern die
+Empfehlung zu „Kundenänderung klären, dann Zeichnung korrigieren lassen“.
+Unvollständig gelesene, unbekannte, ungebundene oder ersetzte Dateien bleiben im
+bisherigen manuellen bzw. belegten Sammelvorschlag.
+
+Nachbar: Dateiauswahl, Freigabesystem, Modellvalidierung, echte Maßabweichungen,
+akzeptierte Produkte/Bilder, Lieferschein, Montageschablone und Zahlung unverändert.
+Wirkung: ausschließlich die lokale Darstellung; Lesen einer Empfehlung quittiert
+keinen Prüfpunkt und ändert weder Kartentext noch Dateientscheidung. Erlaubte Dateien:
+bestehender Review-Helper, Produktionsreview-UI, zugehörige Tests und diese Doku.
+
+Verifikation: Die beiden am 17. November erneut aus der produktiven Datenbank
+gelesenen realen Entwürfe wurden mit der neuen Darstellung lokal bedient. Amazon
+zeigt 46,09/42,53 cm aus der PDF neben bestellten 46/42 cm; die Praxis zeigt
+Loose Letters/Outdoor neben weißer rechteckiger Rückplatte/Indoor. Bestehende
+Bestätigungen führen weiterhin von vier Schritten zu einer offenen PDF-Prüfung;
+keine Dateiauswahl oder Freigabe wird durch das Anzeigen der Empfehlung gesetzt.
+Lieferschein, Vormontage, Kabelhinweis und Montageschablone bleiben erhalten.
+Keine Browser-Konsolenfehler; nach Wiederöffnen sind Testentscheidungen zurückgesetzt.
+
+Die Modell- und Dokumentlesepfade sind unverändert. Getestet wurden die gespeicherten,
+produktiven KI-Auswertungen, keine neu erzeugten Mail-/PDF-Auswertungen und keine
+neuen produktiven Prüfentwürfe. Bei Amazon schloss das 24-Stunden-Änderungsfenster
+zwischenzeitlich regulär: Nur dessen zwei gespeicherte Statusfelder erklären den
+geänderten Bestellhash vollständig; Produkte und technische Vorgaben sind gleich.
+Der bestehende Aktualitätsschutz verlangt dort vor Freigabe einen neuen Entwurf.
 
 ## Stabile Mailzuordnung (16. November, nachfolgende Reparatur)
 
