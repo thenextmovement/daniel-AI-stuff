@@ -191,16 +191,12 @@ export function PhoneCentral(props: Props) {
   const dialPhone = dialPhoneNumber(phone);
   const freeDialPhone = dialPhoneNumber(number);
   const lastDialAt = useRef(-Infinity);
-  const dialedSession = useRef<string | null>(null);
   const readySession = props.workspace === "assist" && selected && !browserPhone.busy ? props.liveAssistSession : null;
-  const assistedDialReady = Boolean(readySession && readySession !== dialedSession.current);
   function openPhoneApp(event: MouseEvent<HTMLButtonElement>, phone: string) {
-    const assisted = assistedDialReady && phone === dialPhone && readySession !== dialedSession.current;
-    if (!event.nativeEvent.isTrusted || (busy && !assisted) || performance.now() - lastDialAt.current < 2000) return;
-    if (assisted && readySession) dialedSession.current = readySession;
+    if (!event.nativeEvent.isTrusted || busy || performance.now() - lastDialAt.current < 2000) return;
     lastDialAt.current = performance.now();
     window.location.assign("tel:" + phone);
-    setNotice(assisted ? "Telefon-App geöffnet. Die Gesprächsbegleitung läuft in OPS weiter." : "Die Standard-Telefon-App öffnet sich. Anrufe darüber werden derzeit nicht automatisch mitgeschrieben.");
+    setNotice("Die Standard-Telefon-App öffnet sich.");
   }
 
   return (
@@ -399,9 +395,9 @@ export function PhoneCentral(props: Props) {
             ) : null}
             <div className={styles.actions}>
               {customer && !readySession && (props.workspace === "assist" ? (
-                <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
-                  disabled={busy || contextLoading || !selected}>
-                  <Headphones size={17}/> Einwilligung bestätigen und Begleitung starten
+                <button type="submit" form="phone-assist-start" value={dialPhone || ""} className={styles.button + " " + styles.primary}
+                  disabled={busy || contextLoading || !selected || !dialPhone}>
+                  <Headphones size={17}/> Einwilligung bestätigen und mit Mitschrift anrufen
                 </button>
               ) : (
                 <button type="button" className={styles.button} disabled={busy || contextLoading || !selected}
@@ -409,9 +405,9 @@ export function PhoneCentral(props: Props) {
               ))}
               {canDial && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
                 disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
-              {customer && dialPhone && (!busy || assistedDialReady) ? (
-                <button type="button" className={assistedDialReady ? styles.button + " " + styles.primary : styles.button} onClick={event => openPhoneApp(event, dialPhone)}>
-                  <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "Ohne Mitschrift anrufen"}
+              {customer && dialPhone && !busy && !readySession ? (
+                <button type="button" className={styles.button} onClick={event => openPhoneApp(event, dialPhone)}>
+                  <Phone size={17} />Ohne Mitschrift anrufen
                 </button>
               ) : customer ? (
                 <button className={styles.button + " " + styles.primary} disabled>

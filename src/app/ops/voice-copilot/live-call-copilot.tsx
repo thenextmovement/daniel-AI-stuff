@@ -24,6 +24,7 @@ import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import { findVoiceMailHint } from "@/lib/ops/voice-mail-hint";
 import { VoiceTranscriptBuffer } from "@/lib/ops/voice-transcript-buffer";
 import type { TranscriptSegment } from "@/lib/ops/voice-history";
+import { dialPhoneNumber } from "./phone-central-data";
 import { CustomerContextPanel } from "./customer-context-panel";
 
 type LiveCallCopilotProps = {
@@ -100,6 +101,8 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
   const [consentConfirmed, setConsentConfirmed] = useState(inPhoneDirectory);
   const sharedSource = useRef<MediaStream | null>(null);
   const [hasSharedAudio, setHasSharedAudio] = useState(false);
+  const [useScreenAudio,setUseScreenAudio] = useState(false);
+  const startIntent = useRef(0);
   const acquiring = useRef(false);
 
   function releaseSharedAudio() {
@@ -357,6 +360,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
 
   async function stopSession() {
     if (!["capturing", "connecting", "live"].includes(status)) return;
+    ++startIntent.current;
     setStatus("stopping");
     vadCommittersRef.current.forEach((commit) => commit());
     await new Promise((resolve) => window.setTimeout(resolve, 2_000));
@@ -366,7 +370,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
     appendEvent("Live-Copilot beendet. Speicherstatus wird separat angezeigt.");
   }
 
-  async function startSession() {
+  async function startSession(phone: string | null = null) {
     if (acquiring.current) return;
     if (sessionIdRef.current || bufferRef.current?.size) {
       setError("Das vorherige Transkript muss zuerst fertig gespeichert werden.");
@@ -398,6 +402,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
       return;
     }
 
+    const intent = ++startIntent.current;
     acquiring.current = true;
     try {
       segmentStateRef.current.clear();
@@ -417,8 +422,30 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
       setStatus("capturing");
       appendEvent("Kunden-Audio wird angefragt.");
       window.focus();
+      const direct = inPhoneDirectory && !useScreenAudio;
+      async function openMicrophone() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+        mediaStreamsRef.current.push(stream);
+        return stream;
+      }
+      let operatorStream: MediaStream | undefined;
       let source = sharedSource.current;
-      if (!source?.active || source.getAudioTracks()[0]?.readyState !== "live") {
+      if (direct) {
+        operatorStream = await openMicrophone();
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const input = devices.find(device => device.kind === "audioinput" &&
+          device.deviceId !== "default" && /^BlackHole 2ch$/i.test(device.label.trim()));
+        if (!input) throw new Error("Placetel-Audioeingang fehlt. BlackHole 2ch auf diesem Mac einrichten oder die Bildschirmfreigabe auswählen.");
+        const mic = operatorStream.getAudioTracks()[0];
+        if (mic.getSettings().deviceId === input.deviceId || /blackhole/i.test(mic.label))
+          throw new Error("Bitte das Headset oder Mac-Mikrofon als Standardmikrofon auswählen.");
+        source = await navigator.mediaDevices.getUserMedia({audio: {
+          deviceId: {exact:input.deviceId}, echoCancellation:false, noiseSuppression:false, autoGainControl:false,
+        }});
+        mediaStreamsRef.current.push(source);
+      } else if (!source?.active || source.getAudioTracks()[0]?.readyState !== "live") {
         releaseSharedAudio();
         const captureOptions = { video: true, audio: true, systemAudio: "include", windowAudio: "window" };
         source = await navigator.mediaDevices.getDisplayMedia(captureOptions);
@@ -441,14 +468,12 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
           mediaStreamsRef.current.push(source);
         }
       }
+      operatorStream ??= await openMicrophone();
       const callAudio = source.getAudioTracks()[0].clone();
       callAudio.enabled = true;
       const customerStream = new MediaStream([callAudio]);
       mediaStreamsRef.current.push(customerStream);
-      const operatorStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
-      mediaStreamsRef.current.push(operatorStream);
+      if (intent !== startIntent.current) throw new Error("Start abgebrochen.");
 
       setStatus("connecting");
       const customerPeer = await createTranscriptionPeer(customerStream, "customer");
@@ -473,9 +498,29 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
       captureStartedRef.current = Date.now();
       await customerPeer.peerConnection.setRemoteDescription({ type: "answer", sdp: payload.customerSdp });
       await operatorPeer.peerConnection.setRemoteDescription({ type: "answer", sdp: payload.operatorSdp });
-      if (inPhoneDirectory && source !== sharedSource.current) throw new Error("Die Audiofreigabe wurde beendet.");
+      if (inPhoneDirectory && !direct && source !== sharedSource.current) throw new Error("Die Audiofreigabe wurde beendet.");
       startLocalVad(customerStream, customerPeer.channel);
       startLocalVad(operatorStream, operatorPeer.channel);
+      if (phone) {
+        const deadline = Date.now() + 12000;
+        while ([customerPeer.channel,operatorPeer.channel].some(channel => channel.readyState !== "open")) {
+          if (intent !== startIntent.current || Date.now() >= deadline) throw new Error("Mitschrift ist nicht bereit. Der Anruf wurde nicht gestartet.");
+          await new Promise(resolve => setTimeout(resolve,100));
+        }
+        if (intent !== startIntent.current || !customerStream.active || !operatorStream.active) throw new Error("Anrufstart abgebrochen.");
+        window.location.assign("tel:" + phone);
+      }
+      if (direct) {
+        for (const track of [...source.getAudioTracks(), ...operatorStream.getAudioTracks()]) {
+          track.addEventListener("ended", () => {
+            if (intent !== startIntent.current) return;
+            ++startIntent.current;
+            setError("Audioeingang getrennt. Die bisherige Mitschrift wird gespeichert.");
+            setStatus("stopping");
+            void finishSession("cancelled").then(() => setStatus("stopped"));
+          }, {once:true});
+        }
+      }
       setStatus("live");
       appendEvent("Beide Transkriptionskanaele sind live.");
     } catch (startError) {
@@ -499,6 +544,7 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
   }, []);
 
   useEffect(() => () => {
+    ++startIntent.current;
     suggestionAbortRef.current?.abort();
     cleanupMedia();
     sharedSource.current?.getTracks().forEach(track => track.stop());
@@ -506,12 +552,12 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
   }, []);
 
   useEffect(() => {
-    if (inPhoneDirectory && status === "live" && !hasSharedAudio) {
+    if (inPhoneDirectory && useScreenAudio && status === "live" && !hasSharedAudio) {
       setError("Die Audiofreigabe wurde beendet. Die bisherige Mitschrift wird gespeichert.");
       setStatus("stopping");
       void finishSession("cancelled").then(() => setStatus("stopped"));
     }
-  }, [inPhoneDirectory, status, hasSharedAudio]);
+  }, [inPhoneDirectory, useScreenAudio, status, hasSharedAudio]);
 
   const isBusy = ["capturing", "connecting", "live", "stopping"].includes(status);
   useEffect(() => { onSuggestionsChange?.(suggestions); }, [suggestions, onSuggestionsChange]);
@@ -592,7 +638,10 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
 
             {inPhoneDirectory && <form id="phone-assist-start" onSubmit={event => {
               event.preventDefault();
-              if (!isBusy && !saveFailed) void startSession();
+              const button = (event.nativeEvent as SubmitEvent).submitter;
+              if (!(button instanceof HTMLButtonElement) || !event.nativeEvent.isTrusted || boundCustomer !== selectedContext) return;
+              const phone = dialPhoneNumber(button.value);
+              if (!isBusy && !saveFailed && phone) void startSession(phone);
             }}/>}
             <label className="flex items-start gap-3 rounded-lg border border-stone-200 p-3 text-sm text-stone-800">
               <input
@@ -606,7 +655,13 @@ export function LiveCallCopilot({ operatorName, knowledgeEnabled, enabled, bound
             </label>
 
             {inPhoneDirectory && <p className="text-sm text-stone-600">
-              {hasSharedAudio ? "Placetel-Audio ist für diesen Tab freigegeben. " : "Beim ersten Start in diesem Tab Placetel mit Ton freigeben."}
+              <label>Audioquelle <select disabled={isBusy} value={useScreenAudio?"screen":"direct"} onChange={event=>{
+                releaseSharedAudio(); setUseScreenAudio(event.target.value==="screen");
+              }}>
+                <option value="direct">Placetel · BlackHole 2ch</option>
+                <option value="screen">Bildschirmfreigabe mit Ton</option>
+              </select></label>{" "}
+              {useScreenAudio && (hasSharedAudio ? "Placetel-Audio ist für diesen Tab freigegeben. " : "Beim ersten Start in diesem Tab Placetel mit Ton freigeben.")}
               {hasSharedAudio && !isBusy && <button type="button" className="underline" onClick={releaseSharedAudio}>Freigabe beenden</button>}
             </p>}
             <div className="flex flex-wrap gap-2">
