@@ -16,7 +16,7 @@ if (errorData.workflow?.id === 'FyZCGkPNoA6EQI3N') {
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '[ID entfernt]')
     .replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[Kennung entfernt]')
     .replace(/\+?\d[\d ()/.-]{7,}\d/g, '[Nummer entfernt]')
-    .replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 700);
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 200);
   const html = value => value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   const allowedNodes = new Set(['Webhook','Qonto: Transaktionen','Mappen + Batchen','Supabase: Upsert',
     'Mirror every 15 minutes','Verify Mirror Write','Record Verified Sync']);

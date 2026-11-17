@@ -61,3 +61,11 @@ test('24-hour gate suppresses same cause but passes another step or cause',()=>{
  assert.equal(gate([format({message:'429 Too many requests'})]).length,1);
  assert.equal(gate([format({message:'statement timeout',code:'57014'},{lastNodeExecuted:'Record Verified Sync'})]).length,1);
 });
+
+test('bounded long diagnostics remain complete in permanent preview',()=>{
+ const alert=format({message:'timeout '.repeat(150),description:'database unavailable '.repeat(100),code:'57014'});
+ const adapted=new Function('$input',consumers.adapter)(input([alert]))[0].json;
+ const persisted=new Function('$input',consumers.router)(input([adapted]))[0].json.rpc_payload;
+ assert.ok(alert.errorMessage.length<=500);
+ assert.match(persisted.p_metadata.error_preview_redacted,/57014/);
+});
