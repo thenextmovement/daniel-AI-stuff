@@ -43,3 +43,14 @@ test('workflow boundaries and internal notifications',()=>{
  assert.equal(workflow.settings.saveDataSuccessExecution,'none');assert.equal(workflow.settings.saveDataErrorExecution,'none');
  for(const n of workflow.nodes.filter(n=>n.type==='n8n-nodes-base.code')) new (Object.getPrototypeOf(async function(){}).constructor)(n.parameters.jsCode);
 });
+
+test('expired reservations route directly to the once-only support notification',()=>{
+ const claim=workflow.nodes.find(n=>n.name==='Auftrag prüfen');
+ const execute=new Function('$json',claim.parameters.jsCode);
+ const payload={session_id:'fixture',expired_reservation:true,notify:true,status:'rejected'};
+ assert.deepEqual(execute({body:payload}),[{json:payload}]);
+ assert.deepEqual(execute({body:null}),[]);
+ assert.throws(()=>execute({body:{...payload,notify:false}}));
+ const edges=workflow.connections['Wahlauftrag abgelaufen'].main;
+ assert.deepEqual(edges.map(output=>output.map(e=>e.node)),[['Interner Hinweis'],['Aufnahmen abfragen']]);
+});
