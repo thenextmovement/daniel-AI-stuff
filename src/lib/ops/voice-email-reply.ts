@@ -25,5 +25,8 @@ export function currentEmailReply(body: string | null): string {
     }
     reply.push(lines[i]);
   }
-  return reply.join("\n").trim();
+  const text = reply.join("\n").trim();
+  // Keep the sign-off and name when an identifiable business signature follows.
+  const signature = /^(?:(?:vielen |besten )?dank(?:e)?|(?:mit freundlichen|viele[nr]?|liebe|beste) gr[üu][ßs]e[n]?)[!., \t]*\n+(?:[ \t]*\n)*([^\n]{2,65})\n+(?=(?:Geschäfts(?:leitung|führung)|Beratung & Realisierung|Tel(?:efon)?[.:]|Mobil:|--\s*$))/im.exec(text);
+  return signature ? text.slice(0, signature.index + signature[0].trimEnd().length).trimEnd() : text;
 }
