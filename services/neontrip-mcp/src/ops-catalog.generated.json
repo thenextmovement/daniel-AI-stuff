@@ -8307,6 +8307,81 @@
       ]
     },
     {
+      "id": "voice_copilot_overview_get",
+      "path": "/api/ops/voice-copilot/overview",
+      "method": "GET",
+      "pathParameters": [],
+      "queryParameters": [
+        "customerId",
+        "part",
+        "requestId"
+      ],
+      "bodyFields": [],
+      "actionValues": [],
+      "requestTypes": [],
+      "source": "src/app/api/ops/voice-copilot/overview/route.ts",
+      "readOnly": true,
+      "notes": "Canonical Ops route validates input and applies its existing role, version, approval, payment and idempotency guards. Non-GET may send messages, publish, create paid jobs or change production state. No automatic retry after an uncertain result.",
+      "inputContracts": [
+        {
+          "name": "requireVoiceUuid",
+          "parameters": [
+            "value: unknown",
+            "label: string"
+          ],
+          "source": "src/lib/ops/voice-platform-contract.ts"
+        },
+        {
+          "name": "supabaseRequest",
+          "parameters": [
+            "path: string",
+            "init: RequestInit",
+            "query: Record<string, QueryValue> | undefined",
+            "onHeaders: ((headers: Headers) => void) | undefined"
+          ],
+          "source": "src/lib/quotes/supabase-rest.ts"
+        },
+        {
+          "name": "currentEmailReply",
+          "parameters": [
+            "body: string | null"
+          ],
+          "source": "src/lib/ops/voice-email-reply.ts"
+        },
+        {
+          "name": "listCustomerOpsNotes",
+          "parameters": [
+            "requestId: string",
+            "page: { offset: number; limit: number; notesOnly?: boolean; } | undefined"
+          ],
+          "source": "src/lib/ops/customer-records.ts"
+        },
+        {
+          "name": "loadVoiceContextRecord",
+          "parameters": [
+            "requestId: string",
+            "expectedCustomerId: string | null | undefined"
+          ],
+          "source": "src/lib/ops/voice-context-record.ts"
+        },
+        {
+          "name": "extractOpenAiResponseText",
+          "parameters": [
+            "value: unknown"
+          ],
+          "source": "src/lib/ops/voice-copilot.ts"
+        }
+      ],
+      "inputTypes": [
+        {
+          "name": "QueryValue",
+          "type": "type QueryValue = string | number | boolean | null;",
+          "resolvedType": "string | number | boolean | null",
+          "source": "src/lib/quotes/supabase-rest.ts"
+        }
+      ]
+    },
+    {
       "id": "voice_copilot_post_call_post",
       "path": "/api/ops/voice-copilot/post-call",
       "method": "POST",
@@ -9863,6 +9938,17 @@
       ]
     },
     {
+      "source": "src/app/api/ops/voice-copilot/overview/route.ts",
+      "sha256": "ebf9cedcbee9ebaa50bafd26561c7806542f5049bd08b4472c76c7ee1e131c7a",
+      "methods": [
+        "GET"
+      ],
+      "coverage": "ops_catalog",
+      "operations": [
+        "voice_copilot_overview_get"
+      ]
+    },
+    {
       "source": "src/app/api/ops/voice-copilot/post-call/route.ts",
       "sha256": "3cddfd47f6c0ed379e90cb71b073ae333d7c97888a5efeeeab80dd0612153de4",
       "methods": [
@@ -10055,8 +10141,16 @@
       "sha256": "5a92aaf15ca0362ce7bd5f84919fb3ab2f319c40ca54e0ebcd47c3110164af31"
     },
     {
+      "source": "src/lib/ops/voice-context-record.ts",
+      "sha256": "c4718bcb832f506adf9173bb9db9cc4dc4287cbb9b43e29d79e1e5eaf3714f78"
+    },
+    {
+      "source": "src/lib/ops/voice-email-reply.ts",
+      "sha256": "89d24c251978e9001a0b58694e6378d012fe3006b959314f5096cc7e2e481158"
+    },
+    {
       "source": "src/lib/quotes/supabase-rest.ts",
-      "sha256": "3de2618663a466eaad7d68c8614b74e53614328b2665d83eae2b5cf7fd7ed684"
+      "sha256": "7cfaa05ba37a75960b277017dc4d0a44e33397467c254bf8e074f215fc2f0e57"
     },
     {
       "source": "src/lib/ops/list-pagination.ts",

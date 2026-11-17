@@ -55,6 +55,7 @@ export async function supabaseRequest<T>(
   path: string,
   init: RequestInit = {},
   query?: Record<string, QueryValue>,
+  onHeaders?: (headers: Headers) => void,
 ) {
   const { key } = config();
   const url = restUrl(path, query);
@@ -89,6 +90,7 @@ export async function supabaseRequest<T>(
     throw new SupabaseRestError("Supabase Anfrage fehlgeschlagen.", response.status, body);
   }
 
+  onHeaders?.(response.headers);
   if (response.status === 204) return null as T;
   const body = await response.text();
   if (!body.trim()) return null as T;

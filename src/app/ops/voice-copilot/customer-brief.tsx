@@ -44,18 +44,29 @@ function phoneEntry(entry:Entry) {
     : recording[state.recording] || dispatch[state.dispatch] || "Der Stand des Wählauftrags ist unbekannt.";
   return {label:"Wählversuch",subject:"Ausgehender Wählversuch",detail,transcript:false};
 }
-function abridge(input:string|null,max=240) {
-  const text=(input||"").split(/(?:\n(?:Von:|From:|Am .+ schrieb)|\s(?:Mit freundlichen Grüßen|Viele Grüße|Beste Grüße)\b)/i)[0]
-    .replace(/^(?:Hallo|Hi|Guten Tag|Moin)\s+[^,\n]{1,55}[,\n]\s*/i,"").replace(/\s+/g," ").trim();
-  if(text.length<=max)return text;
-  return text.slice(0,max).replace(/\s+\S*$/,"")+"…";
-}
 export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revision:number;onNoteTarget:(callId:string,time:string)=>void;id:string;requestId:string;context:VoiceCustomerContext|null}) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [channel,setChannel]=useState<"email"|"phone"|"notes">("phone");
-  const [unassigned,setUnassigned]=useState<Entry[]>([]);
+  const [summary,setSummary]=useState<string|null>(null);
+  const [summaryFailed,setSummaryFailed]=useState(false);
+  const [counts,setCounts]=useState<Record<string,number|null>>({});
   const [page,setPage]=useState<Page|null>(null),[offset,setOffset]=useState(0),[retry,setRetry]=useState(0);
   const [error,setError]=useState(false),[loading,setLoading]=useState(true);
+  useEffect(()=>{
+    const controller=new AbortController();
+    const params=new URLSearchParams({customerId:id,requestId});
+    const read=async (part:string)=>{
+      const result=await fetch("/api/ops/voice-copilot/overview?"+params+"&part="+part,{signal:controller.signal,cache:"no-store"});
+      if (!result.ok) throw Error();
+      return result.json();
+    };
+    setSummaryFailed(false);
+    void read("counts").then(data=>{if(!controller.signal.aborted)setCounts(data);})
+      .catch(()=>{if(!controller.signal.aborted)setCounts({email:null,phone:null,notes:null});});
+    void read("summary").then(data=>{if(!controller.signal.aborted)setSummary(data.summary);})
+      .catch(()=>{if(!controller.signal.aborted)setSummaryFailed(true);});
+    return ()=>controller.abort();
+  },[id,requestId,revision,retry]);
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError(false);
     const params=new URLSearchParams({history:"1",channel,customerId:id,offset:String(offset),requestId});
@@ -69,7 +80,6 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
           detail:n.note,request_ref:requestId,session_id:n.callId || null,
         }))} as Page;})
       .then(data=>{if(controller.signal.aborted)return;
-        if(channel==="email" && !offset)setUnassigned(data.entries.filter(e=>!e.request_ref));
         setPage(old=>offset&&old?{...data,brief:old.brief,entries:[...new Map([...old.entries,...data.entries].map(e=>[e.id,e])).values()]}:notesOnly ? {...data,brief:old?.brief || []} : data);})
       .catch(()=>{if(!controller.signal.aborted)setError(true);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return ()=>controller.abort();
@@ -90,6 +100,10 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
       {context?.offer?.thumbnailUrl && <img key={context.offer.thumbnailUrl} className={styles.offerThumb} src={context.offer.thumbnailUrl}
         alt={"Vorschau "+context.offer.label} referrerPolicy="no-referrer" onError={event=>{event.currentTarget.hidden=true;}}/>}
     </header>
+    <section className={styles.currentBrief} aria-label="Aktueller Kenntnisstand"><strong>Aktueller Kenntnisstand</strong>
+      {summaryFailed ? <p>Zusammenfassung derzeit nicht verfügbar. <button className={styles.link} onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>
+        : <p>{summary ?? "Zusammenfassung wird erstellt …"}</p>}
+    </section>
     {context && <p className={styles.small}>{[context.customer.email,context.customer.phone].filter(Boolean).join(" · ")}</p>}
     {req ? <div className={styles.caseFacts}>
       <strong>{req.title || "Anfrage"} · {requestId.slice(0,8)}</strong>
@@ -103,12 +117,6 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
         </dl>
       </details>}
     </div> : <p>{requestId ? "Ausgewählter Vorgang · " + requestId.slice(0,8) : "Kein Vorgang ausgewählt."}</p>}
-    {page?.brief.map(e=>{const display=phoneEntry(e);return <div className={styles.briefEntry} key={e.id}><strong>{display.label}</strong><p>{abridge(display.detail)||e.subject}</p></div>;})}
-    {page && requestId && !page.brief.length && <p className={styles.small}>Keine Mail oder Gesprächsnotiz eindeutig dieser Anfrage zugeordnet.</p>}
-    {page && !page.brief.some(e=>e.kind==="inbound"||e.kind==="outbound") && ["inbound","outbound"].map(kind=>{
-      const entry=unassigned.find(e=>e.kind===kind);
-      return entry && <p key={kind}><strong>{labels[kind]} (ohne Vorgangsverweis): </strong>{abridge(phoneEntry(entry).detail)||entry.subject}</p>;
-    })}
     {loading && <p role="status">Verlauf wird geladen …</p>}
     {error && <p role="status">Verlauf konnte nicht geladen werden. <button onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>}
     <section aria-label="Kommunikationsverlauf"><h3>E-Mail- und Telefonverlauf</h3>
@@ -120,7 +128,7 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
           setExpanded(null);
           setPage(old=>old ? {...old,entries:[],nextOffset:null} : null);
           setError(false);setLoading(true);setOffset(0);setChannel(kind);
-        }}>{kind==="email"?"E-Mail":kind==="phone"?"Telefon":"Unsere Notizen"}</button>)}
+        }}>{kind==="email"?"E-Mail":kind==="phone"?"Telefon":"Unsere Notizen"} <span className={styles.countBadge} title={counts[kind]===null ? "Anzahl nicht verfügbar" : undefined}>{counts[kind] ?? (counts[kind]===null ? "–" : "…")}</span></button>)}
       </div>
       {page?.entries.map(e=>{const display=phoneEntry(e);return <article className={styles.historyMessage} data-kind={e.kind} key={e.id}>
         <small>{e.occurred_at && new Date(e.occurred_at).toLocaleString("de-DE")} · {display.label} · {e.request_ref?"Vorgang "+e.request_ref.slice(0,8):"Ohne Vorgangsverweis"}</small>
