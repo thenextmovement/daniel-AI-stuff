@@ -1,0 +1,510 @@
+{
+  "name": "OPS Telefonzentrale – persönliche Placetel-Wahl",
+  "nodes": [
+    {
+      "id": "placetel-1",
+      "name": "Dial reservation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "path": "ops-placetel-dial-v1",
+        "httpMethod": "POST",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "674b59cc-308a-4efe-8ce5-9eab919429fe"
+    },
+    {
+      "id": "placetel-2",
+      "name": "Accept key only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const key = $input.first().json.body?.dispatchKey;\nreturn [{json:{key: typeof key === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(key) ? key : null} }];"
+      }
+    },
+    {
+      "id": "placetel-3",
+      "name": "Valid key",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        400,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid",
+              "leftValue": "={{ !!$json.key }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "placetel-4",
+      "name": "Claim once",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        0
+      ],
+      "parameters": {
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/claim_voice_placetel_dial",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {p_dispatch_key:$json.key} }}",
+        "options": {
+          "timeout": 7000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      }
+    },
+    {
+      "id": "placetel-5",
+      "name": "Reserved by OPS",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid",
+              "leftValue": "={{ $json.dispatch === true && /^[0-9]{1,20}$/.test(String($json.target_id)) && /^[+][1-9][0-9]{6,14}$/.test($json.phone) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "placetel-6",
+      "name": "Read personal Placetel target",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "url": "={{ 'https://api.placetel.de/v2/sip_users/' + $json.target_id }}",
+        "method": "GET",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 7000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "iiRl1hr1hSKpdfq7",
+          "name": "Placetel 2"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "placetel-7",
+      "name": "Verify personal SIP identity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const call = $('Claim once').first().json;\nconst b = $input.first().json.body || {};\nconst canonical = value => {\n const raw = String(value || '').replace(/[\\s().\\/-]/g,'');\n const p = raw.startsWith('00') ? '+' + raw.slice(2) : /^0[1-9]/.test(raw) ? '+49' + raw.slice(1) : raw;\n return /^\\+[1-9]\\d{6,14}$/.test(p) ? p : null;\n};\nconst matches = $input.first().json.statusCode === 200 && String(b.id) === String(call.target_id) && String(b.webuser_id) === String(call.employee_id) && String(b.did) === String(call.extension) && typeof b.sipuid === 'string' && /^[^@\\s]+@[^@\\s]+$/.test(b.sipuid) && b.sipuid.endsWith('@' + b.domain);\nconst source = canonical(b.callerid);\nreturn [{json:{verified:!!(matches && source),sipuid:matches && source ? b.sipuid : null,source,sessionId:call.session_id,phone:call.phone} }];"
+      }
+    },
+    {
+      "id": "placetel-8",
+      "name": "Identity verified",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1400,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid",
+              "leftValue": "={{ $json.verified }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "placetel-9",
+      "name": "Dial once",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        0
+      ],
+      "parameters": {
+        "url": "https://api.placetel.de/v2/calls",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {sipuid:$json.sipuid,target:$json.phone} }}",
+        "options": {
+          "timeout": 7000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "iiRl1hr1hSKpdfq7",
+          "name": "Placetel 2"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "placetel-10",
+      "name": "Classify provider response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const code = Number($input.first().json.statusCode || 0);\nconst rejected = [400,401,403,404,422,429].includes(code);\nconst id = String($input.first().json.body?.id ?? '');\nreturn [{json:{outcome:code === 201 ? 'accepted' : rejected ? 'rejected' : 'uncertain',providerId:/^[0-9]{1,20}$/.test(id)?id:null} }];"
+      }
+    },
+    {
+      "id": "placetel-11",
+      "name": "Refuse wrong target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{json:{outcome:'rejected',providerId:null} }];"
+      }
+    },
+    {
+      "id": "placetel-12",
+      "name": "Record dispatch outcome",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        0
+      ],
+      "parameters": {
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/finish_voice_placetel_dial",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {p_session_id:$('Verify personal SIP identity').first().json.sessionId,p_outcome:$json.outcome,p_provider_id:$json.providerId,p_source_phone:$('Verify personal SIP identity').first().json.source} }}",
+        "options": {
+          "timeout": 7000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NTtNxoBGGzJCQi9u",
+          "name": "Header Auth account 2 | SUPABASE"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "placetel-13",
+      "name": "Acknowledge or notify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const outcome = $('Verify personal SIP identity').first().json.verified ? $('Classify provider response').first().json.outcome : 'rejected';\nif (outcome !== 'accepted') throw new Error('Placetel-Wahl nicht bestätigt. OPS-Anrufstatus und persönlichen Anschluss prüfen; nicht automatisch erneut wählen.');\nreturn [{json:{ok:true} }];"
+      }
+    },
+    {
+      "id": "placetel-14",
+      "name": "No dialing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{json:{ok:false} }];"
+      }
+    }
+  ],
+  "connections": {
+    "Dial reservation": {
+      "main": [
+        [
+          {
+            "node": "Accept key only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accept key only": {
+      "main": [
+        [
+          {
+            "node": "Valid key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid key": {
+      "main": [
+        [
+          {
+            "node": "Claim once",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No dialing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim once": {
+      "main": [
+        [
+          {
+            "node": "Reserved by OPS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reserved by OPS": {
+      "main": [
+        [
+          {
+            "node": "Read personal Placetel target",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No dialing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read personal Placetel target": {
+      "main": [
+        [
+          {
+            "node": "Verify personal SIP identity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify personal SIP identity": {
+      "main": [
+        [
+          {
+            "node": "Identity verified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identity verified": {
+      "main": [
+        [
+          {
+            "node": "Dial once",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Refuse wrong target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dial once": {
+      "main": [
+        [
+          {
+            "node": "Classify provider response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify provider response": {
+      "main": [
+        [
+          {
+            "node": "Record dispatch outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refuse wrong target": {
+      "main": [
+        [
+          {
+            "node": "Record dispatch outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record dispatch outcome": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge or notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "M4uG1HAtN9Zggxww",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false,
+    "executionTimeout": 55
+  }
+}

@@ -863,7 +863,8 @@ export function buildVoiceKnowledgeQuery(context: VoiceCustomerContext | null, _
 export async function createVoiceCallSession(input: {
   operatorName?: unknown;
   mode: VoiceCopilotMode;
-  context: VoiceCustomerContext | null;
+  context: (Pick<VoiceCustomerContext, "requestId" | "offer"> & Partial<Pick<VoiceCustomerContext, "sourceStatus">>) | null;
+  placetel?: { requestKey: string; staffId: string; customerId: string; phone: string };
   knowledgeMatches: VoiceKnowledgeMatch[];
   consentStatus?: unknown;
   interactionMode?: VoiceCopilotInteractionMode;
@@ -886,7 +887,7 @@ export async function createVoiceCallSession(input: {
     throw new QuoteValidationError("Kundenmodi benoetigen eine gebundene Request-ID.", ["missing_bound_request"], 422);
   }
 
-  const idempotencyKey = `voice-session:${randomUUID()}`;
+  const idempotencyKey = input.placetel ? `placetel:${input.placetel.requestKey}` : `voice-session:${randomUUID()}`;
   const rows = await supabaseRequest<Array<{ id: string }>>("voice_call_sessions", {
     method: "POST",
     headers: { Prefer: "return=representation" },
@@ -903,6 +904,7 @@ export async function createVoiceCallSession(input: {
       knowledge_version_ids: Array.from(new Set(input.knowledgeMatches.map((match) => match.versionId))),
       context_snapshot: {
         interaction_mode: input.interactionMode || "voice_agent",
+        ...(input.placetel ? { placetel_staff_id: input.placetel.staffId, placetel_customer_id: input.placetel.customerId, placetel_phone: input.placetel.phone } : {}),
         consent_evidence: input.consentEvidence || null,
         request_id: input.context?.requestId || null,
         offer_id: input.context?.offer?.offerId || null,
