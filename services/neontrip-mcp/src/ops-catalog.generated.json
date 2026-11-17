@@ -9806,7 +9806,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/context/route.ts",
-      "sha256": "94dbb9f2ec36ef6e9bce26704370fd0195ee3c1d3125298b992bbbee70e52c0c",
+      "sha256": "7787d2798aa8214e4b1eca055270c2b0f3ebdc36c9b9d34ad0d362978072e2d7",
       "methods": [
         "GET"
       ],
@@ -9963,6 +9963,14 @@
         "POST"
       ],
       "coverage": "Personal enrolled phone device and operator consent required for an outbound call."
+    },
+    {
+      "source": "src/app/api/ops/voice-phone/placetel/status/route.ts",
+      "sha256": "c48a7c6c0c1bbcf36264de1a87f13942b79bd55de1a78eadb453a9c6b8bb2fe8",
+      "methods": [
+        "GET"
+      ],
+      "coverage": "Personal phone device session required to read the provider status of an owned call."
     },
     {
       "source": "src/app/api/ops/voice-phone/route.ts",
