@@ -290,7 +290,7 @@
           "name": "updateTrelloCard",
           "parameters": [
             "cardId: string",
-            "patch: { name?: string | null; desc?: string | null; }"
+            "patch: { name?: string | null; desc?: string | null; idAttachmentCover?: string; idList?: string; pos?: \"top\"; }"
           ],
           "source": "src/lib/quotes/trello.ts"
         },
@@ -6991,6 +6991,7 @@
       "pathParameters": [],
       "queryParameters": [
         "action",
+        "attachmentId",
         "limit",
         "offset",
         "payment",
@@ -7008,10 +7009,38 @@
       "notes": "Canonical Ops route validates input and applies its existing role, version, approval, payment and idempotency guards. Non-GET may send messages, publish, create paid jobs or change production state. No automatic retry after an uncertain result.",
       "inputContracts": [
         {
+          "name": "ReviewApproval",
+          "type": "export type ReviewApproval = {\n  reviewId: string; title: string; description: string;\n  decisions: Record<string, { action: \"accept\" | \"reject\"; note: string }>;\n  attachments: Record<string, \"keep\" | \"remove\">;\n  coverProductId: string; priority: ProductionPriority; priorityReason: string;\n  operatorNote: string; confirmed: boolean;\n};",
+          "resolvedType": "{ reviewId: string; title: string; description: string; decisions: Record<string, { action: \"accept\" | \"reject\"; note: string; }>; attachments: Record<string, \"keep\" | \"remove\">; coverProductId: string; priority: ProductionPriority; priorityReason: string; operatorNote: string; confirmed: boolean; }",
+          "source": "src/lib/ops/supplier-sale-review.ts"
+        },
+        {
           "name": "assignSupplierSale",
           "parameters": [
-            "input: { saleId: string; supplier: SupplierSaleSupplier; requestedDeliveryDate: string; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean; assignmentNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; operatorName?: string | null; assigneeLabel?: string | null; }",
+            "input: { saleId: string; supplier: SupplierSaleSupplier; requestedDeliveryDate: string; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean; assignmentNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; operatorName?: string | null; assigneeLabel?: string | null; productionApproval?: ReviewApproval | null; }",
             "actor: SupplierSaleActor | null | undefined"
+          ],
+          "source": "src/lib/ops/supplier-sales.ts"
+        },
+        {
+          "name": "prepareSupplierSaleProductionReview",
+          "parameters": [
+            "saleId: string"
+          ],
+          "source": "src/lib/ops/supplier-sales.ts"
+        },
+        {
+          "name": "readSupplierSaleProductionReview",
+          "parameters": [
+            "saleId: string"
+          ],
+          "source": "src/lib/ops/supplier-sales.ts"
+        },
+        {
+          "name": "downloadSupplierSaleFileBackup",
+          "parameters": [
+            "saleId: string",
+            "attachmentId: string"
           ],
           "source": "src/lib/ops/supplier-sales.ts"
         },
@@ -7199,15 +7228,21 @@
         },
         {
           "name": "SupplierSalesPostBody",
-          "type": "{ action?: \"upsert_sale\" | \"assign_supplier\" | \"acknowledge_post_order_change\" | \"update_payment_decision\" | \"request_payment_reminder\" | \"send_order_confirmation_email\" | \"retry_shopify_tag\" | \"retry_trello_projection\" | \"set_trello_card\" | \"upload_approved_design\" | \"mark_in_production\" | \"apply_no_payment_reminder_tag\" | \"create_deadline_tasks\" | \"cleanup_supplier_assignment_tasks\" | \"sync_completed_offers\" | \"sync_shopify_supplier_tags\" | \"diagnose_sales_flow\"; payload?: unknown; sale?: unknown; order?: unknown; saleId?: string | null; supplier?: SupplierSaleSupplier | null; requestedDeliveryDate?: string | null; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean | null; assignmentNote?: string | null; trelloCard?: string | null; reviewNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; paymentDueAt?: string | null; requestedBy?: string | null; recipientEmail?: string | null; paymentLink?: string | null; message?: string | null; operatorName?: string | null; assigneeLabel?: string | null; agentToken?: string | null; idempotencyKey?: string | null; limit?: number | string | null; }",
+          "type": "{ action?: \"upsert_sale\" | \"assign_supplier\" | \"acknowledge_post_order_change\" | \"update_payment_decision\" | \"request_payment_reminder\" | \"send_order_confirmation_email\" | \"retry_shopify_tag\" | \"retry_trello_projection\" | \"set_trello_card\" | \"upload_approved_design\" | \"mark_in_production\" | \"apply_no_payment_reminder_tag\" | \"create_deadline_tasks\" | \"cleanup_supplier_assignment_tasks\" | \"sync_completed_offers\" | \"sync_shopify_supplier_tags\" | \"diagnose_sales_flow\" | \"prepare_production_review\"; payload?: unknown; sale?: unknown; order?: unknown; saleId?: string | null; supplier?: SupplierSaleSupplier | null; requestedDeliveryDate?: string | null; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean | null; assignmentNote?: string | null; trelloCard?: string | null; reviewNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; paymentDueAt?: string | null; requestedBy?: string | null; recipientEmail?: string | null; paymentLink?: string | null; message?: string | null; operatorName?: string | null; assigneeLabel?: string | null; agentToken?: string | null; idempotencyKey?: string | null; limit?: number | string | null; productionApproval?: ReviewApproval | null; }",
           "source": "src/app/api/ops/supplier-sales/route.ts"
         }
       ],
       "inputTypes": [
         {
+          "name": "ProductionPriority",
+          "type": "export type ProductionPriority = keyof typeof PRODUCTION_LISTS;",
+          "resolvedType": "\"standard\" | \"express\"",
+          "source": "src/lib/ops/supplier-sale-review.ts"
+        },
+        {
           "name": "SupplierSaleAssignInput",
-          "type": "export type SupplierSaleAssignInput = {\n  saleId: string;\n  supplier: SupplierSaleSupplier;\n  requestedDeliveryDate: string;\n  specialSupplierName?: string | null;\n  shopifySupplierTagConfirmed?: boolean;\n  assignmentNote?: string | null;\n  paymentDecisionStatus?: SupplierSalePaymentDecision | null;\n  operatorName?: string | null;\n  assigneeLabel?: string | null;\n};",
-          "resolvedType": "{ saleId: string; supplier: SupplierSaleSupplier; requestedDeliveryDate: string; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean; assignmentNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; operatorName?: string | null; assigneeLabel?: string | null; }",
+          "type": "export type SupplierSaleAssignInput = {\n  saleId: string;\n  supplier: SupplierSaleSupplier;\n  requestedDeliveryDate: string;\n  specialSupplierName?: string | null;\n  shopifySupplierTagConfirmed?: boolean;\n  assignmentNote?: string | null;\n  paymentDecisionStatus?: SupplierSalePaymentDecision | null;\n  operatorName?: string | null;\n  assigneeLabel?: string | null;\n  productionApproval?: ReviewApproval | null;\n};",
+          "resolvedType": "{ saleId: string; supplier: SupplierSaleSupplier; requestedDeliveryDate: string; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean; assignmentNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; operatorName?: string | null; assigneeLabel?: string | null; productionApproval?: ReviewApproval | null; }",
           "source": "src/lib/ops/supplier-sales.ts"
         },
         {
@@ -7221,6 +7256,12 @@
           "type": "export type SupplierSalePaymentDecision = (typeof SUPPLIER_PAYMENT_DECISIONS)[number];",
           "resolvedType": "\"pending\" | \"wait_for_payment\" | \"manual_approved_unpaid\" | \"paid_confirmed\" | \"canceled\" | \"refunded\"",
           "source": "src/lib/ops/supplier-sales.ts"
+        },
+        {
+          "name": "ReviewApproval",
+          "type": "export type ReviewApproval = {\n  reviewId: string; title: string; description: string;\n  decisions: Record<string, { action: \"accept\" | \"reject\"; note: string }>;\n  attachments: Record<string, \"keep\" | \"remove\">;\n  coverProductId: string; priority: ProductionPriority; priorityReason: string;\n  operatorNote: string; confirmed: boolean;\n};",
+          "resolvedType": "{ reviewId: string; title: string; description: string; decisions: Record<string, { action: \"accept\" | \"reject\"; note: string; }>; attachments: Record<string, \"keep\" | \"remove\">; coverProductId: string; priority: ProductionPriority; priorityReason: string; operatorNote: string; confirmed: boolean; }",
+          "source": "src/lib/ops/supplier-sale-review.ts"
         },
         {
           "name": "SupplierSaleActor",
@@ -7324,6 +7365,7 @@
       "pathParameters": [],
       "queryParameters": [
         "action",
+        "attachmentId",
         "limit",
         "offset",
         "payment",
@@ -7346,6 +7388,7 @@
         "paymentDecisionStatus",
         "paymentDueAt",
         "paymentLink",
+        "productionApproval",
         "recipientEmail",
         "requestedBy",
         "requestedDeliveryDate",
@@ -7365,6 +7408,7 @@
         "create_deadline_tasks",
         "diagnose_sales_flow",
         "mark_in_production",
+        "prepare_production_review",
         "request_payment_reminder",
         "retry_shopify_tag",
         "retry_trello_projection",
@@ -7377,17 +7421,45 @@
         "upsert_sale"
       ],
       "requestTypes": [
-        "type SupplierSalesPostBody = {\n  action?:\n    | \"upsert_sale\"\n    | \"assign_supplier\"\n    | \"acknowledge_post_order_change\"\n    | \"update_payment_decision\"\n    | \"request_payment_reminder\"\n    | \"send_order_confirmation_email\"\n    | \"retry_shopify_tag\"\n    | \"retry_trello_projection\"\n    | \"set_trello_card\"\n    | \"upload_approved_design\"\n    | \"mark_in_production\"\n    | \"apply_no_payment_reminder_tag\"\n    | \"create_deadline_tasks\"\n    | \"cleanup_supplier_assignment_tasks\"\n    | \"sync_completed_offers\"\n    | \"sync_shopify_supplier_tags\"\n    | \"diagnose_sales_flow\";\n  payload?: unknown;\n  sale?: unknown;\n  order?: unknown;\n  saleId?: string | null;\n  supplier?: SupplierSaleSupplier | null;\n  requestedDeliveryDate?: string | null;\n  specialSupplierName?: string | null;\n  shopifySupplierTagConfirmed?: boolean | null;\n  assignmentNote?: string | null;\n  trelloCard?: string | null;\n  reviewNote?: string | null;\n  paymentDecisionStatus?: SupplierSalePaymentDecision | null;\n  paymentDueAt?: string | null;\n  requestedBy?: string | null;\n  recipientEmail?: string | null;\n  paymentLink?: string | null;\n  message?: string | null;\n  operatorName?: string | null;\n  assigneeLabel?: string | null;\n  agentToken?: string | null;\n  idempotencyKey?: string | null;\n  limit?: number | string | null;\n};"
+        "type SupplierSalesPostBody = {\n  action?:\n    | \"upsert_sale\"\n    | \"assign_supplier\"\n    | \"acknowledge_post_order_change\"\n    | \"update_payment_decision\"\n    | \"request_payment_reminder\"\n    | \"send_order_confirmation_email\"\n    | \"retry_shopify_tag\"\n    | \"retry_trello_projection\"\n    | \"set_trello_card\"\n    | \"upload_approved_design\"\n    | \"mark_in_production\"\n    | \"apply_no_payment_reminder_tag\"\n    | \"create_deadline_tasks\"\n    | \"cleanup_supplier_assignment_tasks\"\n    | \"sync_completed_offers\"\n    | \"sync_shopify_supplier_tags\"\n    | \"diagnose_sales_flow\"\n    | \"prepare_production_review\";\n  payload?: unknown;\n  sale?: unknown;\n  order?: unknown;\n  saleId?: string | null;\n  supplier?: SupplierSaleSupplier | null;\n  requestedDeliveryDate?: string | null;\n  specialSupplierName?: string | null;\n  shopifySupplierTagConfirmed?: boolean | null;\n  assignmentNote?: string | null;\n  trelloCard?: string | null;\n  reviewNote?: string | null;\n  paymentDecisionStatus?: SupplierSalePaymentDecision | null;\n  paymentDueAt?: string | null;\n  requestedBy?: string | null;\n  recipientEmail?: string | null;\n  paymentLink?: string | null;\n  message?: string | null;\n  operatorName?: string | null;\n  assigneeLabel?: string | null;\n  agentToken?: string | null;\n  idempotencyKey?: string | null;\n  limit?: number | string | null;\n  productionApproval?: ReviewApproval | null;\n};"
       ],
       "source": "src/app/api/ops/supplier-sales/route.ts",
       "readOnly": false,
       "notes": "Canonical Ops route validates input and applies its existing role, version, approval, payment and idempotency guards. Non-GET may send messages, publish, create paid jobs or change production state. No automatic retry after an uncertain result.",
       "inputContracts": [
         {
+          "name": "ReviewApproval",
+          "type": "export type ReviewApproval = {\n  reviewId: string; title: string; description: string;\n  decisions: Record<string, { action: \"accept\" | \"reject\"; note: string }>;\n  attachments: Record<string, \"keep\" | \"remove\">;\n  coverProductId: string; priority: ProductionPriority; priorityReason: string;\n  operatorNote: string; confirmed: boolean;\n};",
+          "resolvedType": "{ reviewId: string; title: string; description: string; decisions: Record<string, { action: \"accept\" | \"reject\"; note: string; }>; attachments: Record<string, \"keep\" | \"remove\">; coverProductId: string; priority: ProductionPriority; priorityReason: string; operatorNote: string; confirmed: boolean; }",
+          "source": "src/lib/ops/supplier-sale-review.ts"
+        },
+        {
           "name": "assignSupplierSale",
           "parameters": [
-            "input: { saleId: string; supplier: SupplierSaleSupplier; requestedDeliveryDate: string; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean; assignmentNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; operatorName?: string | null; assigneeLabel?: string | null; }",
+            "input: { saleId: string; supplier: SupplierSaleSupplier; requestedDeliveryDate: string; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean; assignmentNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; operatorName?: string | null; assigneeLabel?: string | null; productionApproval?: ReviewApproval | null; }",
             "actor: SupplierSaleActor | null | undefined"
+          ],
+          "source": "src/lib/ops/supplier-sales.ts"
+        },
+        {
+          "name": "prepareSupplierSaleProductionReview",
+          "parameters": [
+            "saleId: string"
+          ],
+          "source": "src/lib/ops/supplier-sales.ts"
+        },
+        {
+          "name": "readSupplierSaleProductionReview",
+          "parameters": [
+            "saleId: string"
+          ],
+          "source": "src/lib/ops/supplier-sales.ts"
+        },
+        {
+          "name": "downloadSupplierSaleFileBackup",
+          "parameters": [
+            "saleId: string",
+            "attachmentId: string"
           ],
           "source": "src/lib/ops/supplier-sales.ts"
         },
@@ -7575,15 +7647,21 @@
         },
         {
           "name": "SupplierSalesPostBody",
-          "type": "{ action?: \"upsert_sale\" | \"assign_supplier\" | \"acknowledge_post_order_change\" | \"update_payment_decision\" | \"request_payment_reminder\" | \"send_order_confirmation_email\" | \"retry_shopify_tag\" | \"retry_trello_projection\" | \"set_trello_card\" | \"upload_approved_design\" | \"mark_in_production\" | \"apply_no_payment_reminder_tag\" | \"create_deadline_tasks\" | \"cleanup_supplier_assignment_tasks\" | \"sync_completed_offers\" | \"sync_shopify_supplier_tags\" | \"diagnose_sales_flow\"; payload?: unknown; sale?: unknown; order?: unknown; saleId?: string | null; supplier?: SupplierSaleSupplier | null; requestedDeliveryDate?: string | null; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean | null; assignmentNote?: string | null; trelloCard?: string | null; reviewNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; paymentDueAt?: string | null; requestedBy?: string | null; recipientEmail?: string | null; paymentLink?: string | null; message?: string | null; operatorName?: string | null; assigneeLabel?: string | null; agentToken?: string | null; idempotencyKey?: string | null; limit?: number | string | null; }",
+          "type": "{ action?: \"upsert_sale\" | \"assign_supplier\" | \"acknowledge_post_order_change\" | \"update_payment_decision\" | \"request_payment_reminder\" | \"send_order_confirmation_email\" | \"retry_shopify_tag\" | \"retry_trello_projection\" | \"set_trello_card\" | \"upload_approved_design\" | \"mark_in_production\" | \"apply_no_payment_reminder_tag\" | \"create_deadline_tasks\" | \"cleanup_supplier_assignment_tasks\" | \"sync_completed_offers\" | \"sync_shopify_supplier_tags\" | \"diagnose_sales_flow\" | \"prepare_production_review\"; payload?: unknown; sale?: unknown; order?: unknown; saleId?: string | null; supplier?: SupplierSaleSupplier | null; requestedDeliveryDate?: string | null; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean | null; assignmentNote?: string | null; trelloCard?: string | null; reviewNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; paymentDueAt?: string | null; requestedBy?: string | null; recipientEmail?: string | null; paymentLink?: string | null; message?: string | null; operatorName?: string | null; assigneeLabel?: string | null; agentToken?: string | null; idempotencyKey?: string | null; limit?: number | string | null; productionApproval?: ReviewApproval | null; }",
           "source": "src/app/api/ops/supplier-sales/route.ts"
         }
       ],
       "inputTypes": [
         {
+          "name": "ProductionPriority",
+          "type": "export type ProductionPriority = keyof typeof PRODUCTION_LISTS;",
+          "resolvedType": "\"standard\" | \"express\"",
+          "source": "src/lib/ops/supplier-sale-review.ts"
+        },
+        {
           "name": "SupplierSaleAssignInput",
-          "type": "export type SupplierSaleAssignInput = {\n  saleId: string;\n  supplier: SupplierSaleSupplier;\n  requestedDeliveryDate: string;\n  specialSupplierName?: string | null;\n  shopifySupplierTagConfirmed?: boolean;\n  assignmentNote?: string | null;\n  paymentDecisionStatus?: SupplierSalePaymentDecision | null;\n  operatorName?: string | null;\n  assigneeLabel?: string | null;\n};",
-          "resolvedType": "{ saleId: string; supplier: SupplierSaleSupplier; requestedDeliveryDate: string; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean; assignmentNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; operatorName?: string | null; assigneeLabel?: string | null; }",
+          "type": "export type SupplierSaleAssignInput = {\n  saleId: string;\n  supplier: SupplierSaleSupplier;\n  requestedDeliveryDate: string;\n  specialSupplierName?: string | null;\n  shopifySupplierTagConfirmed?: boolean;\n  assignmentNote?: string | null;\n  paymentDecisionStatus?: SupplierSalePaymentDecision | null;\n  operatorName?: string | null;\n  assigneeLabel?: string | null;\n  productionApproval?: ReviewApproval | null;\n};",
+          "resolvedType": "{ saleId: string; supplier: SupplierSaleSupplier; requestedDeliveryDate: string; specialSupplierName?: string | null; shopifySupplierTagConfirmed?: boolean; assignmentNote?: string | null; paymentDecisionStatus?: SupplierSalePaymentDecision | null; operatorName?: string | null; assigneeLabel?: string | null; productionApproval?: ReviewApproval | null; }",
           "source": "src/lib/ops/supplier-sales.ts"
         },
         {
@@ -7597,6 +7675,12 @@
           "type": "export type SupplierSalePaymentDecision = (typeof SUPPLIER_PAYMENT_DECISIONS)[number];",
           "resolvedType": "\"pending\" | \"wait_for_payment\" | \"manual_approved_unpaid\" | \"paid_confirmed\" | \"canceled\" | \"refunded\"",
           "source": "src/lib/ops/supplier-sales.ts"
+        },
+        {
+          "name": "ReviewApproval",
+          "type": "export type ReviewApproval = {\n  reviewId: string; title: string; description: string;\n  decisions: Record<string, { action: \"accept\" | \"reject\"; note: string }>;\n  attachments: Record<string, \"keep\" | \"remove\">;\n  coverProductId: string; priority: ProductionPriority; priorityReason: string;\n  operatorNote: string; confirmed: boolean;\n};",
+          "resolvedType": "{ reviewId: string; title: string; description: string; decisions: Record<string, { action: \"accept\" | \"reject\"; note: string; }>; attachments: Record<string, \"keep\" | \"remove\">; coverProductId: string; priority: ProductionPriority; priorityReason: string; operatorNote: string; confirmed: boolean; }",
+          "source": "src/lib/ops/supplier-sale-review.ts"
         },
         {
           "name": "SupplierSaleActor",
@@ -8412,7 +8496,7 @@
           "name": "getVoiceCustomerContext",
           "parameters": [
             "requestIdInput: unknown",
-            "options: { customerId?: string | null; } | undefined"
+            "options: { customerId?: string | null; mailQuestion?: string; } | undefined"
           ],
           "source": "src/lib/ops/voice-knowledge.ts"
         },
@@ -8424,6 +8508,14 @@
             "limit: number"
           ],
           "source": "src/lib/ops/voice-knowledge.ts"
+        },
+        {
+          "name": "findVoiceMailHint",
+          "parameters": [
+            "question: string",
+            "messages: { direction: string | null; subject: string; preview: string | null; occurredAt: string | null; scope?: \"contact\" | \"organization\"; }[]"
+          ],
+          "source": "src/lib/ops/voice-mail-hint.ts"
         }
       ],
       "inputTypes": [
@@ -8441,8 +8533,8 @@
         },
         {
           "name": "VoiceCustomerContext",
-          "type": "export type VoiceCustomerContext = {\n  requestId: string;\n  customer: {\n    displayName: string | null;\n    company: string | null;\n    email?: string | null;\n    phone?: string | null;\n  };\n  links?: { offer: string | null; trello: string | null };\n  recentCalls?: Array<{ id: string; startedAt: string | null; summary: string | null; excerpt: string; incomplete: boolean; sourceUrl: string }>;\n  historyStatus?: \"ok\" | \"unavailable\";\n  request: {\n    title: string | null;\n    description: string | null;\n    status: string | null;\n    segment: string | null;\n    size: string | null;\n    colors: string[];\n    application: string | null;\n    deliveryTime: string | null;\n  };\n  offer: {\n    source: \"offers\" | \"archive\";\n    offerId: string | null;\n    offerNumber: string | null;\n    label: string;\n    status: string;\n    viewedAt: string | null;\n    acceptedAt: string | null;\n    projectTitle: string | null;\n    price?: { amount: number; currency: string; taxBasis: \"gross\" | \"net\" | \"unspecified\"; asOf: string | null } | null;\n    items: Array<{ title: string; description: string | null; quantity: number; selected?: boolean }>;\n  } | null;\n  outlook: Array<{\n    direction: string | null;\n    subject: string;\n    preview: string | null;\n    occurredAt: string | null;\n    scope?: \"contact\" | \"organization\";\n  }>;\n  outlookMatchCount?: number;\n  outlookOrganizationMatchCount?: number;\n  sourceStatus: {\n    customerRecord: \"ok\";\n    offer: \"ok\" | \"not_linked\" | \"unavailable\";\n    outlook: \"ok\" | \"empty\" | \"unavailable\";\n  };\n};",
-          "resolvedType": "{ requestId: string; customer: { displayName: string | null; company: string | null; email?: string | null; phone?: string | null; }; links?: { offer: string | null; trello: string | null; }; recentCalls?: Array<{ id: string; startedAt: string | null; summary: string | null; excerpt: string; incomplete: boolean; sourceUrl: string; }>; historyStatus?: \"ok\" | \"unavailable\"; request: { title: string | null; description: string | null; status: string | null; segment: string | null; size: string | null; colors: string[]; application: string | null; deliveryTime: string | null; }; offer: { source: \"offers\" | \"archive\"; offerId: string | null; offerNumber: string | null; label: string; status: string; viewedAt: string | null; acceptedAt: string | null; projectTitle: string | null; price?: { amount: number; currency: string; taxBasis: \"gross\" | \"net\" | \"unspecified\"; asOf: string | null; } | null; items: Array<{ title: string; description: string | null; quantity: number; selected?: boolean; }>; } | null; outlook: Array<{ direction: string | null; subject: string; preview: string | null; occurredAt: string | null; scope?: \"contact\" | \"organization\"; }>; outlookMatchCount?: number; outlookOrganizationMatchCount?: number; sourceStatus: { customerRecord: \"ok\"; offer: \"ok\" | \"not_linked\" | \"unavailable\"; outlook: \"ok\" | \"empty\" | \"unavailable\"; }; }",
+          "type": "export type VoiceCustomerContext = {\n  masterCustomerId?: string;\n  requestId: string;\n  customer: {\n    displayName: string | null;\n    company: string | null;\n    email?: string | null;\n    phone?: string | null;\n  };\n  links?: { offer: string | null; trello: string | null };\n  recentCalls?: Array<{ id: string; startedAt: string | null; summary: string | null; excerpt: string; incomplete: boolean; sourceUrl: string }>;\n  historyStatus?: \"ok\" | \"unavailable\";\n  request: {\n    title: string | null;\n    description: string | null;\n    status: string | null;\n    segment: string | null;\n    size: string | null;\n    colors: string[];\n    application: string | null;\n    deliveryTime: string | null;\n  };\n  offer: {\n    source: \"offers\" | \"archive\";\n    offerId: string | null;\n    offerNumber: string | null;\n    label: string;\n    status: string;\n    viewedAt: string | null;\n    acceptedAt: string | null;\n    projectTitle: string | null;\n    price?: { amount: number; currency: string; taxBasis: \"gross\" | \"net\" | \"unspecified\"; asOf: string | null } | null;\n    items: Array<{ title: string; description: string | null; quantity: number; selected?: boolean }>;\n  } | null;\n  outlook: Array<{\n    direction: string | null;\n    subject: string;\n    preview: string | null;\n    occurredAt: string | null;\n    scope?: \"contact\" | \"organization\";\n  }>;\n  outlookMatchCount?: number;\n  outlookOrganizationMatchCount?: number;\n  sourceStatus: {\n    customerRecord: \"ok\";\n    offer: \"ok\" | \"not_linked\" | \"unavailable\";\n    outlook: \"ok\" | \"empty\" | \"unavailable\";\n  };\n};",
+          "resolvedType": "{ masterCustomerId?: string; requestId: string; customer: { displayName: string | null; company: string | null; email?: string | null; phone?: string | null; }; links?: { offer: string | null; trello: string | null; }; recentCalls?: Array<{ id: string; startedAt: string | null; summary: string | null; excerpt: string; incomplete: boolean; sourceUrl: string; }>; historyStatus?: \"ok\" | \"unavailable\"; request: { title: string | null; description: string | null; status: string | null; segment: string | null; size: string | null; colors: string[]; application: string | null; deliveryTime: string | null; }; offer: { source: \"offers\" | \"archive\"; offerId: string | null; offerNumber: string | null; label: string; status: string; viewedAt: string | null; acceptedAt: string | null; projectTitle: string | null; price?: { amount: number; currency: string; taxBasis: \"gross\" | \"net\" | \"unspecified\"; asOf: string | null; } | null; items: Array<{ title: string; description: string | null; quantity: number; selected?: boolean; }>; } | null; outlook: Array<{ direction: string | null; subject: string; preview: string | null; occurredAt: string | null; scope?: \"contact\" | \"organization\"; }>; outlookMatchCount?: number; outlookOrganizationMatchCount?: number; sourceStatus: { customerRecord: \"ok\"; offer: \"ok\" | \"not_linked\" | \"unavailable\"; outlook: \"ok\" | \"empty\" | \"unavailable\"; }; }",
           "source": "src/lib/ops/voice-knowledge.ts"
         },
         {
@@ -9806,7 +9898,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/context/route.ts",
-      "sha256": "47479e20421a5c2ce51ddc20f361aa983aee7f2922e9c5f184e4c26b4a0701a8",
+      "sha256": "94dbb9f2ec36ef6e9bce26704370fd0195ee3c1d3125298b992bbbee70e52c0c",
       "methods": [
         "GET"
       ],
@@ -9958,7 +10050,7 @@
     },
     {
       "source": "src/app/api/ops/voice-phone/placetel/route.ts",
-      "sha256": "55f7c17f00b1242deb9dd504658cf734d90020f5bca515cb12732191359da4eb",
+      "sha256": "3fca2190eddbb42cd517de13cacfcc575b24a2be8b4a5ff2bad561cb489055e1",
       "methods": [
         "POST"
       ],
@@ -10227,12 +10319,16 @@
       "sha256": "547b10c4125e2944a72020ba341d93e985daf68ed6843be91a8f98521cbbf62f"
     },
     {
+      "source": "src/lib/ops/supplier-sale-review.ts",
+      "sha256": "2ac9e30270b36a66a78b0d19fc72d4ceb8e0ad16a587f86544c215dffae4266f"
+    },
+    {
       "source": "src/lib/ops/supplier-sales.ts",
       "sha256": "3292125716eff58f4ce6697ea20d815e458dd55841c9ad39a866a1e651aeceb3"
     },
     {
       "source": "src/lib/ops/voice-knowledge.ts",
-      "sha256": "f31e88c19064581f7913fbc932625c9790deb5f9cb741e6977a585e13e54dfcd"
+      "sha256": "5d542dd37638fc910a16941500343f61e8312b074affa9537543268267fa5d62"
     },
     {
       "source": "src/lib/ops/voice-platform-contract.ts",
@@ -10253,6 +10349,14 @@
     {
       "source": "src/lib/ops/voice-history.ts",
       "sha256": "f025223bab67d471c7441606b92aa82375284578e85a586505ddfc59dc1b46fe"
+    },
+    {
+      "source": "src/lib/ops/voice-assisted-summary.ts",
+      "sha256": "230c1382c70cbcc445a9d44eae3442c6e15aa5fcc6b3f7b8c79a053922442752"
+    },
+    {
+      "source": "src/lib/ops/voice-mail-hint.ts",
+      "sha256": "9706538aa1066246d2cf6daf55719dcba75de1c893af95461c014378c1a63941"
     },
     {
       "source": "src/lib/ops/voice-phone-contract.ts",
@@ -10281,6 +10385,10 @@
     {
       "source": "src/lib/ops/voice-phone-identity.ts",
       "sha256": "b9c5433e00be50949d0ccd95260722cf5e04952917d9529a600f0817480c10a7"
+    },
+    {
+      "source": "src/lib/ops/voice-context-record.ts",
+      "sha256": "326b949457f268a508a11d74071580952caea06be707eac4779eef809fa5d4d4"
     },
     {
       "source": "src/lib/ops/voice-phone-management.ts",
