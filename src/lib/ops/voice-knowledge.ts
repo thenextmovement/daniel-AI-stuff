@@ -901,6 +901,7 @@ export async function createVoiceCallSession(input: {
       transcript_storage_enabled: Boolean(input.transcriptWriteTokenHash),
       ...(input.transcriptWriteTokenHash ? { transcript_write_token_hash: input.transcriptWriteTokenHash } : {}),
       status: "created",
+      ...(input.placetel ? { started_at: new Date().toISOString() } : {}),
       knowledge_version_ids: Array.from(new Set(input.knowledgeMatches.map((match) => match.versionId))),
       context_snapshot: {
         interaction_mode: input.interactionMode || "voice_agent",

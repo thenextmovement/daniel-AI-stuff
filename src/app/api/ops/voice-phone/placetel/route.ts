@@ -14,7 +14,14 @@ export const dynamic = "force-dynamic";
 const webhook = "https://fuajob.online/webhook/ops-placetel-dial-v1";
 const headers = { "cache-control": "no-store" };
 
-function result(callId: string, state: unknown) {
+async function result(callId: string) {
+  const [row] = await supabaseRequest<Array<{dispatch_status: string; recording_status: string; dialed_at: string | null}>>("voice_placetel_calls", {}, {
+    select: "dispatch_status,recording_status,dialed_at", session_id: "eq." + callId, limit: 1,
+  });
+  const state = row?.dispatch_status;
+  if (state === "rejected" && row.recording_status === "expired" && !row.dialed_at) {
+    throw new QuoteValidationError("Der Wählauftrag ist vor der Übergabe an Placetel abgelaufen. Es wurde kein Anruf ausgelöst.", ["placetel_dispatch_expired"], 409);
+  }
   if (state === "rejected") throw new QuoteValidationError("Placetel hat den Anruf abgelehnt. Bitte prüfe deinen Anschluss.", ["placetel_rejected"], 409);
   return NextResponse.json({ ok: true, callId, state: state === "accepted" ? "accepted" : "pending" }, { headers });
 }
@@ -50,20 +57,18 @@ export async function POST(request: NextRequest) {
       if (!(error instanceof SupabaseRestError) || error.status !== 409) throw error;
       const [existing] = await supabaseRequest<Array<{ id: string; bound_request_id: string; context_snapshot: { placetel_staff_id: string; placetel_customer_id: string } }>>("voice_call_sessions", {}, { select: "id,bound_request_id,context_snapshot", idempotency_key: "eq.placetel:" + key, limit: 1 });
       if (!existing || existing.bound_request_id !== record.requestId || existing.context_snapshot?.placetel_staff_id !== current.staff.id || existing.context_snapshot?.placetel_customer_id !== customerId) throw new QuoteValidationError("Die Anrufkennung gehört zu einem anderen Vorgang.", ["placetel_key_conflict"], 409);
-      const [row] = await supabaseRequest<Array<{dispatch_status: string}>>("voice_placetel_calls", {}, { select: "dispatch_status", session_id: "eq." + existing.id, limit: 1 });
-      return result(existing.id, row?.dispatch_status);
+      return await result(existing.id);
     }
     const booking = await supabaseRpc<{dispatch: boolean; dispatch_key?: string; status?: string}>("reserve_voice_placetel_dial", {
       p_session_id: callId, p_token_hash: tokenHash, p_phone: phone, p_staff_id: current.staff.id,
     });
-    if (!booking.dispatch || !booking.dispatch_key) return result(callId, booking.status);
+    if (!booking.dispatch || !booking.dispatch_key) return await result(callId);
     // Only the server-created, short-lived one-use key leaves OPS. A timeout must never cause a second dial.
     try {
       const response = await fetch(webhook, { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({ dispatchKey: booking.dispatch_key }), signal: AbortSignal.timeout(25000), cache: "no-store", redirect: "error" });
       if (!response.ok) console.error("Placetel dispatch response unavailable", { callId, status: response.status });
     } catch { console.error("Placetel dispatch acknowledgement unavailable", { callId }); }
-    const [row] = await supabaseRequest<Array<{dispatch_status: string}>>("voice_placetel_calls", {}, { select: "dispatch_status", session_id: "eq." + callId, limit: 1 });
-    return result(callId, row?.dispatch_status);
+    return await result(callId);
   } catch (error) {
     return voiceCopilotApiFailure(error, "placetel_dial");
   }
