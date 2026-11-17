@@ -117,6 +117,31 @@ export function confirmDocumentSuggestions(review: ProductionReview, approval: R
   } };
 }
 
+/** Explain validated AI findings using the accepted order, without resolving a file or changing production. */
+export function drawingReviewRecommendation(review: ProductionReview, document: ReviewDocument) {
+  if (document.origin !== "trello" || document.status !== "read" || document.role !== "drawing"
+    || document.recommendation !== "manual" || !document.findings.length || !document.evidence.length
+    || !document.sha256 || document.supersededById
+    || !review.attachments.some(a => a.id === document.attachmentId)) return null;
+  const designQuestions = designMappingQuestions(review);
+  const customerChange = review.analysis.threads.some(t => t.relevance === "uncertain")
+    || review.analysis.changes.some(c => c.kind !== "obsolete" && (c.kind === "conflict" || c.questionOnly)
+      && c.id !== "check-delivery-note" && !designQuestions.some(q => q.id === c.id)
+      && c.evidence.some(e => review.sources.some(s => s.id === e.sourceId && s.kind === "mail")));
+  return {
+    title: customerChange ? "Kundenänderung klären, dann Zeichnung korrigieren lassen" : "Bestellwerte beibehalten, Zeichnung korrigieren lassen",
+    nextStep: customerChange
+      ? "Die Korrespondenz enthält noch eine Änderung oder ungeklärte Zuordnung. Zuerst diese Entscheidung prüfen; anschließend die Zeichnung mit der bestätigten Produktionsvorschau abgleichen."
+      : "Die Zeichnung anhand der Bestellwerte und der bestätigten Mailhinweise korrigieren lassen. Danach die korrigierte Datei prüfen und den Entwurf neu vorbereiten.",
+    orderedProducts: review.products.map((p, index) => ({ id: p.id, label: `Produkt ${index + 1}`, imageTitle: p.imageTitle,
+      fields: p.fields.filter(f => /^(Size|Backboard Size|Letter Size|Backboard|Use)$/i.test(f.label)).map(f => ({
+        label: ({ Size: "Maße", "Backboard Size": "Rückplattenmaß", "Letter Size": "Buchstabenmaß", Backboard: "Rückplatte", Use: "Einsatz" } as Record<string, string>)[f.label] || f.label,
+        value: f.value,
+      })),
+    })),
+  };
+}
+
 export function reviewedDeliveryNote(review: ProductionReview) {
   if (review.documents?.some(d => d.origin === "mail" && d.status !== "read")) return null;
   const notes = (review.documents || []).filter(d => d.origin === "mail" && d.role === "delivery_note");

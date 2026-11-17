@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle2, RefreshCcw, X } from "lucide-react";
 import {
   defaultReviewApproval, renderProductionReview, reviewApprovalIssues, PRODUCTION_LISTS,
   designMappingQuestions, confirmPurchasedDesigns, openImageVariants, decideImageVariants, reviewAttachmentLabel, reviewOpenStepCount,
-  openDocumentSuggestions, confirmDocumentSuggestions, reviewedDeliveryNote, confirmDeliveryNote,
+  openDocumentSuggestions, confirmDocumentSuggestions, reviewedDeliveryNote, confirmDeliveryNote, drawingReviewRecommendation,
   type ProductionReview, type ReviewApproval, type ProductionPriority,
 } from "@/lib/ops/supplier-sale-review";
 import type { ProductionHandoff } from "@/lib/ops/supplier-sale-handoff";
@@ -69,6 +69,10 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
   const openImages = review && approval ? openImageVariants(review, approval) : [];
   const openDocuments = review && approval ? openDocumentSuggestions(review, approval) : [];
   const deliveryNote = review ? reviewedDeliveryNote(review) : null;
+  const drawingRecommendations = review ? (review.documents || []).flatMap(document => {
+    const recommendation = drawingReviewRecommendation(review, document);
+    return recommendation ? [{ document, recommendation }] : [];
+  }) : [];
   const openSteps = review && approval ? reviewOpenStepCount(review, approval, issues) : 0;
   const designsConfirmed = designQuestions.length > 0 && designQuestions.every(c => approval?.decisions[c.id]?.note.startsWith("Gekaufte Designs visuell geprüft:"));
   const locked = busy || saving || handoff?.status === "pending" || handoff?.status === "synced";
@@ -158,6 +162,18 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
           <div className="min-w-0 space-y-4">
             <fieldset disabled={locked}><legend className="mb-2 text-sm font-semibold">Gekauftes Design und Cover</legend><div className="grid grid-cols-2 gap-2">{review.products.map((product, index) => <div key={product.id} className="min-w-0 rounded-lg border border-stone-200 bg-white p-2"><p className="mb-2 text-xs font-semibold">Produkt {index + 1} · {product.fields.find(f => f.label === "Size")?.value || product.title}</p><a href={safeLink(product.imageUrl)} target="_blank" rel="noreferrer" aria-label={`Gekauftes Design ${index + 1} öffnen: ${product.imageTitle}`}><img src={product.imageUrl} alt={product.imageTitle} className="h-32 w-full object-contain" /></a><p className="mt-2 break-words text-xs">{product.title} · {product.imageTitle}</p><label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name={`cover-${saleId}`} checked={approval.coverProductId === product.id} onChange={() => update({ coverProductId: product.id })} />Als Cover</label></div>)}</div></fieldset>
             <div><h4 className="text-sm font-semibold">Dateien auf der Karte</h4><p className="mt-1 text-xs text-stone-500">Entfernte Dateien werden zuvor in der privaten Ablage bytegleich gesichert.</p>
+              {drawingRecommendations.map(({ document, recommendation }) => <section key={document.id} aria-label={`PDF-Empfehlung: ${document.name}`} className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+                <p className="text-xs font-medium text-amber-900">Empfehlung aus der KI-PDF-Prüfung</p>
+                <h5 className="mt-1 font-semibold">{recommendation.title}</h5>
+                <a href={safeLink(document.href)} target="_blank" rel="noreferrer" className="mt-2 inline-block break-words text-xs underline">{document.name}</a>
+                <p className="mt-3 text-xs font-semibold">Abweichung in der Zeichnung</p>
+                {document.findings.map((finding, i) => <p key={i} className="mt-1 text-xs">{finding}</p>)}
+                <p className="mt-3 text-xs font-semibold">Bestellt – Zuordnung wie beim gekauften Design</p>
+                {recommendation.orderedProducts.map(product => <div key={product.id} className="mt-2 rounded border border-amber-200 bg-white p-2 text-xs"><p className="break-words font-medium">{product.label} · {product.imageTitle}</p>{product.fields.map((field, i) => <p key={i} className="mt-1"><span className="font-medium">{field.label}:</span> {field.value}</p>)}</div>)}
+                <p className="mt-3 text-xs"><strong>Nächster Schritt:</strong> {recommendation.nextStep}</p>
+                <p className="mt-2 text-xs text-amber-900">PDF bis zur Korrektur behalten. „Behalten“ entscheidet nur über die Datei auf der Karte; die technische Abweichung ist damit nicht geklärt.</p>
+                <details className="mt-2 text-xs"><summary className="cursor-pointer font-medium">PDF-Belege ansehen</summary>{document.evidence.map((e, i) => <p key={i} className="mt-2 whitespace-pre-wrap">Seite {e.page}: {e.quote}</p>)}</details>
+              </section>)}
               {openDocuments.length ? <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm">
                 <p className="font-semibold">KI-Vorschlag für {openDocuments.length} PDF{openDocuments.length === 1 ? "" : "s"}</p>
                 {openDocuments.map(d => <p key={d.id} className="mt-2 text-xs"><strong>{d.name}: {d.recommendation === "remove" ? "sichern und entfernen" : "behalten"}.</strong> {d.summary}</p>)}
@@ -174,7 +190,7 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
               </div> : null}
               {review.attachments.map(a => <div key={a.id} className="mt-2 rounded-lg border border-stone-200 bg-white p-3">
                 <div className="flex gap-3">{a.previewUrl ? <img src={a.previewUrl} alt="" className="h-14 w-20 object-contain" /> : null}<div className="min-w-0"><a href={safeLink(a.url)} target="_blank" rel="noreferrer" className="break-words text-sm font-medium underline">{reviewAttachmentLabel(review, a)}</a><p className="mt-1 text-xs text-stone-500">{a.reason}</p></div></div>
-                {review.documents?.filter(d => d.origin === "trello" && d.attachmentId === a.id).map(d => <div key={d.id} className="mt-2 text-xs"><p className="font-medium">{d.status === "read" ? `${d.pages} PDF-Seite${d.pages === 1 ? "" : "n"} mit KI geprüft` : "Manuelle PDF-Prüfung erforderlich"}</p><p className="mt-1">{d.summary}</p>{d.findings.map((f, i) => <p key={i} className="mt-2 rounded bg-amber-50 p-2 text-amber-950">{f}</p>)}{d.evidence.length ? <details className="mt-2"><summary className="cursor-pointer">Textbelege ansehen</summary>{d.evidence.map((e, i) => <p key={i} className="mt-2 whitespace-pre-wrap">Seite {e.page}: {e.quote}</p>)}</details> : null}</div>)}
+                {review.documents?.filter(d => d.origin === "trello" && d.attachmentId === a.id).map(d => <div key={d.id} className="mt-2 text-xs"><p className="font-medium">{d.status === "read" ? `${d.pages} PDF-Seite${d.pages === 1 ? "" : "n"} mit KI geprüft` : "Manuelle PDF-Prüfung erforderlich"}</p><p className="mt-1">{d.summary}</p>{drawingRecommendations.some(r => r.document.id === d.id) ? <p className="mt-2 text-amber-900">Abweichungen und nächster Schritt stehen oben in der PDF-Empfehlung.</p> : d.findings.map((f, i) => <p key={i} className="mt-2 rounded bg-amber-50 p-2 text-amber-950">{f}</p>)}{d.evidence.length ? <details className="mt-2"><summary className="cursor-pointer">Textbelege ansehen</summary>{d.evidence.map((e, i) => <p key={i} className="mt-2 whitespace-pre-wrap">Seite {e.page}: {e.quote}</p>)}</details> : null}</div>)}
                 <select disabled={locked} aria-label={`Datei: ${reviewAttachmentLabel(review, a)}`} className={`${fieldClass} mt-2`} value={approval.attachments[a.id] || ""} onChange={e => update({ attachments: { ...approval.attachments, [a.id]: e.target.value as "keep" | "remove" } })}>
                   <option value="">Bitte prüfen</option><option value="keep">Behalten</option><option value="remove" disabled={a.removable === false}>Sichern und entfernen</option>
                 </select>
