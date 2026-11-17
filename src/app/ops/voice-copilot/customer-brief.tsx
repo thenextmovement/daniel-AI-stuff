@@ -48,6 +48,7 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
   const [expanded, setExpanded] = useState<string | null>(null);
   const [channel,setChannel]=useState<"email"|"phone"|"notes">("phone");
   const [summary,setSummary]=useState<string|null>(null);
+  const [summaryLoading,setSummaryLoading]=useState(true);
   const [summaryFailed,setSummaryFailed]=useState(false);
   const [counts,setCounts]=useState<Record<string,number|null>>({});
   const [page,setPage]=useState<Page|null>(null),[offset,setOffset]=useState(0),[retry,setRetry]=useState(0);
@@ -61,10 +62,12 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
       return result.json();
     };
     setSummaryFailed(false);
+    setSummaryLoading(true);
     void read("counts").then(data=>{if(!controller.signal.aborted)setCounts(data);})
       .catch(()=>{if(!controller.signal.aborted)setCounts({email:null,phone:null,notes:null});});
     void read("summary").then(data=>{if(!controller.signal.aborted)setSummary(data.summary);})
-      .catch(()=>{if(!controller.signal.aborted)setSummaryFailed(true);});
+      .catch(()=>{if(!controller.signal.aborted)setSummaryFailed(true);})
+      .finally(()=>{if(!controller.signal.aborted)setSummaryLoading(false);});
     return ()=>controller.abort();
   },[id,requestId,revision,retry]);
   useEffect(()=>{
@@ -97,6 +100,7 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
   return <section className={styles.prep} aria-label="Gesprächsüberblick">
     <header className={styles.overviewHeader}>
       <div><p className={styles.label}>Vor dem Anruf</p><h3>Auf einen Blick</h3></div>
+      <button type="button" className={styles.link} disabled={summaryLoading || loading} onClick={()=>{setOffset(0);setRetry(n=>n+1);}}>{summaryLoading ? "Wird aktualisiert …" : "Aktualisieren"}</button>
       {context?.offer?.thumbnailUrl && <img key={context.offer.thumbnailUrl} className={styles.offerThumb} src={context.offer.thumbnailUrl}
         alt={"Vorschau "+context.offer.label} referrerPolicy="no-referrer" onError={event=>{event.currentTarget.hidden=true;}}/>}
     </header>

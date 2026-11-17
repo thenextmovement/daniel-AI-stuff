@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Phone, PhoneOff } from "lucide-react";
+import { Phone } from "lucide-react";
 import styles from "./phone-central.module.css";
 
 export function PlacetelCallButton({ customerId, requestId, disabled, onCallChange, onNoteTarget }: {
@@ -105,9 +105,7 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onCallChan
     } finally { sending.current = false; }
   }
   return <div>
-    {status === "opened" ? <a className={styles.button + " " + styles.hangup} href={"hangup://" + phone}
-      onClick={() => setMessage("Auflegen angefordert. OPS wartet auf die Bestätigung von Placetel.")}>
-      <PhoneOff size={17}/>Abbrechen / Auflegen</a> :
+    {status === "opened" ? <p role="status">Zum Auflegen oder Abbrechen den roten Hörer im Placetel-Softphone drücken.</p> :
       status !== "ended" && <button className={styles.button + " " + styles.primary} type="button" disabled={disabled || status === "sending"}
         onClick={() => status === "prepared" ? open(phone) : void prepare()}>
         <Phone size={17}/>{status === "sending" ? "Anruf wird vorbereitet …" : status === "retry" ? "Status prüfen" : status === "prepared" ? "Placetel-Softphone öffnen" : "Mit Placetel-Softphone anrufen"}
