@@ -3,17 +3,59 @@ import { useEffect, useRef, useState } from "react";
 import { Phone, PhoneOff } from "lucide-react";
 import styles from "./phone-central.module.css";
 
-export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: {
-  customerId: string; requestId: string; disabled: boolean; onDial: () => void;
+export function PlacetelCallButton({ customerId, requestId, disabled, onCallChange }: {
+  customerId: string; requestId: string; disabled: boolean; onCallChange: () => void;
 }) {
   const key = useRef<string | null>(null);
   const sending = useRef(false);
   const mounted = useRef(true);
   const [status, setStatus] = useState<"ready" | "sending" | "retry" | "prepared" | "opened" | "ended">("ready");
   const [message, setMessage] = useState("");
+  const [callId, setCallId] = useState("");
   const [phone, setPhone] = useState("");
   const expires = useRef(0);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (!callId || status !== "opened") return;
+    const controller = new AbortController();
+    let timer: number;
+    let checking = false;
+    const check = async () => {
+      if (checking || controller.signal.aborted) return;
+      window.clearTimeout(timer);
+      checking = true;
+      try {
+        const response = await fetch("/api/ops/voice-phone/placetel/status?callId=" + encodeURIComponent(callId), {
+          cache: "no-store",
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (!controller.signal.aborted && typeof data.endedAt === "string" && Number.isFinite(Date.parse(data.endedAt))) {
+            setStatus("ended");
+            setMessage("Gespräch beendet");
+            onCallChange();
+            return;
+          }
+        }
+      } catch {
+        // Keep checking after transient connection errors or when returning to OPS.
+      } finally {
+        checking = false;
+      }
+      if (!controller.signal.aborted) timer = window.setTimeout(check, document.hidden ? 10000 : 2000);
+    };
+    const onReturn = () => { if (!document.hidden) void check(); };
+    void check();
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", onReturn);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", onReturn);
+    };
+  }, [callId, status, onCallChange]);
   function open(number: string) {
     if (Date.now() >= expires.current) {
       setStatus("ended");
@@ -43,14 +85,15 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: 
         setMessage(typeof data.error === "string" ? data.error : "Der Anruf konnte nicht vorbereitet werden.");
         return;
       }
-      if (data.direct !== true || data.state !== "accepted" || !/^\+[1-9]\d{6,14}$/.test(data.dialedPhone ?? "") || !Number.isFinite(data.expiresAt)) {
+      if (typeof data.callId !== "string" || !data.callId || data.direct !== true || data.state !== "accepted" || !/^\+[1-9]\d{6,14}$/.test(data.dialedPhone ?? "") || !Number.isFinite(data.expiresAt)) {
         setStatus("retry");
         setMessage("Die Bestätigung für die Direktwahl steht aus.");
         return;
       }
+      setCallId(data.callId);
       expires.current = data.expiresAt;
       setPhone(data.dialedPhone);
-      onDial();
+      onCallChange();
       if (navigator.userActivation?.isActive) open(data.dialedPhone);
       else {
         setStatus("prepared");
@@ -62,7 +105,7 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: 
   }
   return <div>
     {status === "opened" ? <a className={styles.button + " " + styles.hangup} href={"hangup://" + phone}
-      onClick={() => setMessage("Auflegen an Placetel übergeben. Den Gesprächsstatus siehst du im Softphone.")}>
+      onClick={() => setMessage("Auflegen angefordert. OPS wartet auf die Bestätigung von Placetel.")}>
       <PhoneOff size={17}/>Abbrechen / Auflegen</a> :
       status !== "ended" && <button className={styles.button + " " + styles.primary} type="button" disabled={disabled || status === "sending"}
         onClick={() => status === "prepared" ? open(phone) : void prepare()}>
@@ -71,7 +114,7 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: 
     <p className={styles.small}>Mit dem Anruf bestätigst du die Einwilligung zur Aufzeichnung und Mitschrift.</p>
     {message && <p role="status" className={styles.small}>{message}</p>}
     {(status === "opened" || status === "ended") && <button type="button" className={styles.link} onClick={() => {
-      key.current = null; setPhone(""); setStatus("ready"); setMessage("");
+      key.current = null; setCallId(""); setPhone(""); setStatus("ready"); setMessage("");
     }}>Weiteren Anruf vorbereiten</button>}
   </div>;
 }

@@ -3,7 +3,7 @@ import {useEffect,useState} from "react";
 import type {VoiceCustomerContext} from "@/lib/ops/voice-knowledge";
 import styles from "./phone-central.module.css";
 
-type Entry={id:string;occurred_at:string|null;kind:string;subject:string|null;detail:string|null;request_ref:string|null;session_id:string|null;placetel?:{dispatch:string;recording:string}};
+type Entry={id:string;occurred_at:string|null;kind:string;subject:string|null;detail:string|null;request_ref:string|null;session_id:string|null;placetel?:{dispatch:string;recording:string;endedAt:string|null}};
 type Page={entries:Entry[];brief:Entry[];nextOffset:number|null};
 const labels:Record<string,string>={inbound:"Kunde schreibt",outbound:"Unsere Antwort",transcript:"Gesprächsnotiz",call:"Anruf"};
 function phoneEntry(entry:Entry) {
@@ -16,6 +16,11 @@ function phoneEntry(entry:Entry) {
     failed:"Die Aufnahme konnte noch nicht verarbeitet werden. Ein weiterer Versuch folgt.",
     ambiguous:"Die Aufnahme lässt sich diesem Anruf nicht eindeutig zuordnen.",
     expired:"Die Prüfung ist beendet. Es liegt keine zugeordnete Mitschrift vor.",
+  };
+  if (state.endedAt) return {
+    label:"Anruf", subject:"Gespräch beendet",
+    detail:recording[state.recording] || "Mitschrift und Zusammenfassung werden nach der Aufzeichnung ergänzt.",
+    transcript:false,
   };
   const dispatch:Record<string,string>={
     unreserved:"Die Wahl wurde vorbereitet. Eine Übergabe an Placetel ist nicht bestätigt.",

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
@@ -48,6 +48,7 @@ function initials(value: string) {
 export function PhoneCentral(props: Props) {
   const { selected } = props;
   const [callHistoryRevision, setCallHistoryRevision] = useState(0);
+  const refreshCallHistory = useCallback(() => setCallHistoryRevision(n => n + 1), []);
   const [phoneAdminOpen,setPhoneAdminOpen]=useState(false);
   const [phoneIdentity,setPhoneIdentity]=useState<PhoneIdentity|null>(null);
   const browserPhone=useBrowserPhone(phoneIdentity,props.busy);
@@ -403,7 +404,7 @@ export function PhoneCentral(props: Props) {
             <div className={styles.actions}>
               {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
                 <PlacetelCallButton key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
-                  requestId={briefRequestId} disabled={busy || contextLoading} onDial={() => setCallHistoryRevision(n => n + 1)} />}
+                  requestId={briefRequestId} disabled={busy || contextLoading} onCallChange={refreshCallHistory} />}
               {customer && !readySession && props.workspace !== "prepare" && (props.workspace === "assist" ? (
                 <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
                   disabled={busy || contextLoading || !selected}>
