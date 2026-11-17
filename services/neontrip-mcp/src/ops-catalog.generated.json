@@ -9958,7 +9958,7 @@
     },
     {
       "source": "src/app/api/ops/voice-phone/placetel/route.ts",
-      "sha256": "41cb3c9c2d514b0a2bfd3cf2376ae533d058806462fac8f1ec2e32738322fb09",
+      "sha256": "c02ef6ad4f2ea6483335bfff16f1613e7b05992fab04ad735a7b417dbc96a415",
       "methods": [
         "POST"
       ],
@@ -10232,7 +10232,7 @@
     },
     {
       "source": "src/lib/ops/voice-knowledge.ts",
-      "sha256": "c1f21780b59acd4e30023aa3b107bbf9a40b1d19434e19b8edc6ac674f940e35"
+      "sha256": "f31e88c19064581f7913fbc932625c9790deb5f9cb741e6977a585e13e54dfcd"
     },
     {
       "source": "src/lib/ops/voice-platform-contract.ts",

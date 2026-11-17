@@ -24,7 +24,7 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onDial }: 
       });
       const data = await response.json();
       if (!response.ok || !data.ok || !["accepted", "pending"].includes(data.state)) {
-        setStatus(data.issues?.includes("placetel_rejected") ? "rejected" : "error");
+        setStatus((data.issues?.includes("placetel_rejected") || data.issues?.includes("placetel_dispatch_expired")) ? "rejected" : "error");
         setMessage(Array.isArray(data.issues) && typeof data.error === "string" ? data.error : "Wählauftrag unbestätigt. Bitte prüfe die Verbindung zu Placetel.");
         return;
       }
