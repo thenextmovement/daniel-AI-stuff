@@ -8,6 +8,29 @@ import fitz
 from PIL import Image
 SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path d="M10 50 C60 0 80 0 110 50 M120 10 L180 50" fill="none" stroke="#f333a5" stroke-width="1"/></svg>'
 class CloudTests(unittest.TestCase):
+ def test_ingest_creates_verified_copy_before_worker_starts_and_deduplicates(self):
+  from unittest.mock import Mock
+  source={'id':'source','idBoard':BOARD,'name':'LED Neon Flex | waiting','desc':'customer details'}
+  t=Mock();t.card.return_value=source;t.copy.return_value={'id':'copy','url':'https://trello.com/c/copy'}
+  jobs=Jobs(self.db,None,t)
+  first=jobs.ingest('source','action:first')
+  self.assertEqual(first['status'],'queued')
+  self.assertEqual(first.get('copy'),'copy')
+  self.assertTrue(first.get('copy_verified'))
+  t.verify_copy.assert_called_once_with(source,'copy')
+  jobs.ingest('source','action:again')
+  t.copy.assert_called_once_with(source)
+ def test_failed_ingest_copy_is_not_blindly_repeated(self):
+  from unittest.mock import Mock
+  source={'id':'source','idBoard':BOARD,'name':'LED Neon Flex | waiting','desc':''}
+  t=Mock();t.card.return_value=source;t.copy.side_effect=TimeoutError('ambiguous response')
+  jobs=Jobs(self.db,None,t)
+  with self.assertRaises(TimeoutError):jobs.ingest('source','action:first')
+  saved=self.db.for_card('source')
+  self.assertTrue(saved.get('copy_intent'))
+  self.assertEqual(saved['status'],'review')
+  jobs.ingest('source','action:again')
+  t.copy.assert_called_once()
  def test_worker_runs_three_distinct_projects_and_does_not_repeat_pending_jobs(self):
   import threading
   from concurrent.futures import ThreadPoolExecutor
@@ -189,6 +212,8 @@ class CloudTests(unittest.TestCase):
   card={'id':'a'*24,'idBoard':BOARD,'name':'LED Neon Flex | Test','attachments':[]}
   class Fake:
    def card(self,reference):return card
+  Fake.copy=lambda self,source: {'id':'copy','url':'https://trello.com/c/copy'}
+  Fake.verify_copy=lambda self,source,copy: None
   jobs=Jobs(self.db,None,Fake())
   first=jobs.ingest('https://trello.com/c/AbCd1234','manual:link')
   second=jobs.ingest(card['id'],'action:event')

@@ -104,22 +104,33 @@ class Jobs:
         if existing:return existing
         if not eligible(card['name']):raise Review('Nur LED/Neon-Anfragen ohne 3D werden verarbeitet.')
         if card['idBoard']!=BOARD and not event.startswith('action:'):raise Review('Karte gehört nicht zum Anfrage-Board.')
-        return self.db.enqueue(source,event,card)
-    def process(self,p):
-        id=p['id'];source=p.get('snapshot') or self.t.card(p['source'])
-        if not eligible(source['name']):raise Review('Diese Anfrage ist keine LED/Neon-Anfrage.')
-        # Copy intent is durable before a non-idempotent API call; never blindly repeat it.
+        p=self.db.enqueue(source,event,card)
+        with self.project_lock(p['id']):
+            p=self.db.get(p['id'])
+            if p['status']=='queued' and not p.get('copy'):
+                try:
+                    self.ensure_copy(p,card)
+                    p=self.db.save(p['id'],{},status='queued')
+                except Exception:
+                    self.fail(p['id'],'Kartenerstellung nicht bestätigt. Bitte den Kopierstatus im Studio prüfen.')
+                    raise
+        return p
+    def ensure_copy(self,p,source):
+        id=p['id']
         if not p.get('copy'):
             if p.get('copy_intent'):raise Review('Kartenerstellung war nicht bestätigt. Vor Wiederholung in Trello prüfen.')
             self.db.save(id,{'copy_intent':True},status='copying')
             copy=self.t.copy(source)
-            p=self.db.save(id,{'copy':copy['id'],'copy_url':copy['url']},status='generating')
-            self.t.verify_copy(source,copy['id'])
-        else:
-            self.mark_copy(p,PROCESSING)
-            if not p.get('copy_verified'):self.t.verify_copy(source,p['copy'])
-            self.db.save(id,{},status='generating')
-        self.db.save(id,{'copy_verified':True})
+            p=self.db.save(id,{'copy':copy['id'],'copy_url':copy['url']},status='copying')
+        if not p.get('copy_verified'):self.t.verify_copy(source,p['copy'])
+        return self.db.save(id,{'copy_verified':True})
+    def process(self,p):
+        id=p['id'];source=p.get('snapshot') or self.t.card(p['source'])
+        if not eligible(source['name']):raise Review('Diese Anfrage ist keine LED/Neon-Anfrage.')
+        # The normal intake already created the copy; also support older queued jobs.
+        p=self.ensure_copy(p,source)
+        self.mark_copy(p,PROCESSING)
+        self.db.save(id,{},status='generating')
         marker='Neon-Studio-Projekt '+id
         self.t.comment_once(p['copy'],marker+'\nhttps://ops.neontrip.de/ops/neon-studio?project='+id+'\nInterner Auto-Quote-Entwurf; kein Kundenversand.',marker)
         data,metrics=generate(self.t,source,p.get('selected_attachments'))
