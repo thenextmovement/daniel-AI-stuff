@@ -118,6 +118,24 @@ class ManufacturingTests(unittest.TestCase):
     extras=smallest_title_widths(title)
     self.assertEqual(size_variants(store,'id',{},dict(minimum_first=True,smallest_requested=True,widths_mm=extras))[0],expected)
   self.assertIsNone(smallest_title_widths('LED | 100 cm'))
+ def test_closed_letter_opening_accepts_two_mm_air_but_rejects_less(self):
+  from minimum_size import measure
+  for height,blocked in [(8,False),(7.9,True)]:
+   loop=[['m',[0,0]],['l',[100,0]],['l',[100,height]],['l',[0,height]],['h']]
+   drawing=dict(paths=[loop],pathKeys=['letter'],width=136)
+   issues={};measure(drawing,issues)
+   self.assertEqual(bool(issues),blocked)
+   if blocked:
+    self.assertAlmostEqual(issues[('opening',('letter',))]['required'],2)
+ def test_closed_double_line_dot_keeps_25_mm_outer_diameter(self):
+  from minimum_size import measure
+  for diameter,blocked in [(19.01,False),(18.9,True)]:
+   k=KAPPA*diameter/2;r=diameter/2
+   circle=[['m',[r,0]],['c',[r,k],[k,r],[0,r]],['c',[-k,r],[-r,k],[-r,0]],
+    ['c',[-r,-k],[-k,-r],[0,-r]],['c',[k,-r],[r,-k],[r,0]],['h']]
+   drawing=dict(paths=[circle],pathKeys=['dot'],pathRoles=['dot'],pathModes=['double'],width=136)
+   issues={};measure(drawing,issues)
+   self.assertEqual(bool(issues),blocked)
  def test_geometric_minimum_uses_opening_and_ignores_attached_bar(self):
   from minimum_size import measure
   # 10 mm square between centerlines in a 100 mm wide motif.
@@ -126,7 +144,7 @@ class ManufacturingTests(unittest.TestCase):
   r=measure(dict(paths=[loop,bar],pathKeys=['loop','bar'],width=136))
   self.assertEqual(r['limitingKeys'],['loop'])
   self.assertEqual(r['limitingReasons'],['opening'])
-  self.assertEqual(r['recommendedWidth'],193)
+  self.assertEqual(r['recommendedWidth'],116)
   self.assertAlmostEqual(r['opening'],4,places=2)
  def test_spacing_identifies_both_selectable_paths(self):
   from minimum_size import measure

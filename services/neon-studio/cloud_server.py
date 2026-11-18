@@ -62,7 +62,7 @@ class CloudHandler(Handler):
             size=int(self.headers.get('Content-Length',0))
             if size<=0 or size>4000000:raise Review('Ungültige Anfragegröße.')
             payload=json.loads(self.rfile.read(size));db=self.server.db;jobs=self.server.jobs
-            with jobs.lock:
+            with jobs.project_lock(str(payload.get('id') or payload.get('card') or 'enqueue')):
                 if path=='/cloud/enqueue':
                     p=jobs.ingest(str(payload.get('card','')),'manual:'+str(payload.get('card','')))
                     return self.respond(200,public(p))

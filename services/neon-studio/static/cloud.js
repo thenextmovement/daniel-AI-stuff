@@ -6,7 +6,11 @@ async function cloudRequest(path,data) {
   const r=await fetch(cloudBase+'/cloud/'+path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined});
   const j=await r.json();if(!r.ok)throw new Error(j.error||'Schritt nicht bestätigt.');return j;
 }
-function cloudLabel(){$('export').querySelector('span:last-child').textContent='In Trello hochladen';$('exportCaption').textContent='PDF · image.png · Technische Zeichnung';}
+function cloudLabel(){
+  const pending=['publishing','publish_queued'].includes(cloud?.status);
+  $('export').querySelector('span:last-child').textContent=pending?'Übertragung läuft …':'In Trello hochladen';
+  $('exportCaption').textContent=cloud?.status==='publish_queued'?'Upload vorgemerkt – startet, sobald ein Platz frei ist.':cloud?.status==='publishing'?'Zeichnung, Preis und Größe werden in Trello aktualisiert.':'PDF · image.png · Technische Zeichnung';
+}
 function setupDownloads(){
   const toggle=$('exportDropdown'),menu=$('exportMenu');
   toggle.hidden=false;toggle.textContent='Download ▾';toggle.setAttribute('aria-label','Download auswählen');
@@ -220,21 +224,30 @@ async function cloudPublish(){
   if(button.disabled)return;
   state.exporting=true;exportState();
   try{
+    if(['publishing','publish_queued'].includes(cloud.status)){await cloudPoll();return;}
     await cloudSave();
     if(cloudSpec.issues?.length){cloudDetails(true);return;}
     cloud=await cloudRequest('publish',{id:cloud.id,revision:cloud.revision});
-    toast('Die Dateien werden in Trello hochgeladen.');
+    cloudLabel();
+    toast('Upload vorgemerkt. Zeichnung, Preis und Größe werden gemeinsam aktualisiert.');
     await cloudPoll();
   }catch(e){toast(e.message,true);}
   finally{state.exporting=false;exportState();}
 }
 function textElement(tag,text){const e=document.createElement(tag);e.textContent=text;return e;}
 async function cloudPoll(){
+  const generation=state.generation;
   for(let i=0;i<120;i++){
     await new Promise(r=>setTimeout(r,2000));
     const p=await cloudRequest('project?id='+cloud.id+'&design='+designNumber);
+    cloud=p;cloudLabel();
     if(!['queued','copying','generating','publishing','publish_queued'].includes(p.status)){
-      cloud=p;if(p.status==='ready'){cloudSpec=p.spec;showSizeFields();renderReview();}toast(p.error||(p.status==='ready'?'In Trello aktualisiert.':'Verarbeitung noch nicht bestätigt. Bitte Projektstatus prüfen.'),!!p.error||p.status!=='ready');return;
+      if(p.status==='ready'&&generation===state.generation){
+        cloudSpec=p.spec;state.settings={...defaults,...p.settings};
+        showSizeFields();renderReview();updateControls();
+        invalidateManufacturing();await requestGeometry(true);commitHistory();await checkManufacturing();
+      }
+      toast(p.error||(p.status==='ready'?'In Trello aktualisiert.':'Verarbeitung noch nicht bestätigt. Bitte Projektstatus prüfen.'),!!p.error||p.status!=='ready');return;
     }
   }
   toast('Die Verarbeitung läuft weiter. Den Status findest du in der Projektübersicht.');
@@ -470,6 +483,10 @@ async function cloudBoot(){
   bar.append(save,details);
   if(cloud.copy_url){const a=textElement('a','Trello-Karte');a.href=cloud.copy_url;a.target='_blank';a.rel='noopener';bar.append(a);}
   if(cloud.error&&!cloud.error.startsWith('Bitte prüfen:'))toast(cloud.error,true);
+  if(['publishing','publish_queued'].includes(cloud.status)){
+    state.exporting=true;exportState();
+    try{await cloudPoll();}finally{state.exporting=false;exportState();}
+  }
   window.addEventListener('beforeunload',event=>{if(state.historyIndex>0){event.preventDefault();event.returnValue='';}});
 }
 cloudBoot().catch(error=>toast(error.message,true));

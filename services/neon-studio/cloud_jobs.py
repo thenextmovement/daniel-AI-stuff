@@ -1,4 +1,5 @@
 import fcntl,json,math,os,re,threading,time,traceback
+from concurrent.futures import ThreadPoolExecutor
 from requests.exceptions import RequestException
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
@@ -66,7 +67,10 @@ def size_variants(store,model,settings,spec):
 
 class Jobs:
     def __init__(self,db,store,trello=None):
-        self.db=db;self.store=store;self.t=trello or Trello();self.lock=threading.RLock()
+        self.db=db;self.store=store;self.t=trello or Trello();self.lock=threading.RLock();self.project_locks={}
+    def project_lock(self,id):
+        with self.lock:
+            return self.project_locks.setdefault(id,threading.RLock())
     def alert(self,p,error):
         # User opt-out, 2026-11-04: project/watch errors stay in Studio only.
         # Do not contact the email webhook, even if old credentials remain set.
@@ -329,7 +333,7 @@ class Jobs:
         return {**record,'model':info['id'],'settings':settings,'spec':{**spec,'line_plan':[region]}}
 
     def publish(self,p,generated=False):
-        with self.lock:
+        with self.project_lock(p['id']):
             p=self.db.get(p['id'])
             if p['status'] in ('publishing','generating','copying','queued'):raise Review('Projekt wird bereits verarbeitet.')
             if not p.get('copy') or not p.get('model'):raise Review('Kopie oder Zeichnung fehlt.')
@@ -438,26 +442,39 @@ class Jobs:
             except BlockingIOError:time.sleep(2)
         for interrupted in self.db.recover_interrupted():self.fail(interrupted['id'],interrupted['error'])
         threading.Thread(target=self.watch,daemon=True).start()
-        while True:
-            for p in self.db.pending():
-                if p['status'] not in ('queued','publish_queued'):continue
-                try:
-                    if p.get('reread'):
-                        self.reread(p)
-                    elif p['status']=='publish_queued':
-                        self.publish(p)
-                    else:self.process(p)
-                except Exception as e:
-                    print('Neon job failed:',type(e).__name__,flush=True)
-                    if isinstance(e,(ServiceError,Review,ValueError)):
-                        message=str(e)
-                    else:
-                        stage=next((f.name for f in reversed(traceback.extract_tb(e.__traceback__)) if Path(f.filename).name in ('cloud_jobs.py','cloud_ai.py','cloud_trello.py','cloud_exports.py')),'process')
-                        message=f'Verarbeitung angehalten ({stage}, {type(e).__name__}). Bitte den Schritt im Studio prüfen.'
-                    if p.get('reread'):
-                        self.db.save(p['id'],{'reread':None,'error':'Neu einlesen fehlgeschlagen. '+message},status='review')
-                    else:self.fail(p['id'],message,public_reason=message if isinstance(e,(Review,SpacingLimitExceeded)) else None)
-            time.sleep(2)
+        with ThreadPoolExecutor(max_workers=3,thread_name_prefix='neon-job') as pool:
+            active={}
+            while True:
+                self.dispatch(pool,active)
+                time.sleep(2)
+    def dispatch(self,pool,active):
+        for id,future in list(active.items()):
+            if future.done():
+                future.result()
+                del active[id]
+        for p in self.db.pending():
+            if len(active)>=3:break
+            if p['id'] not in active:active[p['id']]=pool.submit(self.execute,p)
+    def execute(self,p):
+        with self.project_lock(p['id']):
+            p=self.db.get(p['id'])
+            if p['status'] not in ('queued','publish_queued'):return
+            try:
+                if p.get('reread'):
+                    self.reread(p)
+                elif p['status']=='publish_queued':
+                    self.publish(p)
+                else:self.process(p)
+            except Exception as e:
+                print('Neon job failed:',type(e).__name__,flush=True)
+                if isinstance(e,(ServiceError,Review,ValueError)):
+                    message=str(e)
+                else:
+                    stage=next((f.name for f in reversed(traceback.extract_tb(e.__traceback__)) if Path(f.filename).name in ('cloud_jobs.py','cloud_ai.py','cloud_trello.py','cloud_exports.py')),'process')
+                    message=f'Verarbeitung angehalten ({stage}, {type(e).__name__}). Bitte den Schritt im Studio prüfen.'
+                if p.get('reread'):
+                    self.db.save(p['id'],{'reread':None,'error':'Neu einlesen fehlgeschlagen. '+message},status='review')
+                else:self.fail(p['id'],message,public_reason=message if isinstance(e,(Review,SpacingLimitExceeded)) else None)
     def watch(self):
         while True:
             if os.getenv('NEON_WATCH_ENABLED')=='true':

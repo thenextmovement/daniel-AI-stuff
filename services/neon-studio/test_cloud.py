@@ -8,6 +8,47 @@ import fitz
 from PIL import Image
 SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path d="M10 50 C60 0 80 0 110 50 M120 10 L180 50" fill="none" stroke="#f333a5" stroke-width="1"/></svg>'
 class CloudTests(unittest.TestCase):
+ def test_worker_runs_three_distinct_projects_and_does_not_repeat_pending_jobs(self):
+  import threading
+  from concurrent.futures import ThreadPoolExecutor
+  from unittest.mock import Mock
+  jobs=Jobs(self.db,None,Mock())
+  projects=[self.db.enqueue(str(i),str(i),{}) for i in range(4)]
+  release=threading.Event();three_started=threading.Event();seen=[];guard=threading.Lock()
+  def process(p):
+   with guard:
+    seen.append(p['id'])
+    if len(seen)==3:three_started.set()
+   release.wait(5)
+   self.db.save(p['id'],{},status='ready')
+  jobs.process=process
+  with ThreadPoolExecutor(max_workers=3) as pool:
+   active={}
+   try:
+    jobs.dispatch(pool,active)
+    self.assertTrue(three_started.wait(2))
+    jobs.dispatch(pool,active)
+    self.assertEqual(len(active),3)
+    self.assertEqual(len(seen),3)
+   finally:release.set()
+   for f in active.values():f.result(timeout=3)
+   jobs.dispatch(pool,active)
+   for f in active.values():f.result(timeout=3)
+  self.assertCountEqual(seen,[p['id'] for p in projects])
+  jobs.execute(projects[0])
+  self.assertEqual(len(seen),4)
+ def test_project_locks_isolate_unrelated_uploads(self):
+  import threading
+  from unittest.mock import Mock
+  jobs=Jobs(self.db,None,Mock())
+  acquired=threading.Event()
+  def other():
+   with jobs.project_lock('other'):acquired.set()
+  with jobs.project_lock('first'):
+   self.assertIs(jobs.project_lock('first'),jobs.project_lock('first'))
+   t=threading.Thread(target=other);t.start()
+   self.assertTrue(acquired.wait(1))
+  t.join(1)
  def test_reread_edited_copy_replaces_stale_full_glow_question(self):
   from unittest.mock import Mock,patch
   card={'id':'copy','name':'🤖 LED Neon 🤖','desc':'LED-Neon-Kontur',

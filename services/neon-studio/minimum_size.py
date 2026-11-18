@@ -20,8 +20,8 @@ from uv_print import subpaths
 PROFILE = dict(geometricSizing=True, autoRoute=False, tube=6, gap=15, gapSides={}, scale=None)
 PADDING = 36
 CENTER_SPACING = 8
-# Diameter inside the three centerlines of the A in the 70 cm MATPLUS sample.
-REFERENCE_DIAMETER = 15.608
+# Closed double-line dots retain the measured 25 mm outer diameter (6 mm tube).
+DOT_CENTER_DIAMETER = 19
 
 
 def parallel_sites(path):
@@ -127,8 +127,13 @@ def measure(drawing, issues=None):
         first, second = [np.asarray(point.coords[0]) for point in endpoints]
         if value is None:
             value = float(np.linalg.norm(second-first))
-        required = CENTER_SPACING if kind=='spacing' else REFERENCE_DIAMETER
         indices = sorted(set(indices))
+        roles = drawing.get('pathRoles', [])
+        modes = drawing.get('pathModes', [])
+        double_dot = (kind=='opening' and len(indices)==1
+                      and indices[0]<len(roles) and roles[indices[0]]=='dot'
+                      and indices[0]<len(modes) and modes[indices[0]]=='double')
+        required = DOT_CENTER_DIAMETER if double_dot else CENTER_SPACING
         names = [keys[i] if i<len(keys) else str(i) for i in indices]
         size = required*1000/max(value,1e-12)
         if size>required_span or (kind,tuple(names)) in ignored_groups:
