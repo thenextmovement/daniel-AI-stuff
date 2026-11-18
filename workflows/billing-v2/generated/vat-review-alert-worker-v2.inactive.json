@@ -79,7 +79,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "const claimed=($json.body??$json).claimed;if(!claimed?.job||!claimed?.billingCase)return [];const c=claimed.billingCase;const v=c.vat_validation||{};const clean=x=>String(x??'').replace(/[\\r\\n]+/g,' ').slice(0,500);const ops=String($env.NEONTRIP_OPS_BASE_URL||'https://ops.neontrip.de').replace(/\\/+$/,'')+'/ops/rechnungen?caseId='+encodeURIComponent(c.id);const message=['Umsatzsteuer-ID passt nicht zur Firma – Bitte prüfen',`Auftrag: ${clean(c.shopify_order_name)}`,`Ops-Fall: ${ops}`,`USt-ID: ${clean(c.vat_id)}`,`Prüfstatus: checked=${v.checked===true}, valid=${v.valid===true}, comparison=${clean(v.identityComparison||'UNAVAILABLE')}`,`Bei VIES gelistete Firma: ${clean(v.name||'nicht geliefert')}`,`Registeranschrift: ${clean(v.address||'nicht geliefert')}`,'Nächster Schritt: Daten mit VIES vergleichen, bei Bedarf Kundennachweis anfordern und den Fall in Ops ausdrücklich als netto oder brutto freigeben.','Offizielle Prüfung: https://ec.europa.eu/taxation_customs/vies/#/vat-validation','Produktion und Lieferung bleiben möglich; nur die finale steuerfreie Rechnung bleibt gesperrt.'].join(' | ');return [{json:{jobId:claimed.job.id,leaseToken:claimed.job.lease_token,opsBaseUrl:String($env.NEONTRIP_OPS_BASE_URL||'https://ops.neontrip.de').replace(/\\/+$/,''),message,result:{worker:'n8n-vat-review-alert-v2',alertPrepared:true,shopifyOrderName:c.shopify_order_name}}}];"
+        "jsCode": "\nconst claimed=($json.body??$json).claimed;\nif(!claimed?.job||!claimed?.billingCase)return [];\nconst c=claimed.billingCase,job=claimed.job;\nconst snapshot={vatId:c.vat_id,billingAddress:c.billing_address,deliveryAddress:c.delivery_address,revision:c.current_revision??0};\nconst norm=x=>String(x??'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,'');\nconst company=x=>norm(x).replace(/GESELLSCHAFTMITBESCHRANKTERHAFTUNG$/,'GMBH').replace(/GESELLSCHAFTMBH$/,'GMBH');\nconst country=String(c.delivery_address?.country??'').toUpperCase();\nconst vatId=norm(c.vat_id);\nconst eu=new Set(['AT','BE','BG','CY','CZ','DK','EE','ES','FI','FR','GR','HR','HU','IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK']);\nconst evidence={source:'EU_VIES',checked:false,valid:null,normalizedVatId:vatId,countryCode:country,checkedAt:new Date().toISOString(),identityComparison:'NOT_AVAILABLE',addressComparison:'NOT_AVAILABLE'};\nif(c.tax_review_status!=='REVIEW_REQUIRED'||c.cancelled_at||c.refunded_at||c.final_invoice_at) {\n evidence.outcome='SKIPPED';\n} else if(!eu.has(country)||!vatId.startsWith(country==='GR'?'EL':country)) {\n evidence.outcome='COUNTRY_MISMATCH';\n} else if(!/^[A-Z]{2}[A-Z0-9]{2,12}$/.test(vatId)||(country==='AT'&&!/^ATU\\d{8}$/.test(vatId))) {\n evidence.outcome='FORMAT_INVALID';\n} else {\n if(typeof this.helpers?.httpRequest!=='function')throw new Error('VIES_HTTP_HELPER_UNAVAILABLE');\n let p;\n try { p=await this.helpers.httpRequest({method:'GET',url:'https://ec.europa.eu/taxation_customs/vies/rest-api/ms/'+encodeURIComponent(country==='GR'?'EL':country)+'/vat/'+encodeURIComponent(vatId.slice(2)),headers:{Accept:'application/json'},json:true,timeout:15000}); }\n catch { p=null; }\n const code=typeof p?.userError==='string'?p.userError.toUpperCase():'';\n if(!p||typeof p.isValid!=='boolean'||(code&&!['VALID','INVALID'].includes(code))||(code==='VALID'&&!p.isValid)||(code==='INVALID'&&p.isValid)) {\n  evidence.outcome='UNAVAILABLE';evidence.providerCode=code||'NETWORK_OR_RESPONSE_ERROR';\n } else {\n  evidence.checked=true;evidence.valid=p.isValid;\n  evidence.name=typeof p.name==='string'&&norm(p.name)?p.name.trim():null;\n  evidence.address=typeof p.address==='string'&&norm(p.address)?p.address.trim():null;\n  evidence.requestDate=typeof p.requestDate==='string'?p.requestDate:null;\n  evidence.providerCode=code;\n  const a=c.billing_address??{};\n  const expectedName=company(a.company), listedName=company(evidence.name);\n  evidence.identityComparison=!expectedName||!listedName?'NOT_AVAILABLE':expectedName===listedName?'MATCH':'MISMATCH';\n  const expectedAddress=norm(a.street)+norm(a.zip)+norm(a.city);\n  const listedAddress=norm(String(evidence.address??'').replace(new RegExp('\\\\b'+country+'[-\\\\s]*(?=\\\\d)','g'),''));\n  evidence.addressComparison=!a.street||!a.zip||!a.city||!listedAddress?'NOT_AVAILABLE':expectedAddress===listedAddress?'MATCH':'MISMATCH';\n  evidence.outcome=!p.isValid?'INVALID':\n   evidence.identityComparison==='MISMATCH'||evidence.addressComparison==='MISMATCH'?'IDENTITY_MISMATCH':\n   evidence.identityComparison==='MATCH'&&evidence.addressComparison==='MATCH'?'VERIFIED':'IDENTITY_UNAVAILABLE';\n }\n}\nreturn [{json:{jobId:job.id,leaseToken:job.lease_token,snapshot,evidence}}];\n"
       }
     },
     {
@@ -93,26 +93,20 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.opsBaseUrl + '/api/internal/billing/jobs/' + encodeURIComponent($json.jobId) + '/complete' }}",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/billing_vat_attempt_complete",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {leaseToken:$json.leaseToken,success:true,result:$json.result} }}",
+        "jsonBody": "={{ {p_job_id:$json.jobId,p_lease_token:$json.leaseToken,p_snapshot:$json.snapshot,p_evidence:$json.evidence} }}",
         "options": {
-          "timeout": 30000,
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "responseFormat": "json"
-            }
-          }
+          "timeout": 30000
         }
       },
       "credentials": {
         "httpHeaderAuth": {
-          "id": "CONFIGURE_BILLING_WORKER_BEARER",
-          "name": "NEONTRIP Billing Worker"
+          "id": "CONFIGURE_SUPABASE",
+          "name": "Supabase"
         }
       }
     },
@@ -126,7 +120,84 @@
         0
       ],
       "parameters": {
-        "jsCode": "throw new Error($('Prepare VAT Review Alert').first().json.message);"
+        "jsCode": "\nconst r=$json.body??$json;\nif(!r?.shouldAlert)return [];\nconst descriptions={\n INVALID:'Umsatzsteuer-ID von VIES als ungültig gemeldet',\n UNAVAILABLE:'VIES-Prüfdienst nach drei Versuchen nicht erreichbar oder ohne verwertbare Antwort; Nummer nicht als ungültig bewertet',\n IDENTITY_MISMATCH:'Umsatzsteuer-ID gültig; Firmenname oder Rechnungsanschrift weicht von VIES ab',\n IDENTITY_UNAVAILABLE:'Umsatzsteuer-ID gültig; VIES liefert nicht genügend Firmen- oder Anschriftsdaten',\n FORMAT_INVALID:'Umsatzsteuer-ID hat ein ungültiges Format',\n COUNTRY_MISMATCH:'Umsatzsteuer-ID und EU-Lieferland passen nicht zusammen',\n TAX_REVIEW:'Umsatzsteuer-ID bestätigt; bestehende Steuerbehandlung muss gesondert geprüft werden'\n};\nconst clean=x=>String(x??'').replace(/[\\r\\n]+/g,' ').slice(0,500);\nconst v=r.validation??{};\nthrow new Error([\n descriptions[r.outcome]||'Umsatzsteuerprüfung: Klärung erforderlich',\n 'Auftrag: '+clean(r.orderName),'USt-ID: '+clean(r.vatId),\n 'Prüfversuche: '+r.attempts+' von 3; Wiederholungsabstand jeweils 5 Minuten',\n 'Prüfstatus: checked='+v.checked+', valid='+v.valid+', comparison='+v.identityComparison+', addressComparison='+v.addressComparison,\n 'Bei VIES gelistete Firma: '+clean(v.name||'nicht geliefert'),\n 'Registeranschrift: '+clean(v.address||'nicht geliefert'),\n 'Ops-Fall: https://ops.neontrip.de/ops/rechnungen?caseId='+encodeURIComponent(r.caseId),\n 'Nächster Schritt: '+(r.outcome==='UNAVAILABLE'?'Prüfdienst später erneut prüfen; keine Kundenkorrektur allein wegen Nichterreichbarkeit verlangen.':'USt-ID und Firmendaten mit der Registerauskunft vergleichen und die Abweichung in OPS klären.'),\n 'Die finale steuerfreie Rechnung bleibt gesperrt; andere Sperren bleiben unverändert.'\n].join(' | '));\n"
+      }
+    },
+    {
+      "id": "vat-retry-if",
+      "name": "VAT Retry Required?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        380,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "retry",
+              "leftValue": "={{ $json.retry === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "vat-retry-wait",
+      "name": "Wait Five Minutes for VIES",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        600,
+        -140
+      ],
+      "webhookId": "neontrip-vat-retry-20261118",
+      "parameters": {
+        "resume": "specificTime",
+        "dateTime": "={{ $json.nextAttemptAt }}"
+      }
+    },
+    {
+      "id": "vat-retry-claim",
+      "name": "Reclaim VAT Retry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        -140
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_SUPABASE",
+          "name": "Supabase"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/billing_vat_retry_claim",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {p_job_id:$json.jobId,p_expected_attempts:$json.attempts} }}",
+        "options": {
+          "timeout": 30000
+        }
       }
     }
   ],
@@ -179,7 +250,47 @@
       "main": [
         [
           {
+            "node": "VAT Retry Required?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VAT Retry Required?": {
+      "main": [
+        [
+          {
+            "node": "Wait Five Minutes for VIES",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Send VAT Review Through Error Mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Five Minutes for VIES": {
+      "main": [
+        [
+          {
+            "node": "Reclaim VAT Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reclaim VAT Retry": {
+      "main": [
+        [
+          {
+            "node": "Prepare VAT Review Alert",
             "type": "main",
             "index": 0
           }

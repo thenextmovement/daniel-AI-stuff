@@ -248,10 +248,10 @@ test("VAT review worker produces the internal summary with direct Ops and VIES l
   const source = JSON.stringify(vatReview);
   assert.equal(vatReview.active, false);
   assert.equal(vatReview.nodes[0].typeVersion, 1.3);
-  assert.match(source, /Umsatzsteuer-ID passt nicht zur Firma/);
+  assert.match(source, /VIES-Prüfdienst nach drei Versuchen/);
   assert.match(source, /ops\/rechnungen\?caseId=/);
   assert.match(source, /taxation_customs\/vies/);
-  assert.match(source, /als netto oder brutto freigeben/);
+  assert.match(source, /keine Kundenkorrektur allein wegen Nichterreichbarkeit/);
   assert.equal(vatReview.settings.errorWorkflow, "M4uG1HAtN9Zggxww");
 });
 

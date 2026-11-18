@@ -1,3 +1,4 @@
+import { upgradeVatReview } from "./vat-review.mjs";
 import { attachOrderConfirmation } from "./order-confirmation-delivery.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -642,7 +643,7 @@ fs.writeFileSync(path.join(generated, "shopify-event-adapter-v2.inactive.json"),
 fs.writeFileSync(path.join(generated, "payment-match-adapter-v2.inactive.json"), JSON.stringify(paymentWorkflow, null, 2) + "\n");
 fs.writeFileSync(path.join(generated, "payment-projection-worker-v2.inactive.json"), JSON.stringify(paymentProjectionWorkflow, null, 2) + "\n");
 fs.writeFileSync(path.join(generated, "shopify-tax-sync-worker-v2.inactive.json"), JSON.stringify(shopifyTaxSyncWorkflow, null, 2) + "\n");
-fs.writeFileSync(path.join(generated, "vat-review-alert-worker-v2.inactive.json"), JSON.stringify(vatReviewWorkflow, null, 2) + "\n");
+fs.writeFileSync(path.join(generated, "vat-review-alert-worker-v2.inactive.json"), JSON.stringify(upgradeVatReview(vatReviewWorkflow), null, 2) + "\n");
 fs.writeFileSync(path.join(generated, "easybill-proforma-void-worker-v2.inactive.json"), JSON.stringify(proformaVoidWorkflow, null, 2) + "\n");
 fs.writeFileSync(path.join(generated, "shopify-order-intake-adapter-v2.inactive.json"), JSON.stringify(shopifyOrderIntakeWorkflow, null, 2) + "\n");
 console.log("Generated inactive billing v2 workflows.");
