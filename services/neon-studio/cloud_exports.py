@@ -1,10 +1,10 @@
-"""All three quote artifacts derive from the same measured drawing."""
+"""All quote artifacts derive from the same measured drawing."""
 import io,json,re
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
 import fitz
-from PIL import Image
+from PIL import Image, ImageFilter, ImageChops
 from export_pdf import _paint
 from neon_pricing import drawing_price
 def de(value,places=2):return f'{float(value):.{places}f}'.replace('.',',')
@@ -155,7 +155,32 @@ def quote_image(pdf):
 
 def artifacts(variants,spec,motif=None):
     pdf,quotes=quote_pdf(variants,spec,motif)
-    return [pdf,quote_image(pdf[2]),('technische_zeichnung.jpg','image/jpeg',technical_image(variants[0]))],quotes
+    return [pdf,quote_image(pdf[2]),('technische_zeichnung.jpg','image/jpeg',technical_image(variants[0])),
+            ('mockup1.jpg','image/jpeg',mockup_image(variants[0]))],quotes
+
+
+def mockup_image(d):
+    """Render the measured neon paths and assigned colours, without reinterpreting the logo."""
+    w,h=1600,1000
+    scale=min(1360/d['width'],760/d['height'])
+    x,y=(w-d['width']*scale)/2,(h-d['height']*scale)/2
+    out=io.BytesIO();c=Canvas(out,pagesize=(w,h))
+    c.setFillColor(HexColor('#000000'));c.rect(0,0,w,h,fill=1,stroke=0)
+    c.saveState();c.translate(x,y);c.scale(scale/mm,scale/mm)
+    bx,by=d['bounds'][:2]
+    for path,color in zip(d['paths'],d['pathColors']):
+        _paint(c,path,-bx,d['height']+by,color.get('swatch',color['color']),d['settings']['tube'])
+    c.restoreState();c.showPage();c.save()
+    with fitz.open(stream=out.getvalue(),filetype='pdf') as doc:
+        pix=doc[0].get_pixmap(alpha=False)
+        neon=Image.frombytes('RGB',[pix.width,pix.height],pix.samples)
+    wall=Image.new('RGB',neon.size,'#29272a')
+    for radius,strength in ((24,.7),(8,.8),(2,.6)):
+        glow=neon.filter(ImageFilter.GaussianBlur(radius)).point(lambda v:v*strength)
+        wall=ImageChops.screen(wall,glow)
+    wall=ImageChops.screen(wall,neon)
+    jpeg=io.BytesIO();wall.save(jpeg,'JPEG',quality=95,subsampling=0)
+    return jpeg.getvalue()
 
 
 def technical_image(d):

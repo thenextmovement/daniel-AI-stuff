@@ -205,7 +205,7 @@ def eps_pdf(raw):
         except (ValueError,OSError,subprocess.SubprocessError):
             raise Review('EPS konnte nicht in eine PDF umgewandelt werden. Bitte Vektor-PDF verwenden.') from None
 
-def generate(trello,card,selected=None):
+def generate(trello,card,selected=None,feedback=None):
     # All attachments remain on the copy. Only raster/PDF customer art is sent for analysis.
     candidates=[a for a in card.get('attachments',[]) if a.get('isUpload') and
         re.search(r'\.(png|jpe?g|webp|pdf|svg|eps)$',a.get('fileName') or a['name'],re.I) and
@@ -226,7 +226,6 @@ def generate(trello,card,selected=None):
         digest=hashlib.sha256(raw).digest()
         if digest in seen:continue
         seen.add(digest)
-        if len(seen)>6:raise Review(ambiguous)
         if (a.get('fileName') or a['name']).lower().endswith('.eps'):raw=eps_pdf(raw)
         name=(a.get('fileName') or a['name']).casefold()
         if name.endswith('.svg'):
@@ -285,9 +284,10 @@ Farbe, Material oder einer anderen Variante entfernt keinen Motivteil.
 Eine allgemeine Vorgabe „Single line“ gilt für das gesamte Motiv.
 Wenn die Kartenbeschreibung einem eindeutig benannten Motivbereich Single Line oder Double Line zuordnet, setze diese
 Produktvorgabe in SVG und line_plan um und nenne die Vorgabe in reason. Bei widersprüchlicher oder nicht zuordenbarer
-Linienvorgabe benenne die konkrete Rückfrage in issues. Ohne explizite Vorgabe prüfe die Strichstärke jedes Bereichs getrennt: Fette/flächige Schrift erhält ihre Innen-
-und Außenumrisse als Double Line; dünne Schrift und Schreibschrift werden zu Single-Line-
-Mittellinien. Gemischte Logos brauchen gemischte Linienarten, niemals pauschal alles Single.
+Linienvorgabe benenne die konkrete Rückfrage in issues. Ohne explizite Vorgabe prüfe die Strichstärke jedes Bereichs getrennt.
+Für Smallest Size wähle für schmale Buchstabenstriche Single-Line-Mittellinien, auch wenn das Logo als gefüllte Fläche vorliegt.
+Eine gefüllte Schrift allein ist kein Grund für Double Line. Bewusst breite Outline-Logos behalten Innen- und Außenumrisse.
+Erhalte dabei die erkennbare Buchstabenform. Gemischte Logos können gemischte Linienarten benötigen.
 Double bedeutet hier echte Umrissgeometrie im SVG, nicht nur ein Etikett im Linienplan.
 i/j-Punkte als separate Pfade kennzeichnen. Sie werden später in Millimetern lokal angepasst:
 Single senkrechter Strich mindestens 20 mm, Double Kreis. Keine anderen Teile dafür skalieren.
@@ -323,23 +323,40 @@ Daten der Anfrage: """+json.dumps(context,ensure_ascii=False)
         (re.search(r'\b(?:2|zwei|two)\s+(?:schilder|signs)\b',order,re.I) and
          len(re.findall(r'[„“"]([^„“”"\n]+)[“”"]',card['desc']))>=2 and
          re.search(r'\bjeweils\s+(?:ein|1)\s+Stück\b',card['desc'],re.I)))
+    count_match=re.search(r'\b([2-9]|[1-9][0-9]|zwei|drei|vier|two|three|four)\s+designs\b',order,re.I)
+    count_words={'zwei':2,'two':2,'drei':3,'three':3,'vier':4,'four':4}
+    design_count=2 if two_designs_required else None
+    if count_match:
+        token=count_match[1].lower()
+        design_count=count_words[token] if token in count_words else int(token)
     prompt+="""
-Ermittle anhand der Bestellung und der Kundenmotive, ob zwei unterschiedliche Schilder angefragt sind.
+Ermittle anhand der Bestellung und der Kundenmotive, wie viele unterschiedliche Schilder angefragt sind.
 Zwei bestellte Schriftzüge, auch im selben Stil, erhalten jeweils eine eigene Zeichnung und Kalkulation.
 „2 Quotes“ allein kann auch zwei Größen oder Farbvarianten desselben Designs bezeichnen.
 Mehrere Vorlagen desselben Motivs oder zwei Exemplare allein sind ein Design.
-Bei zwei bestellten Designs antworte mit {"designs":[Objekt1,Objekt2]}.
+Bei mehreren bestellten Designs antworte mit {"designs":[Objekt1,Objekt2,...]}.
+Mehrere unterschiedliche Logos sind eigene Designs; doppelte Anhänge, andere Auflösungen und Mockups desselben Logos nicht.
 Ordne jedem Design den passenden Anhang, den bestellten Text und die Stückzahl je Motiv zu.
 Jedes Objekt enthält alle oben verlangten Felder und einen kurzen eindeutigen design_name.
 Erzeuge für jedes Layout nur dessen eigene Pfade in einer eigenen eng passenden viewBox.
 Der Zeilenumbruch innerhalb eines Layouts gehört zum selben Schild. Behalte die Reihenfolge der Vorlage.
-Zwei bestellte Designs sind kein issue. Bei Größen und Ausführung haben die strukturierten
+Mehrere bestellte Designs sind kein issue. Bei Größen und Ausführung haben die strukturierten
 aktuellen Kartenangaben Vorrang vor relativen Wünschen im zitierten Mailverlauf.
 Bei ausdrücklicher Farbwahl verwende die bestellte Leuchtfarbe auch für die SVG-Pfade."""
-    if two_designs_required:
-        prompt+='\nFür diese Bestellung sind zwei verschiedene Designs erforderlich.'
+    if design_count:
+        prompt+=f'\nFür diese Bestellung sind {design_count} verschiedene Designs erforderlich.'
+    if feedback:
+        prompt+='\nDie geometrische Prüfung des ersten Entwurfs ergibt: '+json.dumps(feedback,ensure_ascii=False)
+        prompt+='''
+Erstelle eine kompaktere Alternative aus denselben Originalmotiven. Behebe nur die genannten Engstellen:
+vergrößere zu enge Innenöffnungen lokal und verteile Buchstabenabstände nur so weit wie nötig.
+Erhalte alle bestellten Texte, Motivteile, Farben, Linienarten und die Anzahl der Designs. Keine Teile weglassen.
+Erhalte die Proportionen und Positionen der Buchstaben; keine gestreckte oder gestauchte Ersatzschrift.
+Behalte design_name und die Namen/mode der line_plan-Bereiche bei. Die Ausgabe wird erneut geometrisch geprüft.
+Die Fertigungsgrenzen bleiben unverändert: 6-mm-Neon, 8 mm Mittellinienabstand,
+15,608 mm Mittelliniendurchmesser für geschlossene Innenöffnungen. Keine Freigabe behaupten.'''
     started=time.perf_counter()
-    budget=36000 if two_designs_required or len(seen)>1 or re.search(r'\b2 quotes\b',order,re.I) else 18000
+    budget=36000 if design_count or len(seen)>1 or re.search(r'\b2 quotes\b',order,re.I) else 18000
     for attempt in range(2):
         r=requests.post('https://api.openai.com/v1/responses',headers={'Authorization':'Bearer '+os.environ['OPENAI_API_KEY']},
             json={'model':os.getenv('NEON_AI_MODEL','gpt-6-astra'),'reasoning':{'effort':os.getenv('NEON_AI_EFFORT','high')},
@@ -364,14 +381,14 @@ Bei ausdrücklicher Farbwahl verwende die bestellte Leuchtfarbe auch für die SV
     try:data=json.loads(text)
     except ValueError:raise Review('KI-Antwort ist unvollständig. Bitte erneut prüfen.')
     if not isinstance(data,dict):raise Review('Unerwartete Anzahl von Designs in der KI-Antwort.')
-    two_designs=two_designs_required or 'designs' in data
+    two_designs=bool(design_count) or 'designs' in data
     designs=data.get('designs') if two_designs else [data]
-    if two_designs and (not isinstance(designs,list) or len(designs)!=2 or
+    if two_designs and (not isinstance(designs,list) or not designs or (design_count and len(designs)!=design_count) or
             any(not isinstance(d,dict) or not isinstance(d.get('design_name'),str) or not d['design_name'].strip() for d in designs)):
-        raise Review('Die beiden bestellten Designs konnten nicht getrennt zugeordnet werden.')
-    if two_designs and (designs[0].get('svg')==designs[1].get('svg') or
-            designs[0]['design_name'].strip().casefold()==designs[1]['design_name'].strip().casefold()):
-        raise Review('Die beiden Zeichnungen brauchen unterscheidbare Motive und Bezeichnungen.')
+        raise Review('Die bestellten Designs konnten nicht vollständig getrennt zugeordnet werden.')
+    if two_designs and (len({d.get('svg') for d in designs})!=len(designs) or
+            len({d['design_name'].strip().casefold() for d in designs})!=len(designs)):
+        raise Review('Die Zeichnungen brauchen unterscheidbare Motive und Bezeichnungen.')
     for design in designs:
         if title_widths is not None:
             design.update(smallest_requested=True,widths_mm=title_widths,minimum_first=True)

@@ -99,8 +99,9 @@ class ManufacturingTests(unittest.TestCase):
     d=case.drawing([[['m',[0,0]],['l',[width-36,0]]],[['m',[0,size]],['l',[width-36,size]]]]);d['width']=width
     return d
   widths,reports=size_variants(Store(),'model',{},dict(widths_mm=[600],smallest_requested=True))
-  self.assertEqual(widths,[600,196])
-  self.assertEqual(reports[1]['minimumSpacing'],8)
+  self.assertEqual(widths,[600,200])  # 19.6 cm is quoted as 20 cm.
+  self.assertGreaterEqual((widths[1]-36)/20,8)
+  self.assertLessEqual(reports[1]['recommendedWidth'],widths[1])
  def test_smallest_title_adds_only_distinct_feasible_absolute_widths(self):
   import json
   from cloud_ai import smallest_title_widths

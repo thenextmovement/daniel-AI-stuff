@@ -1,11 +1,40 @@
 import fcntl,json,math,os,re,threading,time,traceback
+from requests.exceptions import RequestException
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from cloud_trello import Trello,BOARD,TRIGGER,HOLDING,READY,REQUEST,USAGE,FIELDS,eligible,field_value,size_field,color_field,decimal,PROCESSING,NEEDS_REVIEW,plain_title,copy_title,ServiceError
 from cloud_ai import generate,validate_spec,Review,drawing_model,smallest_title_widths,size_only_issue
 from colors import artwork_neon_color, NEON_COLORS
+from geometry import path_bounds
 from cloud_exports import artifacts,CUT
-from minimum_size import PROFILE, SpacingLimitExceeded, measure, minimum_size, widths_for_heights
+from minimum_size import PROFILE, SpacingLimitExceeded, measure, minimum_size, widths_for_heights, target_width
+
+
+def optimize_smallest(store, model, settings):
+    """Try verified spacing corrections before enlarging the entire motif."""
+    original=minimum_size(store,model,settings)
+    if 'spacing' not in original.get('limitingReasons',[]):return settings
+    low,high=8,math.ceil(original['recommendedWidth']/10)
+    best=settings
+    while low<high:
+        middle=(low+high)//2
+        width=middle*10
+        try:report=target_width(store,model,settings,width)
+        except ValueError:
+            low=middle+1
+            continue
+        proposal=report.get('proposal')
+        candidate=None
+        if not report['issues']:candidate=settings
+        elif proposal and proposal['remaining']==0:
+            candidate={**settings,'pathOffsets':proposal['offsets']}
+        if candidate is not None:
+            drawing=store.drawing(model,json.dumps({**candidate,**PROFILE,'width':width},sort_keys=True))
+            if drawing['exportable'] and measure(drawing)['recommendedWidth']<=width:
+                best=candidate;high=middle
+                continue
+        low=middle+1
+    return best
 
 
 def size_variants(store,model,settings,spec):
@@ -13,7 +42,7 @@ def size_variants(store,model,settings,spec):
     if not isinstance(widths,list) or any(type(w) not in (int,float) or not 80<=w<=20000 for w in widths):
         raise Review('Ungültige Angebotsbreite.')
     manual=spec.get('minimum_width_mm')
-    floor=manual or minimum_size(store,model,settings)['recommendedWidth']
+    floor=manual or math.ceil(minimum_size(store,model,settings)['recommendedWidth']/10)*10
     targets=list(dict.fromkeys(max(w,floor) for w in widths))
     if (spec.get('smallest_requested') or not targets) and floor not in targets:targets.append(floor)
     if spec.get('minimum_first'):
@@ -92,8 +121,67 @@ class Jobs:
         data,metrics=generate(self.t,source,p.get('selected_attachments'))
         designs=data.get('designs',[data])
         records=[self.design_record(design) for design in designs]
+        records=self.compact_designs(source,designs,records)
         p=self.db.save(id,{**records[0],'additional_designs':records[1:],'metrics':metrics},status='draft')
         self.publish(p, generated=True)
+
+    def compact_designs(self,card,designs,records):
+        """One bounded correction pass; a usable first draft survives failed refinement."""
+        feedback=[];previous=[]
+        for design,record in zip(designs,records):
+            report=None
+            if record['spec'].get('smallest_requested') and record['spec'].get('size_axis')!='height':
+                try:
+                    record['settings']=optimize_smallest(self.store,record['model'],record['settings'])
+                    report=minimum_size(self.store,record['model'],record['settings'])
+                except (ValueError,Review):pass
+            previous.append(report)
+            if report and report.get('limitingReasons')==['opening']:
+                feedback.append({'design_name':design.get('design_name'), 'svg':design['svg'],
+                                 'line_plan':design.get('line_plan'), 'minimum_width_mm':report['recommendedWidth'],
+                                 'limiting_site':report.get('limitingSite')})
+        if not feedback:return records
+        replacements={}
+        try:
+            revised,metrics=generate(self.t,card,feedback=feedback)
+            alternatives=revised.get('designs',[revised])
+            if len(alternatives)!=len(designs):return records
+            for i,(original,alternative,report) in enumerate(zip(designs,alternatives,previous)):
+                if not report or report.get('limitingReasons')!=['opening']:continue
+                # Refinement may edit geometry, never silently change the order.
+                fields=('design_name','colors','source_attachment_ids','excluded_regions','quantity','widths_mm')
+                if any(original.get(key)!=alternative.get(key) for key in fields):continue
+                def groups(d):
+                    return sorted((g['name'],g['mode'],len(g['path_ids']),len(g.get('dot_ids',[]))) for g in d['line_plan'])
+                if groups(original)!=groups(alternative):continue
+                candidate=self.design_record({**original,'svg':alternative['svg'],'line_plan':alternative['line_plan']})
+                def appearance(record):
+                    return [(item['originalGroup'],item['name'],item.get('sourceColor'),item['role'],item['neonCenterline'])
+                            for item in self.store.model(record['model'])['modes']['double']]
+                if appearance(records[i])!=appearance(candidate):continue
+                # Reject smaller lettering obtained by stretching or compressing the logo.
+                def boxes(record):
+                    bounds=[path_bounds(item['commands']) for item in self.store.model(record['model'])['modes']['double']]
+                    left=min(b[0] for b in bounds);top=min(b[1] for b in bounds)
+                    width=max(b[2] for b in bounds)-left
+                    return [((b[0]-left)/width,(b[1]-top)/width,(b[2]-b[0])/width,(b[3]-b[1])/width) for b in bounds]
+                before,after=boxes(records[i]),boxes(candidate)
+                if any(abs(a-b)>max(old[2 if axis%2==0 else 3],.001)*.05+1e-9
+                       for old,new in zip(before,after) for axis,(a,b) in enumerate(zip(old,new))):
+                    records[i]['spec']['compact_note']='Eine kleinere Kontur würde das Motiv zu stark verändern. Kalkuliert ist der erste geometrisch geprüfte Entwurf.'
+                    continue
+                candidate['settings']=optimize_smallest(self.store,candidate['model'],candidate['settings'])
+                self.size_design(candidate,card)
+                if candidate['spec']['auto_minimum_mm']>=report['recommendedWidth']:continue
+                candidate['metrics']={**candidate.get('metrics',{}),'compact_retry':metrics}
+                candidate['spec']['compact_note']='Innenkonturen automatisch angepasst und die kleinere Größe erneut geprüft.'
+                replacements[i]=candidate
+        except (ValueError,KeyError,TypeError,Review,ServiceError,TimeoutError,RequestException):
+            for record in records:
+                record['spec']['compact_note']='Die zusätzliche Konturkorrektur wurde nicht bestätigt. Kalkuliert ist der erste geometrisch geprüfte Entwurf.'
+            return records
+        for i,candidate in replacements.items():records[i]=candidate
+        return records
 
     def reread(self,p):
         card=self.t.card(p[p['reread']])
@@ -107,7 +195,9 @@ class Jobs:
             output_fields={field for group in FIELDS for field in group}
             card['customFieldItems']=[item for item in card.get('customFieldItems',[]) if item['idCustomField'] not in output_fields]
         data,metrics=generate(self.t,card)
-        records=[self.design_record(design) for design in data.get('designs',[data])]
+        designs=data.get('designs',[data])
+        records=[self.design_record(design) for design in designs]
+        records=self.compact_designs(card,designs,records)
         for record in records:
             try:self.size_design(record,card)
             except SpacingLimitExceeded:
@@ -245,6 +335,9 @@ class Jobs:
             if not p.get('copy') or not p.get('model'):raise Review('Kopie oder Zeichnung fehlt.')
             records=[p,*p.get('additional_designs',[])]
             for record in records:
+                if generated and not record['spec'].get('minimum_width_mm') and record['spec'].get('size_axis')!='height':
+                    try:record['settings']=optimize_smallest(self.store,record['model'],record['settings'])
+                    except SpacingLimitExceeded:pass  # Existing original-PNG recovery below.
                 try:self.size_design(record,p['snapshot'])
                 except SpacingLimitExceeded:
                     if not generated or len(records)!=1:raise
@@ -260,15 +353,17 @@ class Jobs:
             for index,record in enumerate(records,1):
                 batch,prices,drawings,spec=self.design_artifacts(record,p['snapshot'])
                 if len(records)>1:
-                    batch=[(f'Design_{index}_{name}',mime,data) for name,mime,data in batch]
+                    batch=[(f'mockup{index}.jpg' if name=='mockup1.jpg' else f'Design_{index}_{name}',mime,data) for name,mime,data in batch]
                     design_notes.append(f"Design {index} · {spec['design_name']} · "+
                         ', '.join(decimal(d['width']/10)+' cm / '+q['total_usd']+' USD' for d,q in zip(drawings,prices)))
+                if spec.get('compact_note'):design_notes.append(spec['compact_note'])
                 if spec.get('issues'):
                     heading=f"Design {index} · " if len(records)>1 else ''
                     design_notes.append(heading+'Offen im Entwurf ('+spec['colors']+', '+spec['usage']+')')
                     design_notes.extend('• '+str(question) for question in spec['issues'])
                 files.extend(batch);quotes.extend(prices);variants.extend(drawings);specs.extend([spec]*len(drawings))
-            if len(variants)>len(FIELDS):raise Review('Die Karte hat vier Preisfelder. Bitte die Anzahl der Größen je Design reduzieren.')
+            if len(variants)>len(FIELDS):
+                design_notes.append('Die ersten vier Varianten stehen in den Preisfeldern. Alle weiteren Varianten stehen oben und in den zugehörigen Angebots-PDFs.')
             spec=specs[0]
             revision=p['revision'];marker='Neon Studio '+p['id']+' Revision '+str(revision)
             p=self.db.save(p['id'],{'publish_revision':revision,'error':'','upload_intent':False},status='publishing')

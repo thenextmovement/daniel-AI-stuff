@@ -28,6 +28,28 @@ class CloudTests(unittest.TestCase):
   self.assertEqual((saved['status'],saved['spec']['issues'],saved['selected_attachments']),('draft',[],[]))
   self.assertTrue(saved['model'])
   t.call.assert_not_called()
+ def test_compact_retry_keeps_order_and_uses_only_verified_smaller_geometry(self):
+  from unittest.mock import Mock,patch
+  from minimum_size import minimum_size
+  jobs=Jobs(self.db,DurableStore(self.db),Mock())
+  def design(height):
+   return {'svg':f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path id="outline" d="M0 0 L200 0 L200 {height} L0 {height} Z" stroke="blue" fill="none"/></svg>',
+           'design_name':'Test','source_attachment_ids':['art'],'smallest_requested':True,'widths_mm':[],
+           'colors':'Blau','line_plan':[{'name':'Schriftzug Test','mode':'double','path_ids':['outline']}]}
+  data=design(2);record=jobs.design_record(data)
+  before=minimum_size(jobs.store,record['model'],record['settings'])['recommendedWidth']
+  with patch('cloud_jobs.generate',return_value=(design(2.08),{})) as generate:
+   improved=jobs.compact_designs({'name':'Smallest Size','desc':''},[data],[record])
+  self.assertEqual(generate.call_count,1)
+  after=minimum_size(jobs.store,improved[0]['model'],improved[0]['settings'])['recommendedWidth']
+  self.assertLess(after,before)
+  self.assertEqual(improved[0]['spec']['colors'],'Blau')
+  for candidate in (design(8),design(1),{**design(8),'colors':'Rot'},{**design(8),'line_plan':None},
+                    {**design(8),'svg':design(8)['svg'].replace('stroke="blue"','stroke="red"')}):
+   with patch('cloud_jobs.generate',return_value=(candidate,{})):
+    self.assertEqual(jobs.compact_designs({'name':'Smallest Size','desc':''},[data],[record])[0]['model'],record['model'])
+  with patch('cloud_jobs.generate',side_effect=TimeoutError):
+   self.assertEqual(jobs.compact_designs({'name':'Smallest Size','desc':''},[data],[record])[0]['model'],record['model'])
  def test_review_and_watcher_failures_do_not_send_email(self):
   from unittest.mock import patch
   p=self.db.enqueue('no-mail-card','no-mail-event',{})
@@ -78,7 +100,7 @@ class CloudTests(unittest.TestCase):
    # Stop after rendering, before sending anything to Trello.
    def rendered(*args):
     files,quotes,drawings,spec=Jobs.design_artifacts(jobs,*args)
-    self.assertEqual(len(files),3)
+    self.assertEqual(len(files),4)
     self.assertEqual(spec['auto_minimum_mm'],drawings[0]['width'])
     self.assertTrue(all(c['id']=='cold-white' for c in drawings[0]['pathColors']))
     raise StopIteration
@@ -276,7 +298,7 @@ class CloudTests(unittest.TestCase):
   with patch.dict('os.environ',{'OPENAI_API_KEY':'test'}),patch('cloud_ai.requests.post') as post:
    def reply(data):post.return_value.json.return_value={'status':'completed','output':[{'content':[{'type':'output_text','text':json.dumps(data)}]}]}
    reply(designs[0])
-   with self.assertRaisesRegex(Review,'beiden bestellten Designs'):generate(t,card)
+   with self.assertRaisesRegex(Review,'bestellten Designs'):generate(t,card)
    reply({'designs':designs});result,_=generate(t,card)
    self.assertEqual(sum(x['type']=='input_image' for x in post.call_args.kwargs['json']['input'][0]['content']),2)
    self.assertTrue(all(d['heights_mm']==[230] and not d['widths_mm'] and d['size_axis']=='height' for d in result['designs']))
@@ -330,6 +352,10 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(len(run({'designs':[first,second]})['designs']),2)
   card['desc']='Ein Motiv in zwei Größen anbieten.'
   self.assertNotIn('designs',run(first))
+  third={**first,'design_name':'Third Sign','svg':SVG.replace('M10 50','M30 50')}
+  card['desc']='3 Designs separat anbieten.'
+  self.assertEqual(len(run({'designs':[first,second,third]})['designs']),3)
+  with self.assertRaises(Review):run({'designs':[first,second]})
   card['desc']='Contractor Point und Red-Tag Area bitte separat anbieten.'
   self.assertEqual(len(run({'designs':[first,second]})['designs']),2)
  def test_omitted_tagline_cannot_return_in_vector_or_png_recovery(self):
@@ -442,7 +468,7 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(self.db.get(p['id'])['status'],'ready')
   self.assertEqual(t.data['idList'],READY)
   self.assertIn('Mindestbreite (manuell): 110,50 cm',t.comments[0])
-  self.assertEqual(len(t.uploads),3)
+  self.assertEqual(len(t.uploads),4)
   self.assertIn('110,50 cm',fitz.open(stream=t.uploads[0][1],filetype='pdf')[0].get_text())
   size=next(x['value']['text'] for x in t.data['customFieldItems'] if x['idCustomField']==FIELDS[0][1])
   self.assertTrue(size.startswith('120x'),size)
@@ -451,11 +477,11 @@ class CloudTests(unittest.TestCase):
   t.data['attachments'].append({'id':'original'})
   Jobs(self.db,store,t).publish(self.db.get(p['id']))
   ids=[a['id'] for a in t.data['attachments']]
-  self.assertIn(t.data['idAttachmentCover'],ids[4:])
+  self.assertIn(t.data['idAttachmentCover'],ids[5:])
   self.assertEqual(t.uploads[int(t.data['idAttachmentCover'])-1][0],'technische_zeichnung.jpg')
-  self.assertEqual(ids[:4],first_ids+['original'])
-  self.assertEqual(len(set(ids)),7)
-  self.assertEqual([f[0] for f in t.uploads[:3]],[f[0] for f in t.uploads[3:]])
+  self.assertEqual(ids[:5],first_ids+['original'])
+  self.assertEqual(len(set(ids)),9)
+  self.assertEqual([f[0] for f in t.uploads[:4]],[f[0] for f in t.uploads[4:]])
   self.assertNotIn(' → ',t.comments[-1])
   saved=self.db.get(p['id'])
   updated={**saved['spec'],'minimum_first':True,'minimum_width_mm':950,
@@ -480,11 +506,24 @@ class CloudTests(unittest.TestCase):
   result=Jobs(self.db,store,t).publish(p)
   self.assertEqual(len(result['quotes']),2)
   for i,label in enumerate(('Einzeilig','Zweizeilig')):
-   batch=t.uploads[-6:][3*i:3*i+3]
-   self.assertTrue(all(f[0].startswith(f'Design_{i+1}_') for f in batch))
+   batch=t.uploads[-8:][4*i:4*i+4]
+   self.assertTrue(all(f[0].startswith(f'Design_{i+1}_') for f in batch[:3]))
+   self.assertEqual(batch[3][0],f'mockup{i+1}.jpg')
    self.assertIn(label,fitz.open(stream=batch[0][1],filetype='pdf')[0].get_text())
    self.assertIn(label,t.comments[-1])
   self.assertTrue(any(f['idCustomField']==FIELDS[1][1] and f['value']['text'].startswith('60x') for f in t.data['customFieldItems']))
+
+  # More designs than Trello's four price slots still receive their own files and prices.
+  extra=[{k:second[k] for k in ('model','spec','settings')} for _ in range(4)]
+  for i,item in enumerate(extra,2):item['spec']={**item['spec'],'design_name':f'Motiv {i}'}
+  self.db.save(p['id'],{'additional_designs':extra})
+  result=Jobs(self.db,store,t).publish(p)
+  self.assertEqual(self.db.get(p['id'])['status'],'ready')
+  self.assertEqual(len(result['quotes']),5)
+  self.assertEqual([f[0] for f in t.uploads[-20:] if f[0].startswith('mockup')],
+                   [f'mockup{i}.jpg' for i in range(1,6)])
+  self.assertIn('Design 5 · Motiv 5',t.comments[-1])
+  self.assertIn('Alle weiteren Varianten',t.comments[-1])
 
  def test_smallest_review_keeps_usage_and_overrides_can_be_below_geometry(self):
   from cloud_ai import size_only_issue
@@ -603,7 +642,7 @@ class CloudTests(unittest.TestCase):
   d=store.drawing(info['id'],json.dumps({'mode':'single','width':700,'gap':15,'shape':'shape','radius':3}))
   spec=validate_spec({'customer_name':'Test Kunde','colors':'Pink','widths_mm':[700]})
   files,quotes=artifacts([d],spec)
-  self.assertEqual([f[0] for f in files],['auto_quote_Test_Kunde.pdf','image.png','technische_zeichnung.jpg'])
+  self.assertEqual([f[0] for f in files],['auto_quote_Test_Kunde.pdf','image.png','technische_zeichnung.jpg','mockup1.jpg'])
   text=fitz.open(stream=files[0][2],filetype='pdf')[0].get_text()
   self.assertIn('70,00',text);self.assertIn('USD',text)
   self.assertNotIn('Option 1',text)
@@ -614,6 +653,21 @@ class CloudTests(unittest.TestCase):
                     ['Test Kunde · Motiv · Option 1','Test Kunde · Motiv · Option 2'])
   self.assertGreater(Image.open(io.BytesIO(files[1][2])).width,1000)
   self.assertGreater(Image.open(io.BytesIO(files[2][2])).width,1500)
+  import numpy as np
+  mockup=np.asarray(Image.open(io.BytesIO(files[3][2])))
+  ys,xs=np.where(mockup.max(axis=2)>200)
+  self.assertGreater(len(xs),100)
+  self.assertGreater(xs.min(),90);self.assertLess(xs.max(),1510)
+  self.assertGreater(ys.min(),90);self.assertLess(ys.max(),910)
+  from cloud_exports import mockup_image
+  from colors import line_color
+  for shade in ('cold-white','warm-white'):
+   white={**d,'pathColors':[line_color(override=shade) for _ in d['paths']]}
+   pixels=np.asarray(Image.open(io.BytesIO(mockup_image(white))))
+   self.assertGreater((pixels.max(axis=2)>200).sum(),100)
+   if shade=='warm-white':
+    bright=pixels[pixels.max(axis=2)>200].mean(axis=0)
+    self.assertGreater(bright[0],bright[2]+10)
   self.assertGreaterEqual(float(quotes[0]['shipping_usd']),45)
   self.assertGreater(float(quotes[0]['total_usd']),0)
 if __name__=='__main__':unittest.main()

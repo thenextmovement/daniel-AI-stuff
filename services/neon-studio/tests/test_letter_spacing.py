@@ -23,6 +23,17 @@ class LetterSpacingTests(unittest.TestCase):
                      sourceLabel='Test', traceNote='', imageBounds=[0, 0, 100, 20], image='')
         token = store.add_model(model, 'test.png')['id']
         options = dict(PROFILE, mode='double', shape='rectangle', width=136)
+        from cloud_jobs import optimize_smallest, size_variants
+        improved = optimize_smallest(store, token, options)
+        self.assertTrue(improved.get('pathOffsets'))
+        widths, _ = size_variants(store, token, improved, {'smallest_requested':True})
+        self.assertLessEqual(widths[0],140)
+        self.assertEqual(widths[0] % 10,0)
+        verified = store.drawing(token,json.dumps({**improved,'width':widths[0]}))
+        from shapely.geometry import LineString
+        from geometry import sample_path
+        lines=[LineString(sample_path(path,128)) for path in verified['paths']]
+        self.assertGreaterEqual(min(a.distance(b) for i,a in enumerate(lines) for b in lines[i+1:]),8-1e-6)
         report = target_width(store, token, options, 136)
         proposal = report['proposal']
         self.assertEqual(len(report['issues']), 2)
