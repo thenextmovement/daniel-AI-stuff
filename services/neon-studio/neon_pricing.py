@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 import json
 import sys
 
-VERSION = '2026-11-09.1'
+VERSION = '2026-11-18.1'
 MINIMUM_SHIPPING_USD = Decimal(45)
 RATES = {'single':Decimal(14), 'rgb':Decimal(20), 'chasing_rgb':Decimal(28)}
 
@@ -61,7 +61,7 @@ def calculate(request, *, acrylic_parts=None):
     extra=decimal(request.get('additional_cost_usd',0),'Zusatzkosten')
     sales_factor=decimal(request.get('sales_factor','2.3'),'Verkaufsfaktor',Decimal('.01'),100)
     rows=[];dims=[];production=Decimal(0)
-    assumptions=['loss_factor_1_1_once','padding_10cm_per_dimension','usd_per_kg_12_approximate','oversize_once_per_package','actual_weight_unknown','supplier_quote_required']
+    assumptions=['loss_factor_1_1_once','padding_10cm_per_dimension','usd_per_kg_19_internal','oversize_once_per_package','actual_weight_unknown','supplier_quote_required']
     if extra:assumptions.append('manual_additional_cost')
     for i,item in enumerate(items):
         if not isinstance(item,dict) or set(item)-{'width_cm','height_cm','neon_m','color','outdoor','waterproof_psus','uv_print','controllers'}:raise ValueError('Unbekannte Schildfelder.')
@@ -115,7 +115,7 @@ def calculate(request, *, acrylic_parts=None):
     for w,h,thickness in parcels:
         dimensions=(w+10,h+10,thickness)
         weight=dimensions[0]*dimensions[1]*dimensions[2]/5000
-        base=weight*12
+        base=weight*19
         oversize=Decimal(20 if max(dimensions)>120 else 0)
         charge=max(base,minimum)+oversize;shipping+=charge
         packages.append({'dimensions_cm':[number(v) for v in dimensions],'volume_kg':number(weight),
@@ -135,7 +135,7 @@ def calculate(request, *, acrylic_parts=None):
             'assumptions':list(dict.fromkeys(assumptions)),
             'not_priced':['Sonderacryl und Montagezubehör','Indoor-Netzteil: keine separate bestätigte Rate',
                           'Zoll, Einfuhrabgaben, Steuern und Weitertransport','Gewichtsaufrundung und tatsächliches Paketgewicht ungeklärt'],
-            'source':'Quentin-Preissheet + interne Ergänzungen Rahim; Mindestfracht 45 USD und +10 cm je Außenmaß bestätigt 04.11.2026; UV 30 USD und Controller 15 USD vorläufig'}
+            'source':'Quentin-Preissheet + interne Ergänzungen Rahim; Versandansatz 19 USD/kg Volumengewicht am 18.11.2026 von Rahim vorgegeben (keine bestätigte Lieferantenrate); Mindestfracht 45 USD und +10 cm je Außenmaß bestätigt 04.11.2026; UV 30 USD und Controller 15 USD vorläufig'}
 
 if __name__=='__main__':
     try:print(json.dumps(calculate(json.load(sys.stdin)),ensure_ascii=False))

@@ -19,8 +19,8 @@ class PricingTests(unittest.TestCase):
 
     def test_fractional_cent_and_customer_price_round_up(self):
         q=self.quote(items=[{'width_cm':83,'height_cm':52.29,'neon_m':6.829}])
-        self.assertEqual((q['production_usd'],q['shipping_usd'],q['total_usd']),('106','84','190'))
-        self.assertEqual(q['customer_price']['amount_eur'],'437')
+        self.assertEqual((q['production_usd'],q['shipping_usd'],q['total_usd']),('106','133','239'))
+        self.assertEqual(q['customer_price']['amount_eur'],'550')
         q=self.quote(items=[{'width_cm':20,'height_cm':20,'neon_m':'5.00001'}])
         self.assertEqual(q['production_usd'],'78')
         self.assertEqual(q['customer_price']['amount_eur'],'283')
@@ -34,13 +34,22 @@ class PricingTests(unittest.TestCase):
     def test_volume_and_oversize_per_package(self):
         q=self.quote(items=[{'width_cm':120,'height_cm':30,'neon_m':5}])
         self.assertEqual(q['packages'][0]['dimensions_cm'],['130','40','6'])
-        self.assertEqual(q['shipping_usd'],'95')
+        self.assertEqual(q['shipping_usd'],'139')
         q=self.quote(items=[{'width_cm':50,'height_cm':20,'neon_m':1}]*2)
         self.assertEqual(q['shipping_usd'],'90')
         q=self.quote(items=[{'width_cm':50,'height_cm':20,'neon_m':1}]*2,packing='stacked')
         self.assertEqual(len(q['packages']),1)
         self.assertEqual(q['packages'][0]['dimensions_cm'],['60','30','10'])
-        self.assertEqual(q['shipping_usd'],'45')
+        self.assertEqual(q['shipping_usd'],'69')
+
+    def test_19_dollar_rate_and_oversize_boundary(self):
+        for width,extra in ((110,0),(110.01,20)):
+            q=self.quote(items=[{'width_cm':width,'height_cm':30,'neon_m':5}])
+            parcel=q['packages'][0]
+            expected=(Decimal(str(width))+10)*40*6/5000*19+extra
+            self.assertEqual(q['shipping_usd'],str(math.ceil(expected)))
+            self.assertEqual(Decimal(parcel['oversize_usd']),extra)
+            self.assertIn('usd_per_kg_19_internal',q['assumptions'])
 
     def test_optional_extras_are_provisional_and_not_multiplied_by_loss_or_outdoor(self):
         item={'width_cm':60,'height_cm':13.02,'neon_m':2,'color':'rgb','outdoor':True,'waterproof_psus':1}
