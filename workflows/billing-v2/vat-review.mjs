@@ -25,3 +25,9 @@ export function upgradeVatErrorMessage(code) {
  if(!code.includes(anchor))throw new Error('VAT error-mail patch anchor missing');
  return code.replace(anchor,anchor+"\n  if (/VIES-Prüfdienst nach drei Versuchen/.test(readableMessage)) {\n    explanation = (orderReference ? 'Bei Bestellung ' + orderReference + ' ' : '') + 'war die VIES-Prüfung auch nach zwei Wiederholungen im Abstand von jeweils fünf Minuten nicht erfolgreich. Die Umsatzsteuer-ID ist damit weder als gültig noch als ungültig bestätigt. Die finale steuerfreie Rechnung bleibt gesperrt.';\n    nextStep = 'Die VIES-Prüfung nach Wiederherstellung des Prüfdienstes erneut starten. Keine Korrektur von Kundendaten allein wegen der Nichterreichbarkeit verlangen.';\n  } else if (/Umsatzsteuer-ID gültig; Firmenname oder Rechnungsanschrift/.test(readableMessage)) {\n    explanation = (orderReference ? 'Bei Bestellung ' + orderReference + ' ' : '') + 'ist die Umsatzsteuer-ID gültig, aber Firmenname oder Rechnungsanschrift stimmt nicht mit VIES überein. Drei Prüfversuche sind abgeschlossen; die steuerfreie Rechnung bleibt bis zur Klärung gesperrt.';\n  }\n");
 }
+
+export function upgradeVatErrorRecipient(expression) {
+ if(expression.includes("'gdnW2tkXdwwHoKLy'"))return expression;
+ if(!expression.startsWith('={{ ['))throw new Error('VAT recipient patch anchor missing');
+ return expression.replace('={{ [',"={{ ['gdnW2tkXdwwHoKLy', ");
+}

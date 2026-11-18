@@ -38,3 +38,13 @@ test('VAT retry is persisted by Wait and exact reclaim',()=>{
  assert.equal(workflow.nodes.find(n=>n.name==='Wait Five Minutes for VIES')?.type,'n8n-nodes-base.wait');
  assert.ok(workflow.nodes.find(n=>n.name==='Reclaim VAT Retry')?.parameters.url.includes('billing_vat_retry_claim'));
 });
+
+test('VAT error-mail patch distinguishes technical outage and preserves unrelated paths',async()=>{
+ const {upgradeVatErrorMessage,upgradeVatErrorRecipient}=await import('./vat-review.mjs');
+ const anchor="  nextStep = 'Die angegebenen Firmen- und Rechnungsdaten mit der EU-Auskunft vergleichen. Bei Abweichungen die richtige Zuordnung beim Kunden bestätigen lassen und die Klärung in OPS dokumentieren.';";
+ assert.match(upgradeVatErrorMessage(anchor),/Keine Korrektur von Kundendaten/);
+ assert.throws(()=>upgradeVatErrorMessage('changed code'),/anchor missing/);
+ const recipient=upgradeVatErrorRecipient("={{ ['other'].includes(id) ? 'support@neontrip.de' : 'info@neontrip.de' }}");
+ assert.match(recipient,/'gdnW2tkXdwwHoKLy', 'other'/);
+ assert.equal(upgradeVatErrorRecipient(recipient),recipient);
+});
