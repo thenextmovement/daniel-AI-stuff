@@ -85,6 +85,7 @@ type SupplierSalesPostBody = {
   idempotencyKey?: string | null;
   limit?: number | string | null;
   productionApproval?: ReviewApproval | null;
+  manualTrelloHandoff?: { card: string; confirmed: boolean } | null;
 };
 
 function unauthorized() {
@@ -417,6 +418,7 @@ export async function POST(request: NextRequest) {
         operatorName: body.operatorName || null,
         assigneeLabel: body.assigneeLabel || null,
         productionApproval: body.productionApproval || null,
+        manualTrelloHandoff: body.manualTrelloHandoff || null,
       }, actor);
       return NextResponse.json({ ok: true, action, sale });
     }

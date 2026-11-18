@@ -726,3 +726,14 @@ Tests: 48 fokussierte Prüfungen, 1826 bestandene Gesamttests/2 Plattform-Skips,
 8 Deploy-Tests sowie Typprüfung, Build und lokale Bedienprüfung. Neue produktive
 Prüfentwürfe erfordern weiterhin den freigegebenen Livegang; die Tests hier sind
 lokale Replays mit abgefangenen Produktionsschreibzugriffen.
+
+## Bereits manuell in Trello vergebene Aufträge
+
+Lokal ergänzt am 18.11.2026; Veröffentlichung und produktiver Nachweis stehen aus.
+
+- **Ziel:** `Bereits in Trello vergeben` sucht die aktuelle Quentin-Karte. Die Mitarbeiterin bestätigt, dass Angaben und Dateien manuell geprüft und die Karte bereits zur Produktion übergeben wurden. `In Ops übernehmen` nutzt den bestehenden `assign_supplier`-Pfad mit `manualTrelloHandoff`, ohne Mail-, PDF- oder KI-Prüfung.
+- **Nachbar:** Der normale Prüf-/Freigabeweg bleibt erhalten. Die manuelle Übernahme braucht Lieferdatum und Zahlungsentscheidung; offene Kundenänderungen, stornierte/erstattete Aufträge, fremde oder archivierte Karten sowie widersprechende Auftragsmarker bleiben gesperrt. Die Karte muss die exakte Auftragsnummer oder Request-ID tragen. Laufende/teilweise Vergabeversuche werden nicht überschrieben. Ein bereits vorbereiteter, noch nicht freigegebener KI-Entwurf bleibt als Historie gespeichert.
+- **Wirkung:** Ops speichert die menschliche Bestätigung mit Person, Zeitpunkt, Karten-ID, Liste und Karten-Prüfsumme in den vorhandenen Metadaten und im bestehenden Vergabeversuch/Audit-Ereignis. Der vorhandene Shopify-Supplier-Tag-Sync und gegebenenfalls die konfigurierte interne Aufgabe laufen einmal. Trello-Titel, Beschreibung, Dateien, Cover und Listenposition werden nicht geschrieben. Nach erfolgreichem Shopify-Abgleich wird der bestehende Status `in_production` gesetzt; bei Sync-Fehler bleibt `assigned` mit dem vorhandenen Shopify-Retry und der Produktionsbestätigung sichtbar. Es werden keine neuen Tabellen, Workflows oder Queues benötigt.
+- **Zuordnung:** Die Suche berücksichtigt den tatsächlichen Archivstatus und bevorzugt die exakte Auftragsnummer vor Request-ID und Kundenname. Mehrere Treffer bleiben zur Auswahl offen. Eine archivierte alte Anfragekarte darf eine aktive Produktionskarte nicht verdrängen.
+- **Nachweis:** Fokussierte Regressionen in `tests/quotes/supplier-sales.test.ts` prüfen Übernahme, erhaltene Entwurfshistorie, Replay auch mit anderem Datum, konkurrierenden Row-Claim, unveränderte normale Vergabe und Ablehnung falscher/archivierter Karten vor Provider-Schreibzugriffen. Die UI wird zusätzlich mit einer isolierten Kopie des aktuellen realen Falls geprüft; dies gibt keinen echten Auftrag frei.
+- **Rollback:** Gezielter Code-Revert nach dem Release-Gate in `OPERATIONS.md`. Bereits protokollierte menschliche Übergaben und Shopify-Tags nicht löschen oder erneut ausführen.

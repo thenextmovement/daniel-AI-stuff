@@ -61,7 +61,7 @@ type SupplierSaleTrelloCandidate = {
   cardUrl: string;
   cardName: string;
   lastActivity: string | null;
-  matchBasis: "request_id" | "customer_name";
+  matchBasis: "request_id" | "customer_name" | "order_number";
 };
 
 type SupplierSaleApprovedDesignUpload = {
@@ -447,6 +447,9 @@ function assignmentMessage(sale: SupplierSale | undefined) {
   const syncStatuses = [sale.shopifyTagSyncStatus, sale.trelloProjectionStatus, sale.taskSyncStatus];
   if (syncStatuses.includes("failed")) return "Vergabe gespeichert, aber mindestens ein Sync ist fehlgeschlagen. Bitte Sync-Status pruefen.";
   if (syncStatuses.includes("pending")) return "Vergabe gespeichert. Mindestens ein Sync ist noch offen.";
+  if (sale.manualTrelloHandoffAt) return sale.shopifyTagSyncStatus === "synced"
+    ? "Manuelle Trello-Vergabe übernommen. Karte und Dateien bleiben unverändert; Shopify-Kennzeichnung ist bestätigt."
+    : "Manuelle Trello-Vergabe gespeichert. Die Shopify-Kennzeichnung ist noch nicht bestätigt; bitte Sync-Status prüfen.";
   return "Vergabe gespeichert. Sync-Status wurde aktualisiert.";
 }
 
@@ -833,8 +836,12 @@ function SaleCard({
   const [approvedDesignBusy, setApprovedDesignBusy] = useState(false);
   const [approvedDesignUpload, setApprovedDesignUpload] = useState<SupplierSaleApprovedDesignUpload | null>(null);
   const [productionReviewOpen, setProductionReviewOpen] = useState(false);
+  const [manualHandoffOpen, setManualHandoffOpen] = useState(false);
+  const [manualHandoffCard, setManualHandoffCard] = useState("");
+  const [manualHandoffConfirmed, setManualHandoffConfirmed] = useState(false);
   useEffect(() => {
     setProductionReviewOpen(false);
+    setManualHandoffConfirmed(false);
   }, [supplier, assignmentNote, deliveryDate, paymentDecision]);
   useEffect(() => {
     setAssignmentNote(sale.assignmentNote || "");
@@ -920,8 +927,10 @@ function SaleCard({
       } else {
         throw new Error("Keine passende Quentin-Karte gefunden.");
       }
+      return payload.trelloDescription || null;
     } catch (error) {
       setTrelloDescriptionError(formatUnknownError(error, "Trello-Karte konnte nicht ausgelesen werden."));
+      return null;
     } finally {
       setTrelloDescriptionBusy(false);
     }
@@ -1239,7 +1248,7 @@ function SaleCard({
                   {trelloConfirmed ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}
                   <span>
                     {trelloConfirmed
-                      ? "Trello-Karte gefunden und aktualisiert."
+                      ? sale.manualTrelloHandoffAt ? "Manuelle Trello-Vergabe übernommen; Karte unverändert." : "Trello-Karte gefunden und aktualisiert."
                       : sale.trelloProjectionStatus === "failed" ? "Trello-Aktualisierung fehlgeschlagen." : "Trello-Aktualisierung noch offen."}
                   </span>
                 </div>
@@ -1358,7 +1367,7 @@ function SaleCard({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={saving || ((supplier !== "quentin" || (!sale.offerId && !sale.productionReviewStatus)) && (assignmentSaved || Boolean(assignBlockReason))) || sale.productionReviewStatus === "synced"}
+                disabled={saving || Boolean(sale.manualTrelloHandoffAt) || ((supplier !== "quentin" || (!sale.offerId && !sale.productionReviewStatus)) && (assignmentSaved || Boolean(assignBlockReason))) || sale.productionReviewStatus === "synced"}
                 title={assignmentSaved ? "Sale ist bereits vergeben." : assignBlockReason || "Sale vergeben"}
                 onClick={() => {
                   if (supplier === "quentin" && (sale.offerId || sale.productionReviewStatus)) { setProductionReviewOpen(true); return; }
@@ -1387,6 +1396,18 @@ function SaleCard({
                 <BadgeCheck className="h-4 w-4" />
                 {supplier === "quentin" && (sale.offerId || sale.productionReviewStatus) ? sale.productionReviewStatus === "partial" ? "Übergabe prüfen" : "Vergabe prüfen" : supplier === "quentin" ? "Manuell vergeben" : "Vergeben"}
               </button>
+              {supplier === "quentin" && !assignmentSaved && !["pending", "partial", "synced"].includes(sale.productionReviewStatus || "") ? (
+                <button type="button" disabled={saving || trelloDescriptionBusy} onClick={async () => {
+                  setManualHandoffOpen(true);
+                  setManualHandoffConfirmed(false);
+                  setProductionReviewOpen(false);
+                  setManualHandoffCard("");
+                  const card = await loadTrelloDescription();
+                  setManualHandoffCard(card?.cardUrl || "");
+                }} className="rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 disabled:opacity-50">
+                  Bereits in Trello vergeben
+                </button>
+              ) : null}
               {canRetryShopifyTag ? (
                 <button
                   type="button"
@@ -1476,6 +1497,39 @@ function SaleCard({
               ) : null}
             </div>
 
+            {manualHandoffOpen && supplier === "quentin" && !assignmentSaved ? (
+              <section aria-label="Manuelle Trello-Vergabe übernehmen" className="grid gap-3 rounded-[0.5rem] border border-emerald-300 bg-emerald-50 p-3">
+                <h3 className="text-sm font-semibold text-emerald-950">Manuelle Trello-Vergabe übernehmen</h3>
+                <p className="text-xs leading-5 text-emerald-950">Für bereits manuell geprüfte und an Quentin übergebene Aufträge. Ops übernimmt den Vergabestatus und setzt die Shopify-Kennzeichnung. Keine erneute KI-Prüfung; Karte, Dateien und Listenposition bleiben unverändert.</p>
+                {trelloDescriptionBusy ? <p className="text-xs" role="status">Aktuelle Quentin-Karte wird gesucht …</p> : null}
+                {trelloDescription && manualHandoffCard === trelloDescription.cardUrl ? (
+                  <a href={trelloDescription.cardUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-950 underline">{trelloDescription.cardName} öffnen</a>
+                ) : null}
+                {trelloCandidates.map(card => (
+                  <button type="button" key={card.cardId} onClick={() => { setManualHandoffCard(card.cardUrl); setManualHandoffConfirmed(false); }} className="text-left text-xs underline">{card.cardName} auswählen</button>
+                ))}
+                <label className="grid gap-1 text-xs font-medium text-emerald-950">
+                  Link der bereits vergebenen Quentin-Karte
+                  <input aria-label="Bereits vergebene Quentin-Karte" value={manualHandoffCard} disabled={saving || trelloDescriptionBusy} onChange={event => { setManualHandoffCard(event.target.value); setManualHandoffConfirmed(false); }} placeholder="https://trello.com/c/..." className="h-10 min-w-0 rounded-[0.5rem] border border-emerald-300 bg-white px-3 text-sm" />
+                </label>
+                {trelloDescriptionError ? <p role="alert" className="text-xs text-rose-800">{trelloDescriptionError} Den richtigen Kartenlink kannst du oben eintragen.</p> : null}
+                <label className="flex items-start gap-2 text-xs leading-5 text-emerald-950">
+                  <input type="checkbox" checked={manualHandoffConfirmed} disabled={saving || trelloDescriptionBusy} onChange={event => setManualHandoffConfirmed(event.target.checked)} className="mt-1 h-4 w-4" />
+                  Ich habe Angaben und Dateien manuell geprüft und diese Karte bereits an Quentin zur Produktion übergeben.
+                </label>
+                {assignBlockReason ? <p className="text-xs text-rose-800">{assignBlockReason}</p> : null}
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" disabled={saving || trelloDescriptionBusy || !manualHandoffConfirmed || !manualHandoffCard.trim() || Boolean(assignBlockReason)} onClick={async () => {
+                    const result = await onAction({ action: "assign_supplier", saleId: sale.id, supplier: "quentin", requestedDeliveryDate: deliveryDate, assignmentNote,
+                      paymentDecisionStatus: needsManualPaymentRelease ? paymentDecision : "paid_confirmed", operatorName,
+                      manualTrelloHandoff: { card: manualHandoffCard, confirmed: manualHandoffConfirmed } });
+                    if (result?.ok) setManualHandoffOpen(false);
+                  }} className="rounded-[0.5rem] bg-emerald-800 px-3 py-2 text-sm font-semibold text-white disabled:bg-stone-300 disabled:cursor-not-allowed">In Ops übernehmen</button>
+                  <button type="button" disabled={saving} onClick={() => setManualHandoffOpen(false)} className="rounded-[0.5rem] border border-stone-300 bg-white px-3 py-2 text-sm">Abbrechen</button>
+                </div>
+              </section>
+            ) : null}
+
             {supplier === "quentin" ? (
               <div className="grid gap-3 rounded-[0.5rem] border border-stone-200 bg-stone-50 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1556,7 +1610,7 @@ function SaleCard({
                     <div>
                       <p className="text-xs font-semibold text-amber-950">Mehrere passende Quentin-Karten gefunden</p>
                       <p className="mt-1 text-[11px] leading-4 text-amber-900">
-                        Reihenfolge: Request-ID vor Kundenname; innerhalb der Treffer steht die zuletzt bearbeitete Karte oben. Bitte die richtige Karte bewusst auswaehlen.
+                        Reihenfolge: Auftragsnummer, Request-ID, Kundenname; innerhalb der Treffer steht die zuletzt bearbeitete Karte oben. Bitte die richtige Karte bewusst auswaehlen.
                       </p>
                     </div>
                     <div className="grid gap-2">
@@ -1567,7 +1621,7 @@ function SaleCard({
                               {candidate.cardName}
                             </a>
                             <span className="text-stone-600">
-                              {candidate.matchBasis === "request_id" ? "Request-ID" : "Kundenname"}
+                              {candidate.matchBasis === "order_number" ? "Auftragsnummer" : candidate.matchBasis === "request_id" ? "Request-ID" : "Kundenname"}
                               {candidate.lastActivity ? ` · zuletzt ${formatDateTime(candidate.lastActivity)}` : ""}
                             </span>
                           </div>

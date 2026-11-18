@@ -245,6 +245,7 @@ function mapFailureContextAction(action: TrelloAction): TrelloFailureContextActi
 export async function getTrelloCard(cardId: string): Promise<TrelloCardData> {
   const card = await trelloFetch<{
     id: string;
+    closed?: boolean;
     name?: string;
     desc?: string;
     idBoard: string;
@@ -254,7 +255,7 @@ export async function getTrelloCard(cardId: string): Promise<TrelloCardData> {
     attachments?: TrelloAttachment[];
     actions?: TrelloAction[];
   }>(
-    `/cards/${encodeURIComponent(cardId)}?fields=id,name,desc,idBoard,idList,labels&labels=all&customFieldItems=true&attachments=true&actions=commentCard&actions_limit=50&action_fields=date,data`,
+    `/cards/${encodeURIComponent(cardId)}?fields=id,name,desc,idBoard,idList,labels,closed&labels=all&customFieldItems=true&attachments=true&actions=commentCard&actions_limit=50&action_fields=date,data`,
   );
   const fields = await trelloFetch<TrelloCustomField[]>(
     `/boards/${encodeURIComponent(card.idBoard)}/customFields`,
@@ -277,6 +278,7 @@ export async function getTrelloCard(cardId: string): Promise<TrelloCardData> {
     id: card.id,
     idBoard: card.idBoard,
     idList: card.idList,
+    closed: Boolean(card.closed),
     name: card.name,
     desc: card.desc,
     createdAt: trelloCardCreatedAt(card.id),

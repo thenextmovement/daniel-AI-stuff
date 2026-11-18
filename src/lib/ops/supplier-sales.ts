@@ -317,6 +317,7 @@ export type SupplierSale = {
   assignedBy: string | null;
   productionConfirmedAt: string | null;
   productionReviewStatus?: string | null;
+  manualTrelloHandoffAt?: string | null;
   productionConfirmedBy: string | null;
   manualShopifySupplierTagConfirmedAt: string | null;
   shopifyTagSyncStatus: SupplierSaleSyncStatus;
@@ -485,6 +486,7 @@ export type SupplierSaleAssignInput = {
   operatorName?: string | null;
   assigneeLabel?: string | null;
   productionApproval?: ReviewApproval | null;
+  manualTrelloHandoff?: { card: string; confirmed: boolean } | null;
 };
 
 export type SupplierSaleProductionInput = {
@@ -546,7 +548,7 @@ export type SupplierSaleTrelloCandidate = {
   cardUrl: string;
   cardName: string;
   lastActivity: string | null;
-  matchBasis: "request_id" | "customer_name";
+  matchBasis: "request_id" | "customer_name" | "order_number";
 };
 
 export type SupplierSaleTrelloDescriptionSnapshot = {
@@ -2131,7 +2133,7 @@ function trelloBoardSearchCardFromFullCard(card: Awaited<ReturnType<typeof getTr
     desc: String(card.desc || ""),
     idBoard: String(card.idBoard || ""),
     url: `https://trello.com/c/${card.id}`,
-    closed: false,
+    closed: Boolean(card.closed),
     dateLastActivity: card.createdAt || null,
     customFieldValues: Object.values(card.customFields || {}).map((value) => String(value || "")),
   };
@@ -2141,6 +2143,8 @@ async function directQuentinTrelloCandidates(row: SupplierSaleRow) {
   const searches: Array<{ query: string; basis: SupplierSaleTrelloCandidate["matchBasis"] }> = [];
   const requestId = nullableText(row.request_id, 180);
   const customerName = nullableText(row.customer_name, 180);
+  const orderName = nullableText(row.shopify_order_name, 180);
+  if (orderName) searches.push({ query: orderName, basis: "order_number" });
   if (requestId) searches.push({ query: requestId, basis: "request_id" });
   if (customerName) searches.push({ query: customerName, basis: "customer_name" });
 
@@ -2154,7 +2158,9 @@ async function directQuentinTrelloCandidates(row: SupplierSaleRow) {
       .filter((card): card is Awaited<ReturnType<typeof getTrelloCard>> => Boolean(card))
       .map(trelloBoardSearchCardFromFullCard);
     const exactMatches = supplierSaleQuentinTrelloCandidates(
-      search.basis === "request_id" ? { ...row, customer_name: null } : { ...row, request_id: null },
+      { ...row, shopify_order_name: search.basis === "order_number" ? orderName : null,
+        request_id: search.basis === "request_id" ? requestId : null,
+        customer_name: search.basis === "customer_name" ? customerName : null },
       cards,
     );
     if (exactMatches.length) return exactMatches;
@@ -2167,13 +2173,16 @@ export function supplierSaleQuentinTrelloCandidates(
   cards: TrelloBoardSearchCard[],
 ): SupplierSaleTrelloCandidate[] {
   const boardCards = cards.filter((card) => !card.closed && card.idBoard === QUENTIN_NEON_BOARD_ID);
+  const orderName = normalizeTrelloMatchText(row.shopify_order_name);
+  const orderMatches = orderName
+    ? boardCards.filter(card => exactTrelloPhrase(normalizeTrelloMatchText(card.name), orderName)) : [];
   const requestId = normalizeTrelloMatchText(row.request_id);
   const requestMatches = requestId.length >= 3
     ? boardCards.filter((card) => exactTrelloPhrase(trelloCardSearchableText(card), requestId))
     : [];
 
-  let matchBasis: SupplierSaleTrelloCandidate["matchBasis"] = "request_id";
-  let matches = requestMatches;
+  let matchBasis: SupplierSaleTrelloCandidate["matchBasis"] = orderMatches.length ? "order_number" : "request_id";
+  let matches = orderMatches.length ? orderMatches : requestMatches;
   if (!matches.length) {
     const customerName = normalizeTrelloMatchText(row.customer_name);
     const nameParts = customerName.split(" ").filter(Boolean);
@@ -2354,7 +2363,8 @@ function mapSale(row: SupplierSaleRow, items: SupplierSaleItem[] = [], latestEve
     assignedAt: row.assigned_at,
     assignedBy: row.assigned_by,
     productionConfirmedAt: nullableText(metadata.production_confirmed_at, 80),
-    productionReviewStatus: nullableText(jsonRecord(metadata.production_handoff).status, 30) || (metadata.production_review ? "prepared" : null),
+    productionReviewStatus: supplierProductionReviewStatus(metadata),
+    manualTrelloHandoffAt: nullableText(jsonRecord(metadata.manual_trello_handoff).confirmed_at, 80),
     productionConfirmedBy: nullableText(metadata.production_confirmed_by, 120),
     manualShopifySupplierTagConfirmedAt: nullableText(metadata.shopify_supplier_tag_confirmed_at, 80),
     shopifyTagSyncStatus: row.shopify_tag_sync_status,
@@ -3177,16 +3187,17 @@ export async function getSupplierSale(saleId: string) {
 
 async function patchSaleRow(saleId: string, patch: Partial<SupplierSaleRow>) {
   if (patch.metadata) {
-    // These two entries belong to the reviewed handoff. Legacy metadata writers
+    // These entries belong to the production handoff. Legacy metadata writers
     // must not erase them with a stale full-JSON replacement.
     const current = await fetchSaleRowById(saleId);
-    if (current?.metadata.production_review || current?.metadata.production_handoff) {
+    if (current?.metadata.production_review || current?.metadata.production_handoff || current?.metadata.manual_trello_handoff) {
       const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
         method: "PATCH", headers: { Prefer: "return=representation" },
         body: JSON.stringify({ ...patch, metadata: {
           ...patch.metadata,
           production_review: current.metadata.production_review,
           production_handoff: current.metadata.production_handoff,
+          ...(current.metadata.manual_trello_handoff ? { manual_trello_handoff: current.metadata.manual_trello_handoff } : {}),
         } }),
       }, { id: `eq.${saleId}`, updated_at: `eq.${current.updated_at}`, select: "*" });
       if (!rows[0]) throw new QuoteValidationError("Die Vergabe wurde gleichzeitig geändert. Bitte neu laden.", [], 409);
@@ -4799,7 +4810,7 @@ export async function listSupplierSalesBoard(options?: {
           supplierTrelloCardId: row.supplier_trello_card_id,
           supplierTrelloCardUrl: row.supplier_trello_card_url,
           productionConfirmedAt,
-          productionReviewStatus: nullableText(jsonRecord(row.metadata.production_handoff).status, 30) || (row.metadata.production_review ? "prepared" : null),
+          productionReviewStatus: supplierProductionReviewStatus(row.metadata),
           manualShopifySupplierTagConfirmedAt: nullableText(jsonRecord(row.metadata).shopify_supplier_tag_confirmed_at, 80),
         }, now);
       }
@@ -4970,8 +4981,8 @@ async function lookupExactQuentinCard(row: SupplierSaleRow) {
   for (const cardId of candidateIds) {
     const card = await getTrelloCard(cardId).catch(() => null);
     if (!card) continue;
-    if (card.idBoard === QUENTIN_NEON_BOARD_ID) return { cardId, card, candidates: [] as SupplierSaleTrelloCandidate[], rejectedForeignBoard };
-    rejectedForeignBoard = true;
+    if (card.idBoard === QUENTIN_NEON_BOARD_ID && !card.closed) return { cardId, card, candidates: [] as SupplierSaleTrelloCandidate[], rejectedForeignBoard };
+    if (card.idBoard !== QUENTIN_NEON_BOARD_ID) rejectedForeignBoard = true;
   }
 
   // The Quentin board contains more than Trello's 1,000-card board endpoint limit.
@@ -4981,10 +4992,10 @@ async function lookupExactQuentinCard(row: SupplierSaleRow) {
     const cards = await getTrelloBoardSearchCards(QUENTIN_NEON_BOARD_ID).catch(() => []);
     candidates = supplierSaleQuentinTrelloCandidates(row, cards);
   }
-  if (candidates.length >= 1) {
+  if (candidates.length === 1) {
     const cardId = candidates[0].cardId;
     const card = await getTrelloCard(cardId);
-    if (card.idBoard === QUENTIN_NEON_BOARD_ID) return { cardId, card, candidates, rejectedForeignBoard };
+    if (card.idBoard === QUENTIN_NEON_BOARD_ID && !card.closed) return { cardId, card, candidates, rejectedForeignBoard };
   }
 
   return { cardId: null, card: null, candidates, rejectedForeignBoard };
@@ -6511,6 +6522,27 @@ async function reserveSupplierAssignmentAttempt(input: {
 function productionHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
+
+function supplierProductionReviewStatus(metadata: JsonRecord) {
+  // Retain an unused AI draft as history, without presenting it as an unfinished handoff.
+  if (jsonRecord(metadata.manual_trello_handoff).confirmed_at) return null;
+  return nullableText(jsonRecord(metadata.production_handoff).status, 30) || (metadata.production_review ? "prepared" : null);
+}
+
+function validateProductionCardIdentity(row: SupplierSaleRow, card: ProductionTrelloCard, requireMatch = false) {
+  if (card.closed) throw new QuoteValidationError("Diese Trello-Karte ist archiviert. Bitte die aktuelle Produktionskarte auswählen.", [], 409);
+  if (card.idBoard !== QUENTIN_REVIEW_BOARD) throw new QuoteValidationError("Diese Karte liegt nicht auf dem Quentin-Board.", [], 409);
+  const requestMarkers = [...card.desc.matchAll(/Request[- ]ID\s*:\s*([a-f0-9-]{36})/gi)].map(m => m[1].toLowerCase());
+  const orderMarkers = [...card.name.matchAll(/#NEONT\d+\b/gi)].map(m => m[0].toUpperCase());
+  const request = row.request_id?.toLowerCase();
+  const order = row.shopify_order_name?.toUpperCase();
+  if ((request && requestMarkers.some(id => id !== request)) || (order && orderMarkers.some(id => id !== order))) {
+    throw new QuoteValidationError("Die Karte enthält eine widersprechende Auftragszuordnung. Bitte die richtige Karte auswählen.", [], 409);
+  }
+  if (requireMatch && !(order && orderMarkers.includes(order)) && !(request && requestMarkers.includes(request))) {
+    throw new QuoteValidationError("Die Karte ist diesem Auftrag nicht eindeutig zugeordnet. Bitte Auftragsnummer im Kartentitel oder Request-ID prüfen.", [], 409);
+  }
+}
 /** Shopify preserves this ID even when the import replaces the database rows. */
 function acceptedItemId(item: SupplierSaleItemRow) {
   const property = arrayRecords(item.raw_line_item.properties).find(p => p.name === "Offer Item ID");
@@ -6576,16 +6608,10 @@ async function productionReviewCard(row: SupplierSaleRow) {
   if (!lookup.cardId || !lookup.card) throw new QuoteValidationError("Bitte die Quentin-Karte über den vorhandenen Kartenlink eindeutig zuordnen.", [], 422);
   const card = await readProductionTrelloCard(lookup.cardId);
   const bound = [row.supplier_trello_card_id, row.quentin_trello_card_id, row.trello_card_id].includes(card.id);
-  if (!bound && (lookup.candidates.length !== 1 || lookup.candidates[0].matchBasis !== "request_id")) {
+  if (!bound && (lookup.candidates.length !== 1 || !["request_id", "order_number"].includes(lookup.candidates[0].matchBasis))) {
     throw new QuoteValidationError("Die Kartensuche ist nicht eindeutig. Bitte zuerst den Kartenlink bestätigen.", [], 409);
   }
-  const requestMarkers = [...card.desc.matchAll(/Request[- ]ID\s*:\s*([a-f0-9-]{36})/gi)].map(m => m[1].toLowerCase());
-  const orderMarkers = [...card.name.matchAll(/#NEONT\d+/gi)].map(m => m[0].toUpperCase());
-  if (card.closed || card.idBoard !== QUENTIN_REVIEW_BOARD
-    || (row.request_id && requestMarkers.some(id => id !== row.request_id?.toLowerCase()))
-    || (row.shopify_order_name && orderMarkers.some(id => id !== row.shopify_order_name?.toUpperCase()))) {
-    throw new QuoteValidationError("Die Karte enthält eine widersprechende Auftragszuordnung oder ist archiviert.", [], 409);
-  }
+  validateProductionCardIdentity(row, card);
   return card;
 }
 async function readPurchasedProductionImage(urlValue: string) {
@@ -6613,7 +6639,7 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
   const row = await fetchSaleRowById(saleId);
   if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", [], 404);
   const previous = jsonRecord(row.metadata.production_handoff);
-  if (previous.status === "pending" || previous.status === "synced" || previous.releaseAttempted || ["completed", "canceled", "in_production"].includes(row.assignment_status)
+  if (row.metadata.manual_trello_handoff || previous.status === "pending" || previous.status === "synced" || previous.releaseAttempted || ["completed", "canceled", "in_production"].includes(row.assignment_status)
     || (row.assigned_supplier && row.assigned_supplier !== "quentin")) {
     throw new QuoteValidationError("Diese Vergabe ist gesperrt oder bereits in Produktion.", [], 409);
   }
@@ -6708,7 +6734,7 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
     })),
   };
   const latest = await fetchSaleRowById(row.id);
-  if (!latest || productionOrderHash(latest, await fetchItemsForSale(row.id)) !== orderHash || jsonRecord(latest.metadata.production_handoff).status === "pending") throw new QuoteValidationError("Die Bestellung wurde während der Vorbereitung geändert. Bitte erneut prüfen.", [], 409);
+  if (!latest || latest.metadata.manual_trello_handoff || productionOrderHash(latest, await fetchItemsForSale(row.id)) !== orderHash || jsonRecord(latest.metadata.production_handoff).status === "pending") throw new QuoteValidationError("Die Bestellung wurde während der Vorbereitung geändert. Bitte erneut prüfen.", [], 409);
   const saved = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
     method: "PATCH", headers: { Prefer: "return=representation" },
     body: JSON.stringify({ metadata: { ...latest.metadata, production_review: review } }),
@@ -6739,6 +6765,7 @@ async function assignReviewedSupplierSale(input: SupplierSaleAssignInput, decisi
   let row = await fetchSaleRowById(input.saleId);
   if (!row) throw new QuoteValidationError("Sale wurde nicht gefunden.", [], 404);
   if (["completed", "canceled"].includes(row.assignment_status)) throw new QuoteValidationError("Diese Sale ist abgeschlossen oder storniert.", [], 409);
+  if (row.metadata.manual_trello_handoff) throw new QuoteValidationError("Die manuelle Trello-Vergabe wurde bereits übernommen.", [], 409);
   const review = row.metadata.production_review as ProductionReview | undefined;
   const approval = input.productionApproval!;
   if (!review) throw new QuoteValidationError("Bitte zuerst Vergabe prüfen.", [], 409);
@@ -6915,12 +6942,14 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     ], 422);
   }
 
+  if (input.productionApproval && input.manualTrelloHandoff) throw new QuoteValidationError("Bitte genau einen Vergabeweg wählen.", [], 422);
   if (input.productionApproval) {
     if (supplier !== "quentin") throw new QuoteValidationError("Diese Vorbereitung gehört zu Quentin.", [], 422);
     return assignReviewedSupplierSale(input, decision, requestedDeliveryDate, actor);
   }
   const reviewRow = await fetchSaleRowById(sale.id);
-  if (reviewRow?.metadata?.production_review || reviewRow?.metadata?.production_handoff) {
+  if (reviewRow?.metadata.manual_trello_handoff) return getSupplierSale(sale.id);
+  if (!input.manualTrelloHandoff && (reviewRow?.metadata?.production_review || reviewRow?.metadata?.production_handoff)) {
     throw new QuoteValidationError("Bitte die vorbereitete Produktionsvergabe prüfen und freigeben.", [], 409);
   }
 
@@ -6932,6 +6961,38 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
   const specialSupplierName = supplier === "special" ? nullableText(input.specialSupplierName, 120) : null;
   const currentRow = await fetchSaleRowById(sale.id);
   if (!currentRow) throw new QuoteValidationError("Sale wurde nicht gefunden.", ["Sale wurde nicht gefunden."], 404);
+  if (currentRow.metadata.manual_trello_handoff) return getSupplierSale(sale.id);
+  if (!input.manualTrelloHandoff && (currentRow.metadata.production_review || currentRow.metadata.production_handoff)) {
+    throw new QuoteValidationError("Bitte die vorbereitete Produktionsvergabe prüfen und freigeben.", [], 409);
+  }
+  let manualCard: ProductionTrelloCard | null = null;
+  if (input.manualTrelloHandoff) {
+    if (supplier !== "quentin" || input.manualTrelloHandoff.confirmed !== true) {
+      throw new QuoteValidationError("Bitte die bereits erfolgte manuelle Übergabe an Quentin bestätigen.", [], 422);
+    }
+    if (currentRow.assigned_supplier || ["assigned", "in_production", "completed", "canceled"].includes(currentRow.assignment_status)
+      || currentRow.metadata.production_handoff) {
+      throw new QuoteValidationError("Es besteht bereits eine Vergabe. Bitte den vorhandenen Vorgang prüfen.", [], 409);
+    }
+    if (["refunded", "voided"].includes(currentRow.shopify_payment_status)
+      || (decision === "paid_confirmed" && currentRow.shopify_payment_status !== "paid")
+      || postOrderReviewFromRow(currentRow).status === "change_requested") {
+      throw new QuoteValidationError("Zahlung oder Kundenänderung ist noch nicht bestätigt. Bitte den aktuellen Stand prüfen.", [], 409);
+    }
+    const attempts = await supabaseRequest<Array<{ attempt_key: string }>>("supplier_assignment_attempts", undefined, {
+      sale_id: `eq.${sale.id}`, select: "attempt_key", limit: 1,
+    });
+    if (attempts.length) throw new QuoteValidationError("Es besteht bereits ein Vergabeversuch. Bitte den vorhandenen Vorgang prüfen.", [], 409);
+    const cardId = trelloCardIdFromValue(input.manualTrelloHandoff.card);
+    if (!cardId) throw new QuoteValidationError("Bitte den Link der bereits vergebenen Quentin-Karte eintragen.", [], 422);
+    manualCard = await readProductionTrelloCard(cardId);
+    validateProductionCardIdentity(currentRow, manualCard, true);
+  }
+  const manualConfirmation = manualCard ? {
+    confirmed_at: now, confirmed_by: operatorName, card_id: manualCard.id,
+    card_url: `https://trello.com/c/${manualCard.id}`, list_id: manualCard.idList,
+    card_name: manualCard.name, card_hash: productionCardHash(manualCard),
+  } : null;
   const trelloProjectionEnabled = supplierTrelloProjectionEnabled();
   const trelloListId = supplierTrelloListId(supplier);
   const reserved = await reserveSupplierAssignmentAttempt({
@@ -6946,8 +7007,12 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     assigneeLabel: nullableText(input.assigneeLabel, 120),
     specialSupplierName: nullableText(input.specialSupplierName, 120),
     shopifySupplierTagConfirmed: supplier === "special" && input.shopifySupplierTagConfirmed === true,
+    ...(manualConfirmation ? { metadata: { manual_trello_handoff: manualConfirmation } } : {}),
   });
-  if (!reserved) return getSupplierSale(sale.id);
+  if (!reserved) {
+    if (manualCard) throw new QuoteValidationError("Es besteht bereits ein Vergabeversuch. Bitte neu laden.", [], 409);
+    return getSupplierSale(sale.id);
+  }
 
   const basePatch: Partial<SupplierSaleRow> = {
     assigned_supplier: supplier,
@@ -6971,6 +7036,7 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     task_sync_error: null,
     metadata: {
       ...jsonRecord(currentRow.metadata),
+      ...(manualConfirmation ? { manual_trello_handoff: manualConfirmation } : {}),
       ...(supplier === "special"
         ? {
             shopify_supplier_tag_confirmed_at: now,
@@ -6982,7 +7048,16 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
 
   let row: SupplierSaleRow;
   try {
-    row = await patchSaleRow(sale.id, basePatch);
+    // Use the same row claim as reviewed assignments, including different-date tabs.
+    const claimed = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
+      method: "PATCH", headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ ...basePatch, ...(manualCard ? {
+        supplier_trello_card_id: manualCard.id, supplier_trello_card_url: `https://trello.com/c/${manualCard.id}`,
+        trello_projection_status: "synced", trello_projection_error: null,
+      } : {}) }),
+    }, { id: `eq.${sale.id}`, updated_at: `eq.${currentRow.updated_at}`, select: "*" });
+    if (!claimed[0]) throw new QuoteValidationError("Eine andere Prüfung hat die Sale geändert. Bitte neu laden.", [], 409);
+    row = claimed[0];
   } catch (error) {
     await supabaseRequest("supplier_assignment_attempts", {
       method: "DELETE",
@@ -7003,6 +7078,7 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
       requested_delivery_date: requestedDeliveryDate,
       payment_decision_status: decision,
       shopify_supplier_tag_confirmed: supplier === "special" && input.shopifySupplierTagConfirmed === true,
+      ...(manualConfirmation ? { manual_trello_handoff: manualConfirmation } : {}),
     },
   });
 
@@ -7023,7 +7099,7 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     }
   }
 
-  try {
+  if (!manualCard) try {
     const trello = await projectSupplierTrelloCard(row, sale.items, supplier, requestedDeliveryDate, input.assignmentNote);
     row = await patchSaleRow(sale.id, {
       trello_projection_status: trello.status,
@@ -7059,7 +7135,10 @@ export async function assignSupplierSale(input: SupplierSaleAssignInput, actor?:
     });
   }
 
-  const fresh = await getSupplierSale(sale.id);
+  let fresh = await getSupplierSale(sale.id);
+  if (manualCard && supplierSaleReadyForProduction(fresh)) {
+    fresh = await markSupplierSaleInProduction({ saleId: sale.id, operatorName }, actor);
+  }
   await supabaseRequest("supplier_assignment_attempts", {
     method: "PATCH",
     body: JSON.stringify({

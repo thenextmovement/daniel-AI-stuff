@@ -151,6 +151,7 @@ export type TrelloEditableCustomField = {
 
 export type TrelloCardData = {
   id: string;
+  closed?: boolean;
   idBoard?: string;
   idList?: string;
   name?: string;

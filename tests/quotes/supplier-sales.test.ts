@@ -10,6 +10,7 @@ import {
   applyNoPaymentReminderShopifyTag,
   assignSupplierSale,
   productionOrderHash,
+  prepareSupplierSaleProductionReview,
   buildShopifyOrderTrelloTitle,
   buildSupplierSaleBoardFromRows,
   buildSupplierSalesDiagnostics,
@@ -917,12 +918,13 @@ test("Quentin candidates prefer request id over customer name and list every mat
   assert.ok(candidates.every((candidate) => candidate.cardUrl.startsWith("https://trello.com/c/")));
 });
 
-test("Quentin lookup uses direct Trello search when the board batch omits the newest customer card", async () => {
+test("Quentin lookup uses direct search and leaves multiple name matches for staff selection", async () => {
   const olderCardId = "60f000000000000000000001";
   const newestCardId = "70f000000000000000000002";
   const row = saleRow({
     id: "sale-direct-trello-search",
     request_id: null,
+    shopify_order_name: null,
     customer_name: "Antonia Lindner",
     trello_card_id: null,
     quentin_trello_card_id: null,
@@ -959,8 +961,8 @@ test("Quentin lookup uses direct Trello search when the board batch omits the ne
     return Response.json([]);
   }, async () => {
     const result = await lookupSupplierSaleTrelloDescription(row.id);
-    assert.equal(result.trelloDescription?.cardId, newestCardId);
-    assert.equal(result.trelloDescription?.description, "Current description");
+    assert.equal(result.trelloDescription, null);
+    assert.deepEqual(result.trelloCandidates.map(card => card.cardId), [newestCardId, olderCardId]);
   });
 });
 
@@ -5507,9 +5509,202 @@ test("new production review and file backup routes require an Ops session, not a
     const headers={host:"ops.neontrip.de",authorization:"Bearer automation","content-type":"application/json"};
     const post=await supplierSalesPOST(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales",{method:"POST",headers,body:JSON.stringify({action:"prepare_production_review",saleId:"fixture"})}));
     assert.equal(post.status,401);
+    const manualPost=await supplierSalesPOST(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales",{method:"POST",headers,body:JSON.stringify({action:"assign_supplier",saleId:"fixture",manualTrelloHandoff:{card:"https://trello.com/c/2TpKYpx9",confirmed:true}})}));
+    assert.equal(manualPost.status,401,"manual completion requires the existing Ops session");
     for(const action of ["production_review","production_file_backup"]){
       const get=await supplierSalesGET(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales?action="+action+"&saleId=fixture",{headers}));
       assert.equal(get.status,401);
     }
+  });
+});
+
+test("manual Trello handoff records the existing card without AI, mail, file or Trello writes and replays safely", async () => {
+  const card = { id: "6a560e6b1fa1fcf4f00e76d9", idBoard: QUENTIN_REVIEW_BOARD, idList: "6544ca38c328c64bbcabf4e8",
+    name: "#NEONT4834 | Manually prepared lightbox", desc: "Production brief Rev D", closed: false, pos: 1,
+    idAttachmentCover: "final-image", attachments: [{ id: "art", name: "Final.pdf", url: "https://trello.test/final.pdf", bytes: 100 }] };
+  let row = saleRow({ shopify_order_name: "#NEONT4834", recommended_supplier: "quentin", metadata: { production_review: { id: "unused-draft" } } });
+  let attempt: Record<string, unknown> | null = null;
+  const providerWrites: string[] = [];
+  const input = { saleId: row.id, supplier: "quentin" as const, requestedDeliveryDate: "2026-12-03",
+    manualTrelloHandoff: { card: "https://trello.com/c/2TpKYpx9", confirmed: true }, operatorName: "Test employee" };
+  await withMockedAssignmentFetch((url, init) => {
+    const method = init?.method || "GET";
+    if (url.host === "api.trello.com") {
+      assert.equal(method, "GET", "manual completion must never write to Trello");
+      return Response.json(card);
+    }
+    if (url.host === "shop.test") {
+      const body = JSON.parse(String(init?.body));
+      assert.match(body.query, /mutation SupplierTagsAdd/);
+      assert.equal(body.variables.id, "gid://shopify/Order/1001");
+      providerWrites.push("supplier-tag");
+      return Response.json({ data: { tagsAdd: { node: { id: body.variables.id }, userErrors: [] } } });
+    }
+    assert.equal(url.host, "supabase.test", "no AI, email, offer, document or storage access");
+    if (url.pathname.endsWith("/supplier_sales")) {
+      if (method === "PATCH") {
+        if (url.searchParams.has("updated_at")) assert.equal(url.searchParams.get("updated_at"), "eq." + row.updated_at);
+        row = { ...row, ...JSON.parse(String(init?.body)), updated_at: new Date(Date.parse(row.updated_at) + 1000).toISOString() };
+      }
+      return Response.json([row]);
+    }
+    if (url.pathname.endsWith("/supplier_assignment_attempts")) {
+      if (method === "POST") { assert.equal(attempt, null); attempt = JSON.parse(String(init?.body)); }
+      if (method === "PATCH") attempt = { ...attempt, ...JSON.parse(String(init?.body)) };
+      return method === "GET" ? Response.json(attempt ? [attempt] : []) : Response.json([]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events")) return Response.json([]);
+    if (url.pathname.endsWith("/supplier_sale_items")) return Response.json([itemRow({})]);
+    throw new Error("Unexpected request " + url.pathname);
+  }, async () => {
+    process.env.SHOPIFY_SHOP_DOMAIN = "shop.test";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "fixture";
+    process.env.SUPPLIER_ASSIGNMENT_TASKS_ENABLED = "false";
+    const response = await supplierSalesPOST(new NextRequest("http://localhost:3000/api/ops/supplier-sales", {
+      method: "POST", headers: { host: "localhost:3000", "content-type": "application/json" },
+      body: JSON.stringify({ action: "assign_supplier", ...input }),
+    }));
+    assert.equal(response.status, 200);
+    const { sale: result } = await response.json();
+    assert.equal(result.assignmentStatus, "in_production");
+    assert.equal(result.supplierTrelloCardId, card.id);
+    assert.equal(result.trelloProjectionStatus, "synced");
+    assert.equal(result.productionReviewStatus, null, "unused draft remains history, not an open handoff");
+    assert.ok(result.manualTrelloHandoffAt);
+    assert.ok(result.productionConfirmedAt);
+    assert.deepEqual(row.metadata.production_review, { id: "unused-draft" }, "preserve existing review history");
+    assert.equal(row.metadata.production_handoff, undefined, "never fake an AI-verified handoff");
+    assert.equal((row.metadata.manual_trello_handoff as Record<string, unknown>).list_id, card.idList);
+    assert.equal((attempt as Record<string, unknown> | null)?.status, "synced");
+    await assignSupplierSale({ ...input, requestedDeliveryDate: "2026-12-04" });
+    await assert.rejects(prepareSupplierSaleProductionReview(row.id), /gesperrt|Produktion/);
+    assert.deepEqual(providerWrites, ["supplier-tag"], "a replay with another date must not repeat side effects");
+  });
+});
+
+test("manual handoff rejects missing confirmation, wrong or archived cards, conflicts and existing handoffs before writes", async () => {
+  const original = saleRow({ shopify_order_name: "#NEONT4834", request_id: "000ff1ce-515a-4bb0-8550-5ab9724f5ab7" });
+  const originalCard = { id: "6a560e6b1fa1fcf4f00e76d9", idBoard: QUENTIN_REVIEW_BOARD, idList: "production",
+    name: "#NEONT4834 | Final", desc: "", closed: false, attachments: [], pos: 1, idAttachmentCover: null };
+  let row = original;
+  let card = originalCard;
+  let existingAttempt = false;
+  const input = { saleId: row.id, supplier: "quentin" as const, requestedDeliveryDate: "2026-12-03",
+    manualTrelloHandoff: { card: "https://trello.com/c/2TpKYpx9", confirmed: true } };
+  await withMockedAssignmentFetch((url, init) => {
+    assert.equal(init?.method || "GET", "GET", "invalid manual handoff cannot mutate any system");
+    if (url.host === "api.trello.com") return Response.json(card);
+    if (url.pathname.endsWith("/supplier_sales")) return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_assignment_attempts")) return Response.json(existingAttempt ? [{ attempt_key: "existing" }] : []);
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(assignSupplierSale({ ...input, manualTrelloHandoff: { ...input.manualTrelloHandoff, confirmed: false } }), /bestätigen/);
+    await assert.rejects(assignSupplierSale({ ...input, requestedDeliveryDate: "" }), /Lieferdatum/);
+    for (const [patch, error] of [
+      [{ closed: true }, /archiviert/],
+      [{ idBoard: "foreign" }, /Quentin-Board/],
+      [{ name: "#NEONT4835 | Different order" }, /widersprechende/],
+      [{ name: "Same customer without order marker" }, /nicht eindeutig/],
+      [{ desc: "Request-ID: 11111111-1111-1111-1111-111111111111" }, /widersprechende/],
+    ] as const) {
+      card = { ...originalCard, ...patch };
+      await assert.rejects(assignSupplierSale(input), error);
+    }
+    card = originalCard;
+    for (const patch of [
+      { assignment_status: "canceled" as const },
+      { shopify_payment_status: "refunded" as const },
+      { shopify_payment_status: "pending" as const },
+      { metadata: { post_order_review: { status: "change_requested" } } },
+      { metadata: { production_handoff: { status: "pending" } } },
+      { metadata: { production_handoff: { status: "partial" } } },
+    ]) {
+      row = { ...original, ...patch };
+      await assert.rejects(assignSupplierSale(input), /bestätigt|Vergabe|Kunden-Aenderung/);
+    }
+    row = original;
+    existingAttempt = true;
+    await assert.rejects(assignSupplierSale(input), /Vergabeversuch/);
+  });
+});
+
+test("manual handoff loses a concurrent row claim without provider writes and releases only its own attempt", async () => {
+  const row = saleRow({ shopify_order_name: "#NEONT4834" });
+  const writes: string[] = [];
+  await withMockedAssignmentFetch((url, init) => {
+    const method = init?.method || "GET";
+    if (method !== "GET") { assert.equal(url.host, "supabase.test"); writes.push(method + " " + url.pathname); }
+    if (url.host === "api.trello.com") return Response.json({ id: "6a560e6b1fa1fcf4f00e76d9", idBoard: QUENTIN_REVIEW_BOARD, idList: "production", name: "#NEONT4834", desc: "", closed: false, attachments: [] });
+    if (url.pathname.endsWith("/supplier_sales")) {
+      if (method === "PATCH") { assert.equal(url.searchParams.get("updated_at"), "eq." + row.updated_at); return Response.json([]); }
+      return Response.json([row]);
+    }
+    if (method === "DELETE") assert.equal(url.searchParams.get("attempt_key"), "eq.supplier-sale:sale-1:assign:quentin:2026-12-03");
+    return Response.json([]);
+  }, async () => {
+    await assert.rejects(assignSupplierSale({ saleId: row.id, supplier: "quentin", requestedDeliveryDate: "2026-12-03",
+      manualTrelloHandoff: { card: "https://trello.com/c/2TpKYpx9", confirmed: true } }), /andere Prüfung/);
+    assert.deepEqual(writes, ["POST /rest/v1/supplier_assignment_attempts", "PATCH /rest/v1/supplier_sales", "DELETE /rest/v1/supplier_assignment_attempts"]);
+  });
+});
+
+test("Quentin search preserves archived state and finds the active order card instead of the old request card", async () => {
+  const row = saleRow({ shopify_order_name: "#NEONT4834", request_id: "request-4834", trello_card_id: null });
+  const archived = { id: "6ae0ae7ca445a87205ff6b9f", name: "Old request", desc: "request-4834", closed: true, idBoard: QUENTIN_REVIEW_BOARD };
+  const active = { id: "6a560e6b1fa1fcf4f00e76d9", name: "#NEONT4834 | Final", desc: "Final brief", closed: false, idBoard: QUENTIN_REVIEW_BOARD };
+  let orderSearchEmpty = false;
+  await withMockedAssignmentFetch((url, init) => {
+    assert.equal(init?.method || "GET", "GET");
+    if (url.pathname.endsWith("/supplier_sales")) return Response.json([row]);
+    if (url.pathname === "/1/search") {
+      const query = url.searchParams.get("query");
+      return Response.json({ cards: query === "#NEONT4834" ? (orderSearchEmpty ? [] : [active]) : query === row.request_id ? [archived] : [active] });
+    }
+    if (url.pathname.endsWith("/customFields")) return Response.json([]);
+    if (url.pathname.includes("/cards/")) {
+      assert.match(url.searchParams.get("fields") || "", /closed/);
+      return Response.json(url.pathname.endsWith(archived.id) ? archived : active);
+    }
+    return Response.json([]);
+  }, async () => {
+    assert.equal((await lookupSupplierSaleTrelloDescription(row.id)).trelloDescription?.cardId, active.id);
+    // Even when order search misses, the archived request result must not mask a live name result.
+    orderSearchEmpty = true;
+    active.name += " Ada Lovelace";
+    assert.equal((await lookupSupplierSaleTrelloDescription(row.id)).trelloDescription?.cardId, active.id);
+  });
+});
+
+test("manual handoff keeps a failed Shopify sync recoverable without claiming production or repeating Trello work", async () => {
+  let row = saleRow({ shopify_order_name: "#NEONT4834" });
+  let attempt: Record<string, unknown> = {};
+  await withMockedAssignmentFetch((url, init) => {
+    const method = init?.method || "GET";
+    if (url.host === "api.trello.com") {
+      assert.equal(method, "GET");
+      return Response.json({ id: "6a560e6b1fa1fcf4f00e76d9", idBoard: QUENTIN_REVIEW_BOARD, idList: "production", name: "#NEONT4834", desc: "", closed: false, attachments: [] });
+    }
+    if (url.host === "shop.test") return Response.json({ errors: [{ message: "Fixture tag failure" }] }, { status: 503 });
+    assert.equal(url.host, "supabase.test");
+    if (url.pathname.endsWith("/supplier_sales")) {
+      if (method === "PATCH") row = { ...row, ...JSON.parse(String(init?.body)) };
+      return Response.json([row]);
+    }
+    if (url.pathname.endsWith("/supplier_assignment_attempts") && method !== "GET") attempt = { ...attempt, ...JSON.parse(String(init?.body)) };
+    return Response.json([]);
+  }, async () => {
+    process.env.SHOPIFY_SHOP_DOMAIN = "shop.test";
+    process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN = "fixture";
+    process.env.SUPPLIER_ASSIGNMENT_TASKS_ENABLED = "false";
+    const result = await assignSupplierSale({ saleId: row.id, supplier: "quentin", requestedDeliveryDate: "2026-12-03",
+      manualTrelloHandoff: { card: "https://trello.com/c/2TpKYpx9", confirmed: true } });
+    assert.equal(result.assignmentStatus, "assigned");
+    assert.equal(result.productionConfirmedAt, null);
+    assert.equal(result.shopifyTagSyncStatus, "failed");
+    assert.equal(result.trelloProjectionStatus, "synced");
+    assert.ok(result.manualTrelloHandoffAt);
+    assert.equal(attempt.status, "partial");
+    assert.equal(supplierSaleVisibleInActiveOverview(result), true);
+    await assert.rejects(markSupplierSaleInProduction({ saleId: row.id }), /noch nicht/);
   });
 });
