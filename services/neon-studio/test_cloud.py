@@ -72,6 +72,72 @@ class CloudTests(unittest.TestCase):
    t=threading.Thread(target=other);t.start()
    self.assertTrue(acquired.wait(1))
   t.join(1)
+ def test_fixed_acrylic_keeps_motif_size_centering_and_shipping(self):
+  from unittest.mock import Mock
+  from geometry import path_bounds
+  jobs=Jobs(self.db,DurableStore(self.db),Mock())
+  data={'svg':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 30"><path id="word" d="M0 0 L200 0 L200 30 L0 30 Z" fill="none" stroke="blue"/></svg>',
+        'line_plan':[{'name':'Schriftzug Test','mode':'double','path_ids':['word']}],
+        'customer_name':'Test','colors':'Kaltweiß','widths_mm':[900],
+        'fixed_board':{'width_mm':1240,'height_mm':290,'motif_width_mm':900},
+        'smallest_requested':True,'minimum_first':True}
+  record=jobs.design_record(data)
+  jobs.size_design(record,{'name':'Smallest Size + 90 cm','desc':''})
+  files,quotes,variants,spec=jobs.design_artifacts(record,{})
+  d=variants[0];a,b,c,e=path_bounds(d['paths'][0]);x,y,xx,yy=d['bounds']
+  self.assertAlmostEqual(d['width'],1240,places=5)
+  self.assertAlmostEqual(d['height'],290,places=5)
+  self.assertAlmostEqual(c-a+6,900,places=5)
+  self.assertAlmostEqual((a+c)/2,(x+xx)/2,places=5)
+  self.assertAlmostEqual((b+e)/2,(y+yy)/2,places=5)
+  self.assertEqual(d['modeLabel'],'Double Line')
+  self.assertEqual(spec['widths_mm'],[1240])
+  self.assertEqual(quotes[0]['shipping_usd'],'140')
+  with fitz.open(stream=files[0][2],filetype='pdf') as pdf:
+   text=''.join(page.get_text() for page in pdf)
+  for dimension in ('90,00','124,00','29,00'):self.assertIn(dimension,text)
+  record['settings']['fixedBoard']['width_mm']=1500
+  record['settings']['width']=1500
+  d2=jobs.store.drawing(record['model'],json.dumps(record['settings']))
+  self.assertAlmostEqual(d2['neonMeters'],d['neonMeters'],places=5)
+  self.assertAlmostEqual(d2['width'],1500,places=5)
+
+ def test_fixed_board_ai_result_overrides_smallest_title(self):
+  from unittest.mock import Mock,patch
+  from cloud_ai import generate
+  t=Mock();image=io.BytesIO();Image.new('RGB',(20,10)).save(image,'PNG');t.download.return_value=image.getvalue()
+  card={'id':'source','name':'LED Neon Flex | Smallest Size + 90 cm Breite','desc':'Acryl 124 x 29 cm; Neon 90 cm Double Line',
+        'attachments':[{'id':'art','name':'logo.png','isUpload':True}]}
+  design={'svg':SVG,'source_attachment_ids':['art'],'excluded_regions':[],
+          'fixed_board':{'width_mm':1240,'height_mm':290,'motif_width_mm':900}}
+  with patch.dict('os.environ',{'OPENAI_API_KEY':'test'}),patch('cloud_ai.requests.post') as post:
+   post.return_value.json.return_value={'status':'completed','output':[{'content':[{'type':'output_text','text':json.dumps(design)}]}]}
+   result,_=generate(t,card)
+  self.assertEqual(result['widths_mm'],[1240])
+  self.assertFalse(result['minimum_first'])
+  self.assertFalse(result['smallest_requested'])
+  self.assertEqual(result['shape'],'rectangle')
+ def test_fixed_board_does_not_hide_collisions_or_expand_requested_dimensions(self):
+  from unittest.mock import Mock
+  from minimum_size import minimum_size
+  jobs=Jobs(self.db,DurableStore(self.db),Mock())
+  data={'svg':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 1"><path id="word" d="M0 0 L200 0 L200 1 L0 1 Z" fill="none" stroke="blue"/></svg>',
+        'line_plan':[{'name':'Schriftzug Test','mode':'double','path_ids':['word']}],
+        'customer_name':'Test','colors':'Kaltweiß','widths_mm':[900],
+        'fixed_board':{'width_mm':1240,'height_mm':290,'motif_width_mm':900}}
+  record=jobs.design_record(data);jobs.size_design(record,{'name':'Smallest Size','desc':''})
+  files,quotes,variants,spec=jobs.design_artifacts(record,{})
+  self.assertEqual(variants[0]['width'],1240)
+  self.assertTrue(spec['issues'])
+  self.assertTrue(quotes[0]['total_usd'])
+  report=minimum_size(jobs.store,record['model'],record['settings'])
+  self.assertTrue(report['fixedSize'])
+  self.assertFalse(report['fixedSizeValid'])
+  record['settings']['fixedBoard']['height_mm']=80
+  record['settings']['fixedBoard']['width_mm']=850
+  with self.assertRaisesRegex(ValueError,'Platte'):
+   jobs.store.drawing(record['model'],json.dumps(record['settings']))
+
  def test_reread_edited_copy_replaces_stale_full_glow_question(self):
   from unittest.mock import Mock,patch
   card={'id':'copy','name':'🤖 LED Neon 🤖','desc':'LED-Neon-Kontur',

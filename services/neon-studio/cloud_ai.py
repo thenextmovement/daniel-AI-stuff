@@ -166,6 +166,11 @@ def validate_spec(spec,*,draft=False):
     if not isinstance(spec.get('customer_name'),str) or not spec['customer_name'].strip():raise Review('Kundenname fehlt.')
     if isinstance(spec.get('colors'),list) and all(isinstance(c,str) for c in spec['colors']):spec['colors']=' + '.join(c.strip() for c in spec['colors'] if c.strip())
     if not isinstance(spec.get('colors'),str) or not spec['colors'].strip():raise Review('Leuchtfarbe fehlt.')
+    fixed=spec.get('fixed_board')
+    if fixed is not None:
+        if not isinstance(fixed,dict) or any(type(fixed.get(k)) not in (int,float) or not 80<=fixed[k]<=20000 for k in ('width_mm','height_mm','motif_width_mm')):
+            raise Review('Feste Platten- und Motivmaße sind unvollständig oder ungültig.')
+        spec.update(shape='rectangle',widths_mm=[fixed['width_mm']])
     widths=spec.get('widths_mm',[])
     minimum=manual_minimum_width(spec)
     if widths==[] and minimum is not None:widths=spec['widths_mm']=[minimum]
@@ -266,6 +271,13 @@ customer_name, widths_mm (bis 4 explizit bestellte Breiten in mm), colors (ein S
 usage (Innen/Außen), shape (shape/rectangle/bottom), quantity, light_type (single/rgb/chasing_rgb),
 waterproof_psus (nur explizit bekannt bei Außen), uv_print (nur bei explizit gewünschtem UV-Druck true),
 controllers (mindestens 1 je Schild, höhere bestellte Anzahl übernehmen), issues (Liste ungeklärter Widersprüche),
+fixed_board (nur wenn Acrylplatte UND Neonmotiv ausdrücklich getrennte Maße haben: Objekt mit
+width_mm, height_mm für die rechteckige Platte und motif_width_mm für die sichtbare Neon-Außenbreite;
+sonst weglassen). Zentriere das proportional skalierte Motiv auf der Platte. Beispiel: Acrylglas 124×29 cm,
+Neon Flex 90 cm => fixed_board={"width_mm":1240,"height_mm":290,"motif_width_mm":900}.
+Diese expliziten Maße haben Vorrang vor einem pauschalen Smallest Size im Titel. Verwende dann
+widths_mm=[1240], shape=rectangle, smallest_requested=false, minimum_first=false. Zeichne nur das Motiv,
+niemals den Plattenrand als Neonpfad. Auch bei getrennten Maßen gelten Ausschlüsse, Farben und Linienarten je Bereich.
 evidence (kurze wörtliche Belege für bestellte Größen und Materialwünsche),
 line_plan (Liste pro Schriftzeile/Logobereich mit name, mode: single oder double,
 reason: deutsche Begründung anhand der Vorlage, path_ids: alle zugehörigen SVG-Pfad-IDs,
@@ -300,7 +312,7 @@ Eine fehlende Vorgabe zur Verteilung allein erzeugt kein issue. Widersprüchlich
 Formuliere jede tatsächlich offene Entscheidung als kurze Frage:
 Benenne den betroffenen Motivteil und erkläre in einem zweiten Satz, welche Angabe fehlt oder welche Angaben sich widersprechen.
 Fehlende Usage: Innen; fehlender Zuschnitt: shape. Randabstand später 15mm.
-Falls verbindliche_titelgroessen vorliegen, sind die Größen vollständig geklärt. Keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen. Die geometrische Mindestbreite wird immer automatisch berechnet. Fehlende Mindestbreite ist kein issue. Nur Rückfragen, deren Antwort Zeichnung oder Kalkulation tatsächlich verändert und die weder durch die Vorlage noch durch die vereinbarten Standardwerte geklärt sind, gehören in issues. Reine Erläuterungen, Bestätigungswünsche und allgemeine Produktionshinweise sind keine issues. Pro offenem Sachverhalt genau eine kurze, verständliche Frage auf Deutsch. Erstelle den Entwurf mit der am besten belegten Ausführung und nenne die getroffene Annahme in der Frage. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei unklarer Motivwahl frage nur nach, wenn sich aus der Bestellung nicht ergibt, welche Motive angeboten werden sollen. Für die Zeichnung immer 6 mm Neonflex annehmen.
+Falls verbindliche_titelgroessen vorliegen, gelten sie für normale Größenvarianten. Ausnahme: Explizit getrennte Platten- und Neonmaße aus der Beschreibung haben Vorrang; übernimm sie vollständig in fixed_board und berechne keine vergrößerte Mindestvariante. Ohne fixed_board keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen; dann wird die geometrische Mindestbreite automatisch berechnet. Fehlende Mindestbreite ist kein issue. Nur Rückfragen, deren Antwort Zeichnung oder Kalkulation tatsächlich verändert und die weder durch die Vorlage noch durch die vereinbarten Standardwerte geklärt sind, gehören in issues. Reine Erläuterungen, Bestätigungswünsche und allgemeine Produktionshinweise sind keine issues. Pro offenem Sachverhalt genau eine kurze, verständliche Frage auf Deutsch. Erstelle den Entwurf mit der am besten belegten Ausführung und nenne die getroffene Annahme in der Frage. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei unklarer Motivwahl frage nur nach, wenn sich aus der Bestellung nicht ergibt, welche Motive angeboten werden sollen. Für die Zeichnung immer 6 mm Neonflex annehmen.
 Die SVG enthält ausschließlich die tatsächlich benötigten Neonpfade: smooth Mittellinien bei
 Schreibschrift/dünnen Strichen, vorhandene Umrisslinien bei bewusst breiten Outline-Logos.
 Keine Leuchthöfe, Schattierungen, Acrylkontur, Beschriftungen, Bemaßung oder Bildrahmen.
@@ -390,9 +402,13 @@ Die Fertigungsgrenzen bleiben unverändert: 6-mm-Neon, 8 mm Mittellinienabstand,
             len({d['design_name'].strip().casefold() for d in designs})!=len(designs)):
         raise Review('Die Zeichnungen brauchen unterscheidbare Motive und Bezeichnungen.')
     for design in designs:
-        if title_widths is not None:
+        if design.get('fixed_board'):
+            board=design['fixed_board']
+            if not isinstance(board,dict):raise Review('Feste Plattenmaße unklar.')
+            design.update(shape='rectangle',widths_mm=[board.get('width_mm')],smallest_requested=False,minimum_first=False)
+        elif title_widths is not None:
             design.update(smallest_requested=True,widths_mm=title_widths,minimum_first=True)
-        if heights:design.update(size_axis='height',heights_mm=heights,widths_mm=[])
+        if heights and not design.get('fixed_board'):design.update(size_axis='height',heights_mm=heights,widths_mm=[])
         design['svg']=validate_svg(design.get('svg'))
         apply_motif_exclusions(design, card['desc'])
         source_ids=design.get('source_attachment_ids',[])

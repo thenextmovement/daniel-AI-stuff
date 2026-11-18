@@ -197,6 +197,7 @@ async function runGeometry() {
 }
 function setSetting(key,value,commit=true,side=null) {
   if(state.analyzing)return;
+  if(key==='width'&&state.settings.fixedBoard)state.settings.fixedBoard={...state.settings.fixedBoard,width_mm:value};
   if(['gap','gapSides','tube'].includes(key))state.settings.geometricSizing=false;
   if(key==='width' && state.settings.scale!==null){
     // Resize the motif; contour-to-path gaps stay in millimetres.
@@ -226,6 +227,9 @@ function setSetting(key,value,commit=true,side=null) {
 
 function updateControls() {
   const factor=state.dimensionUnit==='cm'?10:1;
+  for(const input of document.querySelectorAll('[data-fixed-board]')){
+    if(state.settings.fixedBoard&&document.activeElement!==input)input.value=state.settings.fixedBoard[input.dataset.fixedBoard]/10;
+  }
   $('width').min=80/factor;$('width').max=20000/factor;
   $('depthRange').max=Math.max(500,Math.ceil(state.settings.depth/100)*100);
   const automaticSides=state.settings.manualContourDepth ? {} : (state.drawing?.automaticDepthSides||{});
@@ -253,6 +257,7 @@ function updateControls() {
   for(const kind of ['shape','mode']) $$(`[data-${kind}]`).forEach(button=>{
     const active=button.dataset[kind]===state.settings[kind];button.classList.toggle('active',active);button.setAttribute('aria-pressed',active);
     if(kind==='mode')button.disabled=state.analyzing;
+    if(kind==='shape')button.disabled=!!state.settings.fixedBoard;
   });
   $('depthRow').hidden=state.settings.shape==='rectangle';$('depthHelp').hidden=state.settings.shape==='rectangle';
   $('depthHelp').textContent=state.settings.shape==='shape'?'Der Hauptregler setzt alle Seiten. Über den Pfeil kannst du sie einzeln anpassen. Der Neonabstand bleibt erhalten.':'Bei „Nur unten“ wirkt der Wert für Unten. Die übrigen Seitenwerte bleiben für Cut to Shape gespeichert.';
@@ -528,10 +533,10 @@ async function checkManufacturing(applyToPreview=false,force=false){
     updateLimitControls();
     window.dispatchEvent(new Event('studio-minimum-ready'));
     const manual=window.studioManualMinimum?.();
-    const label=manual?window.studioManualSizeLabel():`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
+    const label=report.fixedSize?(report.fixedSizeValid?'Feste Maße geprüft · Abstände eingehalten':'Feste Maße beibehalten · enge Stellen im Motiv prüfen'):manual?window.studioManualSizeLabel():`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
     const count=report.ignoredSiteIds?.length||0;
     minimumStatus(label+(count?` · ${count} ${count===1?'Stelle ignoriert':'Stellen ignoriert'}`:''),true);
-    $('manufacturingApply').hidden=!!state.settings.geometricSizing&&Math.abs(state.drawing.width-(manual||report.recommendedWidth))<.01;
+    $('manufacturingApply').hidden=!!report.fixedSize||!!state.settings.geometricSizing&&Math.abs(state.drawing.width-(manual||report.recommendedWidth))<.01;
     if(applyToPreview&&!$('manufacturingApply').hidden)applyMinimumToPreview();
   }catch(error){
     if(ticket!==manufacturingTicket||key!==manufacturingKey())return;
@@ -546,6 +551,7 @@ async function checkManufacturing(applyToPreview=false,force=false){
 }
 function applyMinimumToPreview(){
   const report=manufacturingReport;
+  if(report?.fixedSize)return;
   if(!report?.recommendedWidth||report.key!==manufacturingKey()||state.busy)return;
   return resizeToMinimum(window.studioManualMinimum?.()||report.recommendedWidth);
 }

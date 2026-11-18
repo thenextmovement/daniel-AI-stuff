@@ -216,6 +216,10 @@ class SpacingLimitExceeded(ValueError):
 
 def minimum_size(store, model, settings):
     options = {**settings, **PROFILE}
+    if settings.get('fixedBoard'):
+        drawing=store.drawing(model,json.dumps(options,sort_keys=True))
+        issues={};measure(drawing,issues);report=measure(drawing)
+        return {**report,'fixedSize':True,'fixedSizeValid':not issues,'fixedSizeIssues':list(issues.values())}
     def at_width(width):
         return measure(store.size_probe(model, {**options, 'width':width}, uncut=True))
     reference = store.size_probe(model, {**options, 'width':80}, uncut=True)

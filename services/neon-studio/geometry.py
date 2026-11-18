@@ -1144,6 +1144,14 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
 
 def build_geometry(model, options=None, *, editable=True, sizing_probe=False, uncut_probe=False):
     settings={**DEFAULTS, 'reserve':.1, **(options or {})}
+    fixed=settings.get('fixedBoard')
+    if fixed is not None:
+        if not isinstance(fixed,dict) or any(type(fixed.get(k)) not in (int,float) or not math.isfinite(fixed[k]) or not 80<=fixed[k]<=20000
+                for k in ('width_mm','height_mm','motif_width_mm')):
+            raise ValueError('Ungültige feste Platten- oder Motivmaße.')
+        settings.update(shape='rectangle',width=fixed['width_mm'],scale=None)
+        if fixed['motif_width_mm']>=fixed['width_mm']:
+            raise ValueError('Das Neonmotiv passt nicht auf die feste Platte.')
     if settings.get('geometricSizing'):
         settings.update(tube=6,gap=15,gapSides={},autoRoute=False)
     elif settings.get('autoRoute'):settings['tube']=8
@@ -1238,7 +1246,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     # Fixed physical dot dimensions are applied before the acrylic and length
     # calculations. Other artwork retains its original proportional scale.
     if any(item.get('role')=='dot' for item in source):
-        dot_scale=float(settings['scale']) if settings.get('scale') is not None else (settings['width']-side_gaps['left']-side_gaps['right'])/max(scale_width,.00001)
+        dot_scale=(fixed['motif_width_mm']-settings['tube'])/max(scale_width,.00001) if fixed else float(settings['scale']) if settings.get('scale') is not None else (settings['width']-side_gaps['left']-side_gaps['right'])/max(scale_width,.00001)
         if not math.isfinite(dot_scale) or not .0001<=dot_scale<=1000:raise ValueError('Ungültiger Motivmaßstab.')
         from manufacturing import normalize_dot
         source=[normalize_dot(item,dot_scale) for item in source]
@@ -1283,6 +1291,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     if settings.get('scale') is None and (w<=left+right+20 or scale_width<1):
         raise ValueError('Breite ist für den Randabstand zu klein.')
     scale=float(settings['scale']) if settings.get('scale') is not None else (w-left-right)/scale_width
+    if fixed:scale=(fixed['motif_width_mm']-settings['tube'])/max(x1-x0,.00001)
     if not math.isfinite(scale) or not .0001<=scale<=1000:
         raise ValueError('Ungültiger Motivmaßstab.')
     settings['scale']=scale
@@ -1291,6 +1300,15 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
         raise ValueError('Das Motiv wird höher als 20.000 mm. Bitte Breite reduzieren.')
     if w>20000:
         raise ValueError('Das Motiv wird breiter als 20.000 mm. Bitte Abstand oder Größe reduzieren.')
+    if fixed:
+        w,h=fixed['width_mm'],fixed['height_mm']
+        left=right=(w-(x1-x0)*scale)/2
+        top=bottom=(h-(y1-y0)*scale)/2
+        if min(left,right,top,bottom)<settings['tube']/2+2:
+            raise ValueError('Das Neonmotiv passt mit dem Randabstand nicht auf die feste Platte.')
+        # Fixed dimensions own the margins; do not enlarge the board to the default gap.
+        paddings=dict(zip(sides,(left,right,top,bottom)))
+        padding=min(paddings.values());side_gaps=paddings.copy();asymmetric=False
     dx=left-x0*scale; dy=top-y0*scale
     paths=[transform(item['commands'],scale,dx,dy) for item in source]
     if settings.get('autoRoute') and not uncut_probe:
@@ -1353,7 +1371,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
         a,b,c,d=path_bounds(outer)
         outer=[[cmd[0],*[[((x-a)*w/(c-a)),((y-b)*h/(d-b))] for x,y in cmd[1:]]]
                for cmd in outer]
-    if settings.get('geometricSizing'):
+    if settings.get('geometricSizing') and not fixed:
         # Restore clearance lost by polygon fitting. The exact motif bounds
         # already reserve 18 mm to the rectangular envelope on every side.
         contour=Polygon(sample_path(outer,128))
@@ -1505,6 +1523,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
                 pathPartIds=[p['partId'] for p in source],pathModes=[p['mode'] for p in source],pathRoles=[p.get('role','stroke') for p in source],pathKeys=[p['key'] for p in source],
                 parts=parts,modeLabel=mode_label,exportable=not missing,hiddenPaths=hidden_paths,
                 pathData=[path_d(p) for p in paths], outerData=path_d(outer),outlinePreview=outline_preview,activeDepthRegions=active_depth_regions,
+                motifWidth=float((x1-x0)*scale+settings['tube']), motifHeight=float((y1-y0)*scale+settings['tube']),
                 width=float(bbox[2]-bbox[0]), height=float(bbox[3]-bbox[1]), bounds=bbox,
                 neonMeters=neon_length, neonMaterialMeters=neon_length*1.10,
                 minGap=center_gap,

@@ -145,7 +145,7 @@ class Jobs:
         feedback=[];previous=[]
         for design,record in zip(designs,records):
             report=None
-            if record['spec'].get('smallest_requested') and record['spec'].get('size_axis')!='height':
+            if not record['spec'].get('fixed_board') and record['spec'].get('smallest_requested') and record['spec'].get('size_axis')!='height':
                 try:
                     record['settings']=optimize_smallest(self.store,record['model'],record['settings'])
                     report=minimum_size(self.store,record['model'],record['settings'])
@@ -233,6 +233,8 @@ class Jobs:
             spec['waterproof_psus']=1
             spec['issues']=[*(spec.get('issues') or []),'Ein wasserdichtes Netzteil je Schild ist vorläufig eingerechnet. Wie viele werden benötigt?']
         settings={'mode':'single','partModes':part_modes,'shape':spec.get('shape') or 'shape','width':(spec.get('widths_mm') or [600])[0],'gap':15,'tube':6,'radius':3,'depth':20,'reserve':.1,'scale':None}
+        if spec.get('fixed_board'):
+            settings.update(fixedBoard=dict(spec['fixed_board']),shape='rectangle',width=spec['fixed_board']['width_mm'])
         if spec.get('colors_from_artwork') is True:
             drawing=self.store.drawing(info['id'],json.dumps(settings,sort_keys=True))
             assigned={key:artwork_neon_color(source) for key,source in drawing['colorSources'].items()}
@@ -244,6 +246,20 @@ class Jobs:
         spec=dict(p.get('spec') or {})
         from cloud_ai import manual_minimum_width
         manual_minimum_width(spec)
+        if p.get('model') and p['settings'].get('fixedBoard'):
+            settings={**p['settings'],**PROFILE,'shape':'rectangle'}
+            board=settings['fixedBoard']
+            settings['width']=board['width_mm']
+            drawing=self.store.drawing(p['model'],json.dumps(settings,sort_keys=True))
+            issues={};measure(drawing,issues);report=measure(drawing)
+            previous=spec.get('fixed_fit_notes',[])
+            notes=[f"Feste Wunschgröße: {len(issues)} enge Stelle(n) im Neonmotiv. Maße bleiben erhalten; Konturen vor Fertigung prüfen."] if issues else []
+            spec.update(fixed_board=dict(board),shape='rectangle',widths_mm=[board['width_mm']],
+                        sized_widths_mm=[board['width_mm']],requested_widths_mm=[board['width_mm']],
+                        minimum_first=False,smallest_requested=False,auto_minimum_mm=None,
+                        fixed_fit_notes=notes,issues=[i for i in spec.get('issues',[]) if i not in previous]+notes)
+            p.update(spec=spec,settings=settings,metrics={**(p.get('metrics') or {}),'manufacturing':report})
+            return
         if p.get('model'):
             requested=spec.get('requested_widths_mm',spec.get('widths_mm',[]))
             # Adopt the title rule for existing smallest-only projects on their next export.
@@ -290,7 +306,7 @@ class Jobs:
             d=self.store.drawing(p['model'],json.dumps(options,sort_keys=True))
             if not d.get('exportable') or not d['paths']:raise Review('Zeichnung enthält noch ungeklärte Pfade.')
             if spec.get('minimum_width_mm') is not None and d['width']<spec['minimum_width_mm']-.1:raise Review('Die Zeichnung liegt unter der manuell eingetragenen Mindestbreite.')
-            if 'requested_widths_mm' in spec and not spec.get('minimum_width_mm'):
+            if 'requested_widths_mm' in spec and not spec.get('minimum_width_mm') and not spec.get('fixed_board'):
                 if measure(d)['recommendedWidth']>width:raise Review('Geometrische Mindestbreite unterschritten.')
             variants.append(d)
         sources=spec.get('source_attachment_ids') or p.get('selected_attachments') or []
@@ -350,7 +366,7 @@ class Jobs:
             if not p.get('copy') or not p.get('model'):raise Review('Kopie oder Zeichnung fehlt.')
             records=[p,*p.get('additional_designs',[])]
             for record in records:
-                if generated and not record['spec'].get('minimum_width_mm') and record['spec'].get('size_axis')!='height':
+                if generated and not record['spec'].get('fixed_board') and not record['spec'].get('minimum_width_mm') and record['spec'].get('size_axis')!='height':
                     try:record['settings']=optimize_smallest(self.store,record['model'],record['settings'])
                     except SpacingLimitExceeded:pass  # Existing original-PNG recovery below.
                 try:self.size_design(record,p['snapshot'])

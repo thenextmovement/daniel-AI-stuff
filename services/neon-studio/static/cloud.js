@@ -90,6 +90,30 @@ $('addSize').onclick=()=>{
   if(id){$(id).parentElement.hidden=false;updateSizeLabels();$(id).focus();}
 };
 function showSizeFields(){
+  $('fixedBoardSizes')?.remove();
+  if(state.settings.fixedBoard){
+    $('cloudSizes').hidden=true;
+    let panel=$('fixedBoardSizes');
+    if(!panel){
+      panel=document.createElement('div');panel.id='fixedBoardSizes';
+      panel.append(textElement('p','Feste Acrylplatte · Neonmotiv proportional und zentriert'));
+      for(const [key,label] of [['width_mm','Plattenbreite'],['height_mm','Plattenhöhe'],['motif_width_mm','Neonbreite']]){
+        const row=document.createElement('label');row.className='size-entry';row.append(document.createTextNode(label+' (cm)'));
+        const input=document.createElement('input');input.type='number';input.min=8;input.max=2000;input.step='any';input.dataset.fixedBoard=key;input.value=state.settings.fixedBoard[key]/10;
+        input.onchange=()=>{
+          if(!input.reportValidity()||!Number.isFinite(input.valueAsNumber))return;
+          state.settings.fixedBoard={...state.settings.fixedBoard,[key]:input.valueAsNumber*10};
+          state.settings.width=state.settings.fixedBoard.width_mm;
+          state.settings.scale=null;commitHistory();updateControls();requestGeometry(true);
+        };
+        row.append(input);panel.append(row);
+      }
+      const save=textElement('button','Maße speichern');save.className='button full-width';
+      save.onclick=async()=>{try{await cloudSave();toast('Feste Maße gespeichert.');}catch(e){toast(e.message,true);}};
+      panel.append(save);$('cloudSizes').before(panel);
+    }
+    return;
+  }
   $('cloudSizes').hidden=false;
   const byHeight=cloudSpec.size_axis==='height';
   $('sizeAxis').value=byHeight?'height':'width';
@@ -210,6 +234,10 @@ async function cloudSave() {
     Object.assign(cloudSpec,{light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',waterproof_psus:pricing.outdoor?Number($('pricePsus').value):0,uv_print:$('priceUv').checked,controllers:Math.max(1,Number($('priceControllers').value))});
     cloudSpec.pricing_options=priceOptions();
     cloudSpec.shape=state.settings.shape;
+    if(state.settings.fixedBoard){
+      cloudSpec.fixed_board={...state.settings.fixedBoard};
+      cloudSpec.widths_mm=cloudSpec.sized_widths_mm=cloudSpec.requested_widths_mm=[state.drawing.width];
+    }
     cloud={...cloud,...await cloudRequest('save',{id:cloud.id,design:designNumber,revision:cloud.revision,model:state.project.id,settings:state.settings,spec:cloudSpec})};
     if(sizesDirty)rememberSizeFields();
     else{

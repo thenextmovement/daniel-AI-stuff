@@ -86,6 +86,9 @@ def product_rows(d,spec):
     english=re.sub(r'[\w]+(?: Pink)?',lambda m:translations.get(m[0].lower(),m[0]),colors)
     shape=d['settings']['shape']
     rows=[]
+    if d['settings'].get('fixedBoard'):
+        rows.extend([('Acrylic / Acrylplatte',de(d['width']/10)+' × '+de(d['height']/10)+' cm'),
+                     ('Neon motif / Neonmotiv (zentriert)',de(d['motifWidth']/10)+' × '+de(d['motifHeight']/10)+' cm')])
     for key,label in [('auto_minimum_mm','Minimum checked width / Kleinste geprüfte Breite'),
                       ('minimum_width_mm','Manual minimum / Mindestbreite (manuell)')]:
         if key=='minimum_width_mm' and spec.get('manual_height_mm') is not None:
@@ -103,7 +106,7 @@ def product_rows(d,spec):
         ('Quantity / Anzahl',str(spec.get('quantity',1))),
         ('Neon length / Neon-Länge',de(d['neonMeters'],1)+' m'),
         ('Final neon length / Endgültige Neonlänge (+10 %)',de(d['neonMaterialMeters'],1)+' m'),
-        ('Acrylic margin / Acrylrand',de(d['settings']['gap'])+' mm')]
+        ('Acrylic margin / Acrylrand',('Zentriert / Centered' if d['settings'].get('fixedBoard') else de(d['settings']['gap'])+' mm'))]
 
 def quote_pdf(variants,spec,motif=None):
     output=io.BytesIO();c=Canvas(output,pagesize=(600,760))
@@ -168,6 +171,8 @@ def mockup_image(d):
     c.setFillColor(HexColor('#000000'));c.rect(0,0,w,h,fill=1,stroke=0)
     c.saveState();c.translate(x,y);c.scale(scale/mm,scale/mm)
     bx,by=d['bounds'][:2]
+    if d['settings'].get('fixedBoard'):
+        _paint(c,d['outer'],-bx,d['height']+by,'#555555',.6)
     for path,color in zip(d['paths'],d['pathColors']):
         _paint(c,path,-bx,d['height']+by,color.get('swatch',color['color']),d['settings']['tube'])
     c.restoreState();c.showPage();c.save()
@@ -187,6 +192,8 @@ def technical_image(d):
     w=1600;h=max(500,min(2300,round(w*d['height']/d['width']+160)))
     out=io.BytesIO();c=Canvas(out,pagesize=(w,h))
     c.setFont('Helvetica',48);c.drawCentredString(w/2,h-66,'Technische Zeichnung')
+    if d['settings'].get('fixedBoard'):
+        c.setFont('Helvetica',22);c.drawCentredString(w/2,h-105,'Acryl '+de(d['width']/10)+' x '+de(d['height']/10)+' cm | Neon '+de(d['motifWidth']/10)+' cm breit, zentriert')
     artwork(c,d,45,40,(w-90)/mm,(h-160)/mm,True);c.showPage();c.save()
     technical=fitz.open(stream=out.getvalue(),filetype='pdf')[0].get_pixmap(alpha=False)
     jpeg=io.BytesIO();Image.frombytes('RGB',[technical.width,technical.height],technical.samples).save(jpeg,'JPEG',quality=95,subsampling=0)
