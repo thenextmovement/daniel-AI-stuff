@@ -851,11 +851,6 @@
 @media(max-width:1300px) { .titlebar .callhead { flex-wrap:wrap; gap:14px; } .operatorBlock { margin-left:auto; } .callhead .customerLinks { flex-basis:240px; } }
 @media(max-width:760px) { .titlebar { grid-template-columns:1fr; } .titlebar > h1 { padding:16px 20px; border-right:0; border-bottom:1px solid var(--line); font-size:21px; } .titlebar .callhead { padding:16px 20px; } .callhead > div:first-child { flex-basis:100%; } .callhead .customerLinks { flex:1 1 200px; } .operatorBlock { flex:1 1 160px; } .offerHover { right:0; width:min(280px,80vw); } }
 
-/* Five browser-local alternatives share the same controls and call state. */
-.designPicker { display:flex; align-items:center; gap:5px; padding:3px; border:1px solid var(--line); border-radius:9px; background:#fafaf8; }
-.designPicker button { display:grid; place-items:center; width:28px; height:28px; border:0; border-radius:6px; color:#46534b; background:transparent; cursor:pointer; }
-.designPicker button:hover { background:#e7eee8; }
-.designPicker span { min-width:116px; text-align:center; font-size:12px; font-variant-numeric:tabular-nums; color:#46534b; }
 .centralIdentity { display:flex; flex-direction:column; justify-content:center; gap:12px; padding:12px 20px; border-right:1px solid var(--line); }
 .centralIdentity h1 { margin:0; font-size:23px; line-height:1.2; letter-spacing:-.6px; }
 .centralIdentity .operatorBlock { display:flex; align-items:center; gap:8px; flex:none; margin:0; }
@@ -881,35 +876,6 @@
 .offerValue { gap:4px; font-size:13px; line-height:1.25; margin-top:2px; }
 .offerPeek { flex:0 0 94px; display:flex; align-items:stretch; }
 .offerPeekButton { width:94px; height:116px; padding:3px; border-radius:8px; }
-/* Flat toolbar: strong horizontal rhythm, almost no containers. */
-.shell[data-header-design="2"] .callhead { background:#fff; }
-.shell[data-header-design="2"] .callhead > div:first-child { display:grid; grid-template-columns:1fr; }
-.shell[data-header-design="2"] .calltitle .avatar { display:none; }
-.shell[data-header-design="2"] .badge { background:transparent; padding:0; color:#68717e; }
-.shell[data-header-design="2"] .customerLinkRow { border-radius:3px; }
-.shell[data-header-design="2"] .offerPeekButton { border-radius:3px; }
-/* Soft workspace: rounded actions and a pale sage customer surface. */
-.shell[data-header-design="3"] .callhead { background:#f0f5ef; }
-.shell[data-header-design="3"] .centralIdentity { background:#f8faf6; }
-.shell[data-header-design="3"] .customerLinkRow { border-radius:14px; }
-.shell[data-header-design="3"] .callhead .button { border-radius:18px; }
-.shell[data-header-design="3"] .calltitle .avatar { width:42px; height:42px; background:white; }
-.shell[data-header-design="3"] .badge { background:#e2ecdf; color:#426048; }
-/* Contrast: dark identity, light links and an easy-to-find green call action. */
-.shell[data-header-design="4"] .callhead { background:#253b32; color:#f4f7f2; }
-.shell[data-header-design="4"] .calltitle p { color:#d1dfd5; }
-.shell[data-header-design="4"] .badge { background:#3a5146; color:#e3ede6; }
-.shell[data-header-design="4"] .offerValue { color:#eef6ef; }
-.shell[data-header-design="4"] .offerValue small { color:#c8d6cc; }
-.shell[data-header-design="4"] .customerLinkButtons > small { color:#d1dfd5; }
-.shell[data-header-design="4"] .actions .primary { background:#d8eddd; color:#204e36; }
-/* Image focus: wide offer preview at the far edge, quieter identity. */
-.shell[data-header-design="5"] .callhead { padding-right:0; background:#faf7f1; }
-.shell[data-header-design="5"] .offerPeek { flex-basis:148px; }
-.shell[data-header-design="5"] .offerPeekButton { width:148px; height:116px; border:0; border-radius:0; background:#eee9df; }
-.shell[data-header-design="5"] .customerLinkButtons { padding:4px 0; }
-.shell[data-header-design="5"] .calltitle .avatar { display:none; }
-.shell[data-header-design="5"] .badge { background:#eee8db; color:#6a5b3e; }
 @media(max-width:1100px) {
  .titlebar { grid-template-columns:minmax(240px,26%) minmax(0,1fr); }
  .centralIdentity { padding:12px; }
@@ -917,11 +883,10 @@
  .centralIdentity .phoneAccount { flex:1 1 130px; }
  .titlebar .callhead { gap:10px; padding:10px 12px; }
  .callhead .customerLinks { gap:8px; }
- .offerPeek,.shell[data-header-design="5"] .offerPeek { flex-basis:76px; }
- .offerPeekButton,.shell[data-header-design="5"] .offerPeekButton { width:76px; }
+ .offerPeek { flex-basis:76px; }
+ .offerPeekButton { width:76px; }
 }
 @media(max-width:760px) {
- .designPicker { margin-left:auto; }
  .titlebar { grid-template-columns:1fr; }
  .centralIdentity { border-right:0; border-bottom:1px solid var(--line); gap:8px; }
  .centralIdentity .operatorBlock { flex-wrap:nowrap; max-width:300px; }
@@ -930,74 +895,40 @@
  .callhead > div:first-child { flex-basis:100%; }
  .callhead .customerLinks { flex:1 1 100%; justify-content:space-between; }
  .customerLinkButtons { flex:1; }
- .offerPeek,.shell[data-header-design="5"] .offerPeek { flex-basis:100px; }
- .offerPeekButton,.shell[data-header-design="5"] .offerPeekButton { width:100px; }
- .shell[data-header-design="5"] .callhead { padding-right:12px; }
+ .offerPeek { flex-basis:100px; }
+ .offerPeekButton { width:100px; }
 }
 
-/* Contact facts stay visible in every alternative; changing layouts never remounts calls. */
+/* Customer contact details. */
 .customerOverview,.customerIdentity { min-width:0; }
 .contactFacts { display:flex; flex-wrap:wrap; gap:3px 12px; margin-top:3px; color:#647068; font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
 .contactFacts a { color:inherit; text-decoration:none; }
 .contactFacts a:hover { text-decoration:underline; }
 .companyName { font-weight:600; }
 .customerIdentity > small { display:block; color:#68717e; font-size:10px; }
-.shell[data-header-design="4"] .contactFacts { color:#d1dfd5; }
 
-/* All alternatives retain the compact 4/5 geometry and stable call controls. */
-.shell:not([data-header-design="4"]):not([data-header-design="5"]) .callhead { padding-right:0; }
-.shell:not([data-header-design="4"]):not([data-header-design="5"]) .calltitle .avatar { display:none; }
-.shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeek { flex-basis:148px; }
-.shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeekButton { width:148px; height:116px; padding:0; }
-.shell:not([data-header-design="4"]):not([data-header-design="5"]) .customerLinkButtons { padding:4px 0; }
-.shell[data-header-design="1"] .callhead { background:#fffdf9; box-shadow:inset 0 -2px #e7dcc9; }
-.shell[data-header-design="1"] .customerLinkRow { border-radius:9px; }
-.shell[data-header-design="2"] .callhead { box-shadow:inset 0 -2px #8ba995; }
-.shell[data-header-design="3"] .offerPeekButton { border-radius:16px 0 0 16px; }
-.shell[data-header-design="6"] .callhead { background:#f5f8f4; box-shadow:inset 4px 0 #48785e; }
-.shell[data-header-design="6"] .customerLinkRow { border-radius:4px; box-shadow:2px 2px 0 #cedacf; }
-.shell[data-header-design="7"] .callhead { background:#faf4ea; }
-.shell[data-header-design="7"] .customerLinkRow { border-radius:20px; }
-.shell[data-header-design="7"] .actions .button { border-radius:20px; }
-.shell[data-header-design="7"] .offerPeekButton { border-radius:18px 0 0 18px; }
-.shell[data-header-design="8"] .callhead { background:#fff; }
-.shell[data-header-design="8"] .customerLinkRow { border-radius:0; background:transparent; border-color:transparent; box-shadow:inset 0 -1px #c6d6cb; }
-.shell[data-header-design="8"] .actions .button { border-radius:3px; }
-.shell[data-header-design="8"] .offerPeekButton { border-radius:0; border:0; }
-.shell[data-header-design="9"] .callhead { background:#f5f3ef; box-shadow:inset 0 3px #b8aa91; }
-.shell[data-header-design="9"] .customerLinkRow { background:#fff; border-radius:5px; box-shadow:0 2px 4px #342b2010; }
-.shell[data-header-design="10"] .callhead { background:#f2f6f8; }
-.shell[data-header-design="10"] .customerLinkRow { border-radius:7px; border-color:#cad9de; }
-.shell[data-header-design="10"] .actions .primary { background:#315d60; }
-.shell[data-header-design="10"] .offerPeekButton { border-radius:0; border:0; }
-.shell[data-header-design="11"] .callhead { background:#edf3eb; }
-.shell[data-header-design="11"] .customerLinkRow[data-linked="true"] { background:#2e5b43; border-color:#2e5b43; }
-.shell[data-header-design="11"] .customerLinkRow[data-linked="true"] :is(.customerLinkButton,.editLink) { color:white; }
-.shell[data-header-design="11"] .customerLinkRow[data-linked="true"] :is(.customerLinkButton,.editLink):hover { background:#224b35; }
-.shell[data-header-design="12"] .callhead { background:#f5f2fa; box-shadow:inset 0 -2px #c7b7dc; }
-.shell[data-header-design="12"] .customerLinkRow { border-radius:12px; }
-.shell[data-header-design="12"] .actions .primary { background:#66507c; }
-.shell[data-header-design="13"] .callhead { background:#fff7ed; }
-.shell[data-header-design="13"] .customerLinkRow { border-radius:5px; box-shadow:inset 3px 0 #c6a77a; }
-.shell[data-header-design="13"] .actions .button { border-radius:5px; }
-.shell[data-header-design="13"] .offerPeekButton { border:0; border-radius:0; }
-.shell[data-header-design="14"] .callhead { background:#283536; color:#f4f8f5; }
-.shell[data-header-design="14"] .contactFacts { color:#d4e1de; }
-.shell[data-header-design="14"] .offerValue,.shell[data-header-design="14"] .offerValue small { color:#e1ece5; }
-.shell[data-header-design="14"] .customerLinkButtons > small { color:#d4e1de; }
-.shell[data-header-design="14"] .actions .primary { background:#d7e9dd; color:#244736; }
-.shell[data-header-design="14"] .customerLinkRow { border-radius:4px; }
-.shell[data-header-design="15"] .callhead { background:#fff; box-shadow:inset 0 -3px #283b32; }
-.shell[data-header-design="15"] .customerLinkRow { border-radius:2px; border-style:dashed; background:transparent; }
-.shell[data-header-design="15"] .actions .primary { background:#283b32; border-radius:2px; }
-.shell[data-header-design="15"] .offerPeekButton { border:0; border-radius:0; }
+/* Selected Salbei header. */
+.shell[data-header-design="salbei"] .callhead { padding-right:0; }
+.shell[data-header-design="salbei"] .calltitle .avatar { display:none; }
+.shell[data-header-design="salbei"] .offerPeek { flex-basis:148px; }
+.shell[data-header-design="salbei"] .offerPeekButton { width:148px; height:116px; padding:0; }
+.shell[data-header-design="salbei"] .customerLinkButtons { padding:4px 0; }
+.shell[data-header-design="salbei"] .callhead { background:#f5f8f4; box-shadow:inset 4px 0 #48785e; }
+.shell[data-header-design="salbei"] .customerLinkRow { border-radius:4px; box-shadow:2px 2px 0 #cedacf; }
 @media(max-width:1100px) {
- .shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeek { flex-basis:76px; }
- .shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeekButton { width:76px; }
+ .shell[data-header-design="salbei"] .offerPeek { flex-basis:76px; }
+ .shell[data-header-design="salbei"] .offerPeekButton { width:76px; }
 }
 @media(max-width:760px) {
- .shell:not([data-header-design="4"]):not([data-header-design="5"]) .callhead { padding-right:12px; }
- .shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeek { flex-basis:100px; }
- .shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeekButton { width:100px; }
+ .shell[data-header-design="salbei"] .callhead { padding-right:12px; }
+ .shell[data-header-design="salbei"] .offerPeek { flex-basis:100px; }
+ .shell[data-header-design="salbei"] .offerPeekButton { width:100px; }
  .contactFacts { max-width:100%; }
 }
+
+.phoneFact { display:inline-flex; align-items:center; gap:6px; }
+.phoneFact .phonePlus { width:26px; height:26px; margin-left:0; flex-shrink:0; border-radius:6px; }
+.callhead .actions .placetelDial { min-height:46px; padding:10px 16px; font-size:15px; font-weight:600; max-width:100%; }
+.callhead .actions .placetelDial svg { width:20px; height:20px; flex-shrink:0; }
+
+.phoneFact .phoneDialog { font-size:16px; line-height:1.5; color:var(--ink); }

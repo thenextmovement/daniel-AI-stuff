@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { Search, Phone, Headphones, ChevronRight, ChevronLeft, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
+import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import {CustomerPhoneEditor} from "./customer-phone-editor";
@@ -50,18 +50,6 @@ function initials(value: string) {
 }
 export function PhoneCentral(props: Props) {
   const { selected } = props;
-  const designs = ["Kompakt", "Klare Linie", "Sanft", "Kontrast", "Bildfokus", "Salbei", "Sand", "Kontur", "Papier", "Nordisch", "Waldgrün", "Lavendel", "Kupfer", "Studio", "Journal"];
-  const [design, setDesign] = useState(0);
-  useEffect(() => {
-    try { const value = Number(localStorage.getItem("ops.voice.header-design")); if (Number.isInteger(value) && value >= 0 && value < designs.length) setDesign(value); } catch { /* Storage may be blocked. */ }
-  }, []);
-  function changeDesign(direction: number) {
-    setDesign(current => {
-      const next = (current + direction + designs.length) % designs.length;
-      try { localStorage.setItem("ops.voice.header-design", String(next)); } catch { /* Selection still works in memory. */ }
-      return next;
-    });
-  }
   const [callHistoryRevision, setCallHistoryRevision] = useState(0);
   const refreshCallHistory = useCallback(() => setCallHistoryRevision(n => n + 1), []);
   const [phoneAdminOpen,setPhoneAdminOpen]=useState(false);
@@ -226,7 +214,7 @@ export function PhoneCentral(props: Props) {
 
   return (
     <div className={styles.page}>
-    <main className={styles.shell} data-header-design={design + 1}>
+    <main className={styles.shell} data-header-design="salbei">
       <header className={styles.top}>
         <div className={styles.brandrow}>
         <a className={styles.brand} href="/ops">
@@ -234,11 +222,6 @@ export function PhoneCentral(props: Props) {
         </a>
         <span className={styles.breadcrumb}>Ops / Telefonzentrale</span>
         <span className={styles.spacer} />
-        <div className={styles.designPicker} role="group" aria-label="Kopfzeilen-Design auswählen">
-          <button type="button" aria-label="Vorheriges Design" onClick={() => changeDesign(-1)}><ChevronLeft size={17}/></button>
-          <span aria-live="polite">{design + 1}/{designs.length} · {designs[design]}</span>
-          <button type="button" aria-label="Nächstes Design" onClick={() => changeDesign(1)}><ChevronRight size={17}/></button>
-        </div>
         <a
           className={styles.small}
           href="#voice-settings"
@@ -275,14 +258,13 @@ export function PhoneCentral(props: Props) {
                 {customer ? <div className={styles.contactFacts}>
                   {customer.company && customer.company !== customer.displayName && <span className={styles.companyName}>{customer.company}</span>}
                   {customer.email ? <a href={"mailto:" + customer.email}>{customer.email}</a> : <span>E-Mail fehlt</span>}
-                  <span>{phone || "Rufnummer fehlt"}</span>
-                </div> : <p>{browserPhone.call ? browserPhone.call.customerId ? "Kundenanruf · kein Vorgang geöffnet" : "Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}</p>}
-                {contextLoading && <small role="status">Gesprächsübersicht wird geladen …</small>}
-                {briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
+                  <div className={styles.phoneFact}><span>{phone || "Rufnummer fehlt"}</span>{briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
                   setChosenPhone({customerId:briefCustomerId,phone:saved});
                   setActiveContact(old=>old?.customerId===briefCustomerId?{...old,phone:old.phone||saved,phoneNumbers:numbers}:old);
                   setResults(old=>old.map(row=>row.customerId===briefCustomerId?{...row,phone:row.phone||saved,phoneNumbers:numbers}:row));
-                }}/>}
+                }}/>}</div>
+                </div> : <p>{browserPhone.call ? browserPhone.call.customerId ? "Kundenanruf · kein Vorgang geöffnet" : "Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}</p>}
+                {contextLoading && <small role="status">Gesprächsübersicht wird geladen …</small>}
                 {(activeContact?.phoneNumbers?.length || 0)>1 && <select aria-label="Rufnummer auswählen" disabled={busy} value={phone} onChange={e=>setChosenPhone({customerId:briefCustomerId!,phone:e.target.value})}>
                   {activeContact!.phoneNumbers!.map(number=><option key={number} value={number}>{number}</option>)}
                 </select>}
