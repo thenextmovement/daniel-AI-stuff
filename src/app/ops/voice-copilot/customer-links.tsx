@@ -24,10 +24,11 @@ export function CustomerLinks({customerId,requestId,context}:{customerId:string;
    setLinks(old=>({...old,[kind]:d.url}));dialog.current?.close();
   }catch(e){setError(e instanceof Error?e.message:"Speichern fehlgeschlagen.");}finally{setSaving(false);}
  }
- const price=context?.offer?.price;
+ const boundOfferMatches=!links.offer || links.offer===context?.links?.offer;
+ const price=boundOfferMatches?context?.offer?.price:null;
  return <section className={styles.customerLinks} aria-label="Kundenkarte">
  <strong>Kundenkarte</strong>
- {context?.offer?.thumbnailUrl&&<img className={styles.offerPreview} src={context.offer.thumbnailUrl} alt={"Angebotsvorschau "+context.offer.label} referrerPolicy="no-referrer" onError={e=>{e.currentTarget.hidden=true;}}/>}
+ {boundOfferMatches&&context?.offer?.thumbnailUrl&&<img className={styles.offerPreview} src={context.offer.thumbnailUrl} alt={"Angebotsvorschau "+context.offer.label} referrerPolicy="no-referrer" onError={e=>{e.currentTarget.hidden=true;}}/>}
  {price&&<p><strong>{new Intl.NumberFormat("de-DE",{style:"currency",currency:price.currency}).format(price.amount)}</strong> {price.taxBasis==="gross"?"inkl. MwSt.":price.taxBasis==="net"?"zzgl. MwSt.":"Angebotswert"}</p>}
  {(["quentin","inquiry","offer"] as const).map(k=>{
   const href=links[k]||(k==="offer"?context?.links?.offer:null);
