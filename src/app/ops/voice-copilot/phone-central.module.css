@@ -882,7 +882,6 @@
 .offerPeek { flex:0 0 94px; display:flex; align-items:stretch; }
 .offerPeekButton { width:94px; height:116px; padding:3px; border-radius:8px; }
 /* Flat toolbar: strong horizontal rhythm, almost no containers. */
-.shell[data-header-design="2"] .titlebar { background:#fff; border-bottom:2px solid #dbe8dd; }
 .shell[data-header-design="2"] .callhead { background:#fff; }
 .shell[data-header-design="2"] .callhead > div:first-child { display:grid; grid-template-columns:1fr; }
 .shell[data-header-design="2"] .calltitle .avatar { display:none; }
@@ -944,75 +943,61 @@
 .companyName { font-weight:600; }
 .customerIdentity > small { display:block; color:#68717e; font-size:10px; }
 .shell[data-header-design="4"] .contactFacts { color:#d1dfd5; }
-.shell[data-header-exploration="true"] .callhead { display:grid; grid-template-columns:minmax(0,1fr) 190px 112px; grid-template-areas:"identity links image" "actions links image"; gap:8px 18px; align-items:center; min-height:150px; padding:12px 18px; }
-.shell[data-header-exploration="true"] .customerOverview,.shell[data-header-exploration="true"] .customerLinks { display:contents; }
-.shell[data-header-exploration="true"] .calltitle { grid-area:identity; min-width:0; margin:0; }
-.shell[data-header-exploration="true"] .headerActions { grid-area:actions; margin:0; min-width:0; }
-.shell[data-header-exploration="true"] .customerLinkButtons { grid-area:links; min-width:0; }
-.shell[data-header-exploration="true"] .offerPeek { grid-area:image; min-width:0; align-self:stretch; }
-.shell[data-header-exploration="true"] .offerPeekButton { width:100%; height:100%; min-height:100px; max-height:160px; }
-.shell[data-header-exploration="true"] .customerLinkButton { white-space:normal; overflow-wrap:anywhere; }
-.shell[data-header-exploration="true"] .contactFacts { display:grid; gap:2px; }
-/* 6: one continuous contact strip, with actions tucked beneath. */
-.shell[data-header-design="6"] .callhead { border-top:3px solid #48785e; background:#f5f8f4; }
-.shell[data-header-design="6"] .calltitle .avatar { display:none; }
-/* 7: a business card in the centre, with the offer as its visual signature. */
-.shell[data-header-design="7"] .callhead { grid-template-columns:100px minmax(0,1fr) 190px; grid-template-areas:"image identity links" "image actions links"; background:#f8f4ee; }
-.shell[data-header-design="7"] .calltitle { border-left:2px solid #b6a080; padding-left:14px; }
-.shell[data-header-design="7"] .calltitle .avatar { display:none; }
+
+/* All alternatives retain the compact 4/5 geometry and stable call controls. */
+.shell:not([data-header-design="4"]):not([data-header-design="5"]) .callhead { padding-right:0; }
+.shell:not([data-header-design="4"]):not([data-header-design="5"]) .calltitle .avatar { display:none; }
+.shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeek { flex-basis:148px; }
+.shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeekButton { width:148px; height:116px; padding:0; }
+.shell:not([data-header-design="4"]):not([data-header-design="5"]) .customerLinkButtons { padding:4px 0; }
+.shell[data-header-design="1"] .callhead { background:#fffdf9; box-shadow:inset 0 -2px #e7dcc9; }
+.shell[data-header-design="1"] .customerLinkRow { border-radius:9px; }
+.shell[data-header-design="2"] .callhead { box-shadow:inset 0 -2px #8ba995; }
+.shell[data-header-design="3"] .offerPeekButton { border-radius:16px 0 0 16px; }
+.shell[data-header-design="6"] .callhead { background:#f5f8f4; box-shadow:inset 4px 0 #48785e; }
+.shell[data-header-design="6"] .customerLinkRow { border-radius:4px; box-shadow:2px 2px 0 #cedacf; }
+.shell[data-header-design="7"] .callhead { background:#faf4ea; }
 .shell[data-header-design="7"] .customerLinkRow { border-radius:20px; }
-/* 8: horizontal tools, with a separate contact line above. */
-.shell[data-header-design="8"] .callhead { grid-template-columns:minmax(0,1fr) 100px; grid-template-areas:"identity image" "links image" "actions image"; background:white; }
-.shell[data-header-design="8"] .customerLinkButtons { flex-direction:row; flex-wrap:wrap; justify-content:flex-start; align-items:center; }
-.shell[data-header-design="8"] .customerLinkRow { border-radius:4px; }
-.shell[data-header-design="8"] .contactFacts { display:flex; gap:3px 12px; }
-/* 9: dossier columns, keeping contact and tools in distinct reading lanes. */
-.shell[data-header-design="9"] .callhead { grid-template-columns:minmax(0,1fr) 190px 100px; grid-template-areas:"identity links image" "identity actions image"; background:#fafafa; }
-.shell[data-header-design="9"] .calltitle { align-self:stretch; border-right:1px solid #d8ddd7; padding-right:15px; align-items:center; }
-.shell[data-header-design="9"] .headerActions { flex-direction:column; align-items:stretch; }
-.shell[data-header-design="9"] .calltitle .avatar { display:none; }
-/* 10: gallery preview, a broad image followed by the compact working column. */
-.shell[data-header-design="10"] .callhead { grid-template-columns:170px minmax(0,1fr); grid-template-areas:"image identity" "image links" "image actions"; background:#eeeae2; }
-.shell[data-header-design="10"] .customerLinkButtons { flex-direction:row; flex-wrap:wrap; justify-content:flex-start; }
-.shell[data-header-design="10"] .offerPeekButton { padding:0; border:0; border-radius:10px; }
-.shell[data-header-design="10"] .calltitle .avatar { display:none; }
-/* 11: split surface, with a clearly separated strip for the call controls. */
-.shell[data-header-design="11"] .callhead { grid-template-columns:minmax(0,1fr) 190px 110px; grid-template-areas:"identity links image" "actions actions image"; background:linear-gradient(180deg,#f0f5ef 0 66%,#e2ece2 66%); }
-.shell[data-header-design="11"] .headerActions { border-top:1px solid #c8dac9; padding-top:8px; }
-.shell[data-header-design="11"] .contactFacts { display:flex; gap:3px 12px; }
-/* 12: compact contact matrix, with tools to the left of the identity. */
-.shell[data-header-design="12"] .callhead { grid-template-columns:180px minmax(0,1fr) 100px; grid-template-areas:"links identity image" "links actions image"; background:#f7f5fb; }
-.shell[data-header-design="12"] .contactFacts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
-.shell[data-header-design="12"] .contactFacts a { grid-column:1/-1; }
-.shell[data-header-design="12"] .calltitle .avatar { display:none; }
-/* 13: image card, with customer identity above a two-column action area. */
-.shell[data-header-design="13"] .callhead { grid-template-columns:120px minmax(0,1fr) 190px; grid-template-areas:"image identity identity" "image actions links"; background:#fffaf2; }
-.shell[data-header-design="13"] .contactFacts { display:flex; gap:3px 12px; }
-.shell[data-header-design="13"] .headerActions { flex-direction:column; align-items:flex-start; }
-/* 14: studio desk, a dark contact surface with a full-width resource shelf. */
-.shell[data-header-design="14"] .callhead { grid-template-columns:minmax(0,1fr) 130px; grid-template-areas:"identity image" "actions image" "links links"; background:#263b33; color:#f6faf5; }
-.shell[data-header-design="14"] .contactFacts { display:flex; gap:3px 12px; color:#d1dfd5; }
-.shell[data-header-design="14"] .customerLinkButtons { flex-direction:row; flex-wrap:wrap; justify-content:flex-start; align-items:center; border-top:1px solid #496055; padding-top:8px; }
-.shell[data-header-design="14"] .offerValue,.shell[data-header-design="14"] .offerValue small { color:#e0ebdf; }
-.shell[data-header-design="14"] .offerPeekButton { min-height:75px; }
-/* 15: editorial layout, with identity across the top and a resource column below. */
-.shell[data-header-design="15"] .callhead { grid-template-columns:190px minmax(0,1fr) 100px; grid-template-areas:"identity identity image" "links actions image"; background:#fff; border-bottom:3px solid #b1c8b5; }
-.shell[data-header-design="15"] .calltitle { border-bottom:1px solid #e0e5de; padding-bottom:7px; }
-.shell[data-header-design="15"] .contactFacts { display:flex; gap:3px 12px; }
-.shell[data-header-design="15"] .headerActions { justify-content:center; }
-.shell[data-header-design="15"] .customerLinkRow { background:transparent; border-width:0 0 1px; border-radius:0; }
+.shell[data-header-design="7"] .actions .button { border-radius:20px; }
+.shell[data-header-design="7"] .offerPeekButton { border-radius:18px 0 0 18px; }
+.shell[data-header-design="8"] .callhead { background:#fff; }
+.shell[data-header-design="8"] .customerLinkRow { border-radius:0; background:transparent; border-color:transparent; box-shadow:inset 0 -1px #c6d6cb; }
+.shell[data-header-design="8"] .actions .button { border-radius:3px; }
+.shell[data-header-design="8"] .offerPeekButton { border-radius:0; border:0; }
+.shell[data-header-design="9"] .callhead { background:#f5f3ef; box-shadow:inset 0 3px #b8aa91; }
+.shell[data-header-design="9"] .customerLinkRow { background:#fff; border-radius:5px; box-shadow:0 2px 4px #342b2010; }
+.shell[data-header-design="10"] .callhead { background:#f2f6f8; }
+.shell[data-header-design="10"] .customerLinkRow { border-radius:7px; border-color:#cad9de; }
+.shell[data-header-design="10"] .actions .primary { background:#315d60; }
+.shell[data-header-design="10"] .offerPeekButton { border-radius:0; border:0; }
+.shell[data-header-design="11"] .callhead { background:#edf3eb; }
+.shell[data-header-design="11"] .customerLinkRow[data-linked="true"] { background:#2e5b43; border-color:#2e5b43; }
+.shell[data-header-design="11"] .customerLinkRow[data-linked="true"] :is(.customerLinkButton,.editLink) { color:white; }
+.shell[data-header-design="11"] .customerLinkRow[data-linked="true"] :is(.customerLinkButton,.editLink):hover { background:#224b35; }
+.shell[data-header-design="12"] .callhead { background:#f5f2fa; box-shadow:inset 0 -2px #c7b7dc; }
+.shell[data-header-design="12"] .customerLinkRow { border-radius:12px; }
+.shell[data-header-design="12"] .actions .primary { background:#66507c; }
+.shell[data-header-design="13"] .callhead { background:#fff7ed; }
+.shell[data-header-design="13"] .customerLinkRow { border-radius:5px; box-shadow:inset 3px 0 #c6a77a; }
+.shell[data-header-design="13"] .actions .button { border-radius:5px; }
+.shell[data-header-design="13"] .offerPeekButton { border:0; border-radius:0; }
+.shell[data-header-design="14"] .callhead { background:#283536; color:#f4f8f5; }
+.shell[data-header-design="14"] .contactFacts { color:#d4e1de; }
+.shell[data-header-design="14"] .offerValue,.shell[data-header-design="14"] .offerValue small { color:#e1ece5; }
+.shell[data-header-design="14"] .customerLinkButtons > small { color:#d4e1de; }
+.shell[data-header-design="14"] .actions .primary { background:#d7e9dd; color:#244736; }
+.shell[data-header-design="14"] .customerLinkRow { border-radius:4px; }
+.shell[data-header-design="15"] .callhead { background:#fff; box-shadow:inset 0 -3px #283b32; }
+.shell[data-header-design="15"] .customerLinkRow { border-radius:2px; border-style:dashed; background:transparent; }
+.shell[data-header-design="15"] .actions .primary { background:#283b32; border-radius:2px; }
+.shell[data-header-design="15"] .offerPeekButton { border:0; border-radius:0; }
 @media(max-width:1100px) {
- .shell[data-header-exploration="true"] .callhead { grid-template-columns:minmax(0,1fr) 170px; grid-template-areas:"identity links" "actions image"; gap:10px; }
- .shell[data-header-exploration="true"] .offerPeekButton { min-height:70px; height:85px; }
- .shell[data-header-exploration="true"] .customerLinkButtons { flex-direction:column; align-items:stretch; }
- .shell[data-header-exploration="true"] .calltitle { border:0; padding:0; }
- .shell[data-header-exploration="true"] .contactFacts { display:grid; grid-template-columns:1fr; }
+ .shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeek { flex-basis:76px; }
+ .shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeekButton { width:76px; }
 }
 @media(max-width:760px) {
- .shell[data-header-exploration="true"] .callhead { grid-template-columns:minmax(0,1fr) 90px; grid-template-areas:"identity identity" "actions actions" "links image"; padding:14px; }
- .shell[data-header-exploration="true"] .headerActions { flex-direction:row; justify-content:flex-start; }
- .shell[data-header-exploration="true"] .offerPeekButton { height:100%; min-height:100px; }
- .shell[data-header-exploration="true"] .customerLinkButtons { border:0; padding:0; }
- .shell[data-header-exploration="true"] .contactFacts { display:flex; gap:3px 12px; }
+ .shell:not([data-header-design="4"]):not([data-header-design="5"]) .callhead { padding-right:12px; }
+ .shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeek { flex-basis:100px; }
+ .shell:not([data-header-design="4"]):not([data-header-design="5"]) .offerPeekButton { width:100px; }
  .contactFacts { max-width:100%; }
 }

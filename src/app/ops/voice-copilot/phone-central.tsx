@@ -21,7 +21,7 @@ import { PhoneAccount } from "./phone-account";
 import type { PhoneTeamMember, PhoneIdentity } from "@/lib/ops/voice-phone-contract";
 
 import type { VoiceDirectoryContact } from "@/lib/ops/voice-directory";
-import { dialPhoneNumber, readPhoneCentralResponse } from "./phone-central-data";
+import { dialPhoneNumber, readPhoneCentralResponse, fetchPhoneDirectory } from "./phone-central-data";
 
 type DirectoryResponse = { results: VoiceDirectoryContact[]; nextOffset: number | null };
 type Props = {
@@ -50,7 +50,7 @@ function initials(value: string) {
 }
 export function PhoneCentral(props: Props) {
   const { selected } = props;
-  const designs = ["Kompakt", "Klare Linie", "Sanft", "Kontrast", "Bildfokus", "Kontaktleiste", "Visitenkarte", "Werkzeugleiste", "Dossier", "Galerie", "Split", "Kontaktmatrix", "Bildkarte", "Studio", "Journal"];
+  const designs = ["Kompakt", "Klare Linie", "Sanft", "Kontrast", "Bildfokus", "Salbei", "Sand", "Kontur", "Papier", "Nordisch", "Waldgrün", "Lavendel", "Kupfer", "Studio", "Journal"];
   const [design, setDesign] = useState(0);
   useEffect(() => {
     try { const value = Number(localStorage.getItem("ops.voice.header-design")); if (Number.isInteger(value) && value >= 0 && value < designs.length) setDesign(value); } catch { /* Storage may be blocked. */ }
@@ -108,13 +108,11 @@ export function PhoneCentral(props: Props) {
     setLoading(true);
     const timer = window.setTimeout(async () => {
       try {
-        const response = await fetch(
+        const data = await fetchPhoneDirectory<DirectoryResponse>(
           "/api/ops/voice-copilot/context?directory=1&query=" +
             encodeURIComponent(query.trim()) + "&offset=" + offset,
-          { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) },
+          controller.signal,
         );
-        const data = await readPhoneCentralResponse<DirectoryResponse>(response,
-          "Kunden konnten nicht geladen werden. Bitte versuche es erneut.");
         if (controller.signal.aborted) return;
         if (!Array.isArray(data.results)) throw new Error("Kunden konnten nicht geladen werden.");
         setResults(current => offset === 0 ? data.results :
@@ -228,7 +226,7 @@ export function PhoneCentral(props: Props) {
 
   return (
     <div className={styles.page}>
-    <main className={styles.shell} data-header-design={design + 1} data-header-exploration={design >= 5}>
+    <main className={styles.shell} data-header-design={design + 1}>
       <header className={styles.top}>
         <div className={styles.brandrow}>
         <a className={styles.brand} href="/ops">
