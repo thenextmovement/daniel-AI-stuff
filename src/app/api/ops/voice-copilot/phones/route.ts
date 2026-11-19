@@ -16,7 +16,7 @@ export async function POST(request:NextRequest){
   if(!current)throw new QuoteValidationError("Melde dein Telefonprofil an.",["phone_identity_required"],403);
   const input=await readVoiceCopilotJson(request);
   if(!input||Array.isArray(input)||typeof input!=="object")throw new QuoteValidationError("Ungültige Eingabe.",["invalid_payload"],422);
-  const id=requireVoiceUuid(input.customerId,"Kunde"),phone=customerPhone(input.phone);
+  const id=requireVoiceUuid(input.customerId,"Kunde"),phone=customerPhone(input.phone,input.country ?? "DE");
   const [customer]=await supabaseRequest<Array<{id:string;phone:string|null}>>("master_customers",{},{select:"id,phone",id:"eq."+id,limit:1});
   if(!customer)throw new QuoteValidationError("Kunde nicht gefunden.",["customer_not_found"],404);
   await supabaseRequest("voice_customer_phone_numbers",{method:"POST",headers:{Prefer:"resolution=ignore-duplicates,return=minimal"},

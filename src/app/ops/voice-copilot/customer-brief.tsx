@@ -4,12 +4,12 @@ import type {VoiceCustomerContext} from "@/lib/ops/voice-knowledge";
 import {currentEmailReply} from "@/lib/ops/voice-email-reply";
 import styles from "./phone-central.module.css";
 
-import {CustomerLinks} from "./customer-links";
 import { VoiceHistoryPanel } from "./voice-history-panel";
 
 import type { CustomerOpsNote } from "@/lib/ops/customer-records";
 
 type Entry={callNotes?:CustomerOpsNote[];id:string;occurred_at:string|null;kind:string;subject:string|null;detail:string|null;request_ref:string|null;session_id:string|null;placetel?:{dispatch:string;recording:string;endedAt:string|null}};
+type LatestCall={id:string;startedAt:string;endedAt:string|null;summary:string|null;recording:string|null;requestId:string;status:string};
 type Page={entries:Entry[];brief:Entry[];nextOffset:number|null};
 const labels:Record<string,string>={inbound:"Kunde schreibt",outbound:"Unsere Antwort",note:"Interne Notiz",transcript:"Gesprächsnotiz",call:"Anruf"};
 function phoneEntry(entry:Entry) {
@@ -46,6 +46,9 @@ function phoneEntry(entry:Entry) {
   return {label:"Wählversuch",subject:"Ausgehender Wählversuch",detail,transcript:false};
 }
 export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revision:number;onNoteTarget:(callId:string,time:string)=>void;id:string;requestId:string;context:VoiceCustomerContext|null}) {
+  const [summaryTab,setSummaryTab]=useState<"latest"|"overall">("overall");
+  const [latest,setLatest]=useState<LatestCall|null>(null);
+  const [latestLoading,setLatestLoading]=useState(true),[latestFailed,setLatestFailed]=useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [channel,setChannel]=useState<"email"|"phone"|"notes">("phone");
   const [summary,setSummary]=useState<string|null>(null);
@@ -62,6 +65,10 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
       if (!result.ok) throw Error();
       return result.json();
     };
+    setLatestLoading(true);setLatestFailed(false);
+    void read("latest").then(data=>{if(!controller.signal.aborted)setLatest(data.latest);})
+      .catch(()=>{if(!controller.signal.aborted)setLatestFailed(true);})
+      .finally(()=>{if(!controller.signal.aborted)setLatestLoading(false);});
     let fresh=false;
     void read("cached").then(data=>{if(!controller.signal.aborted && !fresh && data.summary)setSummary(data.summary);}).catch(()=>{});
     setSummaryFailed(false);
@@ -105,13 +112,28 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
       <div><p className={styles.label}>Vor dem Anruf</p><h3>Auf einen Blick</h3></div>
       <button type="button" className={styles.link} disabled={summaryLoading || loading} onClick={()=>{setOffset(0);setRetry(n=>n+1);}}>{summaryLoading ? "Wird aktualisiert …" : "Aktualisieren"}</button>
     </header>
-    <section className={styles.currentBrief} aria-label="Aktueller Kenntnisstand"><strong>Aktueller Kenntnisstand</strong>
+    <div className={styles.historyTabs} role="group" aria-label="Zusammenfassung auswählen">
+      <button type="button" aria-pressed={summaryTab==="latest"} onClick={()=>setSummaryTab("latest")}>Letztes Gespräch</button>
+      <button type="button" aria-pressed={summaryTab==="overall"} onClick={()=>setSummaryTab("overall")}>Gesamtzusammenfassung</button>
+    </div>
+    <section className={styles.currentBrief} aria-label={summaryTab==="latest"?"Zusammenfassung des letzten Gesprächs":"Gesamtzusammenfassung"}>
+    {summaryTab==="overall" ? <>
+      <strong>Gesamtzusammenfassung</strong>
       {summaryFailed && !summary ? <p>Zusammenfassung derzeit nicht verfügbar. <button className={styles.link} onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>
-        : <p>{summary ?? "Zusammenfassung wird erstellt …"}</p>}
+        : <p>{summary ?? "KI-Zusammenfassung wird erstellt …"}</p>}
       {summary && summaryLoading && <small>Gespeicherter Stand · Aktualisierung läuft …</small>}
       {summary && summaryFailed && <small>Gespeicherter Stand · Aktualisierung derzeit nicht verfügbar.</small>}
+    </> : <>
+      <strong>Letztes Gespräch</strong>
+      {latest && <p className={styles.small}>{new Date(latest.startedAt).toLocaleString("de-DE")} · Vorgang {latest.requestId.slice(0,8)}</p>}
+      <p>{latestFailed ? "Das letzte Gespräch konnte nicht geladen werden." : latestLoading && !latest ? "Letztes Gespräch wird geladen …" : !latest ? "Noch kein Gespräch gespeichert." : latest.summary || (
+        latest.recording==="expired" || latest.recording==="ambiguous" ? "Für dieses Gespräch liegt keine eindeutig zugeordnete Aufnahme vor. Eine KI-Zusammenfassung ist noch nicht verfügbar." :
+        latest.endedAt ? "Gespräch beendet. Sobald die Aufnahme bereitsteht, erstellt die KI automatisch Mitschrift und Zusammenfassung." :
+        "Die Zusammenfassung wird nach dem Gespräch aus der Aufnahme erstellt.")}</p>
+      {latest?.recording==="single_speaker" && <small>Nur eine Stimme erkannt · die Zusammenfassung kann unvollständig sein.</small>}
+      {latestFailed && <button className={styles.link} onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button>}
+    </>}
     </section>
-    <CustomerLinks customerId={id} requestId={requestId} context={context}/>
     {context && <p className={styles.small}>{[context.customer.email,context.customer.phone].filter(Boolean).join(" · ")}</p>}
     {req ? <div className={styles.caseFacts}>
       <strong>{req.title || "Anfrage"} · {requestId.slice(0,8)}</strong>

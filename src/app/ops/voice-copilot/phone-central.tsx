@@ -7,6 +7,7 @@ import {CustomerPhoneEditor} from "./customer-phone-editor";
 import { CallNotes } from "./call-notes";
 import { PlacetelCallButton } from "./placetel-call-button";
 import { RecentCalls } from "./recent-calls";
+import {CustomerLinks} from "./customer-links";
 import { CustomerBrief } from "./customer-brief";
 import { VoiceHistoryPanel } from "./voice-history-panel";
 import styles from "./phone-central.module.css";
@@ -383,6 +384,7 @@ export function PhoneCentral(props: Props) {
         </aside>
         <div>
           <section className={styles.callhead}>
+            <div>
             <div className={styles.calltitle}>
               <span className={styles.avatar}>
                 {customer ? initials(name) : <Phone size={23} />}
@@ -447,11 +449,10 @@ export function PhoneCentral(props: Props) {
                 <Bot size={18} />
                 KI-Sprachtest
               </button>
-              {selected && <div className={styles.caseLinks}>
-                {selected.links?.trello && <a className={styles.link} target="_blank" rel="noreferrer" href={selected.links.trello}>Trello-Karte ↗</a>}
-                {selected.links?.offer && <a className={styles.link} target="_blank" rel="noreferrer" href={selected.links.offer}>Angebot {selected.offer?.offerNumber} ↗</a>}
-              </div>}
+
             </div>
+            </div>
+            {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected}/>}
           </section>
           <div className={styles.detailgrid}>
             <section className={styles.conversation} aria-label="Gespräch">

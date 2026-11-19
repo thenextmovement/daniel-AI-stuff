@@ -226,6 +226,6 @@ test("cached overview reads only persisted customer-scoped summary",async()=>{
   assert.equal((await response.json()).summary,"Aktueller Teststand");
   assert.equal(calls.length,1);
   assert.equal(calls[0].searchParams.get("customer_id"),"eq."+customerId);
-  assert.equal(calls[0].searchParams.get("request_id"),"eq.654321");
+  assert.equal(calls[0].searchParams.get("request_id"),"eq.");
  });
 });

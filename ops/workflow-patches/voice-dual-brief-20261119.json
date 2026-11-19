@@ -1,0 +1,213 @@
+{
+  "workflowId": "HvLu7DczcH0vgqy3",
+  "operations": [
+    {
+      "type": "addNode",
+      "node": {
+        "id": "Kundenbrief ausstehend",
+        "name": "Kundenbrief ausstehend",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3300,
+          480
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/pending_voice_customer_brief",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ {p_session: ['complete','single_speaker'].includes($json.status) ? $('Auftrag prüfen').first().json.session_id : null} }}",
+          "options": {
+            "timeout": 20000,
+            "response": {
+              "response": {
+                "fullResponse": true
+              }
+            }
+          }
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 3000
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "Kundenbrief-Kunde",
+        "name": "Kundenbrief Kunde",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3520,
+          480
+        ],
+        "parameters": {
+          "jsCode": "const item=$json.body;if(!item)return [];if(!/^[a-f0-9-]{36}$/i.test(item.customerId||''))throw Error('Kundenbrief: Kundenzuordnung fehlt');return [{json:item}];"
+        }
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "Kundenbrief Quellen",
+        "name": "Kundenbrief Quellen",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3740,
+          480
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/voice_customer_brief_input",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ {p_customer:$json.customerId} }}",
+          "options": {
+            "timeout": 20000
+          }
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 3000
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "Kundenbrief-KI",
+        "name": "Kundenbrief KI",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3960,
+          480
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "openAiApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ {model:'gpt-4.1-mini',messages:[{role:'system',content:$json.instructions},{role:'user',content:JSON.stringify({quellen:$json.sources,bisherigeZusammenfassung:$json.previousSummary})}],max_completion_tokens:900,store:false} }}",
+          "options": {
+            "timeout": 90000
+          }
+        },
+        "credentials": {
+          "openAiApi": {
+            "id": "StsVoyuEzSmCM5jg",
+            "name": "OpenAi account"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 3000
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "Kundenbrief-Ergebnis",
+        "name": "Kundenbrief Ergebnis",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4180,
+          480
+        ],
+        "parameters": {
+          "jsCode": "const source=$('Kundenbrief Quellen').item.json;const choice=$json.choices?.[0];const summary=choice?.message?.content?.trim();if(choice?.finish_reason!=='stop'||!summary||summary.length>16000)throw Error('Kundenbrief: KI-Ergebnis unvollständig');const result={p_customer:source.customerId,p_request:'',p_summary:summary,p_hash:source.hash,p_captured:source.capturedAt};return [{json:result}];"
+        }
+      }
+    },
+    {
+      "type": "addNode",
+      "node": {
+        "id": "Kundenbrief speichern",
+        "name": "Kundenbrief speichern",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          4400,
+          480
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/save_voice_customer_brief",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json }}",
+          "options": {
+            "timeout": 20000
+          }
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 3000
+      }
+    },
+    {
+      "type": "addConnection",
+      "source": "Kundenbrief ausstehend",
+      "target": "Kundenbrief Kunde"
+    },
+    {
+      "type": "addConnection",
+      "source": "Kundenbrief Kunde",
+      "target": "Kundenbrief Quellen"
+    },
+    {
+      "type": "addConnection",
+      "source": "Kundenbrief Quellen",
+      "target": "Kundenbrief KI"
+    },
+    {
+      "type": "addConnection",
+      "source": "Kundenbrief KI",
+      "target": "Kundenbrief Ergebnis"
+    },
+    {
+      "type": "addConnection",
+      "source": "Kundenbrief Ergebnis",
+      "target": "Kundenbrief speichern"
+    },
+    {
+      "type": "addConnection",
+      "source": "Zeitplan",
+      "target": "Kundenbrief ausstehend"
+    },
+    {
+      "type": "addConnection",
+      "source": "In OPS abschließen",
+      "target": "Kundenbrief ausstehend"
+    }
+  ]
+}

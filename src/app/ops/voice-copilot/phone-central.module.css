@@ -788,3 +788,17 @@
 .customerLinkRow { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; margin-top:.7rem; font-size:.875rem; }
 .customerLinkRow > span { min-width:0; overflow-wrap:anywhere; }
 .customerLinkRow button { flex-shrink:0; }
+
+/* Customer identity and links share the top row; narrow screens stack naturally. */
+.callhead { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(280px,1fr); gap:24px; align-items:start; }
+.callhead > :only-child { grid-column:1/-1; }
+.callhead .customerLinks { margin:0; min-width:0; }
+.phonePlus { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border:1px solid var(--line); border-radius:8px; background:white; color:var(--purple); vertical-align:middle; margin-left:8px; cursor:pointer; }
+.phonePlus:focus-visible { outline:2px solid var(--purple); outline-offset:2px; }
+.calltitle p { display:inline; }
+.phoneDialog select { padding:12px; border:1px solid #aebcb4; border-radius:8px; font:inherit; max-width:100%; }
+.phoneDialog label + label { margin-top:16px; }
+@media(max-width:1100px) { .callhead { grid-template-columns:minmax(0,1fr); } }
+
+.phonePlus { position:relative; }
+.phonePlusMark { position:absolute; top:2px; right:2px; background:white; }
