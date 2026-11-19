@@ -1,14 +1,16 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
+import {ArrowUpRight, FileText, PanelsTopLeft, Pencil, Plus, X} from "lucide-react";
 import type {VoiceCustomerContext} from "@/lib/ops/voice-knowledge";
 import type {CustomerLinkKind} from "@/lib/ops/voice-customer-links";
 import styles from "./phone-central.module.css";
-const names={quentin:"Quentin · Trello",inquiry:"Anfrage-Management · Trello",offer:"Angebot"};
+const names={quentin:"Quentin",inquiry:"Anfragen",offer:"Angebot"};
 export function CustomerLinks({customerId,requestId,context}:{customerId:string;requestId:string;context:VoiceCustomerContext|null}){
  const [links,setLinks]=useState<Partial<Record<CustomerLinkKind,string>>>({});
  const [loaded,setLoaded]=useState(false),[failed,setFailed]=useState(false);
  const [kind,setKind]=useState<CustomerLinkKind>("offer"),[url,setUrl]=useState(""),[error,setError]=useState(""),[saving,setSaving]=useState(false);
  const dialog=useRef<HTMLDialogElement>(null);
+ const preview=useRef<HTMLDialogElement>(null);
  useEffect(()=>{
   const c=new AbortController();setLoaded(false);setFailed(false);setLinks({});
   if(!requestId)return ()=>c.abort();
@@ -27,16 +29,25 @@ export function CustomerLinks({customerId,requestId,context}:{customerId:string;
  const boundOfferMatches=!links.offer || links.offer===context?.links?.offer;
  const price=boundOfferMatches?context?.offer?.price:null;
  return <section className={styles.customerLinks} aria-label="Kundenkarte">
- <strong>Kundenkarte</strong>
- {boundOfferMatches&&context?.offer?.thumbnailUrl&&<img className={styles.offerPreview} src={context.offer.thumbnailUrl} alt={"Angebotsvorschau "+context.offer.label} referrerPolicy="no-referrer" onError={e=>{e.currentTarget.hidden=true;}}/>}
- {price&&<p><strong>{new Intl.NumberFormat("de-DE",{style:"currency",currency:price.currency}).format(price.amount)}</strong> {price.taxBasis==="gross"?"inkl. MwSt.":price.taxBasis==="net"?"zzgl. MwSt.":"Angebotswert"}</p>}
+ <div className={styles.customerLinkButtons}>
  {(["quentin","inquiry","offer"] as const).map(k=>{
   const href=links[k]||(k==="offer"?context?.links?.offer:null);
+  const open=()=>{setKind(k);setUrl(href||"");setError("");dialog.current?.showModal();};
+  const missing=!requestId?"Kein Vorgang ausgewählt":!loaded?"Wird geprüft …":failed?"Prüfung derzeit nicht möglich":k==="offer"?"Kein Angebot vorhanden":"Keine Karte verknüpft";
+  const Icon=k==="offer"?FileText:PanelsTopLeft;
   return <div className={styles.customerLinkRow} key={k}>
-   <span>{href?<a href={href} target="_blank" rel="noreferrer">{names[k]} ↗</a>:!requestId?<span>{names[k]}: Kein Vorgang ausgewählt</span>:!loaded?<span>{names[k]}: Wird geprüft …</span>:failed?<span>{names[k]}: Prüfung derzeit nicht möglich</span>:<span>{k==="offer"?"Kein Angebot vorhanden":names[k]+": Keine Karte verknüpft"}</span>}</span>
-   {requestId&&<button className={styles.link} type="button" onClick={()=>{setKind(k);setUrl(href||"");setError("");dialog.current?.showModal();}}>{href?"Ändern":"Hinzufügen"}</button>}
+   {href?<a className={styles.customerLinkButton} href={href} target="_blank" rel="noreferrer"><Icon size={15}/>{names[k]}<ArrowUpRight size={13}/></a>
+    :<button className={styles.customerLinkButton} type="button" disabled={!requestId} title={missing} onClick={open}><Icon size={15}/>{names[k]}<Plus size={13}/></button>}
+   {href&&requestId&&<button className={styles.editLink} type="button" aria-label={names[k]+"-Link ändern"} onClick={open}><Pencil size={12}/></button>}
   </div>;
  })}
+ {price?<span className={styles.offerValue}><strong>{new Intl.NumberFormat("de-DE",{style:"currency",currency:price.currency}).format(price.amount)}</strong><small>{price.taxBasis==="gross"?"inkl. MwSt.":price.taxBasis==="net"?"zzgl. MwSt.":"Angebotswert"}</small></span>:loaded&&!links.offer&&!context?.links?.offer&&<small className={styles.muted}>Kein Angebot vorhanden</small>}
+ </div>
+ {boundOfferMatches&&context?.offer?.thumbnailUrl&&<div className={styles.offerPeek}>
+  <button type="button" className={styles.offerPeekButton} aria-label="Angebotsbild vergrößern" onClick={()=>preview.current?.showModal()}><img src={context.offer.thumbnailUrl} alt={"Angebotsvorschau "+context.offer.label} referrerPolicy="no-referrer"/></button>
+  <div className={styles.offerHover} aria-hidden="true"><img src={context.offer.thumbnailUrl} alt="" referrerPolicy="no-referrer"/></div>
+  <dialog ref={preview} className={styles.offerDialog} onClick={e=>{if(e.target===e.currentTarget)preview.current?.close();}}><button type="button" autoFocus aria-label="Vorschau schließen" className={styles.previewClose} onClick={()=>preview.current?.close()}><X size={20}/></button><img src={context.offer.thumbnailUrl} alt={"Angebot "+context.offer.label} referrerPolicy="no-referrer"/></dialog>
+ </div>}
  <dialog ref={dialog} className={styles.phoneDialog}><form onSubmit={save}><h3>{names[kind]} verknüpfen</h3>
  <label>Link<input type="url" required value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://"/></label>
  <p>Die Verknüpfung wird beim ausgewählten Kundenvorgang gespeichert.</p>

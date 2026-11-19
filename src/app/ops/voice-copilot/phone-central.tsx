@@ -245,9 +245,80 @@ export function PhoneCentral(props: Props) {
       </header>
       <div className={styles.titlebar}>
         <h1>Telefonzentrale</h1>
-        <span className={styles.spacer} />
-        <PhoneAccount value={props.operatorName} onChange={props.onOperatorNameChange} busy={busy} onTeam={setPhoneTeam} onIdentity={setPhoneIdentity} onManage={()=>{setPhoneAdminOpen(true);if(settingsRef.current)settingsRef.current.open=true;window.setTimeout(()=>document.getElementById("voice-phone-team")?.scrollIntoView({block:"start"}),0);}}/>
+          <section className={styles.callhead}>
+            <div>
+            <div className={styles.calltitle}>
+              <span className={styles.avatar}>
+                {customer ? initials(name) : <Phone size={23} />}
+              </span>
+              <div>
+                <h2>{browserPhone.call && !customer ? browserPhone.call.phone : name}</h2>
+                <p>
+                  {customer
+                    ? [
+                        customer.displayName,
+                        phone || "Rufnummer fehlt",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : browserPhone.call ? browserPhone.call.customerId?"Kundenanruf · kein Vorgang geöffnet":"Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}
+                </p>
+                {briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
+                  setChosenPhone({customerId:briefCustomerId,phone:saved});
+                  setActiveContact(old=>old?.customerId===briefCustomerId?{...old,phone:old.phone||saved,phoneNumbers:numbers}:old);
+                  setResults(old=>old.map(row=>row.customerId===briefCustomerId?{...row,phone:row.phone||saved,phoneNumbers:numbers}:row));
+                }}/>}
+                {(activeContact?.phoneNumbers?.length || 0)>1 && <select aria-label="Rufnummer auswählen" disabled={busy} value={phone} onChange={e=>setChosenPhone({customerId:briefCustomerId!,phone:e.target.value})}>
+                  {activeContact!.phoneNumbers!.map(number=><option key={number} value={number}>{number}</option>)}
+                </select>}
+              </div>
+            </div>
+            {activeContact || selected ? (
+              <span className={styles.badge}>
+                {contextLoading ? "Gesprächsübersicht wird geladen …" : activeContact && !activeContact.requestId ? "Kontakt ohne verknüpften Vorgang" : "Kunde ausgewählt"}
+                {selected?.offer ? " · Angebot " + (selected.offer.offerNumber || selected.offer.label) : ""}
+              </span>
+            ) : null}
+            <div className={styles.actions}>
+              {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
+                <PlacetelCallButton key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
+                  requestId={briefRequestId} dialNumber={dialPhone} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} />}
+              {customer && !readySession && props.workspace !== "prepare" && (props.workspace === "assist" ? (
+                <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
+                  disabled={busy || contextLoading || !selected}>
+                  <Headphones size={17}/> Einwilligung bestätigen und Begleitung starten
+                </button>
+              ) : (
+                <button type="button" className={styles.button} disabled={busy || contextLoading || !selected}
+                  onClick={() => props.onWorkspaceChange("assist")}><Headphones size={17}/> Gespräch begleiten</button>
+              ))}
+              {canDial && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
+                disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
+              {props.workspace === "prepare" && briefCustomerId && briefRequestId && dialPhone ? null : customer && dialPhone && (!busy || assistedDialReady) ? (
+                <button type="button" className={assistedDialReady ? styles.button + " " + styles.primary : styles.button} onClick={event => openPhoneApp(event, dialPhone)}>
+                  <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "In Telefon-App anrufen"}
+                </button>
+              ) : customer ? (
+                <button className={styles.button + " " + styles.primary} disabled>
+                  {props.workspace === "assist" && dialPhone ? (readySession ? "Anruf gestartet" : "Gesprächsbegleitung vorbereiten") : busy ? "Gespräch aktiv" : "Rufnummer fehlt"}
+                </button>
+              ) : null}
+              <button
+                className={styles.button}
+                disabled={busy || contextLoading || Boolean(activeContact && !selected)}
+                onClick={() => props.onWorkspaceChange("live")}
+              >
+                <Bot size={18} />
+                KI-Sprachtest
+              </button>
+
+            </div>
+            </div>
+            {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected}/>}
+            <div className={styles.operatorBlock}>        <PhoneAccount value={props.operatorName} onChange={props.onOperatorNameChange} busy={busy} onTeam={setPhoneTeam} onIdentity={setPhoneIdentity} onManage={()=>{setPhoneAdminOpen(true);if(settingsRef.current)settingsRef.current.open=true;window.setTimeout(()=>document.getElementById("voice-phone-team")?.scrollIntoView({block:"start"}),0);}}/>
         <span className={styles.connectionState}><span />{mobileAudio ? "Mein Handy" : browserPhone.registered ? "Browser verbunden" : props.busy ? "Begleitung aktiv" : "Telefon-App"}</span>
+</div>
+          </section>
       </div>
       {phoneIdentity?.browserCallingAvailable&&phoneIdentity.mobileCallingAvailable?<label className={styles.outgoingRoute}>Anrufen über
         <select aria-label="Anrufen über" className={styles.device} value={browserPhone.transfer?.role==="recipient"?browserPhone.transfer.transport||"browser":browserPhone.call?.transport||outgoingRoute} disabled={busy} onChange={e=>setOutgoingRoute(e.target.value as "browser"|"mobile")}>
@@ -383,77 +454,6 @@ export function PhoneCentral(props: Props) {
           </section>
         </aside>
         <div>
-          <section className={styles.callhead}>
-            <div>
-            <div className={styles.calltitle}>
-              <span className={styles.avatar}>
-                {customer ? initials(name) : <Phone size={23} />}
-              </span>
-              <div>
-                <h2>{browserPhone.call && !customer ? browserPhone.call.phone : name}</h2>
-                <p>
-                  {customer
-                    ? [
-                        customer.displayName,
-                        phone || "Rufnummer fehlt",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")
-                    : browserPhone.call ? browserPhone.call.customerId?"Kundenanruf · kein Vorgang geöffnet":"Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}
-                </p>
-                {briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
-                  setChosenPhone({customerId:briefCustomerId,phone:saved});
-                  setActiveContact(old=>old?.customerId===briefCustomerId?{...old,phone:old.phone||saved,phoneNumbers:numbers}:old);
-                  setResults(old=>old.map(row=>row.customerId===briefCustomerId?{...row,phone:row.phone||saved,phoneNumbers:numbers}:row));
-                }}/>}
-                {(activeContact?.phoneNumbers?.length || 0)>1 && <select aria-label="Rufnummer auswählen" disabled={busy} value={phone} onChange={e=>setChosenPhone({customerId:briefCustomerId!,phone:e.target.value})}>
-                  {activeContact!.phoneNumbers!.map(number=><option key={number} value={number}>{number}</option>)}
-                </select>}
-              </div>
-            </div>
-            {activeContact || selected ? (
-              <span className={styles.badge}>
-                {contextLoading ? "Gesprächsübersicht wird geladen …" : activeContact && !activeContact.requestId ? "Kontakt ohne verknüpften Vorgang" : "Kunde ausgewählt"}
-                {selected?.offer ? " · Angebot " + (selected.offer.offerNumber || selected.offer.label) : ""}
-              </span>
-            ) : null}
-            <div className={styles.actions}>
-              {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
-                <PlacetelCallButton key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
-                  requestId={briefRequestId} dialNumber={dialPhone} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} />}
-              {customer && !readySession && props.workspace !== "prepare" && (props.workspace === "assist" ? (
-                <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
-                  disabled={busy || contextLoading || !selected}>
-                  <Headphones size={17}/> Einwilligung bestätigen und Begleitung starten
-                </button>
-              ) : (
-                <button type="button" className={styles.button} disabled={busy || contextLoading || !selected}
-                  onClick={() => props.onWorkspaceChange("assist")}><Headphones size={17}/> Gespräch begleiten</button>
-              ))}
-              {canDial && activeContact && dialPhone && !busy ? <button type="button" className={styles.button+" "+styles.primary}
-                disabled={busy||!endpointReady} onClick={()=>void browserPhone.dial({customerId:activeContact.customerId,requestId:activeContact.requestId},outgoingRoute)}>{outgoingRoute==="mobile"?"Über mein Handy anrufen":"Im Browser anrufen"}</button>:null}
-              {props.workspace === "prepare" && briefCustomerId && briefRequestId && dialPhone ? null : customer && dialPhone && (!busy || assistedDialReady) ? (
-                <button type="button" className={assistedDialReady ? styles.button + " " + styles.primary : styles.button} onClick={event => openPhoneApp(event, dialPhone)}>
-                  <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "In Telefon-App anrufen"}
-                </button>
-              ) : customer ? (
-                <button className={styles.button + " " + styles.primary} disabled>
-                  {props.workspace === "assist" && dialPhone ? (readySession ? "Anruf gestartet" : "Gesprächsbegleitung vorbereiten") : busy ? "Gespräch aktiv" : "Rufnummer fehlt"}
-                </button>
-              ) : null}
-              <button
-                className={styles.button}
-                disabled={busy || contextLoading || Boolean(activeContact && !selected)}
-                onClick={() => props.onWorkspaceChange("live")}
-              >
-                <Bot size={18} />
-                KI-Sprachtest
-              </button>
-
-            </div>
-            </div>
-            {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected}/>}
-          </section>
           <div className={styles.detailgrid}>
             <section className={styles.conversation} aria-label="Gespräch">
               {phoneIdentity?.aiHandoffAvailable&&phoneIdentity.profile&&!browserPhone.call?<PhoneAiCallsPanel phone={browserPhone} onTakeover={id=>{

@@ -120,7 +120,7 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
     {summaryTab==="overall" ? <>
       <strong>Gesamtzusammenfassung</strong>
       {summaryFailed && !summary ? <p>Zusammenfassung derzeit nicht verfügbar. <button className={styles.link} onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>
-        : <p>{summary ?? "KI-Zusammenfassung wird erstellt …"}</p>}
+        : summary ? <ul className={styles.briefBullets}>{summary.split(/\n+/).map(line=>line.replace(/^\s*[-•*]\s*/, "").trim()).filter(Boolean).map((line,i)=><li key={i}>{line}</li>)}</ul> : <p>KI-Zusammenfassung wird erstellt …</p>}
       {summary && summaryLoading && <small>Gespeicherter Stand · Aktualisierung läuft …</small>}
       {summary && summaryFailed && <small>Gespeicherter Stand · Aktualisierung derzeit nicht verfügbar.</small>}
     </> : <>

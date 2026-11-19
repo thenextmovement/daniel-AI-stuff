@@ -4,6 +4,7 @@ import {getCountries,getCountryCallingCode,type CountryCode} from "libphonenumbe
 import {useRef,useState} from "react";
 import styles from "./phone-central.module.css";
 const countryNames=new Intl.DisplayNames(["de"],{type:"region"});
+const flag=(country:string)=>String.fromCodePoint(...[...country].map(c=>127397+c.charCodeAt(0)));
 const priority=["DE","AT","CH"];
 const eu=new Set("BE BG CY CZ DK EE ES FI FR GR HR HU IE IT LT LU LV MT NL PL PT RO SE SI SK".split(" "));
 const countries=getCountries().sort((a,b)=>{
@@ -24,9 +25,9 @@ export function CustomerPhoneEditor({customerId,disabled,onSaved}:{customerId:st
  }
  return <><button type="button" className={styles.phonePlus} title="Nummer hinzufügen" aria-label="Nummer hinzufügen" disabled={disabled} onClick={()=>{setError("");dialog.current?.showModal();}}><Phone size={17}/><Plus size={10} className={styles.phonePlusMark}/></button>
  <dialog ref={dialog} className={styles.phoneDialog}><form onSubmit={save}><h3>Nummer hinzufügen</h3>
- <label>Land<select value={country} onChange={e=>setCountry(e.target.value as CountryCode)}>{countries.map(c=><option key={c} value={c}>{countryNames.of(c)} (+{getCountryCallingCode(c)})</option>)}</select></label>
+ <label>Land<select value={country} onChange={e=>setCountry(e.target.value as CountryCode)}>{countries.map(c=><option key={c} value={c}>{flag(c)} {countryNames.of(c)} (+{getCountryCallingCode(c)})</option>)}</select></label>
  <label>Rufnummer<input autoFocus type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder={country==="DE"?"0151 23456789":"Rufnummer oder +Ländervorwahl"} required/></label>
- <p>Die zusätzliche Nummer wird diesem Kunden zugeordnet. Wir prüfen das Nummernformat und speichern sie mit internationaler Ländervorwahl. Eine eingegebene +Vorwahl hat Vorrang vor dem ausgewählten Land.</p>
+ <p>Das Rufnummernformat wird automatisch angepasst. Gib die vollständige Nummer ein – bei Deutschland wird aus 01590… automatisch +49 1590…. Eine internationale +Vorwahl wird übernommen.</p>
  {error&&<p role="alert">{error}</p>}
  <div className={styles.actions}><button type="button" disabled={saving} onClick={()=>dialog.current?.close()}>Abbrechen</button>
  <button type="submit" disabled={saving}>{saving?"Speichert …":"Nummer speichern"}</button></div>
