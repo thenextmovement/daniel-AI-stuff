@@ -599,6 +599,7 @@ class CloudTests(unittest.TestCase):
   Jobs(self.db,store,t).publish(p)
   self.assertEqual(self.db.get(p['id'])['status'],'ready')
   self.assertEqual(t.data['idList'],READY)
+  self.assertEqual(t.data['pos'],'bottom')
   self.assertIn('Mindestbreite (manuell): 110,50 cm',t.comments[0])
   self.assertEqual(len(t.uploads),4)
   self.assertIn('110,50 cm',fitz.open(stream=t.uploads[0][1],filetype='pdf')[0].get_text())
@@ -607,7 +608,9 @@ class CloudTests(unittest.TestCase):
   first_ids=[a['id'] for a in t.data['attachments']]
   self.assertEqual(t.uploads[int(t.data['idAttachmentCover'])-1][0],'technische_zeichnung.jpg')
   t.data['attachments'].append({'id':'original'})
+  t.data['pos']=12345
   Jobs(self.db,store,t).publish(self.db.get(p['id']))
+  self.assertEqual(t.data['pos'],'bottom')
   ids=[a['id'] for a in t.data['attachments']]
   self.assertIn(t.data['idAttachmentCover'],ids[5:])
   self.assertEqual(t.uploads[int(t.data['idAttachmentCover'])-1][0],'technische_zeichnung.jpg')

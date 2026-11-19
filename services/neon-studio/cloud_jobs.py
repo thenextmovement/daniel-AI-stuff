@@ -434,7 +434,7 @@ class Jobs:
                 if len(records)==1 and spec.get('auto_minimum_mm'):
                     minimum_note+='\nKleinste geprüfte Breite mit 6-mm-Neonflex: '+decimal(spec['auto_minimum_mm']/10)+' cm.'
                 self.t.comment_once(p['copy'],marker+'\n'+('\n'.join(changes)+'\n' if changes else '')+('\n'.join(design_notes)+'\n' if design_notes else '')+f'{len(files)} Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
-                self.t.call('PUT',f"cards/{p['copy']}",json={'name':copy_title(p['snapshot']['name']),'idList':READY})
+                self.t.call('PUT',f"cards/{p['copy']}",json={'name':copy_title(p['snapshot']['name']),'idList':READY,'pos':'bottom'})
                 checked=self.t.card(p['copy'])
                 if checked['idList']!=READY or checked['name']!=copy_title(p['snapshot']['name']):raise Review('Zielliste oder Abschlusstitel nicht bestätigt.')
                 return self.db.save(p['id'],{'published_revision':revision,'generated_attachments':new,'pending_attachments':[],'cleanup_pending':[],'quotes':quotes,'error':''},status='ready')
