@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { Phone } from "lucide-react";
 import styles from "./phone-central.module.css";
 
-export function PlacetelCallButton({ customerId, requestId, disabled, onCallChange, onNoteTarget }: {
-  customerId: string; requestId: string; disabled: boolean; onCallChange: () => void; onNoteTarget: (callId:string) => void;
+export function PlacetelCallButton({ customerId, requestId, dialNumber, disabled, onCallChange, onNoteTarget }: {
+  customerId: string; requestId: string; dialNumber?:string; disabled: boolean; onCallChange: () => void; onNoteTarget: (callId:string) => void;
 }) {
   const key = useRef<string | null>(null);
   const sending = useRef(false);
@@ -75,7 +75,7 @@ export function PlacetelCallButton({ customerId, requestId, disabled, onCallChan
     try {
       const response = await fetch("/api/ops/voice-phone/placetel", {
         method:"POST", headers:{"content-type":"application/json"},
-        body:JSON.stringify({mode:"softphone", requestKey:key.current, customerId, requestId, recordingConsent:true}),
+        body:JSON.stringify({mode:"softphone", requestKey:key.current, customerId, requestId, phone:dialNumber, recordingConsent:true}),
         signal:AbortSignal.timeout(30000),
       });
       const data = await response.json();

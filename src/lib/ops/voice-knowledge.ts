@@ -784,7 +784,7 @@ function mergeVoiceOutlookMessages(messages: VoiceCustomerContext["outlook"]) {
     });
 }
 
-export async function getVoiceCustomerContext(requestIdInput: unknown, options?: { customerId?: string | null; mailQuestion?: string }): Promise<VoiceCustomerContext> {
+export async function getVoiceCustomerContext(requestIdInput: unknown, options?: { customerId?: string | null; mailQuestion?: string; overview?: boolean }): Promise<VoiceCustomerContext> {
   const requestId = requiredText(requestIdInput, "Request-ID", 160, 3);
   const record = await loadVoiceContextRecord(requestId, options?.customerId);
   if (record.requestId !== requestId) {
@@ -793,10 +793,10 @@ export async function getVoiceCustomerContext(requestIdInput: unknown, options?:
   const boundOffer = await resolveVoiceOffer(record);
   const mirrorOutlook = selectVoiceMirrorOutlook(record);
   const [archiveRows, liveOutlook] = await Promise.all([
-    supabaseRpc<Array<{ direction: string; subject: string; preview: string; occurred_at: string }>>(
+    options?.overview ? [] : supabaseRpc<Array<{ direction: string; subject: string; preview: string; occurred_at: string }>>(
       "voice_customer_mail_evidence", { p_customer_id: record.masterCustomerId, p_question: options?.mailQuestion || "" },
     ).catch(() => []),
-    fetchOutlookGraphEvidenceForBoundCustomer({
+    options?.overview ? {evidence: [], diagnostic: {ok: true}} : fetchOutlookGraphEvidenceForBoundCustomer({
       requestId: record.requestId,
       customerEmail: record.email || null,
       offerNumber: boundOffer.offer?.offerNumber || null,
@@ -822,7 +822,7 @@ export async function getVoiceCustomerContext(requestIdInput: unknown, options?:
   let recentCalls: NonNullable<VoiceCustomerContext["recentCalls"]> = [];
   let historyStatus: VoiceCustomerContext["historyStatus"] = "ok";
   try {
-    const history = await listVoiceHistory(requestId);
+    const history = options?.overview ? {entries:[]} : await listVoiceHistory(requestId);
     recentCalls = await Promise.all(history.entries.slice(0, 3).map(async (entry) => {
       const transcript = await getVoiceTranscript(entry.id, 0, true);
       return { id: entry.id, startedAt: entry.startedAt, summary: entry.summary,

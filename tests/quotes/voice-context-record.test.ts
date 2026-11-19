@@ -202,3 +202,30 @@ test("production context API retains authentication before any customer data loo
     assert.equal(calls.length, 0);
   });
 });
+
+test("overview context avoids live mail and transcript dependencies", async () => {
+  await withDb(async (_f,calls,setReply)=>{
+    let expensive=0;
+    setReply(url=>{
+      if (/voice_customer_mail_evidence|voice_call_sessions|voice_transcript_segments/.test(url.pathname)) {expensive++;return Response.json([]);}
+    });
+    const {GET}=await import("../../src/app/api/ops/voice-copilot/context/route");
+    const response=await GET(new NextRequest("http://localhost/api/ops/voice-copilot/context?overview=1&requestId=654321&customerId="+customerId,{headers:{host:"localhost"}}));
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).context.customer.displayName,"Testkontakt");
+    assert.equal(expensive,0,"overview must not wait for AI evidence enrichment");
+  });
+});
+
+test("cached overview reads only persisted customer-scoped summary",async()=>{
+ await withDb(async(_f,calls,setReply)=>{
+  setReply(url=>url.pathname.endsWith("voice_customer_briefs")?Response.json([{summary:"Aktueller Teststand",source_hash:"abc",updated_at:"2026-11-19T12:00:00Z"}]):undefined);
+  const {GET}=await import("../../src/app/api/ops/voice-copilot/overview/route");
+  const response=await GET(new NextRequest("http://localhost/api/ops/voice-copilot/overview?part=cached&requestId=654321&customerId="+customerId,{headers:{host:"localhost"}}));
+  assert.equal(response.status,200);
+  assert.equal((await response.json()).summary,"Aktueller Teststand");
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].searchParams.get("customer_id"),"eq."+customerId);
+  assert.equal(calls[0].searchParams.get("request_id"),"eq.654321");
+ });
+});

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeVoiceCopilotApi, voiceCopilotApiFailure } from "@/lib/ops/voice-copilot-api";
 import { requireVoiceUuid } from "@/lib/ops/voice-platform-contract";
-import { supabaseRequest } from "@/lib/quotes/supabase-rest";
+import { supabaseRequest, supabaseRpc } from "@/lib/quotes/supabase-rest";
 import { currentEmailReply } from "@/lib/ops/voice-email-reply";
 import { listCustomerOpsNotes } from "@/lib/ops/customer-records";
 import { loadVoiceContextRecord } from "@/lib/ops/voice-context-record";
@@ -46,6 +46,13 @@ export async function GET(request:NextRequest) {
     const id=requireVoiceUuid(params.get("customerId"),"Kunde");
     const ref=params.get("requestId") || "";
     const customer={customer_id:"eq."+id};
+    const capturedAt=new Date().toISOString();
+    const persisted=async()=> (await supabaseRequest<Array<{summary:string;source_hash:string;updated_at:string}>>("voice_customer_briefs",
+      {signal:AbortSignal.timeout(4000)},{...customer,request_id:"eq."+ref,select:"summary,source_hash,updated_at",limit:1}))[0];
+    if(params.get("part")==="cached") {
+      const saved=await persisted();
+      return NextResponse.json({summary:saved?.summary??null,updatedAt:saved?.updated_at??null},{headers:{"cache-control":"no-store"}});
+    }
     if (params.get("part")==="counts") {
       const [email,phone,notes]=await Promise.all([
         count("voice_customer_events",{...customer,kind:"in.(inbound,outbound)"}).catch(()=>null),
@@ -74,12 +81,16 @@ export async function GET(request:NextRequest) {
     if (!sources.length && !notes.length && !record?.request.description && !record?.request.title)
       return NextResponse.json({summary:"Noch keine Informationen gespeichert."});
     const hash=createHash("sha256").update(id+"\n"+ref+"\n"+input).digest("hex");
+    const saved=await persisted();
+    if(saved?.source_hash===hash)return NextResponse.json({summary:saved.summary,updatedAt:saved.updated_at},{headers:{"cache-control":"no-store"}});
     let summary=cache.get(hash);
     if (!summary) {
       if (cache.size>=128) cache.delete(cache.keys().next().value!);
       summary=synthesize(input).catch(error=>{cache.delete(hash);throw error;});
       cache.set(hash,summary);
     }
-    return NextResponse.json({summary:await summary});
+    const text=await summary;
+    await supabaseRpc("save_voice_customer_brief",{p_customer:id,p_request:ref,p_summary:text,p_hash:hash,p_captured:capturedAt});
+    return NextResponse.json({summary:text,updatedAt:new Date().toISOString()},{headers:{"cache-control":"no-store"}});
   } catch(error) {return voiceCopilotApiFailure(error,"context-read");}
 }

@@ -174,3 +174,12 @@ test("bound customer lookup rejects filter injection and never returns another i
   assert.deepEqual((await listVoiceDirectory("",0,id)).results,[]);
  });
 });
+
+test("additional numbers find a customer without a primary number", async () => {
+  await fixture([{...contact("one", null), additional_phones:["+49154312345678"]}], async requests => {
+    const result=await listVoiceDirectory("0154312345678");
+    assert.equal(result.results[0]?.phone,"+49154312345678");
+    assert.deepEqual(result.results[0]?.phoneNumbers,["+49154312345678"]);
+    assert.match(requests[0].searchParams.get("or")!,/additional_phones.cs/);
+  });
+});

@@ -9,10 +9,12 @@ export type VoiceDirectoryContact = {
   company: string | null;
   email: string | null;
   phone: string | null;
+  phoneNumbers?: string[];
   requestTitle: string | null;
   requestCreatedAt?: string | null;
 };
 type DirectoryRow = {
+  additional_phones?: string[];
   id: string; request_id: string | null; name: string | null;
   first_name: string | null; last_name: string | null;
   company: string | null; company_name: string | null;
@@ -49,7 +51,7 @@ export async function listVoiceDirectory(query: string, offset = 0, customerId: 
     // wildcards cannot turn e.g. 123456 into a match for 1293456.
     const national = needle.startsWith("49") ? needle.slice(2) : needle;
     const pattern = filterValue("*" + national.split("").join("*") + "*");
-    filter = `(phone.ilike.${pattern},original_phone.ilike.${pattern})`;
+    filter = `(phone.ilike.${pattern},original_phone.ilike.${pattern},additional_phones.cs.{+${needle}})`;
   } else if (term) {
     const pattern = filterValue("*" + term.replace(/[%*_]/g, " ").replace(/\s+/g, " ").trim() + "*");
     if (!term.replace(/[%*_\s]/g, "")) return { results: [], nextOffset: null };
@@ -59,7 +61,7 @@ export async function listVoiceDirectory(query: string, offset = 0, customerId: 
   const rows = await supabaseRequest<DirectoryRow[]>("voice_customer_directory", {
     signal: AbortSignal.timeout(8000),
   }, {
-    select: "id,request_id,name,first_name,last_name,company,company_name,email,phone,original_phone,request_title,request_created_at",
+    select: "id,request_id,name,first_name,last_name,company,company_name,email,phone,original_phone,request_title,request_created_at,additional_phones",
     ...(boundCustomer ? {id:"eq."+boundCustomer} : {}),
     ...(filter ? { or: filter } : {}),
     order: "request_created_at.desc.nullslast,name.asc.nullslast,id.asc",
@@ -69,14 +71,15 @@ export async function listVoiceDirectory(query: string, offset = 0, customerId: 
   if (!Array.isArray(rows)) throw new Error("Invalid customer directory response");
   const page = rows.slice(0, PAGE_SIZE);
   return {
-    results: page.filter(row => (!boundCustomer || row.id===boundCustomer) && (!needle || [row.phone, row.original_phone].some(value => value && directoryPhoneDigits(value).includes(needle))))
+    results: page.filter(row => (!boundCustomer || row.id===boundCustomer) && (!needle || [row.phone, row.original_phone,...(row.additional_phones || [])].some(value => value && directoryPhoneDigits(value).includes(needle))))
       .map(row => ({
         customerId: row.id,
         requestId: text(row.request_id),
         displayName: text(row.name) || text([row.first_name, row.last_name].filter(Boolean).join(" ")),
         company: text(row.company) || text(row.company_name),
         email: text(row.email),
-        phone: text(row.phone),
+        phone: text(row.phone) || row.additional_phones?.[0] || null,
+        phoneNumbers: [...new Set([text(row.phone),...(row.additional_phones || [])].filter((x): x is string => Boolean(x)))],
         requestTitle: text(row.request_title),
         requestCreatedAt: row.request_created_at,
       })),

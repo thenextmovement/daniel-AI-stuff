@@ -4,6 +4,7 @@ import type {VoiceCustomerContext} from "@/lib/ops/voice-knowledge";
 import {currentEmailReply} from "@/lib/ops/voice-email-reply";
 import styles from "./phone-central.module.css";
 
+import {CustomerLinks} from "./customer-links";
 import { VoiceHistoryPanel } from "./voice-history-panel";
 
 import type { CustomerOpsNote } from "@/lib/ops/customer-records";
@@ -61,11 +62,13 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
       if (!result.ok) throw Error();
       return result.json();
     };
+    let fresh=false;
+    void read("cached").then(data=>{if(!controller.signal.aborted && !fresh && data.summary)setSummary(data.summary);}).catch(()=>{});
     setSummaryFailed(false);
     setSummaryLoading(true);
     void read("counts").then(data=>{if(!controller.signal.aborted)setCounts(data);})
       .catch(()=>{if(!controller.signal.aborted)setCounts({email:null,phone:null,notes:null});});
-    void read("summary").then(data=>{if(!controller.signal.aborted)setSummary(data.summary);})
+    void read("summary").then(data=>{if(!controller.signal.aborted){fresh=true;setSummary(data.summary);}})
       .catch(()=>{if(!controller.signal.aborted)setSummaryFailed(true);})
       .finally(()=>{if(!controller.signal.aborted)setSummaryLoading(false);});
     return ()=>controller.abort();
@@ -101,13 +104,14 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
     <header className={styles.overviewHeader}>
       <div><p className={styles.label}>Vor dem Anruf</p><h3>Auf einen Blick</h3></div>
       <button type="button" className={styles.link} disabled={summaryLoading || loading} onClick={()=>{setOffset(0);setRetry(n=>n+1);}}>{summaryLoading ? "Wird aktualisiert …" : "Aktualisieren"}</button>
-      {context?.offer?.thumbnailUrl && <img key={context.offer.thumbnailUrl} className={styles.offerThumb} src={context.offer.thumbnailUrl}
-        alt={"Vorschau "+context.offer.label} referrerPolicy="no-referrer" onError={event=>{event.currentTarget.hidden=true;}}/>}
     </header>
     <section className={styles.currentBrief} aria-label="Aktueller Kenntnisstand"><strong>Aktueller Kenntnisstand</strong>
-      {summaryFailed ? <p>Zusammenfassung derzeit nicht verfügbar. <button className={styles.link} onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>
+      {summaryFailed && !summary ? <p>Zusammenfassung derzeit nicht verfügbar. <button className={styles.link} onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>
         : <p>{summary ?? "Zusammenfassung wird erstellt …"}</p>}
+      {summary && summaryLoading && <small>Gespeicherter Stand · Aktualisierung läuft …</small>}
+      {summary && summaryFailed && <small>Gespeicherter Stand · Aktualisierung derzeit nicht verfügbar.</small>}
     </section>
+    <CustomerLinks customerId={id} requestId={requestId} context={context}/>
     {context && <p className={styles.small}>{[context.customer.email,context.customer.phone].filter(Boolean).join(" · ")}</p>}
     {req ? <div className={styles.caseFacts}>
       <strong>{req.title || "Anfrage"} · {requestId.slice(0,8)}</strong>

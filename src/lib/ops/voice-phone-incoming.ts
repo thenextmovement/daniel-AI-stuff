@@ -12,7 +12,7 @@ export function incomingPhoneEnabled(){return isPhoneEnabled()&&process.env.VOIC
 const targets=()=>String(process.env.VOICE_PHONE_INBOUND_NUMBERS||"").split(",").map(x=>x.trim()).filter(x=>/^[+][1-9][0-9]{6,14}$/.test(x));
 function invalid(code:string,status=422):never{throw new QuoteValidationError("Der eingehende Anruf konnte nicht verarbeitet werden.",[code],status);}
 export function exactIncomingCustomer(phone:string,results:VoiceDirectoryContact[],nextOffset:number|null){
- const exact=results.filter(x=>x.phone&&directoryPhoneDigits(x.phone)===directoryPhoneDigits(phone));
+ const exact=results.filter(x=>[x.phone,...(x.phoneNumbers || [])].some(number=>number&&directoryPhoneDigits(number)===directoryPhoneDigits(phone)));
  return nextOffset===null&&exact.length===1?exact[0]:null;
 }
 export async function getIncomingPhone(id:unknown){

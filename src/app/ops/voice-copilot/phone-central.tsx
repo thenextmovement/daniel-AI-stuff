@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNo
 import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
+import {CustomerPhoneEditor} from "./customer-phone-editor";
 import { CallNotes } from "./call-notes";
 import { PlacetelCallButton } from "./placetel-call-button";
 import { RecentCalls } from "./recent-calls";
@@ -142,7 +143,7 @@ export function PhoneCentral(props: Props) {
       return;
     }
     setContextLoading(true);
-    void fetch("/api/ops/voice-copilot/context?requestId="+encodeURIComponent(receivedCall.requestId)+"&customerId="+encodeURIComponent(receivedCall.customerId),
+    void fetch("/api/ops/voice-copilot/context?overview=1&requestId="+encodeURIComponent(receivedCall.requestId)+"&customerId="+encodeURIComponent(receivedCall.customerId),
       {cache:"no-store",signal:AbortSignal.timeout(20000)})
       .then(response=>readPhoneCentralResponse<{context:VoiceCustomerContext}>(response,"Die Kundenübersicht ist gerade nicht erreichbar."))
       .then(data=>{
@@ -168,7 +169,7 @@ export function PhoneCentral(props: Props) {
     if (!contact.requestId) return;
     try {
       const response = await fetch(
-        "/api/ops/voice-copilot/context?requestId=" + encodeURIComponent(contact.requestId) + "&customerId=" + encodeURIComponent(contact.customerId),
+        "/api/ops/voice-copilot/context?overview=1&requestId=" + encodeURIComponent(contact.requestId) + "&customerId=" + encodeURIComponent(contact.customerId),
         { cache: "no-store", signal: AbortSignal.timeout(20000) },
       );
       const data = await readPhoneCentralResponse<{context: VoiceCustomerContext}>(response,
@@ -195,7 +196,8 @@ export function PhoneCentral(props: Props) {
   }
   const customer = activeContact || selected?.customer;
   const name = customer?.company || customer?.displayName || "Dein nächstes Gespräch";
-  const phone = customer?.phone || "";
+  const [chosenPhone,setChosenPhone]=useState<{customerId:string;phone:string}|null>(null);
+  const phone = chosenPhone && chosenPhone.customerId===briefCustomerId ? chosenPhone.phone : customer?.phone || "";
   const dialPhone = dialPhoneNumber(phone);
   const freeDialPhone = dialPhoneNumber(number);
   const lastDialAt = useRef(-Infinity);
@@ -397,6 +399,14 @@ export function PhoneCentral(props: Props) {
                         .join(" · ")
                     : browserPhone.call ? browserPhone.call.customerId?"Kundenanruf · kein Vorgang geöffnet":"Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}
                 </p>
+                {briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
+                  setChosenPhone({customerId:briefCustomerId,phone:saved});
+                  setActiveContact(old=>old?.customerId===briefCustomerId?{...old,phone:old.phone||saved,phoneNumbers:numbers}:old);
+                  setResults(old=>old.map(row=>row.customerId===briefCustomerId?{...row,phone:row.phone||saved,phoneNumbers:numbers}:row));
+                }}/>}
+                {(activeContact?.phoneNumbers?.length || 0)>1 && <select aria-label="Rufnummer auswählen" disabled={busy} value={phone} onChange={e=>setChosenPhone({customerId:briefCustomerId!,phone:e.target.value})}>
+                  {activeContact!.phoneNumbers!.map(number=><option key={number} value={number}>{number}</option>)}
+                </select>}
               </div>
             </div>
             {activeContact || selected ? (
@@ -408,7 +418,7 @@ export function PhoneCentral(props: Props) {
             <div className={styles.actions}>
               {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
                 <PlacetelCallButton key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
-                  requestId={briefRequestId} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} />}
+                  requestId={briefRequestId} dialNumber={dialPhone} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} />}
               {customer && !readySession && props.workspace !== "prepare" && (props.workspace === "assist" ? (
                 <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
                   disabled={busy || contextLoading || !selected}>

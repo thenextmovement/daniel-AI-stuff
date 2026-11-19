@@ -776,3 +776,15 @@
 .recentCall { display: grid; gap: .18rem; padding: .65rem .25rem; width: 100%; border-bottom: 1px solid #dce4df; text-align: left; }
 .recentCall small { color: #52605a; }
 .recentCall:hover { background: #f1f6f3; }
+
+.phoneDialog{border:1px solid #d8dedb;border-radius:18px;padding:24px;max-width:min(480px,90vw);color:#23312b;background:white;}
+.phoneDialog::backdrop{background:#17251d66;}
+.phoneDialog label{display:grid;gap:8px;}
+.phoneDialog input{padding:12px;border:1px solid #aebcb4;border-radius:8px;font:inherit;}
+.phoneDialog p{line-height:1.5;}
+
+.customerLinks { margin:1rem 0; padding:1rem; border:1px solid #dce1e0; border-radius:1rem; background:#fff; }
+.offerPreview { display:block; width:100%; max-height:14rem; object-fit:contain; margin:.8rem 0; border-radius:.6rem; }
+.customerLinkRow { display:flex; align-items:baseline; justify-content:space-between; gap:1rem; margin-top:.7rem; font-size:.875rem; }
+.customerLinkRow > span { min-width:0; overflow-wrap:anywhere; }
+.customerLinkRow button { flex-shrink:0; }

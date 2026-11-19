@@ -1,9 +1,10 @@
+import {customerPhones,customerPhone} from "@/lib/ops/voice-customer-phones";
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeVoiceCopilotApi, readVoiceCopilotJson, voiceCopilotApiFailure } from "@/lib/ops/voice-copilot-api";
 import { currentPhoneDevice } from "@/lib/ops/voice-phone-identity";
 import { phoneRequestIsSameOrigin } from "@/lib/ops/voice-phone-contract";
-import { normalizePhoneE164, requireVoiceUuid } from "@/lib/ops/voice-platform-contract";
+import { requireVoiceUuid } from "@/lib/ops/voice-platform-contract";
 import { createVoiceCallSession } from "@/lib/ops/voice-knowledge";
 import { loadVoiceContextRecord } from "@/lib/ops/voice-context-record";
 import { transcriptTokenHash } from "@/lib/ops/voice-history";
@@ -42,8 +43,18 @@ export async function POST(request: NextRequest) {
     const current = await currentPhoneDevice();
     if (!current) throw new QuoteValidationError("Melde dein Gerät im persönlichen Telefonprofil an.", ["phone_identity_required"], 403);
     const record = await loadVoiceContextRecord(input.requestId, customerId);
-    const raw = (record.phone || "").trim().replace(/^(?:\+|00)49\s*\(0\)/, "+49");
-    const phone = normalizePhoneE164(raw.startsWith("0") && !raw.startsWith("00") ? "+49" + raw.slice(1) : raw);
+    let phone:string;
+    if(input.phone){
+      phone=customerPhone(input.phone);
+      let primary:string|null=null;try{if(record.phone)primary=customerPhone(record.phone);}catch{}
+      if(phone!==primary && !(await customerPhones(customerId,record.phone)).includes(phone))
+        throw new QuoteValidationError("Die Nummer gehört nicht zu diesem Kunden.",["customer_phone_mismatch"],422);
+    }else if(record.phone){phone=customerPhone(record.phone);}
+    else{
+      const numbers=await customerPhones(customerId,null);
+      if(!numbers.length)throw new QuoteValidationError("Bitte ergänze eine Rufnummer.",["customer_phone_missing"],422);
+      phone=numbers[0];
+    }
     const tokenHash = transcriptTokenHash(randomBytes(32).toString("hex"));
     let callId: string;
     try {
@@ -56,8 +67,8 @@ export async function POST(request: NextRequest) {
       });
     } catch (error) {
       if (!(error instanceof SupabaseRestError) || error.status !== 409) throw error;
-      const [existing] = await supabaseRequest<Array<{ id: string; bound_request_id: string; context_snapshot: { placetel_staff_id: string; placetel_customer_id: string; placetel_direct?: boolean } }>>("voice_call_sessions", {}, { select: "id,bound_request_id,context_snapshot", idempotency_key: "eq.placetel:" + key, limit: 1 });
-      if (!existing || existing.bound_request_id !== record.requestId || existing.context_snapshot?.placetel_staff_id !== current.staff.id || existing.context_snapshot?.placetel_customer_id !== customerId || (existing.context_snapshot?.placetel_direct === true) !== direct) throw new QuoteValidationError("Die Anrufkennung gehört zu einem anderen Vorgang.", ["placetel_key_conflict"], 409);
+      const [existing] = await supabaseRequest<Array<{ id: string; bound_request_id: string; context_snapshot: { placetel_staff_id: string; placetel_customer_id: string; placetel_direct?: boolean; placetel_phone?: string } }>>("voice_call_sessions", {}, { select: "id,bound_request_id,context_snapshot", idempotency_key: "eq.placetel:" + key, limit: 1 });
+      if (!existing || existing.context_snapshot?.placetel_phone !== phone || existing.bound_request_id !== record.requestId || existing.context_snapshot?.placetel_staff_id !== current.staff.id || existing.context_snapshot?.placetel_customer_id !== customerId || (existing.context_snapshot?.placetel_direct === true) !== direct) throw new QuoteValidationError("Die Anrufkennung gehört zu einem anderen Vorgang.", ["placetel_key_conflict"], 409);
       return await result(existing.id, direct);
     }
     const booking = await supabaseRpc<{dispatch: boolean; dispatch_key?: string; status?: string}>("reserve_voice_placetel_dial", {

@@ -858,3 +858,13 @@ export async function moveTrelloCardToList(cardId: string, listId: string) {
     throw new Error(`Trello Kartenverschiebung fehlgeschlagen: ${response.status}`);
   }
 }
+
+export async function getTrelloCardLocation(cardId:string):Promise<{idBoard:string;url:string}> {
+ if(!/^[a-zA-Z0-9]{8,24}$/.test(cardId))throw new Error("invalid_card_id");
+ const {key,token}=trelloConfig();
+ const url=new URL("https://api.trello.com/1/cards/"+cardId);
+ url.search=new URLSearchParams({key,token,fields:"idBoard,url"}).toString();
+ const response=await fetch(url,{cache:"no-store",signal:AbortSignal.timeout(4000),redirect:"error"});
+ if(!response.ok)throw new Error("trello_card_unavailable");
+ return response.json();
+}
