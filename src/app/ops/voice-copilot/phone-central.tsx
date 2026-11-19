@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
+import { Search, Phone, Headphones, ChevronRight, ChevronLeft, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import {CustomerPhoneEditor} from "./customer-phone-editor";
@@ -50,6 +50,18 @@ function initials(value: string) {
 }
 export function PhoneCentral(props: Props) {
   const { selected } = props;
+  const designs = ["Kompakt", "Klare Linie", "Sanft", "Kontrast", "Bildfokus"];
+  const [design, setDesign] = useState(0);
+  useEffect(() => {
+    try { const value = Number(localStorage.getItem("ops.voice.header-design")); if (Number.isInteger(value) && value >= 0 && value < 5) setDesign(value); } catch { /* Storage may be blocked. */ }
+  }, []);
+  function changeDesign(direction: number) {
+    setDesign(current => {
+      const next = (current + direction + 5) % 5;
+      try { localStorage.setItem("ops.voice.header-design", String(next)); } catch { /* Selection still works in memory. */ }
+      return next;
+    });
+  }
   const [callHistoryRevision, setCallHistoryRevision] = useState(0);
   const refreshCallHistory = useCallback(() => setCallHistoryRevision(n => n + 1), []);
   const [phoneAdminOpen,setPhoneAdminOpen]=useState(false);
@@ -216,7 +228,7 @@ export function PhoneCentral(props: Props) {
 
   return (
     <div className={styles.page}>
-    <main className={styles.shell}>
+    <main className={styles.shell} data-header-design={design + 1}>
       <header className={styles.top}>
         <div className={styles.brandrow}>
         <a className={styles.brand} href="/ops">
@@ -224,6 +236,11 @@ export function PhoneCentral(props: Props) {
         </a>
         <span className={styles.breadcrumb}>Ops / Telefonzentrale</span>
         <span className={styles.spacer} />
+        <div className={styles.designPicker} role="group" aria-label="Kopfzeilen-Design auswählen">
+          <button type="button" aria-label="Vorheriges Design" onClick={() => changeDesign(-1)}><ChevronLeft size={17}/></button>
+          <span aria-live="polite">{design + 1}/5 · {designs[design]}</span>
+          <button type="button" aria-label="Nächstes Design" onClick={() => changeDesign(1)}><ChevronRight size={17}/></button>
+        </div>
         <a
           className={styles.small}
           href="#voice-settings"
@@ -244,7 +261,11 @@ export function PhoneCentral(props: Props) {
         </div>
       </header>
       <div className={styles.titlebar}>
-        <h1>Telefonzentrale</h1>
+        <div className={styles.centralIdentity}>
+            <div className={styles.operatorBlock}>        <PhoneAccount value={props.operatorName} onChange={props.onOperatorNameChange} busy={busy} onTeam={setPhoneTeam} onIdentity={setPhoneIdentity} onManage={()=>{setPhoneAdminOpen(true);if(settingsRef.current)settingsRef.current.open=true;window.setTimeout(()=>document.getElementById("voice-phone-team")?.scrollIntoView({block:"start"}),0);}}/>
+        <span className={styles.connectionState}><span />{mobileAudio ? "Mein Handy" : browserPhone.registered ? "Browser verbunden" : props.busy ? "Begleitung aktiv" : "Telefon-App"}</span>
+</div>
+        <h1>Telefonzentrale</h1></div>
           <section className={styles.callhead}>
             <div>
             <div className={styles.calltitle}>
@@ -315,9 +336,7 @@ export function PhoneCentral(props: Props) {
             </div>
             </div>
             {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected}/>}
-            <div className={styles.operatorBlock}>        <PhoneAccount value={props.operatorName} onChange={props.onOperatorNameChange} busy={busy} onTeam={setPhoneTeam} onIdentity={setPhoneIdentity} onManage={()=>{setPhoneAdminOpen(true);if(settingsRef.current)settingsRef.current.open=true;window.setTimeout(()=>document.getElementById("voice-phone-team")?.scrollIntoView({block:"start"}),0);}}/>
-        <span className={styles.connectionState}><span />{mobileAudio ? "Mein Handy" : browserPhone.registered ? "Browser verbunden" : props.busy ? "Begleitung aktiv" : "Telefon-App"}</span>
-</div>
+
           </section>
       </div>
       {phoneIdentity?.browserCallingAvailable&&phoneIdentity.mobileCallingAvailable?<label className={styles.outgoingRoute}>Anrufen über

@@ -4,7 +4,7 @@ import {ArrowUpRight, FileText, PanelsTopLeft, Pencil, Plus, X} from "lucide-rea
 import type {VoiceCustomerContext} from "@/lib/ops/voice-knowledge";
 import type {CustomerLinkKind} from "@/lib/ops/voice-customer-links";
 import styles from "./phone-central.module.css";
-const names={quentin:"Quentin",inquiry:"Anfragen",offer:"Angebot"};
+const names={quentin:"Quentin Board",inquiry:"Anfrage Board",offer:"Angebot"};
 export function CustomerLinks({customerId,requestId,context}:{customerId:string;requestId:string;context:VoiceCustomerContext|null}){
  const [links,setLinks]=useState<Partial<Record<CustomerLinkKind,string>>>({});
  const [loaded,setLoaded]=useState(false),[failed,setFailed]=useState(false);
@@ -35,7 +35,7 @@ export function CustomerLinks({customerId,requestId,context}:{customerId:string;
   const open=()=>{setKind(k);setUrl(href||"");setError("");dialog.current?.showModal();};
   const missing=!requestId?"Kein Vorgang ausgewählt":!loaded?"Wird geprüft …":failed?"Prüfung derzeit nicht möglich":k==="offer"?"Kein Angebot vorhanden":"Keine Karte verknüpft";
   const Icon=k==="offer"?FileText:PanelsTopLeft;
-  return <div className={styles.customerLinkRow} key={k}>
+  return <div className={styles.customerLinkRow} data-linked={Boolean(href)} key={k}>
    {href?<a className={styles.customerLinkButton} href={href} target="_blank" rel="noreferrer"><Icon size={15}/>{names[k]}<ArrowUpRight size={13}/></a>
     :<button className={styles.customerLinkButton} type="button" disabled={!requestId} title={missing} onClick={open}><Icon size={15}/>{names[k]}<Plus size={13}/></button>}
    {href&&requestId&&<button className={styles.editLink} type="button" aria-label={names[k]+"-Link ändern"} onClick={open}><Pencil size={12}/></button>}

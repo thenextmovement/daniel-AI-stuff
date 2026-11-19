@@ -850,3 +850,88 @@
 .historyTabs { flex-wrap:wrap; }
 @media(max-width:1300px) { .titlebar .callhead { flex-wrap:wrap; gap:14px; } .operatorBlock { margin-left:auto; } .callhead .customerLinks { flex-basis:240px; } }
 @media(max-width:760px) { .titlebar { grid-template-columns:1fr; } .titlebar > h1 { padding:16px 20px; border-right:0; border-bottom:1px solid var(--line); font-size:21px; } .titlebar .callhead { padding:16px 20px; } .callhead > div:first-child { flex-basis:100%; } .callhead .customerLinks { flex:1 1 200px; } .operatorBlock { flex:1 1 160px; } .offerHover { right:0; width:min(280px,80vw); } }
+
+/* Five browser-local alternatives share the same controls and call state. */
+.designPicker { display:flex; align-items:center; gap:5px; padding:3px; border:1px solid var(--line); border-radius:9px; background:#fafaf8; }
+.designPicker button { display:grid; place-items:center; width:28px; height:28px; border:0; border-radius:6px; color:#46534b; background:transparent; cursor:pointer; }
+.designPicker button:hover { background:#e7eee8; }
+.designPicker span { min-width:116px; text-align:center; font-size:12px; font-variant-numeric:tabular-nums; color:#46534b; }
+.centralIdentity { display:flex; flex-direction:column; justify-content:center; gap:12px; padding:12px 20px; border-right:1px solid var(--line); }
+.centralIdentity h1 { margin:0; font-size:23px; line-height:1.2; letter-spacing:-.6px; }
+.centralIdentity .operatorBlock { display:flex; align-items:center; gap:8px; flex:none; margin:0; }
+.centralIdentity .phoneAccount { flex:1; }
+.centralIdentity .phoneAccountSummary { padding:5px 7px; min-height:30px; font-size:11px; border-radius:6px; }
+.centralIdentity .connectionState { padding:0; white-space:nowrap; font-size:10px; gap:4px; }
+.titlebar .callhead { flex-wrap:nowrap; padding:10px 16px; gap:16px; align-items:center; }
+.callhead > div:first-child { flex:1 1 240px; }
+.callhead .calltitle h2 { font-size:19px; }
+.callhead .calltitle .avatar { width:30px; height:30px; flex-shrink:0; }
+.callhead .badge { margin-top:5px; font-size:10px; }
+.callhead .actions { margin-top:6px; align-items:center; flex-wrap:wrap; }
+.callhead .actions .button { min-height:30px; padding:5px 8px; font-size:11px; line-height:1.3; }
+.callhead .customerLinks { flex:0 0 auto; padding:0; border:0; border-radius:0; background:transparent; gap:14px; align-items:stretch; }
+.customerLinkButtons { display:flex; flex-direction:column; align-items:stretch; gap:4px; justify-content:center; }
+.customerLinkRow { flex-shrink:0; }
+.customerLinkButton { flex:1; padding:4px 8px; font-size:11px!important; min-height:26px; }
+.customerLinkButton > svg:last-child { margin-left:auto; }
+.customerLinkRow[data-linked="true"] { background:#eaf3ed; border-color:#cbded0; }
+.customerLinkRow[data-linked="true"] .customerLinkButton,.customerLinkRow[data-linked="true"] .editLink { color:#286044; }
+.customerLinkRow[data-linked="true"] .editLink { border-color:#cbded0; }
+.customerLinkRow[data-linked="true"] .customerLinkButton:hover,.customerLinkRow[data-linked="true"] .editLink:hover { background:#dcece1; }
+.offerValue { gap:4px; font-size:13px; line-height:1.25; margin-top:2px; }
+.offerPeek { flex:0 0 94px; display:flex; align-items:stretch; }
+.offerPeekButton { width:94px; height:116px; padding:3px; border-radius:8px; }
+/* Flat toolbar: strong horizontal rhythm, almost no containers. */
+.shell[data-header-design="2"] .titlebar { background:#fff; border-bottom:2px solid #dbe8dd; }
+.shell[data-header-design="2"] .callhead { background:#fff; }
+.shell[data-header-design="2"] .callhead > div:first-child { display:grid; grid-template-columns:1fr; }
+.shell[data-header-design="2"] .calltitle .avatar { display:none; }
+.shell[data-header-design="2"] .badge { background:transparent; padding:0; color:#68717e; }
+.shell[data-header-design="2"] .customerLinkRow { border-radius:3px; }
+.shell[data-header-design="2"] .offerPeekButton { border-radius:3px; }
+/* Soft workspace: rounded actions and a pale sage customer surface. */
+.shell[data-header-design="3"] .callhead { background:#f0f5ef; }
+.shell[data-header-design="3"] .centralIdentity { background:#f8faf6; }
+.shell[data-header-design="3"] .customerLinkRow { border-radius:14px; }
+.shell[data-header-design="3"] .callhead .button { border-radius:18px; }
+.shell[data-header-design="3"] .calltitle .avatar { width:42px; height:42px; background:white; }
+.shell[data-header-design="3"] .badge { background:#e2ecdf; color:#426048; }
+/* Contrast: dark identity, light links and an easy-to-find green call action. */
+.shell[data-header-design="4"] .callhead { background:#253b32; color:#f4f7f2; }
+.shell[data-header-design="4"] .calltitle p { color:#d1dfd5; }
+.shell[data-header-design="4"] .badge { background:#3a5146; color:#e3ede6; }
+.shell[data-header-design="4"] .offerValue { color:#eef6ef; }
+.shell[data-header-design="4"] .offerValue small { color:#c8d6cc; }
+.shell[data-header-design="4"] .customerLinkButtons > small { color:#d1dfd5; }
+.shell[data-header-design="4"] .actions .primary { background:#d8eddd; color:#204e36; }
+/* Image focus: wide offer preview at the far edge, quieter identity. */
+.shell[data-header-design="5"] .callhead { padding-right:0; background:#faf7f1; }
+.shell[data-header-design="5"] .offerPeek { flex-basis:148px; }
+.shell[data-header-design="5"] .offerPeekButton { width:148px; height:116px; border:0; border-radius:0; background:#eee9df; }
+.shell[data-header-design="5"] .customerLinkButtons { padding:4px 0; }
+.shell[data-header-design="5"] .calltitle .avatar { display:none; }
+.shell[data-header-design="5"] .badge { background:#eee8db; color:#6a5b3e; }
+@media(max-width:1100px) {
+ .titlebar { grid-template-columns:minmax(240px,26%) minmax(0,1fr); }
+ .centralIdentity { padding:12px; }
+ .centralIdentity .operatorBlock { flex-wrap:wrap; }
+ .centralIdentity .phoneAccount { flex:1 1 130px; }
+ .titlebar .callhead { gap:10px; padding:10px 12px; }
+ .callhead .customerLinks { gap:8px; }
+ .offerPeek,.shell[data-header-design="5"] .offerPeek { flex-basis:76px; }
+ .offerPeekButton,.shell[data-header-design="5"] .offerPeekButton { width:76px; }
+}
+@media(max-width:760px) {
+ .designPicker { margin-left:auto; }
+ .titlebar { grid-template-columns:1fr; }
+ .centralIdentity { border-right:0; border-bottom:1px solid var(--line); gap:8px; }
+ .centralIdentity .operatorBlock { flex-wrap:nowrap; max-width:300px; }
+ .centralIdentity h1 { font-size:20px; }
+ .titlebar .callhead { flex-wrap:wrap; gap:12px; }
+ .callhead > div:first-child { flex-basis:100%; }
+ .callhead .customerLinks { flex:1 1 100%; justify-content:space-between; }
+ .customerLinkButtons { flex:1; }
+ .offerPeek,.shell[data-header-design="5"] .offerPeek { flex-basis:100px; }
+ .offerPeekButton,.shell[data-header-design="5"] .offerPeekButton { width:100px; }
+ .shell[data-header-design="5"] .callhead { padding-right:12px; }
+}

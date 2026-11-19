@@ -110,7 +110,6 @@ export function PlacetelCallButton({ customerId, requestId, dialNumber, disabled
         onClick={() => status === "prepared" ? open(phone) : void prepare()}>
         <Phone size={17}/>{status === "sending" ? "Anruf wird vorbereitet …" : status === "retry" ? "Status prüfen" : status === "prepared" ? "Placetel-Softphone öffnen" : "Mit Placetel-Softphone anrufen"}
       </button>}
-    <p className={styles.small}>Mit dem Anruf bestätigst du die Einwilligung zur Aufzeichnung und Mitschrift.</p>
     {message && <p role="status" className={styles.small}>{message}</p>}
     {(status === "opened" || status === "ended") && <button type="button" className={styles.link} onClick={() => {
       key.current = null; onNoteTarget(""); setCallId(""); setPhone(""); setStatus("ready"); setMessage("");
