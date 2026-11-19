@@ -298,13 +298,13 @@ export function PhoneCentral(props: Props) {
             </div>
             </div>
             {customer && <dl className={styles.contactFacts} aria-label="Kontaktdaten">
-              <div><dt>E-Mail:</dt><dd>{customer.email ? <a href={"mailto:" + customer.email}>{customer.email}</a> : <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
+              <div><dt>E-Mail:</dt><dd>{customer.email ? <a className={styles.factValue} title={customer.email} href={"mailto:" + customer.email}>{customer.email}</a> : <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
               <div><dt>Telefonnummer:</dt><dd><div className={styles.phoneFact}><span>{phone || "Rufnummer fehlt"}</span>{briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
                   setChosenPhone({customerId:briefCustomerId,phone:saved});
                   setActiveContact(old=>old?.customerId===briefCustomerId?{...old,phone:old.phone||saved,phoneNumbers:numbers}:old);
                   setResults(old=>old.map(row=>row.customerId===briefCustomerId?{...row,phone:row.phone||saved,phoneNumbers:numbers}:row));
                 }}/>}</div></dd></div>
-              <div><dt>Organisation:</dt><dd>{customer.company || <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
+              <div><dt>Organisation:</dt><dd>{customer.company ? <span className={styles.factValue} title={customer.company}>{customer.company}</span> : <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
               <div><dt>Bisherige Bestellungen:</dt><dd><span className={styles.missingFact} title="Eine vollständige Bestellanzahl über alle Kontakte der Organisation ist noch nicht verfügbar.">Nicht vollständig erfasst</span></dd></div>
             </dl>}
             {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected}/>}

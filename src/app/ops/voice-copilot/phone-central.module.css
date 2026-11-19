@@ -905,6 +905,7 @@
 .contactFacts > div { display:grid; grid-template-columns:130px minmax(0,1fr); align-items:center; min-height:26px; gap:8px; }
 .contactFacts dt { color:#6a786e; font-size:11px; }
 .contactFacts dd { min-width:0; margin:0; }
+.factValue { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .missingFact { color:#839086; }
 .offerPlaceholder { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:#829286; background:#eaf0e8; border:1px dashed #becdbf; cursor:default; font-size:11px; }
 .contactFacts a { color:inherit; text-decoration:none; }
