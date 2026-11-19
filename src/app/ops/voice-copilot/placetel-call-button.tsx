@@ -115,9 +115,9 @@ export function PlacetelCallButton({ customerId, requestId, dialNumber, disabled
       }}>
         <h3 id="confirm-placetel-title">Anruf bestätigen</h3>
         <p>Möchtest du {phone || dialNumber || "diesen Kunden"} jetzt mit dem Placetel-Softphone anrufen?</p>
-        <div className={styles.actions}>
-          <button type="button" autoFocus onClick={() => confirmation.current?.close()}>Abbrechen</button>
-          <button type="submit" className={styles.button + " " + styles.primary} disabled={disabled || status === "sending"}>Anrufen</button>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 24 }}>
+          <button type="submit" className={styles.button + " " + styles.primary} style={{ minHeight: 64, fontSize: 20, justifyContent: "center" }} disabled={disabled || status === "sending"}><Phone size={22}/>Anrufen</button>
+          <button type="button" className={styles.button} style={{ minHeight: 64, fontSize: 20, justifyContent: "center" }} autoFocus onClick={() => confirmation.current?.close()}>Abbrechen</button>
         </div>
       </form>
     </dialog>
