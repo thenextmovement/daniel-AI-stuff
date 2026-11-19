@@ -1,6 +1,6 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
-import {ArrowUpRight, FileText, PanelsTopLeft, Pencil, Plus, X} from "lucide-react";
+import {ArrowUpRight, FileText, ImageIcon, PanelsTopLeft, Pencil, Plus, X} from "lucide-react";
 import type {VoiceCustomerContext} from "@/lib/ops/voice-knowledge";
 import type {CustomerLinkKind} from "@/lib/ops/voice-customer-links";
 import styles from "./phone-central.module.css";
@@ -26,6 +26,7 @@ export function CustomerLinks({customerId,requestId,context}:{customerId:string;
    setLinks(old=>({...old,[kind]:d.url}));dialog.current?.close();
   }catch(e){setError(e instanceof Error?e.message:"Speichern fehlgeschlagen.");}finally{setSaving(false);}
  }
+ const [failedImage,setFailedImage]=useState<string|null>(null);
  const boundOfferMatches=!links.offer || links.offer===context?.links?.offer;
  const price=boundOfferMatches?context?.offer?.price:null;
  return <section className={styles.customerLinks} aria-label="Kundenkarte">
@@ -44,11 +45,12 @@ export function CustomerLinks({customerId,requestId,context}:{customerId:string;
  })}
  {price?<span className={styles.offerValue}><strong>{new Intl.NumberFormat("de-DE",{style:"currency",currency:price.currency}).format(price.amount)}</strong><small>{price.taxBasis==="gross"?"inkl. MwSt.":price.taxBasis==="net"?"zzgl. MwSt.":"Angebotswert"}</small></span>:loaded&&!links.offer&&!context?.links?.offer&&<small className={styles.muted}>Kein Angebot vorhanden</small>}
  </div>
- {boundOfferMatches&&context?.offer?.thumbnailUrl&&<div className={styles.offerPeek}>
-  <button type="button" className={styles.offerPeekButton} aria-label="Angebotsbild vergrößern" onClick={()=>preview.current?.showModal()}><img src={context.offer.thumbnailUrl} alt={"Angebotsvorschau "+context.offer.label} referrerPolicy="no-referrer"/></button>
+ {boundOfferMatches&&context?.offer?.thumbnailUrl&&failedImage!==context.offer.thumbnailUrl&&<div className={styles.offerPeek}>
+  <button type="button" className={styles.offerPeekButton} aria-label="Angebotsbild vergrößern" onClick={()=>preview.current?.showModal()}><img src={context.offer.thumbnailUrl} alt={"Angebotsvorschau "+context.offer.label} onError={()=>setFailedImage(context.offer!.thumbnailUrl!)} referrerPolicy="no-referrer"/></button>
   <div className={styles.offerHover} aria-hidden="true"><img src={context.offer.thumbnailUrl} alt="" referrerPolicy="no-referrer"/></div>
   <dialog ref={preview} className={styles.offerDialog} onClick={e=>{if(e.target===e.currentTarget)preview.current?.close();}}><button type="button" autoFocus aria-label="Vorschau schließen" className={styles.previewClose} onClick={()=>preview.current?.close()}><X size={20}/></button><img src={context.offer.thumbnailUrl} alt={"Angebot "+context.offer.label} referrerPolicy="no-referrer"/></dialog>
  </div>}
+ {(!boundOfferMatches||!context?.offer?.thumbnailUrl||failedImage===context.offer.thumbnailUrl)&&<div className={styles.offerPeek}><div className={styles.offerPeekButton+" "+styles.offerPlaceholder} role="img" aria-label="Kein Angebotsbild vorhanden"><ImageIcon size={26} aria-hidden="true"/><span>Kein Bild</span></div></div>}
  <dialog ref={dialog} className={styles.phoneDialog}><form onSubmit={save}><h3>{names[kind]} verknüpfen</h3>
  <label>Link<input type="url" required value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://"/></label>
  <p>Die Verknüpfung wird beim ausgewählten Kundenvorgang gespeichert.</p>

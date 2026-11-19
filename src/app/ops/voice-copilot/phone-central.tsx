@@ -255,15 +255,7 @@ export function PhoneCentral(props: Props) {
               </span>
               <div className={styles.customerIdentity}>
                 <h2>{browserPhone.call && !customer ? browserPhone.call.phone : name}</h2>
-                {customer ? <div className={styles.contactFacts}>
-                  {customer.company && customer.company !== customer.displayName && <span className={styles.companyName}>{customer.company}</span>}
-                  {customer.email ? <a href={"mailto:" + customer.email}>{customer.email}</a> : <span>E-Mail fehlt</span>}
-                  <div className={styles.phoneFact}><span>{phone || "Rufnummer fehlt"}</span>{briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
-                  setChosenPhone({customerId:briefCustomerId,phone:saved});
-                  setActiveContact(old=>old?.customerId===briefCustomerId?{...old,phone:old.phone||saved,phoneNumbers:numbers}:old);
-                  setResults(old=>old.map(row=>row.customerId===briefCustomerId?{...row,phone:row.phone||saved,phoneNumbers:numbers}:row));
-                }}/>}</div>
-                </div> : <p>{browserPhone.call ? browserPhone.call.customerId ? "Kundenanruf · kein Vorgang geöffnet" : "Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}</p>}
+                {!customer && <p>{browserPhone.call ? browserPhone.call.customerId ? "Kundenanruf · kein Vorgang geöffnet" : "Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}</p>}
                 {contextLoading && <small role="status">Gesprächsübersicht wird geladen …</small>}
                 {(activeContact?.phoneNumbers?.length || 0)>1 && <select aria-label="Rufnummer auswählen" disabled={busy} value={phone} onChange={e=>setChosenPhone({customerId:briefCustomerId!,phone:e.target.value})}>
                   {activeContact!.phoneNumbers!.map(number=><option key={number} value={number}>{number}</option>)}
@@ -305,6 +297,16 @@ export function PhoneCentral(props: Props) {
 
             </div>
             </div>
+            {customer && <dl className={styles.contactFacts} aria-label="Kontaktdaten">
+              <div><dt>E-Mail:</dt><dd>{customer.email ? <a href={"mailto:" + customer.email}>{customer.email}</a> : <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
+              <div><dt>Telefonnummer:</dt><dd><div className={styles.phoneFact}><span>{phone || "Rufnummer fehlt"}</span>{briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
+                  setChosenPhone({customerId:briefCustomerId,phone:saved});
+                  setActiveContact(old=>old?.customerId===briefCustomerId?{...old,phone:old.phone||saved,phoneNumbers:numbers}:old);
+                  setResults(old=>old.map(row=>row.customerId===briefCustomerId?{...row,phone:row.phone||saved,phoneNumbers:numbers}:row));
+                }}/>}</div></dd></div>
+              <div><dt>Organisation:</dt><dd>{customer.company || <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
+              <div><dt>Bisherige Bestellungen:</dt><dd><span className={styles.missingFact} title="Eine vollständige Bestellanzahl über alle Kontakte der Organisation ist noch nicht verfügbar.">Nicht vollständig erfasst</span></dd></div>
+            </dl>}
             {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected}/>}
 
           </section>
