@@ -122,7 +122,7 @@ export function PlacetelCallButton({ customerId, requestId, dialNumber, disabled
       </form>
     </dialog>
     {status === "opened" ? <p role="status">Zum Auflegen oder Abbrechen den roten Hörer im Placetel-Softphone drücken.</p> :
-      status !== "ended" && <button className={styles.button + " " + styles.primary} type="button" disabled={disabled || status === "sending"}
+      status !== "ended" && <button className={styles.button + " " + styles.primary + " " + styles.placetelDial} type="button" disabled={disabled || status === "sending"}
         onClick={() => confirmation.current?.showModal()}>
         <Phone size={17}/>{status === "sending" ? "Anruf wird vorbereitet …" : status === "retry" ? "Status prüfen" : status === "prepared" ? "Placetel-Softphone öffnen" : "Mit Placetel-Softphone anrufen"}
       </button>}
