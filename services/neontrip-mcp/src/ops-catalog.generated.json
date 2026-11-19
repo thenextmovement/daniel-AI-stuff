@@ -9959,7 +9959,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/overview/route.ts",
-      "sha256": "fb5e9c47f8dc99209d746072a0d43c095eafb8da4a7a1dcb9b2f84ccd1c2c3e1",
+      "sha256": "d54ae136a0740e17e0f5b01e0562f981ace143ad5a5d074c0678ee91fddc7e08",
       "methods": [
         "GET"
       ],
@@ -9970,7 +9970,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/phones/route.ts",
-      "sha256": "417a9b85ea397c87f56665a64537dcc84b949d39c446b5ef18c6dfc2270dd02a",
+      "sha256": "be70b6421e710d4e81ccaa7785dd0d28e2ff3f685674b13f16bd94fe07e65b5d",
       "methods": [
         "POST"
       ],
