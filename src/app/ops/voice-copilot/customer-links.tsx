@@ -32,11 +32,12 @@ export function CustomerLinks({customerId,requestId,context}:{customerId:string;
  <div className={styles.customerLinkButtons}>
  {(["quentin","inquiry","offer"] as const).map(k=>{
   const href=links[k]||(k==="offer"?context?.links?.offer:null);
+  const label=k==="offer" && href && boundOfferMatches && context?.offer?.offerNumber ? "Angebot " + context.offer.offerNumber : names[k];
   const open=()=>{setKind(k);setUrl(href||"");setError("");dialog.current?.showModal();};
   const missing=!requestId?"Kein Vorgang ausgewählt":!loaded?"Wird geprüft …":failed?"Prüfung derzeit nicht möglich":k==="offer"?"Kein Angebot vorhanden":"Keine Karte verknüpft";
   const Icon=k==="offer"?FileText:PanelsTopLeft;
   return <div className={styles.customerLinkRow} data-linked={Boolean(href)} key={k}>
-   {href?<a className={styles.customerLinkButton} href={href} target="_blank" rel="noreferrer"><Icon size={15}/>{names[k]}<ArrowUpRight size={13}/></a>
+   {href?<a className={styles.customerLinkButton} href={href} target="_blank" rel="noreferrer"><Icon size={15}/>{label}<ArrowUpRight size={13}/></a>
     :<button className={styles.customerLinkButton} type="button" disabled={!requestId} title={missing} onClick={open}><Icon size={15}/>{names[k]}<Plus size={13}/></button>}
    {href&&requestId&&<button className={styles.editLink} type="button" aria-label={names[k]+"-Link ändern"} onClick={open}><Pencil size={12}/></button>}
   </div>;

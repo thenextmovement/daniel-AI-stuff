@@ -50,14 +50,14 @@ function initials(value: string) {
 }
 export function PhoneCentral(props: Props) {
   const { selected } = props;
-  const designs = ["Kompakt", "Klare Linie", "Sanft", "Kontrast", "Bildfokus"];
+  const designs = ["Kompakt", "Klare Linie", "Sanft", "Kontrast", "Bildfokus", "Kontaktleiste", "Visitenkarte", "Werkzeugleiste", "Dossier", "Galerie", "Split", "Kontaktmatrix", "Bildkarte", "Studio", "Journal"];
   const [design, setDesign] = useState(0);
   useEffect(() => {
-    try { const value = Number(localStorage.getItem("ops.voice.header-design")); if (Number.isInteger(value) && value >= 0 && value < 5) setDesign(value); } catch { /* Storage may be blocked. */ }
+    try { const value = Number(localStorage.getItem("ops.voice.header-design")); if (Number.isInteger(value) && value >= 0 && value < designs.length) setDesign(value); } catch { /* Storage may be blocked. */ }
   }, []);
   function changeDesign(direction: number) {
     setDesign(current => {
-      const next = (current + direction + 5) % 5;
+      const next = (current + direction + designs.length) % designs.length;
       try { localStorage.setItem("ops.voice.header-design", String(next)); } catch { /* Selection still works in memory. */ }
       return next;
     });
@@ -208,7 +208,7 @@ export function PhoneCentral(props: Props) {
     setContextLoading(false); setContextError(""); setNotice("");
   }
   const customer = activeContact || selected?.customer;
-  const name = customer?.company || customer?.displayName || "Dein nächstes Gespräch";
+  const name = customer?.displayName || customer?.company || "Dein nächstes Gespräch";
   const [chosenPhone,setChosenPhone]=useState<{customerId:string;phone:string}|null>(null);
   const phone = chosenPhone && chosenPhone.customerId===briefCustomerId ? chosenPhone.phone : customer?.phone || "";
   const dialPhone = dialPhoneNumber(phone);
@@ -228,7 +228,7 @@ export function PhoneCentral(props: Props) {
 
   return (
     <div className={styles.page}>
-    <main className={styles.shell} data-header-design={design + 1}>
+    <main className={styles.shell} data-header-design={design + 1} data-header-exploration={design >= 5}>
       <header className={styles.top}>
         <div className={styles.brandrow}>
         <a className={styles.brand} href="/ops">
@@ -238,7 +238,7 @@ export function PhoneCentral(props: Props) {
         <span className={styles.spacer} />
         <div className={styles.designPicker} role="group" aria-label="Kopfzeilen-Design auswählen">
           <button type="button" aria-label="Vorheriges Design" onClick={() => changeDesign(-1)}><ChevronLeft size={17}/></button>
-          <span aria-live="polite">{design + 1}/5 · {designs[design]}</span>
+          <span aria-live="polite">{design + 1}/{designs.length} · {designs[design]}</span>
           <button type="button" aria-label="Nächstes Design" onClick={() => changeDesign(1)}><ChevronRight size={17}/></button>
         </div>
         <a
@@ -267,23 +267,19 @@ export function PhoneCentral(props: Props) {
 </div>
         <h1>Telefonzentrale</h1></div>
           <section className={styles.callhead}>
-            <div>
+            <div className={styles.customerOverview}>
             <div className={styles.calltitle}>
               <span className={styles.avatar}>
                 {customer ? initials(name) : <Phone size={23} />}
               </span>
-              <div>
+              <div className={styles.customerIdentity}>
                 <h2>{browserPhone.call && !customer ? browserPhone.call.phone : name}</h2>
-                <p>
-                  {customer
-                    ? [
-                        customer.displayName,
-                        phone || "Rufnummer fehlt",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")
-                    : browserPhone.call ? browserPhone.call.customerId?"Kundenanruf · kein Vorgang geöffnet":"Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}
-                </p>
+                {customer ? <div className={styles.contactFacts}>
+                  {customer.company && customer.company !== customer.displayName && <span className={styles.companyName}>{customer.company}</span>}
+                  {customer.email ? <a href={"mailto:" + customer.email}>{customer.email}</a> : <span>E-Mail fehlt</span>}
+                  <span>{phone || "Rufnummer fehlt"}</span>
+                </div> : <p>{browserPhone.call ? browserPhone.call.customerId ? "Kundenanruf · kein Vorgang geöffnet" : "Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}</p>}
+                {contextLoading && <small role="status">Gesprächsübersicht wird geladen …</small>}
                 {briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
                   setChosenPhone({customerId:briefCustomerId,phone:saved});
                   setActiveContact(old=>old?.customerId===briefCustomerId?{...old,phone:old.phone||saved,phoneNumbers:numbers}:old);
@@ -294,13 +290,7 @@ export function PhoneCentral(props: Props) {
                 </select>}
               </div>
             </div>
-            {activeContact || selected ? (
-              <span className={styles.badge}>
-                {contextLoading ? "Gesprächsübersicht wird geladen …" : activeContact && !activeContact.requestId ? "Kontakt ohne verknüpften Vorgang" : "Kunde ausgewählt"}
-                {selected?.offer ? " · Angebot " + (selected.offer.offerNumber || selected.offer.label) : ""}
-              </span>
-            ) : null}
-            <div className={styles.actions}>
+            <div className={styles.actions + " " + styles.headerActions}>
               {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
                 <PlacetelCallButton key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
                   requestId={briefRequestId} dialNumber={dialPhone} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} />}
