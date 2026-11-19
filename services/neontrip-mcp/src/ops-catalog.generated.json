@@ -8095,6 +8095,7 @@
         "directory",
         "history",
         "offset",
+        "overview",
         "query",
         "recentCalls",
         "requestId"
@@ -8110,7 +8111,7 @@
           "name": "getVoiceCustomerContext",
           "parameters": [
             "requestIdInput: unknown",
-            "options: { customerId?: string | null; mailQuestion?: string; } | undefined"
+            "options: { customerId?: string | null; mailQuestion?: string; overview?: boolean; } | undefined"
           ],
           "source": "src/lib/ops/voice-knowledge.ts"
         },
@@ -8134,7 +8135,8 @@
           "parameters": [
             "path: string",
             "init: RequestInit",
-            "query: Record<string, QueryValue> | undefined"
+            "query: Record<string, QueryValue> | undefined",
+            "onHeaders: ((headers: Headers) => void) | undefined"
           ],
           "source": "src/lib/quotes/supabase-rest.ts"
         },
@@ -8339,6 +8341,14 @@
             "init: RequestInit",
             "query: Record<string, QueryValue> | undefined",
             "onHeaders: ((headers: Headers) => void) | undefined"
+          ],
+          "source": "src/lib/quotes/supabase-rest.ts"
+        },
+        {
+          "name": "supabaseRpc",
+          "parameters": [
+            "functionName: string",
+            "args: { [x: string]: unknown; }"
           ],
           "source": "src/lib/quotes/supabase-rest.ts"
         },
@@ -9833,7 +9843,7 @@
     },
     {
       "source": "src/app/api/ops/supplier-sales/route.ts",
-      "sha256": "6371434091300859eaba3d9d0f429da426a06aa1857e87662c0715834488e467",
+      "sha256": "2b6b6194842c6fd8fd450ed5aaf7846e4c59d1bdbf438f72298211f4a509ea99",
       "methods": [
         "GET",
         "POST"
@@ -9894,7 +9904,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/context/route.ts",
-      "sha256": "ff3c69716708f069a169ed064b7325d7ce5a6c27753b93b7706c7411648d2325",
+      "sha256": "e87faf236d18b794983c869ca49e6feb232738549a09a29f8e4b724a206c9c6f",
       "methods": [
         "GET"
       ],
@@ -9939,8 +9949,17 @@
       ]
     },
     {
+      "source": "src/app/api/ops/voice-copilot/links/route.ts",
+      "sha256": "aec75ae0b340524ccbe362588e521967c6a414ca50cbd925357a0b887ac38428",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "coverage": "Customer link edits require a personal enrolled phone device; use the connected Telefonzentrale UI. No server-side device impersonation."
+    },
+    {
       "source": "src/app/api/ops/voice-copilot/overview/route.ts",
-      "sha256": "ebf9cedcbee9ebaa50bafd26561c7806542f5049bd08b4472c76c7ee1e131c7a",
+      "sha256": "fb5e9c47f8dc99209d746072a0d43c095eafb8da4a7a1dcb9b2f84ccd1c2c3e1",
       "methods": [
         "GET"
       ],
@@ -9948,6 +9967,14 @@
       "operations": [
         "voice_copilot_overview_get"
       ]
+    },
+    {
+      "source": "src/app/api/ops/voice-copilot/phones/route.ts",
+      "sha256": "417a9b85ea397c87f56665a64537dcc84b949d39c446b5ef18c6dfc2270dd02a",
+      "methods": [
+        "POST"
+      ],
+      "coverage": "Customer phone edits require a personal enrolled phone device; use the connected Telefonzentrale UI. No server-side device impersonation."
     },
     {
       "source": "src/app/api/ops/voice-copilot/post-call/route.ts",
@@ -10057,7 +10084,7 @@
     },
     {
       "source": "src/app/api/ops/voice-phone/placetel/route.ts",
-      "sha256": "3fca2190eddbb42cd517de13cacfcc575b24a2be8b4a5ff2bad561cb489055e1",
+      "sha256": "9d61832d8fecba9d2095b475adfaae232d951c419fe2cfe08304a167acd76d19",
       "methods": [
         "POST"
       ],
@@ -10199,7 +10226,7 @@
     },
     {
       "source": "src/lib/quotes/trello.ts",
-      "sha256": "784bd6754c8b19d96d395ff35bac585766703350454c30a325cff678ae5f0153"
+      "sha256": "24bdb6abc47cb12833a3d233e3fe2eabafe5b582bd87c2383981963175bdb6ef"
     },
     {
       "source": "src/app/api/ops/company-brain/actions/route.ts",
@@ -10271,7 +10298,7 @@
     },
     {
       "source": "src/lib/quotes/types.ts",
-      "sha256": "53bdb70762191de34610dc03d337e2661d0f779b561a4d24dc1e1c979ff38ace"
+      "sha256": "ece9eeacee436b9089d15e4253f71a5b1b10a3b6b2c417236d5214a2ffcbd542"
     },
     {
       "source": "src/lib/ops/visual-requests.ts",
@@ -10343,11 +10370,11 @@
     },
     {
       "source": "src/lib/ops/supplier-sales.ts",
-      "sha256": "3292125716eff58f4ce6697ea20d815e458dd55841c9ad39a866a1e651aeceb3"
+      "sha256": "229b4f402cd3cf8da9338e9a892acee264a316b1da88b8cdfae68184c430e952"
     },
     {
       "source": "src/lib/ops/voice-knowledge.ts",
-      "sha256": "97c7f0e8079e818455b172d9baaec7343945d8ae310f21da3d038669e914c5d1"
+      "sha256": "b622ce76c9d14393e9c61ca29861d211c0355cd47369f46e0b98170732e23afd"
     },
     {
       "source": "src/lib/ops/voice-platform-contract.ts",
@@ -10355,7 +10382,7 @@
     },
     {
       "source": "src/lib/ops/voice-directory.ts",
-      "sha256": "c827651fc2881373edc9be2f0a2385bf8962b2351549da9d7ec9852ac7848385"
+      "sha256": "b7ffd240215b0892e4797c8165ee40b60d1e2f6467ec8c9fbe2759c60011a3db"
     },
     {
       "source": "src/lib/ops/voice-copilot.ts",
@@ -10387,7 +10414,7 @@
     },
     {
       "source": "src/lib/ops/voice-phone-incoming.ts",
-      "sha256": "c12e466a460d650c9de9b01f260167f1ebb39354b9f0dac9fe8ecc81c4132eb2"
+      "sha256": "9bc7df87fb3b0e2c5a947750c0347d00f42002d8f986bd5142b05d645aed7313"
     },
     {
       "source": "src/lib/ops/voice-phone-mobile.ts",
