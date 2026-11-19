@@ -901,7 +901,13 @@
 
 /* Customer contact details. */
 .customerOverview,.customerIdentity { min-width:0; }
-.contactFacts { display:flex; flex-wrap:wrap; gap:3px 12px; margin-top:3px; color:#647068; font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+.contactFacts { display:grid; flex:1 1 290px; min-width:220px; gap:7px; margin:0; padding:0 12px; color:#364b40; font-size:12px; line-height:1.4; overflow-wrap:anywhere; border-left:1px solid #dce5dc; }
+.contactFacts > div { display:grid; grid-template-columns:130px minmax(0,1fr); align-items:center; min-height:26px; gap:8px; }
+.contactFacts dt { color:#6a786e; font-size:11px; }
+.contactFacts dd { min-width:0; margin:0; }
+.factValue { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.missingFact { color:#839086; }
+.offerPlaceholder { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:#829286; background:#eaf0e8; border:1px dashed #becdbf; cursor:default; font-size:11px; }
 .contactFacts a { color:inherit; text-decoration:none; }
 .contactFacts a:hover { text-decoration:underline; }
 .companyName { font-weight:600; }
@@ -932,3 +938,16 @@
 .callhead .actions .placetelDial svg { width:20px; height:20px; flex-shrink:0; }
 
 .phoneFact .phoneDialog { font-size:16px; line-height:1.5; color:var(--ink); }
+
+/* Keep contact rows and the image footprint stable when optional data is absent. */
+.titlebar .callhead > .customerOverview { flex:1.2 1 330px; }
+@media(min-width:761px) and (max-width:1550px) {
+ .titlebar .callhead { display:grid; grid-template-columns:minmax(0,1fr) auto; }
+ .callhead > .customerOverview { grid-column:1; }
+ .callhead > .contactFacts { grid-column:1; border-left:0; padding:0; min-width:0; }
+ .callhead > .customerLinks { grid-column:2; grid-row:1 / 3; }
+}
+@media(max-width:760px) {
+ .callhead > .contactFacts { flex-basis:100%; min-width:0; padding:0; border-left:0; }
+ .contactFacts > div { grid-template-columns:130px minmax(0,1fr); }
+}
