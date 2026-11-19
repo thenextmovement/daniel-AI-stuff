@@ -71,6 +71,9 @@ export async function GET(request:NextRequest) {
     const data=await supabaseRequest<BriefInput>("rpc/voice_customer_brief_input",{method:"POST",body:JSON.stringify({p_customer:id}),signal:AbortSignal.timeout(12000)});
     if(data.customerId!==id) throw new Error("customer_binding_mismatch");
     let text=data.savedHash===data.hash ? data.previousSummary : null;
+    // An unchanged persisted summary needs no write. A write outage must not
+    // turn a successful read into "summary unavailable".
+    if (text) return NextResponse.json({summary:text,updatedAt:data.updatedAt},{headers:{"cache-control":"no-store"}});
     if(!text) {
       stage="ai";
       let pending=cache.get(id+":"+data.hash);

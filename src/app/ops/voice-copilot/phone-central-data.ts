@@ -35,3 +35,26 @@ export async function fetchPhoneDirectory<T>(url: string, signal: AbortSignal): 
   }
   throw new Error("Kunden konnten nicht geladen werden.");
 }
+
+// Only reads may recover automatically. Writes and dial requests are never replayed.
+export async function fetchPhoneRead<T>(url: string, signal: AbortSignal, timeoutMs = 15000): Promise<T> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    signal.throwIfAborted();
+    let response: Response;
+    try {
+      response = await fetch(url, {cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])});
+    } catch (error) {
+      if (signal.aborted || attempt === 1) throw error;
+      continue;
+    }
+    if (attempt === 0 && [500, 502, 503, 504].includes(response.status)) {
+      await response.body?.cancel();
+      continue;
+    }
+    if (!response.ok) throw new Error(response.status === 401 ? "Sitzung abgelaufen." : "Laden fehlgeschlagen.");
+    const data = await response.json();
+    signal.throwIfAborted();
+    return data as T;
+  }
+  throw new Error("Laden fehlgeschlagen.");
+}

@@ -6,6 +6,7 @@ import styles from "./phone-central.module.css";
 export function PlacetelCallButton({ customerId, requestId, dialNumber, disabled, onCallChange, onNoteTarget }: {
   customerId: string; requestId: string; dialNumber?:string; disabled: boolean; onCallChange: () => void; onNoteTarget: (callId:string) => void;
 }) {
+  const confirmation = useRef<HTMLDialogElement>(null);
   const key = useRef<string | null>(null);
   const sending = useRef(false);
   const mounted = useRef(true);
@@ -105,9 +106,24 @@ export function PlacetelCallButton({ customerId, requestId, dialNumber, disabled
     } finally { sending.current = false; }
   }
   return <div>
+    <dialog ref={confirmation} className={styles.phoneDialog} aria-labelledby="confirm-placetel-title">
+      <form onSubmit={event => {
+        event.preventDefault();
+        if (disabled || sending.current || !confirmation.current?.open) return;
+        confirmation.current.close();
+        if (status === "prepared") open(phone); else void prepare();
+      }}>
+        <h3 id="confirm-placetel-title">Anruf bestätigen</h3>
+        <p>Möchtest du {phone || dialNumber || "diesen Kunden"} jetzt mit dem Placetel-Softphone anrufen?</p>
+        <div className={styles.actions}>
+          <button type="button" autoFocus onClick={() => confirmation.current?.close()}>Abbrechen</button>
+          <button type="submit" className={styles.button + " " + styles.primary} disabled={disabled || status === "sending"}>Anrufen</button>
+        </div>
+      </form>
+    </dialog>
     {status === "opened" ? <p role="status">Zum Auflegen oder Abbrechen den roten Hörer im Placetel-Softphone drücken.</p> :
       status !== "ended" && <button className={styles.button + " " + styles.primary} type="button" disabled={disabled || status === "sending"}
-        onClick={() => status === "prepared" ? open(phone) : void prepare()}>
+        onClick={() => confirmation.current?.showModal()}>
         <Phone size={17}/>{status === "sending" ? "Anruf wird vorbereitet …" : status === "retry" ? "Status prüfen" : status === "prepared" ? "Placetel-Softphone öffnen" : "Mit Placetel-Softphone anrufen"}
       </button>}
     {message && <p role="status" className={styles.small}>{message}</p>}

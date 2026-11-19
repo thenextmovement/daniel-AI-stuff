@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { CustomerOpsNote } from "@/lib/ops/customer-records";
+import { fetchPhoneRead } from "./phone-central-data";
 import styles from "./phone-central.module.css";
 
 export function CallNotes({ requestId, target, onSaved }: { requestId: string; target:{callId:string; time:string} | null; onSaved:()=>void }) {
@@ -12,10 +13,8 @@ export function CallNotes({ requestId, target, onSaved }: { requestId: string; t
   const submitting = useRef(false);
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/ops/customer-records/notes?requestId=" + encodeURIComponent(requestId), { cache: "no-store", signal: controller.signal })
-      .then(async res => {
-        if (!res.ok) throw Error();
-        const data = await res.json();
+    void fetchPhoneRead<{notes:CustomerOpsNote[]}>("/api/ops/customer-records/notes?requestId=" + encodeURIComponent(requestId), controller.signal)
+      .then(data => {
         if (!controller.signal.aborted) setNotes(old => [...new Map<string, CustomerOpsNote>([...old, ...data.notes].map(note => [note.id, note])).values()]);
       })
       .catch(() => { if (!controller.signal.aborted) setError("Die gespeicherten Notizen konnten nicht geladen werden."); });

@@ -2,6 +2,7 @@
 import {useEffect,useState} from "react";
 import type {VoiceCustomerContext} from "@/lib/ops/voice-knowledge";
 import {currentEmailReply} from "@/lib/ops/voice-email-reply";
+import { fetchPhoneRead } from "./phone-central-data";
 import styles from "./phone-central.module.css";
 
 import { VoiceHistoryPanel } from "./voice-history-panel";
@@ -61,9 +62,7 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
     const controller=new AbortController();
     const params=new URLSearchParams({customerId:id,requestId});
     const read=async (part:string)=>{
-      const result=await fetch("/api/ops/voice-copilot/overview?"+params+"&part="+part,{signal:controller.signal,cache:"no-store"});
-      if (!result.ok) throw Error();
-      return result.json();
+      return fetchPhoneRead<any>("/api/ops/voice-copilot/overview?"+params+"&part="+part,controller.signal,part==="summary"?60000:15000);
     };
     setLatestLoading(true);setLatestFailed(false);
     void read("latest").then(data=>{if(!controller.signal.aborted)setLatest(data.latest);})
@@ -85,9 +84,9 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
     const params=new URLSearchParams({history:"1",channel,customerId:id,offset:String(offset),requestId});
     const notesOnly=channel==="notes";
     const url=notesOnly ? "/api/ops/customer-records/notes?"+new URLSearchParams({requestId,offset:String(offset)}) : "/api/ops/voice-copilot/context?"+params;
-    void fetch(url,{signal:controller.signal,cache:"no-store"})
-      .then(async response=>{if(!response.ok)throw Error();if (!notesOnly) return await response.json() as Page;
-        const data=await response.json() as {notes:CustomerOpsNote[];nextOffset:number|null};
+    void fetchPhoneRead<Page | {notes:CustomerOpsNote[];nextOffset:number|null}>(url,controller.signal)
+      .then(result=>{if (!notesOnly) return result as Page;
+        const data=result as {notes:CustomerOpsNote[];nextOffset:number|null};
         return {nextOffset:data.nextOffset,brief:[],entries:data.notes.map(n=>({
           id:n.id, occurred_at:n.createdAt, kind:"note", subject:n.callId ? "Notiz zum Telefonat" + (n.callStartedAt ? " vom "+new Date(n.callStartedAt).toLocaleString("de-DE") : "") : "Notiz zum Vorgang",
           detail:n.note,request_ref:requestId,session_id:n.callId || null,

@@ -29,7 +29,7 @@ async function fixture(run:(state:any)=>Promise<void>) {
 }
 const request=(part="summary")=>new NextRequest("http://localhost/api/ops/voice-copilot/overview?customerId="+id+"&part="+part,{headers:{host:"localhost"}});
 test("unchanged sources reuse saved summary without AI",async()=>fixture(async s=>{
- s.savedHash=s.hash;const response=await GET(request());assert.equal(response.status,200);assert.equal((await response.json()).summary,"Gespeicherter Stand");assert.equal(s.ai,0);
+ s.savedHash=s.hash;const response=await GET(request());assert.equal(response.status,200);assert.equal((await response.json()).summary,"Gespeicherter Stand");assert.equal(s.ai,0);assert.equal(s.saves.length,0);
 }));
 test("transient AI error retries, strips old email and saves customer-wide summary",async()=>fixture(async s=>{
  s.failOnce=true;const response=await GET(request());assert.equal(response.status,200);assert.equal(s.ai,2);assert.equal(s.input.model,"gpt-4.1-mini");assert.ok(!s.input.input.includes("Alter Verlauf"));assert.equal(s.saves[0].p_customer,id);assert.equal(s.saves[0].p_request,"");
