@@ -8310,6 +8310,23 @@
       ]
     },
     {
+      "id": "voice_copilot_orders_get",
+      "path": "/api/ops/voice-copilot/orders",
+      "method": "GET",
+      "pathParameters": [],
+      "queryParameters": [
+        "customerId"
+      ],
+      "bodyFields": [],
+      "actionValues": [],
+      "requestTypes": [],
+      "source": "src/app/api/ops/voice-copilot/orders/route.ts",
+      "readOnly": true,
+      "notes": "Canonical Ops route validates input and applies its existing role, version, approval, payment and idempotency guards. Non-GET may send messages, publish, create paid jobs or change production state. No automatic retry after an uncertain result.",
+      "inputContracts": [],
+      "inputTypes": []
+    },
+    {
       "id": "voice_copilot_overview_get",
       "path": "/api/ops/voice-copilot/overview",
       "method": "GET",
@@ -9956,6 +9973,17 @@
         "POST"
       ],
       "coverage": "Customer link edits require a personal enrolled phone device; use the connected Telefonzentrale UI. No server-side device impersonation."
+    },
+    {
+      "source": "src/app/api/ops/voice-copilot/orders/route.ts",
+      "sha256": "a7b670d982c8a46992b330cc38649ed6a7615b208f6e70965f40bd7b269db644",
+      "methods": [
+        "GET"
+      ],
+      "coverage": "ops_catalog",
+      "operations": [
+        "voice_copilot_orders_get"
+      ]
     },
     {
       "source": "src/app/api/ops/voice-copilot/overview/route.ts",
