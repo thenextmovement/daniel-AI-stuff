@@ -1,12 +1,13 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
+import { Search, Phone, Headphones, ChevronLeft, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import {CustomerPhoneEditor} from "./customer-phone-editor";
 import { CallNotes } from "./call-notes";
 import { PlacetelCallButton } from "./placetel-call-button";
 import { RecentCalls } from "./recent-calls";
+import {OrganizationOrdersButton} from "./organization-orders";
 import {CustomerLinks} from "./customer-links";
 import { CustomerBrief } from "./customer-brief";
 import { VoiceHistoryPanel } from "./voice-history-panel";
@@ -50,6 +51,11 @@ function initials(value: string) {
 }
 export function PhoneCentral(props: Props) {
   const { selected } = props;
+  const tableDesigns = ["Salbei", "Linien", "Zebra", "Karte", "Register", "Kontur", "Akzent", "Kacheln", "Papier", "Minimal"];
+  const [tableDesign, setTableDesign] = useState(0);
+  useEffect(() => { try { const saved = Number(localStorage.getItem("voice-contact-design")); if (Number.isInteger(saved) && saved >= 0 && saved < 10) setTableDesign(saved); } catch {} }, []);
+  function changeTableDesign(direction: number) { setTableDesign(current => { const next = (current + direction + 10) % 10; try { localStorage.setItem("voice-contact-design", String(next)); } catch {} return next; }); }
+
   const [callHistoryRevision, setCallHistoryRevision] = useState(0);
   const refreshCallHistory = useCallback(() => setCallHistoryRevision(n => n + 1), []);
   const [phoneAdminOpen,setPhoneAdminOpen]=useState(false);
@@ -214,7 +220,7 @@ export function PhoneCentral(props: Props) {
 
   return (
     <div className={styles.page}>
-    <main className={styles.shell} data-header-design="salbei">
+    <main className={styles.shell} data-header-design="salbei" data-contact-design={tableDesign}>
       <header className={styles.top}>
         <div className={styles.brandrow}>
         <a className={styles.brand} href="/ops">
@@ -222,6 +228,11 @@ export function PhoneCentral(props: Props) {
         </a>
         <span className={styles.breadcrumb}>Ops / Telefonzentrale</span>
         <span className={styles.spacer} />
+        <div className={styles.designSwitch} role="group" aria-label="Kontakttabelle gestalten">
+          <button type="button" aria-label="Vorheriges Tabellendesign" onClick={() => changeTableDesign(-1)}><ChevronLeft size={16}/></button>
+          <output aria-live="polite">{tableDesign + 1}/10 · {tableDesigns[tableDesign]}</output>
+          <button type="button" aria-label="Nächstes Tabellendesign" onClick={() => changeTableDesign(1)}><ChevronRight size={16}/></button>
+        </div>
         <a
           className={styles.small}
           href="#voice-settings"
@@ -282,7 +293,7 @@ export function PhoneCentral(props: Props) {
                   <Phone size={17} />{assistedDialReady ? "Mit Live-Mitschrift anrufen" : "In Telefon-App anrufen"}
                 </button>
               ) : customer ? (
-                <button className={styles.button + " " + styles.primary} disabled>
+                <button className={styles.button + " " + styles.primary + " " + styles.placetelDial} disabled><Phone size={20}/>
                   {props.workspace === "assist" && dialPhone ? (readySession ? "Anruf gestartet" : "Gesprächsbegleitung vorbereiten") : busy ? "Gespräch aktiv" : "Rufnummer fehlt"}
                 </button>
               ) : null}
@@ -305,7 +316,7 @@ export function PhoneCentral(props: Props) {
                   setResults(old=>old.map(row=>row.customerId===briefCustomerId?{...row,phone:row.phone||saved,phoneNumbers:numbers}:row));
                 }}/>}</div></dd></div>
               <div><dt>Organisation:</dt><dd>{customer.company ? <span className={styles.factValue} title={customer.company}>{customer.company}</span> : <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
-              <div><dt>Bisherige Bestellungen:</dt><dd><span className={styles.missingFact} title="Eine vollständige Bestellanzahl über alle Kontakte der Organisation ist noch nicht verfügbar.">Nicht vollständig erfasst</span></dd></div>
+              <div><dt>Bisherige Bestellungen:</dt><dd>{briefCustomerId && <OrganizationOrdersButton key={briefCustomerId} customerId={briefCustomerId}/>}</dd></div>
             </dl>}
             {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected}/>}
 

@@ -55,7 +55,7 @@ export function CustomerLinks({customerId,requestId,context}:{customerId:string;
  <label>Link<input type="url" required value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://"/></label>
  <p>Die Verknüpfung wird beim ausgewählten Kundenvorgang gespeichert.</p>
  {error&&<p role="alert">{error}</p>}
- <div className={styles.actions}><button type="button" disabled={saving} onClick={()=>dialog.current?.close()}>Abbrechen</button><button disabled={saving}>{saving?"Speichert …":"Link speichern"}</button></div>
+ <div className={styles.actions}><button className={styles.button} type="button" disabled={saving} onClick={()=>dialog.current?.close()}>Abbrechen</button><button className={styles.button + " " + styles.primary} disabled={saving}>{saving?"Speichert …":"Link speichern"}</button></div>
  </form></dialog>
  </section>;
 }
