@@ -29,7 +29,7 @@ export function CustomerPhoneEditor({customerId,disabled,onSaved}:{customerId:st
  <label>Rufnummer<input autoFocus type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder={country==="DE"?"0151 23456789":"Rufnummer oder +Ländervorwahl"} required/></label>
  <p>Das Rufnummernformat wird automatisch angepasst. Gib die vollständige Nummer ein – bei Deutschland wird aus 01590… automatisch +49 1590…. Eine internationale +Vorwahl wird übernommen.</p>
  {error&&<p role="alert">{error}</p>}
- <div className={styles.actions}><button type="button" disabled={saving} onClick={()=>dialog.current?.close()}>Abbrechen</button>
- <button type="submit" disabled={saving}>{saving?"Speichert …":"Nummer speichern"}</button></div>
+ <div className={styles.actions}><button className={styles.button} type="button" disabled={saving} onClick={()=>dialog.current?.close()}>Abbrechen</button>
+ <button className={styles.button + " " + styles.primary} type="submit" disabled={saving}>{saving?"Speichert …":"Nummer speichern"}</button></div>
  </form></dialog></>;
 }

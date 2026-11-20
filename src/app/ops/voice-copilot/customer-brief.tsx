@@ -108,7 +108,7 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
   const req=context?.request;
   return <section className={styles.prep} aria-label="Gesprächsüberblick">
     <header className={styles.overviewHeader}>
-      <div><p className={styles.label}>Vor dem Anruf</p><h3>Auf einen Blick</h3></div>
+      <h3>Auf einen Blick</h3>
       <button type="button" className={styles.link} disabled={summaryLoading || loading} onClick={()=>{setOffset(0);setRetry(n=>n+1);}}>{summaryLoading ? "Wird aktualisiert …" : "Aktualisieren"}</button>
     </header>
     <div className={styles.historyTabs} role="group" aria-label="Zusammenfassung auswählen">
@@ -117,13 +117,11 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
     </div>
     <section className={styles.currentBrief} aria-label={summaryTab==="latest"?"Zusammenfassung des letzten Gesprächs":"Gesamtzusammenfassung"}>
     {summaryTab==="overall" ? <>
-      <strong>Gesamtzusammenfassung</strong>
       {summaryFailed && !summary ? <p>Zusammenfassung derzeit nicht verfügbar. <button className={styles.link} onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>
         : summary ? <ul className={styles.briefBullets}>{summary.split(/\n+/).map(line=>line.replace(/^\s*[-•*]\s*/, "").trim()).filter(Boolean).map((line,i)=><li key={i}>{line}</li>)}</ul> : <p>KI-Zusammenfassung wird erstellt …</p>}
       {summary && summaryLoading && <small>Gespeicherter Stand · Aktualisierung läuft …</small>}
       {summary && summaryFailed && <small>Gespeicherter Stand · Aktualisierung derzeit nicht verfügbar.</small>}
     </> : <>
-      <strong>Letztes Gespräch</strong>
       {latest && <p className={styles.small}>{new Date(latest.startedAt).toLocaleString("de-DE")} · Vorgang {latest.requestId.slice(0,8)}</p>}
       <p>{latestFailed ? "Das letzte Gespräch konnte nicht geladen werden." : latestLoading && !latest ? "Letztes Gespräch wird geladen …" : !latest ? "Noch kein Gespräch gespeichert." : latest.summary || (
         latest.recording==="expired" || latest.recording==="ambiguous" ? "Für dieses Gespräch liegt keine eindeutig zugeordnete Aufnahme vor. Eine KI-Zusammenfassung ist noch nicht verfügbar." :

@@ -914,7 +914,7 @@
 .customerIdentity > small { display:block; color:#68717e; font-size:10px; }
 
 /* Selected Salbei header. */
-.shell[data-header-design="salbei"] .callhead { padding-right:0; }
+.shell[data-header-design="salbei"] .callhead { padding-right:14px; }
 .shell[data-header-design="salbei"] .calltitle .avatar { display:none; }
 .shell[data-header-design="salbei"] .offerPeek { flex-basis:148px; }
 .shell[data-header-design="salbei"] .offerPeekButton { width:148px; height:116px; padding:0; }
@@ -951,3 +951,57 @@
  .callhead > .contactFacts { flex-basis:100%; min-width:0; padding:0; border-left:0; }
  .contactFacts > div { grid-template-columns:130px minmax(0,1fr); }
 }
+
+/* Stable call controls, including customers without a telephone number. */
+.titlebar .callhead > .customerOverview { flex:0 0 288px; }
+.callhead .headerActions { flex-direction:column; align-items:flex-start; }
+.headerActions > div { width:100%; }
+.callhead .actions .placetelDial { width:100%; min-height:46px; }
+.contactFacts { flex:1 1 300px; height:138px; box-sizing:border-box; grid-template-rows:repeat(4,minmax(28px,1fr)); padding:6px 10px; gap:4px; }
+.contactFacts > div { grid-template-columns:140px minmax(0,1fr); min-height:28px; gap:8px; }
+.contactFacts dt,.contactFacts dd,.contactFacts a,.contactFacts button { font-size:12px; line-height:1.4; }
+.contactFacts dt { color:#586b5e; }
+.designSwitch { display:flex; align-items:center; gap:5px; padding:3px; border:1px solid #dce5dc; border-radius:8px; background:#f5f8f4; }
+.designSwitch button { display:grid; place-items:center; width:30px; height:30px; border:0; border-radius:5px; color:#365d46; background:transparent; cursor:pointer; }
+.designSwitch button:hover { background:#dfeade; }
+.designSwitch output { min-width:115px; text-align:center; font-size:12px; color:#365d46; }
+.phoneDialog h3 { margin:0 0 18px; font-size:20px; font-weight:650; }
+.phoneDialog p { font-size:14px; color:#586b5e; margin:12px 0; }
+.phoneDialog .actions { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; }
+.phoneDialog .actions .button { min-height:44px; padding:10px 16px; font-size:14px; }
+.phoneDialog label { font-size:14px; }
+.phoneDialog input,.phoneDialog select { width:100%; }
+.prep { padding-top:0; margin-top:0; }
+.overviewHeader { min-height:30px; }
+.briefBullets { margin-top:0; }
+.shell[data-contact-design="1"] .contactFacts > div { border-bottom:1px solid #d6e0d6; }
+.shell[data-contact-design="2"] .contactFacts > div:nth-child(odd) { background:#e7eee3; border-radius:4px; }
+.shell[data-contact-design="2"] .contactFacts > div { padding:0 6px; }
+.shell[data-contact-design="3"] .contactFacts { border:1px solid #d5e0d4; border-radius:10px; background:#fff; padding:6px 10px; box-shadow:0 3px 10px #345d4309; }
+.shell[data-contact-design="4"] .contactFacts { border:0; }
+.shell[data-contact-design="4"] .contactFacts dt { border-left:3px solid #85a28a; padding-left:7px; }
+.shell[data-contact-design="5"] .contactFacts > div { border:1px solid #d6e1d5; border-radius:6px; padding:0 6px; }
+.shell[data-contact-design="5"] .contactFacts { border:0; }
+.shell[data-contact-design="6"] .contactFacts { border-left:3px solid #48785e; background:#eaf1e7; border-radius:0 8px 8px 0; }
+.shell[data-contact-design="6"] .contactFacts dt { font-weight:600; }
+.shell[data-contact-design="7"] .contactFacts { border:0; }
+.shell[data-contact-design="7"] .contactFacts dt { background:#e2ebdf; border-radius:4px; padding:0 6px; }
+.shell[data-contact-design="8"] .contactFacts { background:#fffdf8; border:1px solid #e2dfd4; border-radius:3px; padding:5px 10px; }
+.shell[data-contact-design="8"] .contactFacts > div + div { border-top:1px dashed #d7dfd2; }
+.shell[data-contact-design="9"] .contactFacts { border:0; }
+.shell[data-contact-design="9"] .contactFacts dt { color:#68746b; }
+.shell[data-contact-design="9"] .contactFacts dd { font-weight:600; }
+@media(min-width:1551px) { .titlebar .callhead { gap:10px; } }
+@media(max-width:760px) { .titlebar .callhead > .customerOverview { flex:1 1 100%; } .headerActions > div,.callhead .actions .placetelDial { max-width:340px; } }
+
+.orderSummary { display:block; max-width:100%; text-align:left; border:0; border-radius:4px; padding:3px 0; background:transparent; color:#286044; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+.ordersDialog { width:min(820px,94vw); max-width:94vw; max-height:85vh; }
+.contactFacts .ordersDialog { font-size:14px; }
+.ordersScroll { overflow:auto; max-height:48vh; }
+.ordersScroll table { width:100%; border-collapse:collapse; font-size:13px; }
+.ordersScroll th,.ordersScroll td { padding:10px; text-align:left; border-bottom:1px solid #dce5dc; }
+.ordersScroll th { background:#eef4eb; color:#365d46; }
+.ordersScroll td:last-child { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.ordersScroll small { display:block; color:#68746b; }
+.ordersScroll a { color:#286044; text-decoration:underline; }
+.overviewHeader .link { margin:0; font-size:13px; }
