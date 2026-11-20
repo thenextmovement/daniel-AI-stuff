@@ -5,9 +5,11 @@ import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import {CustomerEditor} from "./customer-editor";
 import type {CustomerEditorData} from "@/lib/ops/voice-customer-editor";
+import {ContactCopyButton} from "./contact-copy-button";
+import {parsePhoneNumberFromString} from "libphonenumber-js";
 import {CustomerPhoneEditor} from "./customer-phone-editor";
 import { CallNotes } from "./call-notes";
-import { PlacetelCallButton } from "./placetel-call-button";
+import { PlacetelCallButton, type PlacetelCallHandle } from "./placetel-call-button";
 import { RecentCalls } from "./recent-calls";
 import {OrganizationOrdersButton} from "./organization-orders";
 import {CustomerLinks} from "./customer-links";
@@ -81,16 +83,19 @@ export function PhoneCentral(props: Props) {
   const briefCustomerId = selected?.masterCustomerId || activeContact?.customerId;
   const briefRequestId = selected?.requestId || activeContact?.requestId || "";
   const [customerRevision,setCustomerRevision]=useState(0);
+  const [contactDetails,setContactDetails]=useState<CustomerEditorData|null>(null);
+  const phonePicker=useRef<HTMLDialogElement>(null);
+  const placetelCall=useRef<PlacetelCallHandle>(null);
   const [organizationLabel,setOrganizationLabel]=useState<{customerId:string;name:string|null;manual:boolean}|null>(null);
   useEffect(()=>{
     if(!briefCustomerId)return;
     const controller=new AbortController();
     void fetch("/api/ops/voice-copilot/customer?"+new URLSearchParams({customerId:briefCustomerId}),{cache:"no-store",signal:controller.signal})
       .then(response=>readPhoneCentralResponse<CustomerEditorData>(response,"Organisation konnte nicht geladen werden."))
-      .then(data=>{if(!controller.signal.aborted)setOrganizationLabel({customerId:briefCustomerId,name:data.organizations.find(org=>org.id===data.customer.customer_organization_id)?.name||null,manual:data.organizationManuallySet});})
+      .then(data=>{if(!controller.signal.aborted){setContactDetails(data);setOrganizationLabel({customerId:briefCustomerId,name:data.organizations.find(org=>org.id===data.customer.customer_organization_id)?.name||null,manual:data.organizationManuallySet});}})
       .catch(()=>{});
     return ()=>controller.abort();
-  },[briefCustomerId]);
+  },[briefCustomerId,customerRevision]);
   const [noteTarget, setNoteTarget] = useState<{requestId:string; callId:string; time:string} | null>(null);
   const selectNoteTarget = (callId:string, time = new Date().toISOString()) => setNoteTarget({requestId:briefRequestId, callId, time});
   const selectedNoteCall = noteTarget?.requestId === briefRequestId ? noteTarget : null;
@@ -205,6 +210,7 @@ export function PhoneCentral(props: Props) {
   }
   async function customerSaved(data: CustomerEditorData) {
     const id=data.customer.id;
+    setContactDetails(data);
     setCustomerRevision(n=>n+1);
     setOrganizationLabel({customerId:id,name:data.organizations.find(org=>org.id===data.customer.customer_organization_id)?.name||null,manual:data.organizationManuallySet});
     const response=await fetch("/api/ops/voice-copilot/context?directory=1&customerId="+encodeURIComponent(id),{cache:"no-store"});
@@ -228,7 +234,19 @@ export function PhoneCentral(props: Props) {
   const organization = organizationLabel && organizationLabel.customerId===briefCustomerId ? organizationLabel.name || (organizationLabel.manual ? null : customer?.company) : customer?.company;
   const name = customer?.displayName || customer?.company || "Dein nächstes Gespräch";
   const [chosenPhone,setChosenPhone]=useState<{customerId:string;phone:string}|null>(null);
-  const phone = chosenPhone && chosenPhone.customerId===briefCustomerId ? chosenPhone.phone : customer?.phone || "";
+  const detail=contactDetails?.customer.id===briefCustomerId?contactDetails:null;
+  const emailCount=detail?new Set([detail.customer.email,...detail.emails].map(value=>value.trim().toLowerCase()).filter(Boolean)).size:0;
+  const phoneNumbers=[...new Set((detail?[detail.customer.phone,...detail.phones]:[customer?.phone,...(activeContact?.phoneNumbers||[])]).filter((value):value is string=>Boolean(value)).map(value=>parsePhoneNumberFromString(value,"DE")?.number||value))];
+  function callContact(number:string,event?:MouseEvent<HTMLButtonElement>){
+    if(busy||contextLoading)return;
+    const target=dialPhoneNumber(number);if(!target)return;
+    phonePicker.current?.close();
+    if(placetelCall.current){if(!placetelCall.current.start(target)){setNotice("Bitte schließe zuerst den bereits vorbereiteten Anruf ab oder prüfe seinen Status.");return;}}
+    else if(event)openPhoneApp(event,target);
+    else {window.location.assign("tel:"+target);setNotice("Nummer an die Telefon-App übergeben.");}
+    if(briefCustomerId)setChosenPhone({customerId:briefCustomerId,phone:number});
+  }
+  const phone = chosenPhone && chosenPhone.customerId===briefCustomerId && phoneNumbers.includes(parsePhoneNumberFromString(chosenPhone.phone,"DE")?.number||chosenPhone.phone) ? chosenPhone.phone : customer?.phone || phoneNumbers[0] || "";
   const dialPhone = dialPhoneNumber(phone);
   const freeDialPhone = dialPhoneNumber(number);
   const lastDialAt = useRef(-Infinity);
@@ -291,17 +309,15 @@ export function PhoneCentral(props: Props) {
                 {customer ? initials(name) : <Phone size={23} />}
               </span>
               <div className={styles.customerIdentity}>
-                <div className={styles.customerNameRow}><h2>{browserPhone.call && !customer ? browserPhone.call.phone : name}</h2>{briefCustomerId && <CustomerEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={customerSaved}/>}</div>
+                <div className={styles.customerNameRow}><h2>{browserPhone.call && !customer ? browserPhone.call.phone : name}</h2>{briefCustomerId && <CustomerEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={customerSaved} onDial={callContact}/>}</div>
                 {!customer && <p>{browserPhone.call ? browserPhone.call.customerId ? "Kundenanruf · kein Vorgang geöffnet" : "Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}</p>}
                 {contextLoading && <small role="status">Gesprächsübersicht wird geladen …</small>}
-                {(activeContact?.phoneNumbers?.length || 0)>1 && <select aria-label="Rufnummer auswählen" disabled={busy} value={phone} onChange={e=>setChosenPhone({customerId:briefCustomerId!,phone:e.target.value})}>
-                  {activeContact!.phoneNumbers!.map(number=><option key={number} value={number}>{number}</option>)}
-                </select>}
+
               </div>
             </div>
             <div className={styles.actions + " " + styles.headerActions}>
               {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
-                <PlacetelCallButton key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
+                <PlacetelCallButton ref={placetelCall} key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
                   requestId={briefRequestId} dialNumber={dialPhone} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} />}
               {customer && !readySession && props.workspace !== "prepare" && (props.workspace === "assist" ? (
                 <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
@@ -335,8 +351,9 @@ export function PhoneCentral(props: Props) {
             </div>
             </div>
             {customer && <dl className={styles.contactFacts} aria-label="Kontaktdaten">
-              <div><dt>E-Mail:</dt><dd>{customer.email ? <a className={styles.factValue} title={customer.email} href={"mailto:" + customer.email}>{customer.email}</a> : <span className={styles.missingFact}>{briefCustomerId ? <CustomerEditor customerId={briefCustomerId} disabled={busy} onSaved={customerSaved} trigger="email"/> : "Nicht hinterlegt"}</span>}</dd></div>
-              <div><dt>Telefonnummer:</dt><dd><div className={styles.phoneFact}><span>{phone || (briefCustomerId ? <CustomerEditor customerId={briefCustomerId} disabled={busy} onSaved={customerSaved} trigger="phone"/> : "Rufnummer fehlt")}</span>{briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
+              <div><dt>E-Mail: {briefCustomerId&&emailCount>1&&<CustomerEditor customerId={briefCustomerId} disabled={busy} onSaved={customerSaved} onDial={callContact} trigger="email" count={emailCount}/>}</dt><dd>{customer.email ? <a className={styles.factValue} title={customer.email} href={"mailto:" + customer.email}>{customer.email}</a> : <span className={styles.missingFact}>{briefCustomerId ? <CustomerEditor customerId={briefCustomerId} disabled={busy} onSaved={customerSaved} onDial={callContact} trigger="email"/> : "Nicht hinterlegt"}</span>}</dd></div>
+              <div><dt>Telefonnummer: {phoneNumbers.length>1&&<button type="button" className={styles.contactCount} disabled={busy||contextLoading} aria-label={`${phoneNumbers.length} Telefonnummern – Nummer auswählen`} onClick={()=>phonePicker.current?.showModal()}>({phoneNumbers.length})</button>}</dt><dd><div className={styles.phoneFact}><span>{phone || (briefCustomerId ? <CustomerEditor customerId={briefCustomerId} disabled={busy} onSaved={customerSaved} onDial={callContact} trigger="phone"/> : "Rufnummer fehlt")}</span>{briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
+                  setCustomerRevision(n=>n+1);
                   setChosenPhone({customerId:briefCustomerId,phone:saved});
                   setActiveContact(old=>old?.customerId===briefCustomerId?{...old,phone:old.phone||saved,phoneNumbers:numbers}:old);
                   setResults(old=>old.map(row=>row.customerId===briefCustomerId?{...row,phone:row.phone||saved,phoneNumbers:numbers}:row));
@@ -344,6 +361,14 @@ export function PhoneCentral(props: Props) {
               <div><dt>Organisation:</dt><dd>{organization ? <span className={styles.factValue} title={organization}>{organization}</span> : <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
               <div><dt>Bisherige Bestellungen:</dt><dd>{briefCustomerId && <OrganizationOrdersButton key={briefCustomerId+":"+customerRevision} customerId={briefCustomerId}/>}</dd></div>
             </dl>}
+            <dialog ref={phonePicker} className={styles.phoneDialog} aria-label="Rufnummer auswählen">
+              <h3>Welche Nummer möchtest du anrufen?</h3>
+              <div className={styles.phoneChoices}>{phoneNumbers.map(number=><div className={styles.phoneChoice} key={number}>
+                <span>{number}</span><ContactCopyButton value={number} label={number}/>
+                <button type="button" className={styles.button+" "+styles.primary} disabled={busy||contextLoading} onClick={event=>callContact(number,event)}><Phone size={16}/>Mit Placetel anrufen</button>
+              </div>)}</div>
+              <div className={styles.actions}><button type="button" className={styles.button} onClick={()=>phonePicker.current?.close()}>Schließen</button></div>
+            </dialog>
             {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected}/>}
 
           </section>
