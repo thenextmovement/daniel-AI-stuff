@@ -39,6 +39,15 @@ test("reads tenant-scoped contacts and saves atomically with server-owned tenant
  try{
   const initial=await readCustomerEditor(id);assert.deepEqual(initial.phones,["+442079460018"]);assert.equal(initial.organizationManuallySet,true);
   const result=await saveCustomerEditor(id,{...input(),tenantId:"untrusted"},"actor-id");
-  assert.equal(rpc.p_tenant_id,tenant);assert.equal(rpc.p_actor,"actor-id");assert.equal(rpc.p_customer_id,id);assert.equal(result.customer.email,"main@example.test");assert.equal(reads,3);
+  assert.equal(rpc.p_tenant_id,tenant);assert.equal(rpc.p_actor,"actor-id");assert.equal(rpc.p_customer_id,id);assert.equal(result.customer.email,"old@example.test");assert.equal(rpc.p_phone,null);assert.equal(reads,3);
  }finally{globalThis.fetch=original;if(oldUrl===undefined)delete process.env.SUPABASE_URL;else process.env.SUPABASE_URL=oldUrl;if(oldKey===undefined)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=oldKey;}
 });
+
+ test("preserves server primary contacts even with manipulated input and legacy phone",()=>{
+ const result=validateCustomerEditor({...input(),email:"replacement@example.test",phone:"+442079460018",phones:[{phone:"020 7946 0018",country:"GB"}]},{email:"old@example.test",phone:"legacy number"});
+ assert.equal(result.email,"old@example.test");assert.equal(result.phone,"legacy number");assert.deepEqual(result.phones,["+442079460018"]);
+ });
+ test("country selection normalizes local phone and rejects primary alias",()=>{
+ assert.deepEqual(validateCustomerEditor({...input(),phones:[{phone:"015904208888",country:"DE"}]}).phones,["+4915904208888"]);
+ assert.throws(()=>validateCustomerEditor({...input(),phones:[{phone:"015904209999",country:"DE"}]},{email:"old@example.test",phone:"015904209999"}));
+ });

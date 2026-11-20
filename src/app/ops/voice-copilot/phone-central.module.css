@@ -1006,7 +1006,7 @@
 .ordersScroll a { color:#286044; text-decoration:underline; }
 .overviewHeader .link { margin:0; font-size:13px; }
 
-.customerEditDialog { width: min(700px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; }
+.customerEditDialog { width: min(820px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: 85vh; overflow: auto; }
 .contactEditorFields { border: 0; padding: 0; margin: 20px 0; display: grid; gap: 16px; min-width: 0; }
 .contactEditorFields label { margin: 0; display: grid; gap: 6px; font-size: 14px; font-weight: 500; }
 .contactEditorFields input, .contactEditorFields select { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5d0; border-radius: 8px; background: white; color: #253a30; font: inherit; }
@@ -1018,3 +1018,16 @@
 .contactEditorRow { display: flex; gap: 8px; }
 .customerNameRow { display: flex; align-items: center; gap: 10px; }
 @media(max-width:600px) { .contactEditorGrid { grid-template-columns: 1fr; } }
+
+.customerEditDialog .contactEditorGrid label { margin: 0; }
+.customerEditDialog .searchError { position: static; display: block; }
+.contactEditorFields input[readonly] { background: #f0f3f1; color: #65756b; }
+.contactEditorRow select { flex: 0 1 42%; min-width: 0; }
+.contactEditorRow input { flex: 1; min-width: 0; }
+.contactEditorRow:has(select) { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.contactEditorRow:has(select) select { grid-column: 1 / -1; width: 100%; }
+
+@media(min-width:700px) {
+ .contactEditorRow:has(select) { grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1fr) auto; }
+ .contactEditorRow:has(select) select { grid-column: auto; }
+}

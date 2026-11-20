@@ -3,8 +3,8 @@ import hashlib,json,re
 from pathlib import Path
 root=Path(__file__).resolve().parents[3]
 excluded={
- "voice-copilot/customer":'Customer contact edits require a personal enrolled phone device; use the connected Telefonzentrale UI. No server-side device impersonation.',
- 'voice-copilot/phones':'Customer phone edits require a personal enrolled phone device; use the connected Telefonzentrale UI. No server-side device impersonation.',
+ "voice-copilot/customer":'Customer contact edits use the authenticated Telefonzentrale UI; no additional MCP operation is exposed.',
+ 'voice-copilot/phones':'Customer contact edits use the authenticated Telefonzentrale UI; no additional MCP operation is exposed.',
  'voice-copilot/links':'Customer link edits require a personal enrolled phone device; use the connected Telefonzentrale UI. No server-side device impersonation.',
  'neon-studio/[[...path]]':'Browser-only Neon Studio document and asset proxy; edit persisted projects in the authenticated Neon Studio UI. No arbitrary catch-all MCP forwarding.',
  'customer-records/offers/[offerId]/admin':'Browser-only redirect; use offers_get/editor tools to read and edit the offer directly.',

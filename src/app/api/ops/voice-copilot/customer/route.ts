@@ -16,9 +16,9 @@ export async function PATCH(request:NextRequest){
  try{
  if(!phoneRequestIsSameOrigin(request.headers.get("origin"),request.headers.get("x-forwarded-host")||request.headers.get("host"),request.headers.get("sec-fetch-site"),process.env.NODE_ENV==="production"))throw new QuoteValidationError("Diese Aktion ist nicht erlaubt.",["invalid_origin"],403);
  const current=await currentPhoneDevice();
- if(!current)throw new QuoteValidationError("Melde dein Telefonprofil an.",["phone_identity_required"],403);
+ // OPS authorization above is sufficient for contact edits; telephone enrollment is optional.
  const input=await readVoiceCopilotJson(request);
  if(!input||typeof input!=="object"||Array.isArray(input))throw new QuoteValidationError("Ungültige Eingabe.",["invalid_payload"],422);
- return NextResponse.json({ok:true,...await saveCustomerEditor(requireVoiceUuid(input.customerId,"Kunde"),input,current.staff.id)},{headers:{"cache-control":"no-store"}});
+ return NextResponse.json({ok:true,...await saveCustomerEditor(requireVoiceUuid(input.customerId,"Kunde"),input,current?.staff.id ?? null)},{headers:{"cache-control":"no-store"}});
  }catch(error){return voiceCopilotApiFailure(error,"customer-edit-save");}
 }

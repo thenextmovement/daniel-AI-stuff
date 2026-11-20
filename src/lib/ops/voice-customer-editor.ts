@@ -7,21 +7,22 @@ export type CustomerEditorRecord={
 };
 export type CustomerEditorData={customer:CustomerEditorRecord;emails:string[];phones:string[];organizations:{id:string;name:string}[];organizationManuallySet:boolean};
 const invalid=(message:string)=>new QuoteValidationError(message,["invalid_customer_contact"],422);
-export function validateCustomerEditor(input:Record<string,unknown>){
+export function validateCustomerEditor(input:Record<string,unknown>,primary?:Pick<CustomerEditorRecord,"email"|"phone">){
  const text=(key:string,max:number)=>{const v=input[key];if(typeof v!=="string"||v.length>max||/[\u0000-\u001f]/.test(v))throw invalid("Bitte prüfe die Kontaktdaten.");return v.trim();};
  const email=(v:unknown)=>{if(typeof v!=="string")throw invalid("Ungültige E-Mail-Adresse.");const s=v.trim().toLowerCase();if(s.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s))throw invalid("Bitte prüfe die E-Mail-Adresse.");return s;};
  const list=(key:string,parse:(v:unknown)=>string)=>{const v=input[key];if(!Array.isArray(v)||v.length>10)throw invalid("Maximal zehn zusätzliche Kontakte je Typ.");const values=v.map(parse);if(new Set(values).size!==values.length)throw invalid("Ein Kontakt ist doppelt eingetragen.");return values;};
- const primaryEmail=email(input.email),phone=text("phone",40);
- const emails=list("emails",email),phones=list("phones",v=>customerPhone(v));
- const primaryPhone=phone?customerPhone(phone):null;
- if(emails.includes(primaryEmail)||(primaryPhone&&phones.includes(primaryPhone)))throw invalid("Der Hauptkontakt darf nicht zusätzlich eingetragen werden.");
+ const primaryEmail=primary?primary.email:email(input.email),phone=primary?primary.phone:text("phone",40);
+ const emails=list("emails",email),phones=list("phones",v=>typeof v === "object" && v !== null ? customerPhone((v as Record<string,unknown>).phone,(v as Record<string,unknown>).country) : customerPhone(v));
+ let primaryPhone:string|null=null;
+ try { primaryPhone=phone?customerPhone(phone):null; } catch(error) { if(!primary)throw error; }
+ if(emails.includes(primaryEmail?.trim().toLowerCase())||(primaryPhone&&phones.includes(primaryPhone)))throw invalid("Der Hauptkontakt darf nicht zusätzlich eingetragen werden.");
  const organizationId=input.organizationId;
  if(organizationId!==null&&(typeof organizationId!=="string"||!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(organizationId)))throw invalid("Ungültige Organisation.");
  const expectedUpdatedAt=text("expectedUpdatedAt",50);
  if(!Number.isFinite(Date.parse(expectedUpdatedAt)))throw invalid("Bitte lade den Kunden erneut.");
  const newOrganizationName=text("newOrganizationName",200);
  if(organizationId&&newOrganizationName)throw invalid("Wähle eine bestehende oder eine neue Organisation.");
- return {firstName:text("firstName",120),lastName:text("lastName",120),email:primaryEmail,phone:primaryPhone,emails,phones,organizationId,newOrganizationName,expectedUpdatedAt};
+ return {firstName:text("firstName",120),lastName:text("lastName",120),email:primaryEmail,phone:primary?primary.phone:primaryPhone,emails,phones,organizationId,newOrganizationName,expectedUpdatedAt};
 }
 export async function readCustomerEditor(id:string):Promise<CustomerEditorData>{
  const [tenant]=await supabaseRequest<{id:string}[]>("crm_organizations",{},{select:"id",slug:"eq.neontrip",limit:1});
@@ -35,10 +36,12 @@ export async function readCustomerEditor(id:string):Promise<CustomerEditorData>{
  supabaseRequest<{fields:string[]}[]>("customer_manual_contact_fields",{},{select:"fields",customer_id:"eq."+id,limit:1})]);
  return {customer,emails:contacts.filter(x=>x.kind==="email").map(x=>x.value),phones:[...new Set([...contacts.filter(x=>x.kind==="phone").map(x=>x.value),...legacy.map(x=>x.phone)])].filter(x=>x!==customer.phone),organizations,organizationManuallySet:manual[0]?.fields.includes("customer_organization_id")||false};
 }
-export async function saveCustomerEditor(id:string,input:Record<string,unknown>,actor:string){
- const values=validateCustomerEditor(input),{customer}=await readCustomerEditor(id);
+export async function saveCustomerEditor(id:string,input:Record<string,unknown>,actor:string|null){
+ const {customer}=await readCustomerEditor(id);
+ // Primary contacts are server-owned; preserve legacy formats verbatim.
+ const values=validateCustomerEditor(input,customer);
  try{
- await supabaseRpc("save_voice_customer_v1",{p_customer_id:id,p_tenant_id:customer.organization_id,p_expected_updated_at:values.expectedUpdatedAt,p_first_name:values.firstName,p_last_name:values.lastName,p_email:values.email,p_phone:values.phone,p_emails:values.emails,p_phones:values.phones,p_customer_organization_id:values.organizationId,p_new_organization_name:values.newOrganizationName||null,p_actor:actor});
+ await supabaseRpc("save_voice_customer_v1",{p_customer_id:id,p_tenant_id:customer.organization_id,p_expected_updated_at:values.expectedUpdatedAt,p_first_name:values.firstName,p_last_name:values.lastName,p_email:customer.email,p_phone:customer.phone,p_emails:values.emails,p_phones:values.phones,p_customer_organization_id:values.organizationId,p_new_organization_name:values.newOrganizationName||null,p_actor:actor});
  }catch(error){
  if(error instanceof SupabaseRestError){
  const details=String(error.details);
