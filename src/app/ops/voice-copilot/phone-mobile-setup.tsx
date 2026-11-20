@@ -26,7 +26,9 @@ export function PhoneMobileSetup({deviceId,busy}:{deviceId:string;busy:boolean})
   return ()=>{generation.current++;attempt.current=null;window.clearInterval(timer);};
  },[deviceId]);
  async function change(action:"start"|"cancel"|"unlink") {
-  if(working||busy)return;setWorking(true);setError("");const epoch=generation.current;
+  if(working||busy)return;
+  if(action==="start"&&!window.confirm(`Möchtest du ${phone.trim()} jetzt zur Handy-Bestätigung anrufen?`))return;
+  setWorking(true);setError("");const epoch=generation.current;
   try{
    let body:Record<string,unknown>;
    if(action==="start"){

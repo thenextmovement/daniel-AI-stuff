@@ -69,10 +69,12 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
     setMessage("Nummer an Placetel übergeben. Die Gesprächsdokumentation erscheint hier, sobald die Aufnahme vorliegt.");
   }
   const requestedNumber = useRef<string | undefined>(undefined);
+  const [confirmationNumber, setConfirmationNumber] = useState("");
   useImperativeHandle(ref, () => ({ start(number) {
     if (disabled || sending.current || status === "opened" || status === "prepared" || status === "retry") return false;
     key.current = null; requestedNumber.current = number;
-    void prepare(number);
+    setConfirmationNumber(number);
+    confirmation.current?.showModal();
     return true;
   }}));
   async function prepare(number = requestedNumber.current || dialNumber) {
@@ -123,7 +125,7 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
         if (status === "prepared") open(phone); else void prepare();
       }}>
         <h3 id="confirm-placetel-title">Anruf bestätigen</h3>
-        <p>Möchtest du {phone || dialNumber || "diesen Kunden"} jetzt mit dem Placetel-Softphone anrufen?</p>
+        <p>Möchtest du {confirmationNumber || phone || dialNumber || "diesen Kunden"} jetzt mit dem Placetel-Softphone anrufen?</p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 24 }}>
           <button type="submit" className={styles.button + " " + styles.primary} style={{ minHeight: 64, fontSize: 20, justifyContent: "center" }} disabled={disabled || status === "sending"}><Phone size={22}/>Anrufen</button>
           <button type="button" className={styles.button} style={{ minHeight: 64, fontSize: 20, justifyContent: "center" }} autoFocus onClick={() => confirmation.current?.close()}>Abbrechen</button>
@@ -132,7 +134,7 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
     </dialog>
     {status === "opened" ? <p role="status">Zum Auflegen oder Abbrechen den roten Hörer im Placetel-Softphone drücken.</p> :
       status !== "ended" && <button className={styles.button + " " + styles.primary + " " + styles.placetelDial} type="button" disabled={disabled || status === "sending"}
-        onClick={() => confirmation.current?.showModal()}>
+        onClick={() => { setConfirmationNumber(phone || requestedNumber.current || dialNumber || ""); confirmation.current?.showModal(); }}>
         <Phone size={17}/>{status === "sending" ? "Anruf wird vorbereitet …" : status === "retry" ? "Status prüfen" : status === "prepared" ? "Placetel-Softphone öffnen" : "Mit Placetel-Softphone anrufen"}
       </button>}
     {message && <p role="status" className={styles.small}>{message}</p>}

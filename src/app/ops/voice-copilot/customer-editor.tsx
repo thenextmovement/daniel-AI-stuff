@@ -28,7 +28,7 @@ export function CustomerEditor({customerId,disabled,onSaved,onDial,trigger="name
  async function save(){
  if(!form)return;setWorking(true);setError("");
  try{
- const result=await read(await fetch("/api/ops/voice-copilot/customer",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({customerId,...form,phones:form.phones.map((phone,i)=>({phone,country:phoneCountries[i]||"DE"})),organizationId:form.organizationId||null})}));
+ const result=await read(await fetch("/api/ops/voice-copilot/customer",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({customerId,...form,emails:form.emails.map(email=>email.trim()).filter(Boolean),phones:form.phones.map((phone,i)=>({phone:phone.trim(),country:phoneCountries[i]||"DE"})).filter(entry=>entry.phone),organizationId:form.organizationId||null})}));
  // Only acknowledge after the server has read the saved customer back.
  await onSaved(result);dialog.current?.close();
  }catch(e){setError(e instanceof Error?e.message:"Speichern fehlgeschlagen.");}finally{setWorking(false);}
@@ -56,14 +56,14 @@ export function CustomerEditor({customerId,disabled,onSaved,onDial,trigger="name
  <h4>{kind==="emails"?"Zusätzliche E-Mails":"Zusätzliche Telefonnummern"} <small>{form[kind].length}/10</small></h4>
  {form[kind].map((value,index)=><div className={styles.contactEditorRow} key={index}>
  {kind==="phones"&&<PhoneCountrySelect label={"Land für Telefonnummer "+(index+1)} value={phoneCountries[index]||"DE"} onChange={country=>setPhoneCountries(old=>form.phones.map((_,i)=>i===index?country:old[i]||"DE"))}/>}
- <input aria-label={(kind==="emails"?"Zusätzliche E-Mail ":"Zusätzliche Telefonnummer ")+(index+1)} type={kind==="emails"?"email":"tel"} required value={value} onChange={e=>setForm(old=>old?{...old,[kind]:old[kind].map((v,i)=>i===index?e.target.value:v)}:old)}/>
+ <input aria-label={(kind==="emails"?"Zusätzliche E-Mail ":"Zusätzliche Telefonnummer ")+(index+1)} type={kind==="emails"?"email":"tel"} value={value} onChange={e=>setForm(old=>old?{...old,[kind]:old[kind].map((v,i)=>i===index?e.target.value:v)}:old)}/>
  <div className={styles.contactRowActions}>
  <ContactCopyButton value={value} label={(kind==="emails"?"E-Mail ":"Telefonnummer ")+(index+1)}/>
  {kind==="phones"&&onDial&&<button type="button" className={styles.contactAction} aria-label={"Telefonnummer "+(index+1)+" mit Placetel anrufen"} title={data?.phones.includes(value)?"Mit Placetel anrufen":"Neue oder geänderte Nummer bitte zuerst speichern"} disabled={!data?.phones.includes(value)} onClick={()=>{dialog.current?.close();onDial(value);}}><Phone size={16}/></button>}
  <button type="button" className={styles.contactDelete} aria-label={"Kontakt "+(index+1)+" entfernen"} title="Kontakt entfernen" onClick={()=>{setRemoval({kind,index,value,code:String(1000+crypto.getRandomValues(new Uint32Array(1))[0]%9000)});setConfirmation("");removalDialog.current?.showModal();}}><Trash2 size={14}/></button>
  </div>
  </div>)}
- <button type="button" className={styles.button} disabled={form[kind].length>=10} onClick={()=>{if(kind==="phones")setPhoneCountries(old=>[...old,"DE"]);setForm(old=>old?{...old,[kind]:[...old[kind],""]}:old);}}><Plus size={16}/> {kind==="emails"?"E-Mail hinzufügen":"Telefonnummer hinzufügen"}</button>
+ <button type="button" className={styles.button} disabled={form[kind].length>=10||form[kind].some(value=>!value.trim())} onClick={()=>{if(kind==="phones")setPhoneCountries(old=>[...old,"DE"]);setForm(old=>old&&!old[kind].some(value=>!value.trim())?{...old,[kind]:[...old[kind],""]}:old);}}><Plus size={16}/> {kind==="emails"?"E-Mail hinzufügen":"Telefonnummer hinzufügen"}</button>
  </section>)}
  <label>Organisation<select value={form.organizationId} onChange={e=>setForm(old=>old?{...old,organizationId:e.target.value,newOrganizationName:""}:old)}>
  <option value="">Keine Organisation</option>{data?.organizations.map(org=><option key={org.id} value={org.id}>{org.name}</option>)}
