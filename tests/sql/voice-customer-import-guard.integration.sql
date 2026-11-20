@@ -7,7 +7,10 @@ insert into voice_staff values('20000000-0000-0000-0000-000000000001');
 do $test$
 declare c uuid:='10000000-0000-0000-0000-000000000001';t uuid:='a0000000-0000-0000-0000-000000000001';actor uuid:='20000000-0000-0000-0000-000000000001';returned_id uuid; saved jsonb; previous jsonb; owned_before text[];
 begin
- perform public.save_voice_customer_v1(c,t,'2026-11-20','New','Name','new@example.test','+4915904209999','[]','[]',null,null,actor);
+ perform public.save_voice_customer_v1(c,t,'2026-11-20','Old','Name','old@example.test',null,'[]','[]',null,null,actor);
+ -- Existing Kundenakte retains its own primary-contact editing contract.
+ perform public.patch_customer_record_contact_v1(c,'{"email":"new@example.test","phone":"+4915904209999"}');
+ perform public.save_voice_customer_v1(c,t,(select updated_at from master_customers where id=c),'New','Name','new@example.test','+4915904209999','[]','[]',null,null,actor);
  update master_customers set first_name='Imported',last_name='Fresh',email='old@example.test',phone=null where id=c;
  if not exists(select 1 from master_customers where id=c and first_name='New' and last_name='Fresh' and email='new@example.test' and phone='+4915904209999') then raise exception 'import overwrote manually changed fields';end if;
  insert into master_customers(id,email,organization_id,first_name,last_name,phone) values(gen_random_uuid(),'old@example.test',t,'Old','Newer',null)
