@@ -1,14 +1,17 @@
 "use client";
 import {useRef,useState,useId} from "react";
-import {Pencil,Plus,Trash2} from "lucide-react";
+import {Pencil,Plus,Trash2,Phone} from "lucide-react";
 import type {CustomerEditorData} from "@/lib/ops/voice-customer-editor";
 import {parsePhoneNumberFromString,type CountryCode} from "libphonenumber-js";
 import {PhoneCountrySelect} from "./phone-country-select";
+import {ContactCopyButton} from "./contact-copy-button";
 import styles from "./phone-central.module.css";
 type Form={firstName:string;lastName:string;email:string;phone:string;emails:string[];phones:string[];organizationId:string;newOrganizationName:string;expectedUpdatedAt:string};
-export function CustomerEditor({customerId,disabled,onSaved,trigger="name"}:{customerId:string;disabled:boolean;onSaved:(data:CustomerEditorData)=>Promise<void>;trigger?:"name"|"phone"|"email"}){
+export function CustomerEditor({customerId,disabled,onSaved,onDial,trigger="name",count}:{customerId:string;disabled:boolean;onSaved:(data:CustomerEditorData)=>Promise<void>;onDial?:(phone:string)=>void;count?:number;trigger?:"name"|"phone"|"email"}){
  const dialog=useRef<HTMLDialogElement>(null),titleId=useId();
  const [data,setData]=useState<CustomerEditorData|null>(null),[form,setForm]=useState<Form|null>(null);
+ const removalDialog=useRef<HTMLDialogElement>(null);
+ const [removal,setRemoval]=useState<{kind:"emails"|"phones";index:number;code:string;value:string}|null>(null),[confirmation,setConfirmation]=useState("");
  const [phoneCountries,setPhoneCountries]=useState<CountryCode[]>([]);
  const [working,setWorking]=useState(false),[error,setError]=useState("");
  async function read(response:Response){
@@ -32,8 +35,8 @@ export function CustomerEditor({customerId,disabled,onSaved,trigger="name"}:{cus
  }
  const field=(key:keyof Form,value:string)=>setForm(old=>old?{...old,[key]:value}:old);
  return <>
- <button type="button" className={trigger==="name"?styles.phonePlus:styles.orderSummary} disabled={disabled} onClick={()=>void open()} aria-label="Kundendaten bearbeiten">
- {trigger==="name"?<Pencil size={16}/>:trigger==="phone"?"Rufnummer ergänzen":"E-Mail ergänzen"}
+ <button type="button" className={trigger==="name"?styles.phonePlus:count?styles.contactCount:styles.orderSummary} disabled={disabled} onClick={()=>void open()} aria-label={count?`${count} E-Mails – Kundendaten bearbeiten`:"Kundendaten bearbeiten"}>
+ {count?`(${count})`:trigger==="name"?<Pencil size={16}/>:trigger==="phone"?"Rufnummer ergänzen":"E-Mail ergänzen"}
  </button>
  <dialog ref={dialog} className={styles.phoneDialog+" "+styles.customerEditDialog} aria-labelledby={titleId} onCancel={e=>{if(working)e.preventDefault();}}>
  <h3 id={titleId}>Kundendaten bearbeiten</h3>
@@ -45,8 +48,8 @@ export function CustomerEditor({customerId,disabled,onSaved,trigger="name"}:{cus
  <div className={styles.contactEditorGrid}>
  <label>Vorname<input value={form.firstName} maxLength={120} onChange={e=>field("firstName",e.target.value)}/></label>
  <label>Nachname<input value={form.lastName} maxLength={120} onChange={e=>field("lastName",e.target.value)}/></label>
- <label>Haupt-E-Mail<input type="email" readOnly value={form.email}/></label>
- <label>Hauptnummer<input type="tel" readOnly value={form.phone} placeholder="Nicht hinterlegt"/></label>
+ <label>Haupt-E-Mail<div className={styles.primaryContactRow}><input type="email" readOnly value={form.email}/><ContactCopyButton value={form.email} label="Haupt-E-Mail"/></div></label>
+ <label>Hauptnummer<div className={styles.primaryContactRow}><input type="tel" readOnly value={form.phone} placeholder="Nicht hinterlegt"/><ContactCopyButton value={form.phone} label="Hauptnummer"/>{form.phone&&onDial&&<button type="button" className={styles.contactAction} aria-label="Hauptnummer mit Placetel anrufen" title="Mit Placetel anrufen" onClick={()=>{dialog.current?.close();onDial(form.phone);}}><Phone size={16}/></button>}</div></label>
  </div>
  <small>Haupt-E-Mail und Hauptnummer bleiben unverändert. Weitere E-Mails und Telefonnummern kannst du unten hinzufügen.</small>
  {(["emails","phones"] as const).map(kind=><section key={kind} className={styles.contactEditorSection}>
@@ -54,7 +57,11 @@ export function CustomerEditor({customerId,disabled,onSaved,trigger="name"}:{cus
  {form[kind].map((value,index)=><div className={styles.contactEditorRow} key={index}>
  {kind==="phones"&&<PhoneCountrySelect label={"Land für Telefonnummer "+(index+1)} value={phoneCountries[index]||"DE"} onChange={country=>setPhoneCountries(old=>form.phones.map((_,i)=>i===index?country:old[i]||"DE"))}/>}
  <input aria-label={(kind==="emails"?"Zusätzliche E-Mail ":"Zusätzliche Telefonnummer ")+(index+1)} type={kind==="emails"?"email":"tel"} required value={value} onChange={e=>setForm(old=>old?{...old,[kind]:old[kind].map((v,i)=>i===index?e.target.value:v)}:old)}/>
- <button type="button" className={styles.button} aria-label={"Kontakt "+(index+1)+" entfernen"} onClick={()=>{if(kind==="phones")setPhoneCountries(old=>old.filter((_,i)=>i!==index));setForm(old=>old?{...old,[kind]:old[kind].filter((_,i)=>i!==index)}:old);}}><Trash2 size={16}/></button>
+ <div className={styles.contactRowActions}>
+ <ContactCopyButton value={value} label={(kind==="emails"?"E-Mail ":"Telefonnummer ")+(index+1)}/>
+ {kind==="phones"&&onDial&&<button type="button" className={styles.contactAction} aria-label={"Telefonnummer "+(index+1)+" mit Placetel anrufen"} title={data?.phones.includes(value)?"Mit Placetel anrufen":"Neue oder geänderte Nummer bitte zuerst speichern"} disabled={!data?.phones.includes(value)} onClick={()=>{dialog.current?.close();onDial(value);}}><Phone size={16}/></button>}
+ <button type="button" className={styles.contactDelete} aria-label={"Kontakt "+(index+1)+" entfernen"} title="Kontakt entfernen" onClick={()=>{setRemoval({kind,index,value,code:String(1000+crypto.getRandomValues(new Uint32Array(1))[0]%9000)});setConfirmation("");removalDialog.current?.showModal();}}><Trash2 size={14}/></button>
+ </div>
  </div>)}
  <button type="button" className={styles.button} disabled={form[kind].length>=10} onClick={()=>{if(kind==="phones")setPhoneCountries(old=>[...old,"DE"]);setForm(old=>old?{...old,[kind]:[...old[kind],""]}:old);}}><Plus size={16}/> {kind==="emails"?"E-Mail hinzufügen":"Telefonnummer hinzufügen"}</button>
  </section>)}
@@ -66,5 +73,17 @@ export function CustomerEditor({customerId,disabled,onSaved,trigger="name"}:{cus
  <div className={styles.actions}><button type="submit" disabled={working} className={styles.button+" "+styles.primary}>{working?"Wird gespeichert …":"Änderungen speichern"}</button><button type="button" disabled={working} className={styles.button} onClick={()=>dialog.current?.close()}>Abbrechen</button></div>
  </form>}
  {!form&&!working&&<div className={styles.actions}><button type="button" className={styles.button} onClick={()=>void open()}>Erneut versuchen</button><button type="button" className={styles.button} onClick={()=>dialog.current?.close()}>Schließen</button></div>}
+ </dialog>
+ <dialog ref={removalDialog} className={styles.phoneDialog} aria-label="Kontakt entfernen" onClose={()=>setRemoval(null)}>
+ <h3>Kontakt wirklich entfernen?</h3><p>{removal?.value || "Leeren Eintrag entfernen"}</p>
+ <p>Gib zur Bestätigung <strong data-confirmation-code>{removal?.code}</strong> ein. Die Änderung wird erst mit „Änderungen speichern“ übernommen.</p>
+ <label>Bestätigungscode<input autoFocus inputMode="numeric" autoComplete="off" maxLength={4} value={confirmation} onChange={e=>setConfirmation(e.target.value)}/></label>
+ <div className={styles.actions}><button type="button" className={styles.button} onClick={()=>removalDialog.current?.close()}>Abbrechen</button><button type="button" className={styles.button} disabled={!removal||confirmation!==removal.code} onClick={()=>{
+ if(!removal||confirmation!==removal.code)return;
+ const {kind,index}=removal;
+ if(kind==="phones")setPhoneCountries(old=>old.filter((_,i)=>i!==index));
+ setForm(old=>old?{...old,[kind]:old[kind].filter((_,i)=>i!==index)}:old);
+ removalDialog.current?.close();
+ }}>Kontakt entfernen</button></div>
  </dialog></>;
 }

@@ -1,0 +1,67 @@
+import {chromium} from 'playwright';
+import assert from 'node:assert/strict';
+const browser=await chromium.launch({headless:true});
+try {
+ const page=await browser.newPage({viewport:{width:1728,height:1100}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const id='10000000-0000-0000-0000-000000000001',requestId='20000000-0000-0000-0000-000000000001';
+ let record={customer:{id,first_name:'Test',last_name:'Kontakt',email:'test@example.test',phone:'+4930123456',updated_at:'2026-11-20T10:00:00Z',customer_organization_id:null,organization_id:'a0000000-0000-0000-0000-000000000001'},emails:['extra@example.test'],phones:['+4915904208888'],organizations:[],organizationManuallySet:false};
+ let patchCount=0,dialRequests=[];
+ await page.addInitScript(()=>{window.copied=[];Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>window.copied.push(value)}});});
+ await page.route('**/api/**',async route=>{
+  const url=new URL(route.request().url());let body={};
+  if(url.pathname==='/api/ops/voice-copilot/customer'){
+   if(route.request().method()==='PATCH'){patchCount++;const input=route.request().postDataJSON();record={...record,emails:input.emails,phones:input.phones.map(p=>p.phone)};}body=record;
+  }else if(url.pathname==='/api/ops/voice-copilot/context'){
+   const customer={displayName:'Test Kontakt',company:null,email:record.customer.email,phone:record.customer.phone};
+   body=url.searchParams.has('history')?{entries:[],brief:[],nextOffset:null}:url.searchParams.has('directory')?{results:[{...customer,customerId:id,requestId,phoneNumbers:[record.customer.phone,...record.phones],requestTitle:'Testvorgang'}],nextOffset:null}:{context:{masterCustomerId:id,requestId,customer,request:{title:'Testvorgang',colors:[]},offer:null,outlook:[],sourceStatus:{customerRecord:'ok',offer:'not_linked',outlook:'empty'}}};
+  }else if(url.pathname==='/api/ops/voice-phone')body={enabled:true,team:[],profile:null,browserCallingAvailable:false,mobileCallingAvailable:false};
+  else if(url.pathname==='/api/ops/voice-phone/placetel'){
+   dialRequests.push(route.request().postDataJSON());return route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({error:'Isolierter Anruftest – kein Anruf'})});
+  }else return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Isolierte Vorschau'})});
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,...body})});
+ });
+ await page.goto('http://127.0.0.1:44206/ops/voice-copilot');
+ await page.getByText('Test Kontakt',{exact:true}).click();
+ await page.getByRole('button',{name:'2 E-Mails – Kundendaten bearbeiten',exact:true}).click();
+ const editor=page.getByRole('dialog',{name:'Kundendaten bearbeiten'});
+ await editor.getByLabel('Vorname',{exact:true}).waitFor();
+ await editor.getByRole('button',{name:'E-Mail 1 kopieren',exact:true}).click();
+ assert.deepEqual(await page.evaluate(()=>window.copied),['extra@example.test']);
+ await editor.getByRole('button',{name:'Kontakt 1 entfernen',exact:true}).first().click();
+ const removal=page.getByRole('dialog',{name:'Kontakt entfernen',exact:true});
+ assert.equal(await removal.getByRole('button',{name:'Kontakt entfernen',exact:true}).isDisabled(),true);
+ await removal.getByLabel('Bestätigungscode').fill('abcd');
+ assert.equal(await removal.getByRole('button',{name:'Kontakt entfernen',exact:true}).isDisabled(),true);
+ await removal.getByRole('button',{name:'Abbrechen',exact:true}).click();
+ assert.equal(await editor.getByLabel('Zusätzliche E-Mail 1',{exact:true}).count(),1);
+ await editor.getByRole('button',{name:'Kontakt 1 entfernen',exact:true}).first().click();
+ const code=await removal.locator('[data-confirmation-code]').innerText();assert.match(code,/^\d{4}$/);
+ await removal.getByLabel('Bestätigungscode').fill(code);
+ await removal.getByRole('button',{name:'Kontakt entfernen',exact:true}).click();
+ assert.equal(await editor.getByLabel('Zusätzliche E-Mail 1',{exact:true}).count(),0);assert.equal(patchCount,0);
+ await editor.getByRole('button',{name:'Abbrechen',exact:true}).click();
+ await page.getByRole('button',{name:'2 E-Mails – Kundendaten bearbeiten',exact:true}).click();
+ await editor.getByLabel('Zusätzliche E-Mail 1',{exact:true}).waitFor();
+ await page.setViewportSize({width:390,height:844});
+ assert.ok((await editor.boundingBox()).width<=390);
+ assert.equal(await editor.evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);
+ await page.screenshot({path:'/tmp/contact-actions-mobile.png'});
+ await page.setViewportSize({width:1728,height:1100});
+ await page.screenshot({path:'/tmp/contact-actions-desktop.png'});
+ await editor.getByRole('button',{name:'Abbrechen',exact:true}).click();
+ await page.getByRole('button',{name:'2 Telefonnummern – Nummer auswählen',exact:true}).click();
+ const picker=page.getByRole('dialog',{name:'Rufnummer auswählen',exact:true});
+ await picker.getByRole('button',{name:'+4915904208888 kopieren',exact:true}).click();
+ assert.equal((await page.evaluate(()=>window.copied)).at(-1),'+4915904208888');
+ await picker.getByRole('button',{name:'Mit Placetel anrufen',exact:true}).nth(1).click();
+ await picker.waitFor({state:'hidden'});await page.getByText('Isolierter Anruftest – kein Anruf',{exact:true}).waitFor();
+ assert.equal(dialRequests.length,1);assert.equal(dialRequests[0].phone,'+4915904208888');assert.equal(dialRequests[0].customerId,id);assert.equal(dialRequests[0].requestId,requestId);
+ record={...record,emails:[],phones:[]};
+ await page.reload();await page.getByText('Test Kontakt',{exact:true}).click();
+ await page.getByRole('button',{name:'Kundendaten bearbeiten',exact:true}).first().click();await editor.getByLabel('Vorname',{exact:true}).waitFor();await editor.getByRole('button',{name:'Abbrechen',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:/E-Mails – Kundendaten bearbeiten/}).count(),0);
+ assert.equal(await page.getByRole('button',{name:/Telefonnummern – Nummer auswählen/}).count(),0);
+ assert.deepEqual(errors,[]);
+ console.log('PASS counts, editor access, copy, delete challenge/cancel, unsaved cancellation, responsive layout, selected-number Placetel request; all APIs mocked, no real calls or writes');
+} finally {await browser.close();}

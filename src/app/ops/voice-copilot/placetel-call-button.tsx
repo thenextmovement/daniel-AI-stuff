@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useImperativeHandle, type Ref } from "react";
 import { Phone } from "lucide-react";
 import styles from "./phone-central.module.css";
 
-export function PlacetelCallButton({ customerId, requestId, dialNumber, disabled, onCallChange, onNoteTarget }: {
-  customerId: string; requestId: string; dialNumber?:string; disabled: boolean; onCallChange: () => void; onNoteTarget: (callId:string) => void;
+export type PlacetelCallHandle = { start: (number: string) => boolean };
+export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, disabled, onCallChange, onNoteTarget }: {
+  ref?: Ref<PlacetelCallHandle>; customerId: string; requestId: string; dialNumber?:string; disabled: boolean; onCallChange: () => void; onNoteTarget: (callId:string) => void;
 }) {
   const confirmation = useRef<HTMLDialogElement>(null);
   const key = useRef<string | null>(null);
@@ -67,8 +68,16 @@ export function PlacetelCallButton({ customerId, requestId, dialNumber, disabled
     window.location.assign("tel:" + number);
     setMessage("Nummer an Placetel übergeben. Die Gesprächsdokumentation erscheint hier, sobald die Aufnahme vorliegt.");
   }
-  async function prepare() {
+  const requestedNumber = useRef<string | undefined>(undefined);
+  useImperativeHandle(ref, () => ({ start(number) {
+    if (disabled || sending.current || status === "opened" || status === "prepared" || status === "retry") return false;
+    key.current = null; requestedNumber.current = number;
+    void prepare(number);
+    return true;
+  }}));
+  async function prepare(number = requestedNumber.current || dialNumber) {
     if (sending.current || disabled) return;
+    requestedNumber.current = number;
     sending.current = true;
     key.current ??= crypto.randomUUID();
     setStatus("sending");
@@ -76,7 +85,7 @@ export function PlacetelCallButton({ customerId, requestId, dialNumber, disabled
     try {
       const response = await fetch("/api/ops/voice-phone/placetel", {
         method:"POST", headers:{"content-type":"application/json"},
-        body:JSON.stringify({mode:"softphone", requestKey:key.current, customerId, requestId, phone:dialNumber, recordingConsent:true}),
+        body:JSON.stringify({mode:"softphone", requestKey:key.current, customerId, requestId, phone:number, recordingConsent:true}),
         signal:AbortSignal.timeout(30000),
       });
       const data = await response.json();
@@ -128,7 +137,7 @@ export function PlacetelCallButton({ customerId, requestId, dialNumber, disabled
       </button>}
     {message && <p role="status" className={styles.small}>{message}</p>}
     {(status === "opened" || status === "ended") && <button type="button" className={styles.link} onClick={() => {
-      key.current = null; onNoteTarget(""); setCallId(""); setPhone(""); setStatus("ready"); setMessage("");
+      key.current = null; requestedNumber.current = undefined; onNoteTarget(""); setCallId(""); setPhone(""); setStatus("ready"); setMessage("");
     }}>Weiteren Anruf vorbereiten</button>}
   </div>;
 }
