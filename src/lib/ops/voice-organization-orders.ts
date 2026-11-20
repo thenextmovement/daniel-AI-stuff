@@ -1,8 +1,8 @@
+import { supabaseRequest } from "../quotes/supabase-rest";
 import { customerOrganizationEmailDomains } from "./customer-records";
 
 export type OrganizationOrder = { id:string; name:string; email:string|null; createdAt:string; cancelledAt:string|null; test:boolean; displayFinancialStatus:string|null; currentTotalPriceSet:{shopMoney:{amount:string;currencyCode:string}} };
 export type OrganizationOrders = { scope:"organization"|"contact"; domain:string|null; count:number; totals:Array<{currency:string;amount:number}>; orders:Array<{id:string;name:string;email:string|null;createdAt:string;cancelled:boolean;status:string|null;amount:number;currency:string;href:string}>; checkedAt:string };
-const SHOP = "galaxybuzzdk.myshopify.com";
 const normalize = (value:string|null|undefined) => value?.trim().toLowerCase() || "";
 export function organizationOrderScope(email:string) {
   const normalized=normalize(email);
@@ -23,62 +23,68 @@ export function summarizeOrganizationOrders(email:string, source:OrganizationOrd
   for(const order of orders) if(!order.cancelled) totals.set(order.currency,(totals.get(order.currency)||0)+Math.round(order.amount*100));
   return {scope:scope.domain?"organization":"contact",domain:scope.domain,count:orders.filter(order=>!order.cancelled).length,totals:[...totals].map(([currency,cents])=>({currency,amount:cents/100})),orders,checkedAt};
 }
-// A complete, short-lived snapshot avoids repeated full-store reads when switching customers.
-// Never replace a failed/partial read with an empty order history.
-export async function readVoiceShopifyOrders(fetcher:typeof fetch=fetch) {
-  const domain=(process.env.SHOPIFY_SHOP_DOMAIN||process.env.SHOPIFY_STORE_DOMAIN||process.env.SHOPIFY_SHOP||"").replace(/^https?:\/\//," ").trim().replace(/\/+$/,"");
-  const token=process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN||process.env.SHOPIFY_ADMIN_TOKEN||process.env.SHOPIFY_ADMIN_API_TOKEN||process.env.SHOPIFY_ACCESS_TOKEN;
-  if(domain!==SHOP || !token) throw Error("organization_shopify_not_configured");
-  const version=process.env.SHOPIFY_ADMIN_API_VERSION||"2026-01";
-  if(!/^20\d{2}-\d{2}$/.test(version))throw Error("organization_shopify_version_invalid");
-  const signal=AbortSignal.timeout(45000);
-  async function query(query:string,variables:Record<string,unknown>={}) {
-    for(let attempt=0;attempt<4;attempt++) {
-      const response=await fetcher(`https://${SHOP}/admin/api/${version}/graphql.json`,{method:"POST",headers:{"Content-Type":"application/json","X-Shopify-Access-Token":token!},body:JSON.stringify({query,variables}),cache:"no-store",signal});
-      const result=response.ok ? await response.json() : null;
-      const throttled=response.status===429 || result?.errors?.some((error:{extensions?:{code?:string}})=>error.extensions?.code==="THROTTLED");
-      if(throttled && attempt<3) {
-        const delay=Math.min(5000,Math.max(1000,Number(response.headers.get("retry-after")||0)*1000,1000*2**attempt));
-        await new Promise(resolve=>setTimeout(resolve,delay));
-        signal.throwIfAborted();
-        continue;
-      }
-      if(!response.ok)throw Error("organization_shopify_unavailable");
-      if(result.errors?.length || !result.data)throw Error("organization_shopify_read_failed");
-      return result.data;
-    }
-    throw Error("organization_shopify_read_failed");
+type MirrorOrder = {
+ shopify_order_id:string;name:string;email:string|null;created_at:string;cancelled_at:string|null;
+ is_test:boolean;financial_status:string|null;current_total_price:number|string;currency:string;
+ ingested_at:string;shopify_updated_at:string;
+};
+type MirrorAudit = {status:string;metadata:{schema:string;source:string;source_complete:boolean;source_count:number;written_count:number;observed_at:string;verified_at:string}};
+const MAX_AGE=45*60_000;
+const iso=(value:unknown)=>typeof value==="string" && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
+// Read the already verified mirror. A partial sync or missing metadata must never become a zero history.
+export async function readVoiceSupabaseOrders(request:typeof supabaseRequest=supabaseRequest,now=Date.now()) {
+ const signal=AbortSignal.timeout(20_000);
+ const audits=await request<MirrorAudit[]>("workflow_audit_log",{signal},{
+  select:"status,metadata",action:"eq.ops_source_mirror_verified","metadata->>source":"eq.shopify",order:"created_at.desc",limit:1,
+ });
+ const audit=audits?.[0],meta=audit?.metadata;
+ const observed=iso(meta?.observed_at),verified=iso(meta?.verified_at);
+ if(audit?.status!=="success" || meta?.schema!=="ops.source-mirror.v1" || meta.source!=="shopify" || meta.source_complete!==true ||
+   !Number.isSafeInteger(meta.source_count) || meta.source_count<1 || meta.written_count!==meta.source_count ||
+   !observed || !verified || Date.parse(verified)<Date.parse(observed) || Date.parse(verified)>now ||
+   now-Date.parse(observed)>MAX_AGE) throw Error("organization_mirror_unverified_or_stale");
+ const orders:OrganizationOrder[]=[];
+ const ids=new Set<string>();
+ let offset=0;
+ for(let page=0;page<200;page++) {
+  const rows=await request<MirrorOrder[]>("shopify_orders",{signal},{
+   select:"shopify_order_id,name,email,created_at,cancelled_at,is_test,financial_status,current_total_price,currency,ingested_at,shopify_updated_at",
+   order:"shopify_order_id.asc",limit:500,offset,
+  });
+  if(!Array.isArray(rows))throw Error("organization_mirror_invalid_page");
+  for(const row of rows) {
+   const ingested=iso(row.ingested_at);
+   if(!ingested || ingested>observed || !/^\d+$/.test(row.shopify_order_id) || ids.has(row.shopify_order_id))throw Error("organization_mirror_incomplete");
+   ids.add(row.shopify_order_id);
+   if(ingested!==observed)continue; // Provider-deleted historical rows are outside the verified snapshot.
+   if(typeof row.name!=="string" || !iso(row.created_at) || !iso(row.shopify_updated_at) ||
+    (row.cancelled_at!==null && !iso(row.cancelled_at)) || typeof row.is_test!=="boolean" ||
+    (row.email!==null && typeof row.email!=="string") || !/^[A-Z]{3}$/.test(row.currency) ||
+    row.current_total_price===null || String(row.current_total_price).trim()==="" ||
+    !Number.isFinite(Number(row.current_total_price)) || Number(row.current_total_price)<0)throw Error("organization_mirror_invalid_order");
+   orders.push({id:"gid://shopify/Order/"+row.shopify_order_id,name:row.name,email:row.email,createdAt:row.created_at,
+    cancelledAt:row.cancelled_at,test:row.is_test,displayFinancialStatus:row.financial_status?.toUpperCase()||null,
+    currentTotalPriceSet:{shopMoney:{amount:String(row.current_total_price),currencyCode:row.currency}}});
   }
-  const access=await query("{ shop { myshopifyDomain } currentAppInstallation { accessScopes { handle } } }");
-  if(access.shop?.myshopifyDomain!==SHOP || !access.currentAppInstallation?.accessScopes?.some((s:{handle:string})=>s.handle==="read_all_orders"))throw Error("organization_shopify_history_permission_missing");
-  const orders:OrganizationOrder[]=[];
-  let after:string|null=null;
-  const cursors=new Set<string>();
-  for(let page=0;page<200;page++) {
-    const data=await query(`query VoiceOrganizationOrders($after:String) { orders(first:250,after:$after) { nodes { id name email createdAt cancelledAt test displayFinancialStatus currentTotalPriceSet { shopMoney { amount currencyCode } } } pageInfo { hasNextPage endCursor } } }`,{after});
-    const connection=data.orders;
-    if(!Array.isArray(connection?.nodes) || typeof connection?.pageInfo?.hasNextPage!=="boolean")throw Error("organization_shopify_invalid_page");
-    for(const row of connection.nodes) {
-      const money=row.currentTotalPriceSet?.shopMoney;
-      if(!/^gid:\/\/shopify\/Order\/\d+$/.test(row.id||"") || typeof row.name!=="string" || !Number.isFinite(Date.parse(row.createdAt)) || typeof row.test!=="boolean" || (row.email!==null && typeof row.email!=="string") || !money || typeof money.amount!=="string" || !money.amount.trim() || !Number.isFinite(Number(money.amount)) || Number(money.amount)<0 || !/^[A-Z]{3}$/.test(money.currencyCode))throw Error("organization_shopify_invalid_order");
-      orders.push(row);
-    }
-    if(!connection.pageInfo.hasNextPage)return {orders,checkedAt:new Date().toISOString()};
-    after=connection.pageInfo.endCursor;
-    if(!after || cursors.has(after))throw Error("organization_shopify_invalid_cursor");
-    cursors.add(after);
+  if(rows.length<500) {
+   if(orders.length!==meta.source_count)throw Error("organization_mirror_incomplete");
+   return {orders,checkedAt:observed};
   }
-  throw Error("organization_shopify_history_incomplete");
+  offset+=rows.length;
+ }
+ throw Error("organization_mirror_incomplete");
 }
-let snapshot:Awaited<ReturnType<typeof readVoiceShopifyOrders>>|null=null;
+let snapshot:Awaited<ReturnType<typeof readVoiceSupabaseOrders>>|null=null;
 let expires=0;
-let pending:ReturnType<typeof readVoiceShopifyOrders>|null=null;
+let pending:ReturnType<typeof readVoiceSupabaseOrders>|null=null;
 let retryAfter=0;
 export async function loadOrganizationOrders(email:string) {
-  if(!snapshot || Date.now()>=expires) {
-    if(Date.now()<retryAfter)throw Error("organization_shopify_retry_later");
-    pending??=readVoiceShopifyOrders().then(value=>{snapshot=value;expires=Date.now()+120000;return value;}).catch(error=>{retryAfter=Date.now()+15000;throw error;}).finally(()=>{pending=null;});
-    await pending;
-  }
-  return summarizeOrganizationOrders(email,snapshot!.orders,snapshot!.checkedAt);
+ if(!snapshot || Date.now()>=expires) {
+  if(Date.now()<retryAfter)throw Error("organization_mirror_retry_later");
+  pending??=readVoiceSupabaseOrders().then(value=>{
+   snapshot=value;expires=Math.min(Date.now()+60_000,Date.parse(value.checkedAt)+MAX_AGE);return value;
+  }).catch(error=>{retryAfter=Date.now()+15_000;throw error;}).finally(()=>{pending=null;});
+  await pending;
+ }
+ return summarizeOrganizationOrders(email,snapshot!.orders,snapshot!.checkedAt);
 }
