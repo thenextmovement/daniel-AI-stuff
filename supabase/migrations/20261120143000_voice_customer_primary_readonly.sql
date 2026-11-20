@@ -66,4 +66,3 @@ begin
 end $$;
 revoke all on function public.save_voice_customer_v1(uuid,uuid,timestamptz,text,text,text,text,jsonb,jsonb,uuid,text,uuid) from public,anon,authenticated;
 grant execute on function public.save_voice_customer_v1(uuid,uuid,timestamptz,text,text,text,text,jsonb,jsonb,uuid,text,uuid) to service_role;
-
