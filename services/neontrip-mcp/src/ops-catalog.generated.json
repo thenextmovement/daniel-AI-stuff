@@ -9932,12 +9932,12 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/customer/route.ts",
-      "sha256": "b4eca314a786d94665630aff5d2e24cb858c7774824b5c04a290e41cc0104844",
+      "sha256": "98fcb91b436286e0680767b09050f3ca7948e125366289f8a473dc8ec4849f41",
       "methods": [
         "GET",
         "PATCH"
       ],
-      "coverage": "Customer contact edits require a personal enrolled phone device; use the connected Telefonzentrale UI. No server-side device impersonation."
+      "coverage": "Customer contact edits use the authenticated Telefonzentrale UI; no additional MCP operation is exposed."
     },
     {
       "source": "src/app/api/ops/voice-copilot/knowledge/email-review/route.ts",
@@ -10007,11 +10007,11 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/phones/route.ts",
-      "sha256": "60aa695a6027a4bb61b2ad67643bbb906685c209d901e50f2cbe64bbd6c1c086",
+      "sha256": "5697b73d8afca09aac7a45adbf5a917b6c3ceb545622f42f663153a05f436a93",
       "methods": [
         "POST"
       ],
-      "coverage": "Customer phone edits require a personal enrolled phone device; use the connected Telefonzentrale UI. No server-side device impersonation."
+      "coverage": "Customer contact edits use the authenticated Telefonzentrale UI; no additional MCP operation is exposed."
     },
     {
       "source": "src/app/api/ops/voice-copilot/post-call/route.ts",
