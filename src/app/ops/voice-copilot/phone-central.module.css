@@ -1005,3 +1005,16 @@
 .ordersScroll small { display:block; color:#68746b; }
 .ordersScroll a { color:#286044; text-decoration:underline; }
 .overviewHeader .link { margin:0; font-size:13px; }
+
+.customerEditDialog { width: min(700px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; }
+.contactEditorFields { border: 0; padding: 0; margin: 20px 0; display: grid; gap: 16px; min-width: 0; }
+.contactEditorFields label { margin: 0; display: grid; gap: 6px; font-size: 14px; font-weight: 500; }
+.contactEditorFields input, .contactEditorFields select { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5d0; border-radius: 8px; background: white; color: #253a30; font: inherit; }
+.contactEditorGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.contactEditorSection { display: grid; gap: 8px; }
+.contactEditorSection h4 { margin: 0 0 4px; font-size: 15px; }
+.contactEditorSection h4 small { font-weight: 400; color: #65756b; }
+.contactEditorSection > button { justify-self: start; }
+.contactEditorRow { display: flex; gap: 8px; }
+.customerNameRow { display: flex; align-items: center; gap: 10px; }
+@media(max-width:600px) { .contactEditorGrid { grid-template-columns: 1fr; } }

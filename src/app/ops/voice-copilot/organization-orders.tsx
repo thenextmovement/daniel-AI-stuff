@@ -19,11 +19,11 @@ export function OrganizationOrdersButton({customerId}:{customerId:string}) {
  },[customerId,retry]);
  const totals=data?.totals.map(total=>money(total.amount,total.currency)).join(" + ");
  return <><button type="button" className={styles.orderSummary} onClick={()=>dialog.current?.showModal()} aria-label="Bisherige Bestellungen öffnen">
-  {loading?"Wird geladen …":data?`${data.count} · ${totals || "0,00 €"}`:"Bestellungen prüfen"}
+  {loading?"Wird geladen …":data?`${data.count} Stück · Gesamt: ${totals || "0,00 €"}`:"Bestellungen prüfen"}
  </button>
  <dialog ref={dialog} className={styles.phoneDialog+" "+styles.ordersDialog} aria-labelledby="organization-orders-title">
   <h3 id="organization-orders-title">{data?.scope==="organization"?"Bestellungen der Organisation":"Bisherige Bestellungen"}</h3>
-  {data&&<p>{data.scope==="organization"?`Alle Bestelladressen mit @${data.domain}`:"Zu dieser E-Mail-Adresse · private Mailadressen werden einzeln zugeordnet."}</p>}
+  {data&&<p>{data.organizationName?`Alle zugeordneten Kontakte von ${data.organizationName}`:data.scope==="organization"?`Alle Bestelladressen mit @${data.domain}`:"Bestellungen dieses Kunden einschließlich seiner zusätzlichen E-Mail-Adressen."}</p>}
   {loading?<p role="status">Bestellungen werden geladen …</p>:error?<p role="alert">{error}</p>:data&&<>
    <p><strong>{data.count} Bestellungen · {totals||"0,00 €"}</strong></p>
    <p>Aktueller Bestellwert laut Shopify inkl. Steuern. Stornierte und Testbestellungen zählen nicht zur Summe.</p>
