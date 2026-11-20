@@ -679,15 +679,25 @@ async function main() {
   prepared.products.push({ ...prepared.products[0], id: "product-2", imageId: "image-2", imageTitle: "Second bought design" });
   prepared.analysis.changes.push({ id: "mapping", kind: "conflict", productId: null, field: "Additional Information", value: "", questionOnly: true,
     reason: 'Zuordnung der Texte zu den beiden Produkten klären: "A" und "B".', evidence: [{ sourceId: "card", quote: "Cable Position: Bottom left" }] });
+  prepared.analysis.changes.push({ id: "human-question", kind: "conflict", productId: null, field: "Additional Information", value: "", questionOnly: true,
+    reason: "KI-Rückfrage zur alten Referenz", evidence: [] });
   prepared.attachments.push({ ...prepared.attachments[0], id: "variant-2", name: "Variant-2.png" },
     { ...prepared.attachments[0], id: "document", name: "Delivery-note.pdf", mimeType: "application/pdf" });
-  let reviewHandoff = null; const reviewPosts = [];
+  let reviewHandoff = null, rejectNextAssignment = true, failNextReviewRead = false; const reviewPosts = [];
   await reviewPage.route("**/api/**", async route => {
     const request = route.request(), url = new URL(request.url());
     if (request.method() === "POST") {
       const body = request.postDataJSON(); reviewPosts.push(body);
+      if (body.action === "assign_supplier" && rejectNextAssignment) {
+        rejectNextAssignment = false; failNextReviewRead = true;
+        return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Die Bestellung hat sich geändert. Bitte neu vorbereiten." }) });
+      }
       if (body.action === "assign_supplier") reviewHandoff = { status: "synced", backups: [], verifiedAt: now };
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, board: reviewBoard, sale: reviewedSale, review: prepared }) });
+    }
+    if (url.searchParams.get("action") === "production_review" && failNextReviewRead) {
+      failNextReviewRead = false;
+      return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Test: status temporarily unavailable" }) });
     }
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(url.searchParams.get("action") === "production_review" ? { ok: true, review: prepared, handoff: reviewHandoff } : { ok: true, board: reviewBoard, tasks: [] }) });
   });
@@ -700,10 +710,12 @@ async function main() {
   const panel = reviewPage.getByRole("region", { name: "Vorbereitete Produktionsvergabe" });
   const release = panel.getByRole("button", { name: "Geprüft – an Produktion freigeben", exact: true });
   await release.waitFor(); assert(!await release.isEnabled(), "Offene Entscheidungen erlauben Freigabe");
-  assert(await panel.getByText("4 Prüfschritte offen", { exact: true }).isVisible(), "Bildgruppe zählt nicht als eine überprüfbare Aktion");
+  assert(await panel.getByRole("status").getByText("5 Entscheidungen offen", { exact: true }).count() === 2, "Status zählt die tatsächlich offenen menschlichen Entscheidungen nicht");
   await panel.getByRole("button", { name: "Vorschlag übernehmen", exact: true }).click();
   await panel.getByRole("button", { name: "Nach gekauften Designs produzieren", exact: true }).click();
   assert(await panel.getByRole("button", { name: "Gekaufte Designs bestätigt", exact: true }).getAttribute("aria-pressed") === "true", "Designvergleich nicht bestätigt");
+  await panel.getByRole("button", { name: "Selbst geprüft – so lassen", exact: true }).click();
+  assert(await panel.getByRole("button", { name: "Selbst geprüft – erledigt", exact: true }).getAttribute("aria-pressed") === "true", "Menschliche Entscheidung verlangt weiterhin Freitext");
   await panel.getByRole("button", { name: "2 Bilddateien sichern und entfernen", exact: true }).click();
   assert(await panel.getByLabel("Datei: Variant.png").inputValue() === "remove", "Bildpaket setzt erste Variante nicht");
   assert(await panel.getByLabel("Datei: Variant-2.png").inputValue() === "remove", "Bildpaket setzt zweite Variante nicht");
@@ -711,23 +723,44 @@ async function main() {
   assert(!await release.isEnabled() && reviewPosts.length === 0, "Prüfentscheidungen lösen bereits Übergabe aus oder umgehen Dokumentprüfung");
   await panel.getByLabel("Datei: Delivery-note.pdf").selectOption("keep");
   assert((await panel.innerText()).includes("Cable Position: Bottom left"), "Auswahl aktualisiert die Produktionsvorschau nicht");
+  assert(!await release.isEnabled(), "Unbezahlte Freigabe fehlt als ausdrückliche Inline-Bestätigung");
+  const paymentConsent = panel.getByRole("checkbox", { name: /Ich gebe diesen Auftrag bewusst vor Zahlung frei/ });
+  await paymentConsent.check();
   assert(await release.isEnabled(), "Belegte Auswahl verlangt unnötig Freitext");
   for (const width of [390, 1440]) {
     await reviewPage.setViewportSize({ width, height: 1000 });
     assert(!await reviewPage.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), "Prüfmaske läuft seitlich über");
   }
-  reviewPage.once("dialog", dialogHandler(dialogs, "review-payment-cancel", false));
-  await release.click(); assert(reviewPosts.length === 0, "Abgebrochene Zahlungsfreigabe schreibt trotzdem");
-  reviewPage.once("dialog", dialogHandler(dialogs, "review-payment-accept", true));
+  const reviewDialogs = []; reviewPage.on("dialog", async dialog => { reviewDialogs.push(dialog.message()); await dialog.dismiss(); });
+  await release.click();
+  await panel.getByRole("alert").getByText(/Die Bestellung hat sich geändert\. Bitte neu vorbereiten\./).waitFor();
+  assert(reviewPosts.length === 1 && !await release.isEnabled(), "Abgelehnter veralteter Entwurf wird erneut gesendet");
+  assert((await panel.innerText()).includes("Übertragungsstand prüfen"), "Unklarer Rücklesestand ist nicht sichtbar");
+  await panel.getByRole("button", { name: "Stand laden", exact: true }).click();
+  await panel.getByRole("alert").getByText(/Wähle „Neu vorbereiten“/).waitFor();
+  assert(await panel.getByLabel("Datei: Delivery-note.pdf").inputValue() === "keep" && reviewPosts.length === 1, "Lesende Statusprüfung verwirft Entscheidungen oder wiederholt Freigabe");
+  assert(!(await panel.innerText()).includes("Die Freigabe wurde nicht bestätigt."), "Konkreter API-Fehler wird noch verborgen");
+  assert(!(await panel.innerText()).includes("Alles geprüft – du kannst freigeben"), "Fehlerzustand meldet gleichzeitig Freigabebereitschaft");
+  await panel.getByRole("button", { name: "Neu vorbereiten", exact: true }).click();
+  await panel.getByRole("button", { name: "Vorschlag übernehmen", exact: true }).click();
+  await panel.getByRole("button", { name: "KI-Rückfrage selbst geprüft – erledigt", exact: true }).click();
+  await panel.getByRole("button", { name: "Selbst geprüft – so lassen", exact: true }).click();
+  await panel.getByRole("button", { name: "2 Bilddateien sichern und entfernen", exact: true }).click();
+  await panel.getByLabel("Datei: Delivery-note.pdf").selectOption("keep");
+  assert(!await release.isEnabled(), "Neue Vorbereitung übernimmt eine alte Zahlungsbestätigung");
+  await paymentConsent.check();
   await release.click();
   await panel.getByText(/Übergabe bestätigt/).waitFor();
-  assert(reviewPosts.length === 1 && reviewPosts[0].productionApproval.confirmed === true, "Explizite Endfreigabe fehlt");
-  assert(reviewPosts[0].productionApproval.attachments.variant === "remove", "Dateientscheidung fehlt");
-  assert(reviewPosts[0].productionApproval.attachments["variant-2"] === "remove", "Zweite Bilddateientscheidung fehlt");
-  assert(reviewPosts[0].productionApproval.attachments.document === "keep", "Individuelle Dokumententscheidung fehlt");
-  assert(reviewPosts[0].productionApproval.decisions.mapping.action === "reject" && /Produkt 2: Second bought design/.test(reviewPosts[0].productionApproval.decisions.mapping.note), "Gekaufte Designzuordnung wird nicht nachvollziehbar dokumentiert");
-  assert(reviewPosts[0].productionApproval.decisions.cable.note === "", "Belegte Auswahl fordert unnötige Begründung");
-  assert(dialogs.some(d => d.action === "review-payment-cancel" && /Zahlung/.test(d.message)), "Zahlungswarnung fehlt");
+  const finalReview = reviewPosts.at(-1).productionApproval;
+  assert(reviewPosts.length === 3 && finalReview.confirmed === true, "Explizite Endfreigabe fehlt oder unerwartete Wiederholung");
+  assert(finalReview.attachments.variant === "remove", "Dateientscheidung fehlt");
+  assert(finalReview.attachments["variant-2"] === "remove", "Zweite Bilddateientscheidung fehlt");
+  assert(finalReview.attachments.document === "keep", "Individuelle Dokumententscheidung fehlt");
+  assert(finalReview.decisions.mapping.action === "reject" && finalReview.decisions.mapping.note === "", "Menschliche Zuordnung verlangt eine Begründung");
+  assert(finalReview.decisions["human-question"].action === "reject" && finalReview.decisions["human-question"].note === "", "Menschliches Prüfergebnis wurde nicht übernommen");
+  assert(finalReview.decisions.cable.note === "", "Belegte Auswahl fordert unnötige Begründung");
+  assert(finalReview.title.includes("2 PCS - Two Pieces") && finalReview.description.includes("Two Pieces Shipped Together"), "Stückzahl fehlt in der freigegebenen Vorschau");
+  assert(reviewDialogs.length === 0, "Prüfablauf öffnet weiterhin zusätzliche Dialogfenster");
   await reviewPage.close();
 
   console.log(JSON.stringify({ ok: true, baseUrl: target, posts: posts.map((entry) => entry.body?.action || entry.method), dialogs: dialogs.length, mobileLayout, consoleErrors }, null, 2));

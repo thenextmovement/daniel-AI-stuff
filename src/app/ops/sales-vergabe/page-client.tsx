@@ -1937,7 +1937,10 @@ export function SupplierSalesClient({
       }
       return payload;
     } catch (actionError) {
-      setError(formatUnknownError(actionError, "Aktion fehlgeschlagen."));
+      const actionMessage = formatUnknownError(actionError, "Aktion fehlgeschlagen.");
+      // The review owns its feedback; keep the actual API reason beside its release button.
+      if (body.productionApproval) return { ok: false, error: actionMessage };
+      setError(actionMessage);
       return null;
     } finally {
       setSavingSaleId(null);

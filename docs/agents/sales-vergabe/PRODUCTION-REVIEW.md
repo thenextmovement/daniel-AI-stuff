@@ -7,6 +7,77 @@ NEONTRIP, Quentin-Board 62bae9b97705e7419ed64593.
 Veröffentlichung benötigt die exakte saubere Commit-SHA. Ältere Abschnitte dokumentieren
 den damaligen Prüf-/Veröffentlichungsstand.
 
+## Menschliche Entscheidung und verständlicher Freigabestand (2026-11-20, noch nicht veröffentlicht)
+
+**Ziel:** Die KI informiert; die Mitarbeiterin entscheidet ausdrücklich. Allgemeine
+KI-Rückfragen, Produkttext- und Mailzuordnungen sowie abweichende Prioritäten
+verlangen keine schriftliche Begründung mehr. `Selbst geprüft – so lassen` und
+`KI-Rückfrage selbst geprüft – erledigt` speichern eine ausdrückliche Entscheidung
+im vorhandenen Entwurf. Notizen und Textkorrekturen bleiben optional. PDF-Dateien
+können ausdrücklich als selbst geprüft behalten werden; ein Größen-Update lässt
+sich im Entwurf wieder zurücknehmen. Diese Regel ersetzt die älteren Anforderungen
+an Pflichtnotizen in diesem Dokument.
+
+Der Status zählt die noch fehlenden Entscheidungen und zeigt deren Gründe. Erledigte
+Fragen sind grün; die ursprüngliche KI-Zusammenfassung bleibt als eingeklappte
+Historie sichtbar. Die unbezahlte Freigabe braucht eine Bestätigung direkt im Panel
+anstelle eines Browserdialogs. Eine neue Vorbereitung setzt diese Bestätigung zurück.
+
+**Ursache des verdeckten Fehlers:** `runSaleAction` fing den konkreten API-Fehler ab
+und gab `null` zurück; das Prüfpanel zeigte daraufhin nur eine allgemeine Meldung.
+Der Fehler wird jetzt an das Panel übergeben und zusammen mit dem nächsten Schritt
+angezeigt. Nach einem Freigabeversuch wird der kanonische Handoff zurückgelesen.
+Bei unklarem Rücklesestand bleibt ein weiterer Versuch gesperrt, bis `Stand laden`
+das Ergebnis klärt. Das reine Laden desselben noch nicht freigegebenen Entwurfs
+behält die lokale Auswahl. Ein veralteter Entwurf verlangt `Neu vorbereiten`.
+
+**Nachbar/Wirkung:** Aktuelle Quellen, exakte Auftrags-/Kartenidentität, gültige
+Entscheidungen, geschützte Dateien, bestätigte Produktionsmaße, Zahlungsentscheidung,
+Backup vor Entfernen und der bestehende idempotente Handoff bleiben verbindlich.
+Keine neue Tabelle, KI-Abfrage, Provider-Anbindung oder Produktionsaktion entsteht.
+Geänderte Dateien sind auf das Prüfpanel, dessen Fehlerweitergabe, die bestehende
+Validierung/Textgenerierung, ihre Tests und diese Dokumentation begrenzt.
+
+**Nachweis:** 60 fokussierte Tests und die vollständige Node-22-Suite mit 1896
+bestandenen Tests/2 Plattform-Skips; Build, anschließende Typprüfung und 8
+Deployment-Tests sind ebenfalls erfolgreich. Der bestehende UI-Smoke prüft Entscheidungen
+ohne Pflichttext, konkrete API-Fehler, ausgefallenes Rücklesen, erhaltene Auswahl,
+gesperrte Wiederholung, Inline-Zahlungsbestätigung und mobile Breite.
+Zusätzlich wurden die unveränderten aktuellen Prüfentwürfe von Amazon (#NEONT4857)
+und Kinderarztpraxis (#NEONT4856) lokal bedient. Beide erreichen ohne Freitext den
+freigabebereiten Zustand; ein lokal simulierter Fehler zeigt Grund und nächsten
+Schritt. Alle API-Schreibzugriffe dieser Vorschau wurden lokal abgefangen.
+Die abschließende produktive Leseprüfung bestätigt bei beiden null Vergabeversuche,
+keinen Handoff und unveränderte Prüfentwurf-IDs. Der konkrete historische API-Grund
+aus dem Screenshot ist nicht gespeichert und deshalb nicht nachweisbar.
+
+## Stückzahl und gemeinsamer Versand (2026-11-20, noch nicht veröffentlicht)
+
+**Ziel:** Ab zwei bestellten Schildern enthält der erzeugte Titel direkt nach der
+Bestellreferenz die Gesamtstückzahl, zum Beispiel `2 PCS - Two Pieces` oder
+`4 PCS - Four Pieces`. Ob mehrere Exemplare desselben Designs oder unterschiedliche
+Designs bestellt sind, spielt dabei keine Rolle: Es werden ausschließlich die
+bereits zugeordneten Mengen in `review.products` addiert. Zubehör und Versand zählen
+nicht mit. Die Berechnung ist deterministisch und benötigt keine neue KI-Abfrage.
+
+Die Beschreibung beginnt weiterhin mit einem vorhandenen `UPDATE NEW SIZE`-Block.
+Im anschließenden beziehungsweise sonst obersten `CHECK INFO`-Block steht zuerst
+`Two Pieces Shipped Together`, `Three Pieces Shipped Together` usw. Bestehende
+Hinweise und die einzelnen Produktmengen bleiben erhalten. Ein einzelnes Schild
+erhält keinen Mehrstück-Hinweis. Wiederholtes Rendern erzeugt keine Duplikate.
+
+**Nachbar:** KEY KUNDE, Größen-Updates, Kundenauswahl/Bilder, Zubehör, Request-ID,
+Priorität, manuell bearbeitete Vorschauen und Freigabeentscheidungen bleiben in
+ihren bestehenden Pfaden. Die manuelle Übernahme einer bereits vergebenen Karte
+schreibt weiterhin keine Trello-Texte. Bestehende Karten werden nicht rückwirkend
+bearbeitet.
+
+**Wirkung:** Die bestehende Produktionsvorschau zeigt die Ergänzung; erst die
+ausdrückliche Freigabe verwendet diese Texte im vorhandenen Trello-Handoff.
+Fokussierte Tests prüfen gleiche und unterschiedliche Designs, summierte Mengen,
+Zubehör-Ausschluss, unveränderte Einzelschilder, Größen-Updates und die Übergabe
+der exakten Texte an den ausschließlich gemockten Handoff.
+
 ## Englische Produkttext-Zuordnungsfrage (2026-11-17, noch nicht veröffentlicht)
 
 Ziel: Die beobachteten Amazon-Fragen „which text belongs to which product“ und

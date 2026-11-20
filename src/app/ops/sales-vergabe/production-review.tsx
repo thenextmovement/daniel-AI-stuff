@@ -25,6 +25,8 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
   const [handoff, setHandoff] = useState<ProductionHandoff | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusUnclear, setStatusUnclear] = useState(false);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [edited, setEdited] = useState(false);
   const [editText, setEditText] = useState(false);
   const panel = useRef<HTMLElement>(null);
@@ -49,16 +51,18 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error([payload.error, ...(payload.issues || [])].filter(Boolean).join(" "));
       if (!payload.review && !regenerate) { await load(true); return; }
+      const keepChoices = !regenerate && !payload.approval && approval?.reviewId === payload.review?.id;
       setReview(payload.review);
       const draft = payload.approval ? { ...payload.approval, confirmed: false } : payload.review ? defaultReviewApproval(payload.review) : null;
       if (draft && !payload.approval) Object.assign(draft, rendered(payload.review, draft.decisions));
-      setApproval(draft);
-      setHandoff(payload.handoff || null);
-      setEdited(Boolean(payload.approval));
+      if (!keepChoices) { setApproval(draft); setEdited(Boolean(payload.approval)); setPaymentConfirmed(false); }
+      setHandoff(payload.handoff || null); setStatusUnclear(false);
+      if (keepChoices && needsRefresh && payload.handoff?.status !== "synced") setError(error);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Die Vorbereitung konnte nicht geladen werden."); }
     finally { setBusy(false); }
   }
   useEffect(() => { void load(); panel.current?.scrollIntoView({ block: "start" }); /* Only on opening this sale. */ }, [saleId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setPaymentConfirmed(false); }, [paymentConfirmation]);
   function update(patch: Partial<ReviewApproval>) { setApproval(a => a && ({ ...a, ...patch, confirmed: false })); }
   function decide(id: string, action: "accept" | "reject", note?: string) {
     if (!review || !approval) return;
@@ -78,58 +82,85 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
     return recommendation ? [{ document, recommendation, sizeUpdate }] : [];
   }) : [];
   const openSteps = review && approval ? reviewOpenStepCount(review, approval, issues) : 0;
-  const designsConfirmed = designQuestions.length > 0 && designQuestions.every(c => approval?.decisions[c.id]?.note.startsWith("Gekaufte Designs visuell geprüft:"));
-  const locked = busy || saving || handoff?.status === "pending" || handoff?.status === "synced";
+  const designsConfirmed = designQuestions.length > 0 && designQuestions.every(c => approval?.decisions[c.id]);
+  const locked = busy || saving || statusUnclear || handoff?.status === "pending" || handoff?.status === "synced";
+  const paymentNeeded = Boolean(paymentConfirmation && !paymentConfirmed);
+  const needsRefresh = Boolean(error && /neu vorbereiten|erneut prüfen|neue oder geänderte|nicht mehr aktuell/i.test(error));
+  const releaseBlocked = locked || issues.length > 0 || Boolean(blockReason) || paymentNeeded || needsRefresh;
+  const statusTitle = handoff?.status === "synced" ? "An Produktion übergeben"
+    : handoff?.status === "pending" || statusUnclear ? "Übertragungsstand prüfen"
+    : busy || saving ? "Stand wird geprüft …"
+    : handoff?.status === "partial" ? "Übergabe teilweise erledigt"
+    : error ? "Freigabe nicht abgeschlossen"
+    : blockReason ? "Freigabe noch nicht möglich"
+    : issues.length ? `${openSteps} ${openSteps === 1 ? "Entscheidung" : "Entscheidungen"} offen`
+    : paymentNeeded ? "Freigabe vor Zahlung bestätigen" : "Alles geprüft – du kannst freigeben";
   async function release() {
-    if (!review || !approval || issues.length || blockReason) return;
-    if (paymentConfirmation && !window.confirm(paymentConfirmation)) return;
+    if (!review || !approval || releaseBlocked) return;
     setBusy(true); setError(null);
+    let actionError: string | null = null;
     try {
-      const result = await onAction({ ...assignment, action: "assign_supplier", saleId, supplier: "quentin", productionApproval: { ...approval, confirmed: true } });
+      const result = await onAction({ ...assignment, action: "assign_supplier", saleId, supplier: "quentin", productionApproval: { ...approval, confirmed: true } }) as { ok?: boolean; error?: string } | null;
+      if (!result?.ok) actionError = result?.error || "Die Übertragung hat keine eindeutige Bestätigung geliefert.";
       const response = await fetch(`/api/ops/supplier-sales?action=production_review&saleId=${encodeURIComponent(saleId)}`, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
       if (!response.ok) throw new Error("Der Freigabestand konnte nicht zurückgelesen werden. Bitte Stand laden.");
-      const state = await response.json(); setHandoff(state.handoff);
-      if (state.handoff?.error) setError(state.handoff.error);
-      else if (!result) setError("Die Freigabe wurde nicht bestätigt. Den angezeigten Stand prüfen, bevor du sie erneut auslöst.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Freigabestand unklar. Bitte Stand laden."); }
+      const state = await response.json();
+      if (!state.ok) throw new Error("Der Freigabestand konnte nicht bestätigt werden. Bitte Stand laden.");
+      setHandoff(state.handoff || null);
+      if (state.handoff?.status === "synced") setError(null);
+      else if (state.handoff?.error) setError(state.handoff.error);
+      else if (actionError) setError(actionError);
+      else if (!state.handoff) { setStatusUnclear(true); setError("Die Übertragung ist noch nicht bestätigt. Bitte zuerst den Stand laden."); }
+    } catch (cause) {
+      setStatusUnclear(true);
+      setError([actionError, cause instanceof Error ? cause.message : "Freigabestand unklar. Bitte Stand laden."].filter(Boolean).join(" "));
+    }
     finally { setBusy(false); }
   }
   return (
-    <section ref={panel} aria-label="Vorbereitete Produktionsvergabe" className="mt-4 scroll-mt-4 rounded-lg border border-violet-200 bg-stone-50 p-4">
+    <section id={`production-review-${saleId}`} ref={panel} aria-label="Vorbereitete Produktionsvergabe" className="mt-4 scroll-mt-4 rounded-lg border border-violet-200 bg-stone-50 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div><h3 className="font-semibold text-stone-950">Vergabe prüfen</h3><p className="mt-1 text-sm text-stone-600">Bestellung, E-Mails und Quentin-Karte gemeinsam prüfen.</p></div>
         <div className="flex gap-2">
-          {handoff ? <button type="button" className={buttonClass} disabled={busy || saving} onClick={() => void load()}>Stand laden</button> : null}
+          {handoff || error || statusUnclear ? <button type="button" className={buttonClass} disabled={busy || saving} onClick={() => void load()}>Stand laden</button> : null}
           <button type="button" className={buttonClass} disabled={locked || handoff?.releaseAttempted} onClick={() => void load(true)}><RefreshCcw className="h-4 w-4" />Neu vorbereiten</button>
           <button type="button" className={buttonClass} aria-label="Produktionsvorschau schließen" onClick={onClose}><X className="h-4 w-4" /></button>
         </div>
       </div>
       {busy ? <p role="status" className="mt-4 text-sm text-stone-600">Vollständige Korrespondenz und gekauftes Design werden geprüft. Die Kundenkarte wird dabei nicht geändert.</p> : null}
-      {error ? <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950">{error}</p> : null}
+      {error ? <div role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950"><p className="font-semibold">{statusTitle}</p><p className="mt-1 whitespace-pre-line">{error}</p><p className="mt-2">{statusUnclear || handoff?.status === "pending" ? "Zuerst „Stand laden“ wählen. Solange das Ergebnis unklar ist, wird keine weitere Freigabe gestartet." : needsRefresh ? "Wähle „Neu vorbereiten“, prüfe die aktuellen Angaben und bestätige dann die Vorschau." : handoff?.status === "partial" ? "Ein Teil der Übergabe wurde gespeichert. Prüfe den genannten Fehler und setze anschließend die bestehende Übergabe fort." : "Es liegt keine bestätigte Produktionsübergabe vor. Prüfe den genannten Grund; deine Auswahl bleibt hier erhalten."}</p></div> : null}
       {handoff?.status === "synced" ? <p role="status" className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-emerald-900"><CheckCircle2 className="h-5 w-5" />Übergabe bestätigt: Karteninhalt, Dateien, Cover und Position wurden zurückgelesen.</p> : null}
       {handoff?.status === "pending" ? <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm">Freigabe läuft oder ihr Ergebnis ist noch unklar. Nicht erneut auslösen. Den Stand neu laden.</p> : null}
       {review && approval ? (
         <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
           <div className="min-w-0 space-y-4">
             <div className="rounded-lg border border-stone-200 bg-white p-3 text-sm">
-              <p className="font-semibold">{issues.length ? `${openSteps} ${openSteps === 1 ? "Prüfschritt" : "Prüfschritte"} offen` : "Vorbereitet – bereit für deine Freigabe"}</p><p className="mt-2">{review.analysis.summary}</p>
+              <p role="status" className="font-semibold">{statusTitle}</p>
+              <p className="mt-2">Die KI liefert Hinweise. Du entscheidest, was übernommen wird. Eine Begründung ist optional.</p>
+              {issues.length || blockReason ? <ul className="mt-2 list-disc space-y-1 pl-5">{[...(blockReason ? [blockReason] : []), ...issues].map((issue, i) => <li key={i}>{issue.replace(/^Entscheidung fehlt: /, "").replace(/^Datei prüfen: /, "Dateiauswahl: ")}</li>)}</ul> : null}
+              <details className="mt-2 text-xs text-stone-600"><summary className="cursor-pointer">KI-Zusammenfassung bei Vorbereitung</summary><p className="mt-2">{review.analysis.summary}</p></details>
               <p className="mt-2 text-xs text-stone-500">{review.mailCount} E-Mail-Volltexte · vorbereitet {new Date(review.preparedAt).toLocaleString("de-DE")}</p>
               <a href={safeLink(review.cardUrl)} target="_blank" rel="noreferrer" className="mt-2 inline-block text-violet-800 underline">Zugeordnete Quentin-Karte öffnen</a>
             </div>
             {designQuestions.length ? <div className={`rounded-lg border p-3 text-sm ${designsConfirmed ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
               <h4 className="font-semibold">Produkttexte mit den gekauften Designs abgleichen</h4>
               <p className="mt-2">Produktnummer, Größe und gekauftes Bild stehen rechts. Die Mail-Reihenfolge ändert diese Zuordnung nicht. Bestätige die Designs, wenn sie dem Kundenwunsch entsprechen.</p>
-              {designQuestions.map(c => <p key={c.id} className="mt-2 text-xs text-stone-600">{c.reason}</p>)}
-              <button type="button" disabled={locked} aria-pressed={designsConfirmed} className={`${buttonClass} mt-3`} onClick={() => update(confirmPurchasedDesigns(review, approval))}>{designsConfirmed ? "Gekaufte Designs bestätigt" : "Nach gekauften Designs produzieren"}</button>
-              <details className="mt-3"><summary className="cursor-pointer text-xs font-medium">Abweichung oder offene Zuordnung dokumentieren</summary>
+              <details open={!designsConfirmed} className="mt-2 text-xs text-stone-600"><summary className="cursor-pointer">{designsConfirmed ? "Erledigte KI-Rückfrage ansehen" : "KI-Rückfrage"}</summary>{designQuestions.map(c => <p key={c.id} className="mt-2">{c.reason}</p>)}</details>
+              <button type="button" disabled={locked} aria-pressed={designsConfirmed} className={`${buttonClass} mt-3`} onClick={() => update(confirmPurchasedDesigns(review, approval))}>{designsConfirmed ? designQuestions.every(c => approval.decisions[c.id]?.note.startsWith("Gekaufte Designs visuell geprüft:")) ? "Gekaufte Designs bestätigt" : "Zuordnung selbst geprüft" : "Nach gekauften Designs produzieren"}</button>
+              <button type="button" disabled={locked} className={`${buttonClass} mt-3 ml-2`} onClick={() => {
+                const decisions = { ...approval.decisions, ...Object.fromEntries(designQuestions.map(c => [c.id, { action: "reject" as const, note: "" }])) };
+                update({ decisions, ...(!edited ? rendered(review, decisions) : {}) });
+              }}>KI-Rückfrage selbst geprüft – erledigt</button>
+              <details className="mt-3"><summary className="cursor-pointer text-xs font-medium">Optional: Zuordnung erläutern oder Text anpassen</summary>
                 {designQuestions.map(c => <label key={c.id} className="mt-2 block text-xs">{c.reason}<input disabled={locked} aria-label={`Klärung: ${c.reason}`} placeholder="Geprüftes Ergebnis; nötige Textänderung in der Vorschau übernehmen" value={approval.decisions[c.id]?.note || ""} onChange={e => decide(c.id, "reject", e.target.value)} className={`${fieldClass} mt-1`} /></label>)}
               </details>
             </div> : null}
             {review.analysis.changes.filter(c => (c.kind !== "addition" || c.questionOnly) && !designQuestions.some(q => q.id === c.id)).map(change => {
               const decision = approval.decisions[change.id];
               const current = review.products.find(p => p.id === change.productId)?.fields.find(f => f.label.toLowerCase() === change.field.toLowerCase())?.value;
-              return <div key={change.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-                <p className="flex gap-2 font-semibold"><AlertTriangle className="h-4 w-4 shrink-0" />{change.reason}</p>
+              return <div key={change.id} className={`rounded-lg border p-3 text-sm ${decision ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                <p className="flex gap-2 font-semibold">{decision ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}{change.reason}</p>
+                {decision ? <p className="mt-2 font-medium text-emerald-800">{decision.action === "accept" ? "Entschieden: Vorschlag übernommen" : change.questionOnly ? "Entschieden: selbst geprüft" : change.kind === "obsolete" ? "Entschieden: Hinweis beibehalten" : "Entschieden: Vorschlag nicht übernommen"}</p> : null}
                 {current ? <p className="mt-2"><span className="font-medium">Bestellt:</span> {current}</p> : null}
                 {change.value ? <p className="mt-2 whitespace-pre-wrap"><span className="font-medium">Vorschlag:</span> {change.kind === "obsolete" ? "Veralteten Hinweis entfernen" : change.value}</p> : null}
                 <details className="mt-2"><summary className="cursor-pointer text-xs font-medium">Belege ansehen</summary>
@@ -140,9 +171,9 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
                   <p className="mt-1 text-xs">{deliveryNote.summary}</p>
                   <p className="mt-2 whitespace-pre-line text-xs">{deliveryNote.recipient.join("\n")}</p>
                   <p className="mt-2 text-xs">Empfänger und Lieferadresse stimmen mit der Bestellung überein. Der Lieferschein liegt im Mailanhang; er wurde nicht auf die Karte hochgeladen.</p>
-                  <div className="mt-3 flex flex-wrap gap-2"><a href={safeLink(deliveryNote.href)} target="_blank" rel="noreferrer" className={buttonClass}>Originalmail öffnen</a><button type="button" disabled={locked} aria-pressed={Boolean(decision?.note)} className={buttonClass} onClick={() => update(confirmDeliveryNote(review, approval))}>{decision?.note ? "Lieferscheinprüfung bestätigt" : "Lieferschein und Adresse bestätigen"}</button></div>
-                  <details className="mt-2"><summary className="cursor-pointer text-xs">Abweichung dokumentieren</summary><input disabled={locked} aria-label="Abweichung beim Lieferschein" className={`${fieldClass} mt-2`} value={decision?.note || ""} onChange={e => decide(change.id, "reject", e.target.value)} /></details>
-                </div> : change.questionOnly ? <input disabled={locked} aria-label={`Klärung: ${change.reason}`} placeholder="Geprüftes Ergebnis eintragen; nötige Textänderung unten übernehmen" value={decision?.note || ""} onChange={e => decide(change.id, "reject", e.target.value)} className={`${fieldClass} mt-3`} /> : <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2"><a href={safeLink(deliveryNote.href)} target="_blank" rel="noreferrer" className={buttonClass}>Originalmail öffnen</a><button type="button" disabled={locked} aria-pressed={Boolean(decision)} className={buttonClass} onClick={() => update(confirmDeliveryNote(review, approval))}>{decision ? "Lieferscheinprüfung bestätigt" : "Lieferschein und Adresse bestätigen"}</button><button type="button" disabled={locked} className={buttonClass} onClick={() => decide(change.id, "reject", "")}>Selbst geprüft – so lassen</button></div>
+                  <details className="mt-2"><summary className="cursor-pointer text-xs">Optional: Abweichung erläutern</summary><input disabled={locked} aria-label="Abweichung beim Lieferschein" className={`${fieldClass} mt-2`} value={decision?.note || ""} onChange={e => decide(change.id, "reject", e.target.value)} /></details>
+                </div> : change.questionOnly ? <div className="mt-3"><button type="button" disabled={locked} aria-pressed={Boolean(decision)} className={buttonClass} onClick={() => decide(change.id, "reject", "")}>{decision ? "Selbst geprüft – erledigt" : "Selbst geprüft – so lassen"}</button><p className="mt-2 text-xs text-stone-600">Die KI-Rückfrage trifft nicht zu oder ist von dir geklärt. Falls sich Produktionsangaben ändern, passe den Kartentext unten an.</p><details className="mt-2"><summary className="cursor-pointer text-xs">Optional: Entscheidung erläutern</summary><input disabled={locked} aria-label={`Klärung: ${change.reason}`} placeholder="Optionale Notiz" value={decision?.note || ""} onChange={e => decide(change.id, "reject", e.target.value)} className={`${fieldClass} mt-2`} /></details></div> : <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" disabled={locked} aria-pressed={decision?.action === "accept"} className={`${buttonClass} ${decision?.action === "accept" ? "border-violet-600 bg-violet-50" : ""}`} onClick={() => decide(change.id, "accept")}>{change.requiresThreadId ? "Korrektur gehört zum Auftrag" : change.kind === "obsolete" ? "Hinweis entfernen" : "Vorschlag übernehmen"}</button>
                   <button type="button" disabled={locked} aria-pressed={decision?.action === "reject"} className={`${buttonClass} ${decision?.action === "reject" ? "border-violet-600 bg-violet-50" : ""}`} onClick={() => decide(change.id, "reject")}>{change.requiresThreadId ? "Andere Bestellung" : current ? "Bestellten Wert behalten" : "Vorschlag verwerfen"}</button>
                 </div>}
@@ -151,7 +182,7 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
             {review.analysis.changes.some(c => c.kind === "addition" && !c.questionOnly) ? <details className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm"><summary className="cursor-pointer font-medium">Bereits übernommen: {review.analysis.changes.filter(c => c.kind === "addition" && !c.questionOnly).length} belegte Hinweise</summary>{review.analysis.changes.filter(c => c.kind === "addition" && !c.questionOnly).map(change => <label key={change.id} className="mt-3 flex items-start gap-2"><input type="checkbox" disabled={locked} checked={approval.decisions[change.id]?.action === "accept"} onChange={e => decide(change.id, e.target.checked ? "accept" : "reject")} className="mt-1" /><span>{change.value}<span className="mt-1 block text-xs text-stone-600">{change.reason}</span>{change.evidence.map((e, i) => <span key={i} className="mt-1 block text-xs text-stone-500">{review.sources.find(s => s.id === e.sourceId)?.label}: {e.quote}</span>)}</span></label>)}</details> : null}
             {review.analysis.threads.filter(t => t.relevance === "uncertain" && !review.analysis.changes.some(c => c.requiresThreadId === t.id)).map(thread => {
               const decision = approval.decisions[`thread:${thread.id}`];
-              return <div key={thread.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm"><p>{thread.reason}</p><details className="mt-2"><summary className="cursor-pointer text-xs">Mailverlauf ansehen</summary>{review.sources.filter(source => source.threadId === thread.id).map(source => <div key={source.id} className="mt-2"><p className="font-medium">{source.label}</p><pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-words font-sans text-xs">{source.text}</pre></div>)}</details><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={locked} aria-pressed={decision?.action === "reject"} className={buttonClass} onClick={() => decide(`thread:${thread.id}`, "reject")}>Andere Bestellung</button><button type="button" disabled={locked} aria-pressed={decision?.action === "accept"} className={buttonClass} onClick={() => decide(`thread:${thread.id}`, "accept")}>Gehört zu diesem Auftrag</button></div>{decision?.action === "accept" ? <input disabled={locked} className={`${fieldClass} mt-2`} aria-label={`Mailzuordnung: ${thread.reason}`} placeholder="Relevante Änderungen geprüft: Ergebnis dokumentieren" value={decision.note} onChange={e => decide(`thread:${thread.id}`, "accept", e.target.value)} /> : null}</div>;
+              return <div key={thread.id} className={`rounded-lg border p-3 text-sm ${decision ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}><p className="font-semibold">{decision ? "Zuordnung entschieden: " : "Mailzuordnung prüfen: "}{thread.reason}</p><details className="mt-2"><summary className="cursor-pointer text-xs">Mailverlauf ansehen</summary>{review.sources.filter(source => source.threadId === thread.id).map(source => <div key={source.id} className="mt-2"><p className="font-medium">{source.label}</p><pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-words font-sans text-xs">{source.text}</pre></div>)}</details><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={locked} aria-pressed={decision?.action === "reject"} className={buttonClass} onClick={() => decide(`thread:${thread.id}`, "reject")}>Andere Bestellung</button><button type="button" disabled={locked} aria-pressed={decision?.action === "accept"} className={buttonClass} onClick={() => decide(`thread:${thread.id}`, "accept")}>Gehört zu diesem Auftrag</button></div>{decision?.action === "accept" ? <input disabled={locked} className={`${fieldClass} mt-2`} aria-label={`Mailzuordnung: ${thread.reason}`} placeholder="Optionale Notiz zur Mailzuordnung" value={decision.note} onChange={e => decide(`thread:${thread.id}`, "accept", e.target.value)} /> : null}</div>;
             })}
             <div className="rounded-lg border border-stone-200 bg-white p-3">
               <div className="mb-3 flex items-center justify-between gap-2"><h4 className="text-sm font-semibold">Fertige Trello-Karte</h4><button type="button" className={buttonClass} disabled={locked} onClick={() => setEditText(!editText)}>{editText ? "Vorschau anzeigen" : "Text anpassen"}</button></div>
@@ -168,6 +199,7 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
             <div><h4 className="text-sm font-semibold">Dateien auf der Karte</h4><p className="mt-1 text-xs text-stone-500">Entfernte Dateien werden zuvor in der privaten Ablage bytegleich gesichert.</p>
               {drawingRecommendations.map(({ document, recommendation, sizeUpdate }) => <section key={document.id} aria-label={`PDF-Empfehlung: ${document.name}`} className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
                 <p className="text-xs font-medium text-amber-900">Empfehlung aus der KI-PDF-Prüfung</p>
+                {approval.attachments[document.attachmentId] ? <p className="mt-2 font-medium text-emerald-800">Dateiauswahl entschieden: {approval.attachments[document.attachmentId] === "keep" ? "behalten" : "sichern und entfernen"}</p> : null}
                 <h5 className="mt-1 font-semibold">{sizeUpdate?.confirmed ? "UPDATE NEW SIZE vorbereitet" : sizeUpdate ? "Produktionsmaße bestätigen und Größen-Update vorbereiten" : recommendation.title}</h5>
                 <a href={safeLink(document.href)} target="_blank" rel="noreferrer" className="mt-2 inline-block break-words text-xs underline">{document.name}</a>
                 <p className="mt-3 text-xs font-semibold">Abweichung in der Zeichnung</p>
@@ -182,9 +214,14 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
                     const next = confirmDrawingSizeUpdate(review, approval, document.id);
                     update({ decisions: next.decisions, attachments: next.attachments, ...(!edited ? rendered(review, next.decisions) : {}) });
                   }}>{sizeUpdate.confirmed ? "Produktionsmaße bestätigt" : "Maße bestätigen und Update vorbereiten"}</button>
+                  {sizeUpdate.confirmed ? <button type="button" disabled={locked} className={`${buttonClass} mt-2`} onClick={() => {
+                    const decisions = { ...approval.decisions }; delete decisions[sizeUpdate.id];
+                    update({ decisions, ...(!edited ? rendered(review, decisions) : {}) });
+                  }}>Größen-Update zurücknehmen</button> : null}
                   <p className="mt-2">{sizeUpdate.confirmed ? edited ? "Maße bestätigt. Den manuell bearbeiteten Kartentext unten abgleichen oder die automatische Vorschau wiederherstellen." : "Titel und Beschreibung enthalten die bestätigten Maße und UPDATE NEW SIZE." : "Bereitet UPDATE NEW SIZE in Titel und Beschreibung vor. Die PDF bleibt als Referenz; ihre abweichenden Maße werden ausdrücklich übersteuert."} Andere Prüfpunkte und die Produktionsfreigabe bleiben separat.</p>
                 </div> : <><p className="mt-3 text-xs"><strong>Nächster Schritt:</strong> {recommendation.nextStep}</p>
-                <p className="mt-2 text-xs text-amber-900">PDF bis zur Korrektur behalten. „Behalten“ entscheidet nur über die Datei auf der Karte; die technische Abweichung ist damit nicht geklärt.</p></>}
+                <p className="mt-2 text-xs text-amber-900">Das ist eine KI-Empfehlung. Wenn du die Datei selbst geprüft hast, kannst du sie ohne Begründung behalten. Maßgeblich sind deine bestätigte Vorschau und Dateiauswahl.</p></>}
+                <button type="button" disabled={locked} aria-pressed={approval.attachments[document.attachmentId] === "keep"} className={`${buttonClass} mt-3`} onClick={() => update({ attachments: { ...approval.attachments, [document.attachmentId]: "keep" } })}>Datei selbst geprüft – behalten</button>
                 <details className="mt-2 text-xs"><summary className="cursor-pointer font-medium">PDF-Belege ansehen</summary>{document.evidence.map((e, i) => <p key={i} className="mt-2 whitespace-pre-wrap">Seite {e.page}: {e.quote}</p>)}</details>
               </section>)}
               {openDocuments.length ? <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm">
@@ -210,13 +247,14 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
               </div>)}
             </div>
             <label className="block text-sm font-medium">Produktionsliste<select disabled={locked} className={`${fieldClass} mt-1`} value={approval.priority} onChange={e => update({ priority: e.target.value as ProductionPriority })}>{Object.entries(PRODUCTION_LISTS).map(([key, list]) => <option key={key} value={key}>{list.name} · ganz oben</option>)}</select></label>
-            {approval.priority !== review.priority ? <input disabled={locked} className={fieldClass} aria-label="Abweichende Priorität begründen" placeholder="Abweichende Priorität begründen" value={approval.priorityReason} onChange={e => update({ priorityReason: e.target.value })} /> : null}
+            {approval.priority !== review.priority ? <input disabled={locked} className={fieldClass} aria-label="Optionale Notiz zur Produktionsliste" placeholder="Optionale Notiz zur abweichenden Produktionsliste" value={approval.priorityReason} onChange={e => update({ priorityReason: e.target.value })} /> : null}
             <details className="text-sm"><summary className="cursor-pointer font-medium">Interne Prüfnote ergänzen</summary><textarea disabled={locked} aria-label="Interne Prüfnote" className={`${fieldClass} mt-2`} value={approval.operatorNote} placeholder="Zum Beispiel eine telefonisch bestätigte Absprache" onChange={e => update({ operatorNote: e.target.value })} /></details>
             {handoff?.backups.length ? <div className="rounded-lg border border-stone-200 bg-white p-3 text-sm"><h4 className="font-medium">Gesicherte Dateien</h4>{handoff.backups.map(b => <a key={b.attachmentId} className="mt-2 block underline" href={`/api/ops/supplier-sales?action=production_file_backup&saleId=${encodeURIComponent(saleId)}&attachmentId=${encodeURIComponent(b.attachmentId)}`}>{b.name}</a>)}</div> : null}
-            {issues.length || blockReason ? <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950"><p className="font-medium">Vor der Freigabe offen</p><ul className="mt-2 list-disc space-y-1 pl-5">{[...(blockReason ? [blockReason] : []), ...issues].map((issue, i) => <li key={i}>{issue}</li>)}</ul></div> : null}
-            {paymentConfirmation ? <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Zahlung offen oder unklar: Eine Vergabe vor Zahlung muss zusätzlich ausdrücklich bestätigt werden.</p> : null}
+            <p className="text-sm font-semibold" role="status">{statusTitle}</p>
+            {error || issues.length || blockReason ? <a href={`#production-review-${saleId}`} className="block text-sm text-violet-800 underline">Offene Punkte und Fehler oben ansehen</a> : null}
+            {paymentConfirmation ? <label className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><input type="checkbox" disabled={locked} checked={paymentConfirmed} onChange={e => setPaymentConfirmed(e.target.checked)} className="mt-1" /><span>Ich gebe diesen Auftrag bewusst vor Zahlung frei.<span className="mt-1 block text-xs">Die Zahlung bleibt offen.</span></span></label> : null}
             <p className="text-xs text-stone-600">Mit der Freigabe bestätigst du Titel, Beschreibung, Dateien, Cover und Produktionsliste.</p>
-            <button type="button" disabled={locked || issues.length > 0 || Boolean(blockReason)} onClick={() => void release()} className="w-full rounded-lg bg-stone-950 px-4 py-3 text-sm font-semibold text-white disabled:bg-stone-300">{saving ? "Übergabe wird geprüft …" : handoff?.status === "partial" ? "Geprüfte Übergabe fortsetzen" : "Geprüft – an Produktion freigeben"}</button>
+            <button type="button" disabled={releaseBlocked} onClick={() => void release()} className="w-full rounded-lg bg-stone-950 px-4 py-3 text-sm font-semibold text-white disabled:bg-stone-300">{saving ? "Übergabe wird geprüft …" : handoff?.status === "partial" ? "Geprüfte Übergabe fortsetzen" : "Geprüft – an Produktion freigeben"}</button>
           </div>
         </div>
       ) : null}

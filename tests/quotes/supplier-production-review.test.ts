@@ -73,6 +73,8 @@ test("one reviewed preview preserves KEY KUNDE, exact quantities and old-thread 
   assert.deepEqual(reviewApprovalIssues(r, a), []);
   assert.match(a.title, /^KEY KUNDE \| #NEONT-TEST \| CHECK INFO/);
   assert.match(a.description, /^CHECK INFO\nProduct 1: Produce the logo without the dot/);
+  assert.doesNotMatch(a.title, /PCS/);
+  assert.doesNotMatch(a.description, /Pieces Shipped Together/);
   assert.match(a.description, /Cable Position: Bottom right/);
   assert.match(a.description, /4x Adhesive mounting set/);
   assert.doesNotMatch(a.description, /8.*strip/i);
@@ -96,6 +98,40 @@ test("multiple products keep separate backboard/letter dimensions and surface/li
   assert.equal(productionPriorityFromDeliveryTitles(["kein Express"]), "standard");
 });
 
+test("piece markers sum purchased sign quantities across designs and exclude accessories", () => {
+  for (const [quantities, count, words] of [
+    [[2], 2, "Two"], [[1, 1], 2, "Two"], [[1, 2], 3, "Three"], [[2, 2], 4, "Four"],
+    [[21], 21, "Twenty-One"], [[120], 120, "One Hundred Twenty"], [[1001], 1001, "One Thousand One"],
+  ] as const) {
+    const r = review();
+    r.products = quantities.map((quantity, i) => ({ ...r.products[0], id: `product-${i + 1}`, quantity }));
+    r.analysis = { summary: "", threads: [], changes: [] };
+    const original = structuredClone(r), a = defaultReviewApproval(r);
+    assert.equal(a.title.split(" | ")[2], `${count} PCS - ${words} Pieces`);
+    assert.ok(a.description.startsWith(`CHECK INFO\n${words} Pieces Shipped Together\n\n`));
+    assert.equal(a.confirmed, false);
+    assert.equal((a.title.match(/ PCS - /g) || []).length, 1);
+    assert.equal((a.description.match(/Pieces Shipped Together/g) || []).length, 1);
+    assert.match(a.description, /4x Adhesive mounting set/);
+    quantities.forEach(quantity => assert.ok(a.description.includes(`Quantity: ${quantity} Piece`)));
+    assert.deepEqual(renderProductionReview(r, a.decisions), { title: a.title, description: a.description });
+    assert.deepEqual(r, original);
+  }
+});
+
+test("multi-piece preview reaches the existing confirmed handoff without changing quantities or priority", async () => {
+  const r = review(); r.products[0].quantity = 2;
+  const a = approved(r), h = harness(r);
+  assert.match(a.description, /^CHECK INFO\nTwo Pieces Shipped Together\nProduct 1: Produce the logo without the dot/);
+  assert.deepEqual(reviewApprovalIssues(r, a), []);
+  await executeProductionHandoff(r, a, h.state, h.deps);
+  assert.equal(h.card.name, a.title);
+  assert.equal(h.card.desc, a.description);
+  assert.match(h.card.desc, /Quantity: 2 Pieces/);
+  assert.equal(h.card.idList, PRODUCTION_LISTS.standard.id);
+  assert.equal(h.calls.filter(c => c === "release").length, 1);
+});
+
 test("model cannot omit a mail thread, invent numeric values, use unrelated mail, or hide card conflicts", () => {
   const r = review();
   assert.throws(() => validateReviewAnalysis({ ...r.analysis, threads: [] }, r.sources, r.products), /alle Mail/);
@@ -112,6 +148,26 @@ test("model cannot omit a mail thread, invent numeric values, use unrelated mail
   r.sources[0].text = "CHECK INFO\nKeep original cable cover.\n\nLED Neon Sign\nSize: 120 x 45 cm";
   const notes = validateReviewAnalysis({ ...r.analysis, changes: [] }, r.sources, r.products);
   assert.ok(notes.changes.some(c => c.id === "preserve-card-instructions"));
+});
+
+test("explicit human decisions need no explanation but unresolved choices and technical guards remain", () => {
+  const r = review();
+  r.analysis.changes.push({ id: "question", kind: "conflict", questionOnly: true, productId: null,
+    field: "Additional Information", value: "", reason: "KI-Rückfrage", evidence: [] });
+  r.analysis.threads[0].relevance = "uncertain";
+  const a = approved(r);
+  assert.ok(reviewApprovalIssues(r, a).some(i => i.includes("KI-Rückfrage")));
+  assert.ok(reviewApprovalIssues(r, a).some(i => i.includes("Mailzuordnung")));
+  a.decisions.question = { action: "reject", note: "" };
+  a.decisions["thread:old-offer"] = { action: "accept", note: "" };
+  a.priority = "express"; a.priorityReason = "";
+  assert.deepEqual(reviewApprovalIssues(r, a), []);
+  assert.ok(reviewApprovalIssues(r, { ...a, confirmed: false }).length);
+  assert.ok(reviewApprovalIssues(r, { ...a, coverProductId: "foreign" }).length);
+  assert.ok(reviewApprovalIssues(r, { ...a, reviewId: "stale" }).length);
+  assert.ok(reviewApprovalIssues({ ...r, blockers: ["Aktuelle Bestellung fehlt"] }, a).includes("Aktuelle Bestellung fehlt"));
+  a.attachments = {};
+  assert.ok(reviewApprovalIssues(r, a).some(i => i.includes("Datei prüfen")));
 });
 
 test("proven new inquiry stabilizes historical threads while reused threads and current references stay active", async () => {
@@ -653,7 +709,7 @@ test("image batch decisions preserve documents, vectors, protected files and ind
   assert.deepEqual(before.attachments, { vector: "keep", chosen: "keep" });
 });
 
-test("source choices need a click, open questions need a documented result and never replace a field", () => {
+test("source choices need a click, open questions accept human decisions without replacing a field", () => {
   const r = review(), a = approved(r); a.decisions.cable.note = "";
   assert.deepEqual(reviewApprovalIssues(r, a), []);
   assert.ok(reviewApprovalIssues(r, { ...a, confirmed: false }).some(v => v.includes("bestätigen")));
@@ -663,7 +719,10 @@ test("source choices need a click, open questions need a documented result and n
   r.analysis = validateReviewAnalysis(bad, r.sources, r.products);
   assert.equal(r.analysis.changes[0].value, "");
   assert.match(renderProductionReview(r, a.decisions).description, /Cable Position: Top right/);
-  assert.ok(reviewApprovalIssues(r, a).some(v => v.includes("Klärung")));
+  delete a.decisions.cable;
+  assert.ok(reviewApprovalIssues(r, a).some(v => v.includes("Entscheidung")));
+  for (const change of r.analysis.changes) a.decisions[change.id] = { action: "reject", note: "" };
+  assert.deepEqual(reviewApprovalIssues(r, a), []);
   const release = structuredClone(r.analysis); release.changes[0].field = "ProductionRelease";
   assert.throws(() => validateReviewAnalysis(release, r.sources, r.products), /Unzulässiges/);
 });
@@ -685,13 +744,13 @@ test("equivalent dimensions and light colors do not become manual conflicts", ()
   assert.equal(validateReviewAnalysis({ summary: "Geprüft", changes: [], threads: [] }, r.sources, r.products).changes[0].kind, "conflict");
 });
 
-test("uncertain mail requires explicit exclusion or documented review when linked", () => {
+test("uncertain mail requires an explicit human choice without mandatory explanation", () => {
   const r = review(), a = approved(r); r.analysis.threads = [{ id: "older", relevance: "uncertain", reason: "Andere Bestellung?" }];
   assert.ok(reviewApprovalIssues(r, a).some(s => s.includes("Mailzuordnung")));
   a.decisions["thread:older"] = { action: "reject", note: "" };
   assert.deepEqual(reviewApprovalIssues(r, a), []);
   a.decisions["thread:older"].action = "accept";
-  assert.ok(reviewApprovalIssues(r, a).some(s => s.includes("Mailzuordnung")));
+  assert.deepEqual(reviewApprovalIssues(r, a), []);
 });
 
 test("model cannot add an unsupported mounting template or invent quoted logo wording", () => {
@@ -770,6 +829,10 @@ test('size update preserves product order even when PDF dimensions occur in anot
     fields: [{ label: 'Size', value: '180 x 42cm' }] });
   guardDrawingDimensions(d, ['180 cm 42.53 cm 120 cm 45.09 cm Product-Typ: neon flex'], r.products);
   const a = confirmDrawingSizeUpdate(r, approved(r), d.id);
+  assert.match(a.title, /^KEY KUNDE \| #NEONT-TEST \| 2 PCS - Two Pieces \| UPDATE NEW SIZE \| CHECK INFO/);
+  assert.match(a.description, /^UPDATE NEW SIZE\n/);
+  assert.match(a.description, /\n\nCHECK INFO\nTwo Pieces Shipped Together\nProduct 1: Produce the logo without the dot/);
+  assert.deepEqual(reviewApprovalIssues(r, { ...a, confirmed: true }), []);
   assert.match(a.description, /Product 1: 120 x 45 cm\nProduct 2: 180 x 42cm/);
   assert.doesNotMatch(a.description, /45.09|42.53/);
   assert.deepEqual(drawingSizeUpdate(r, d, a.decisions)?.sizes.map(s => s.imageTitle), ['Final design', 'Second design']);

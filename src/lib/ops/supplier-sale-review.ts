@@ -207,7 +207,7 @@ function sizeUpdateBlock(review: ProductionReview, decisions: ReviewApproval["de
 /** Count actual human actions: one explicit image-batch decision resolves all of its IDs. */
 export function reviewOpenStepCount(review: ProductionReview, approval: ReviewApproval, issues: string[]) {
   const images = openImageVariants(review, approval);
-  const mapping = designMappingQuestions(review).filter(c => !approval.decisions[c.id]?.note.trim());
+  const mapping = designMappingQuestions(review).filter(c => !approval.decisions[c.id]);
   const documents = openDocumentSuggestions(review, approval);
   return Math.max(0, issues.length - Math.max(0, images.length - 1) - Math.max(0, mapping.length - 1) - Math.max(0, documents.length - 1));
 }
@@ -226,9 +226,23 @@ export function defaultReviewApproval(review: ProductionReview): ReviewApproval 
   return { ...base, ...renderProductionReview(review, base.decisions) };
 }
 
+/** Positive integer quantities from the accepted order; no model or design-count inference. */
+function pieceCountWords(count: number): string {
+  const small = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  if (count < 20) return small[count];
+  if (count < 100) return ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"][Math.floor(count / 10)]
+    + (count % 10 ? `-${small[count % 10]}` : "");
+  for (const [scale, word] of [[1e15, "Quadrillion"], [1e12, "Trillion"], [1e9, "Billion"], [1e6, "Million"], [1000, "Thousand"], [100, "Hundred"]] as const) {
+    if (count >= scale) return `${pieceCountWords(Math.floor(count / scale))} ${word}${count % scale ? ` ${pieceCountWords(count % scale)}` : ""}`;
+  }
+  return String(count);
+}
+
 export function renderProductionReview(review: ProductionReview, decisions: ReviewApproval["decisions"]) {
   const products = review.products.map(p => ({ ...p, fields: p.fields.map(f => ({ ...f })) }));
-  const notes: string[] = [];
+  const pieceCount = products.reduce((sum, p) => sum + p.quantity, 0);
+  const pieces = Number.isSafeInteger(pieceCount) && pieceCount > 1 ? `${pieceCountWords(pieceCount)} Pieces` : "";
+  const notes: string[] = pieces ? [`${pieces} Shipped Together`] : [];
   for (const change of review.analysis.changes) {
     // Obsolete refers to an old note, never permission to delete a purchased production field.
     if (change.kind === "obsolete") {
@@ -251,7 +265,7 @@ export function renderProductionReview(review: ProductionReview, decisions: Revi
   const keyCustomer = /\bKEY KUNDE\b/i.test(review.originalTitle) ? "KEY KUNDE | " : "";
   const sizeUpdate = sizeUpdateBlock(review, decisions);
   const marker = notes.length ? "CHECK INFO | " : "";
-  const title = `${keyCustomer}${review.orderName} | ${sizeUpdate ? "UPDATE NEW SIZE | " : ""}${marker}${review.customerName} | ${summary}`;
+  const title = `${keyCustomer}${review.orderName} | ${pieces ? `${pieceCount} PCS - ${pieces} | ` : ""}${sizeUpdate ? "UPDATE NEW SIZE | " : ""}${marker}${review.customerName} | ${summary}`;
   const blocks = products.map((p, i) => [
     products.length > 1 ? `Product ${i + 1}: ${p.title}` : p.title,
     ...p.fields.map(f => `${f.label}: ${f.value}`),
@@ -300,16 +314,14 @@ export function reviewApprovalIssues(review: ProductionReview, approval: ReviewA
   if (review.requestId && !approval.description?.includes(`Request-ID: ${review.requestId}`)) issues.push("Die Request-ID muss erhalten bleiben.");
   if (!review.products.some(p => p.id === approval.coverProductId)) issues.push("Bitte ein gekauftes Design als Cover wählen.");
   if (!Object.hasOwn(PRODUCTION_LISTS, approval.priority)) issues.push("Ungültige Produktionsliste.");
-  if (approval.priority !== review.priority && !approval.priorityReason?.trim()) issues.push("Bitte die abweichende Priorität begründen.");
   for (const change of review.analysis.changes) {
     const decision = approval.decisions?.[change.id];
     if (!decision || !["accept", "reject"].includes(decision.action)) issues.push(`Entscheidung fehlt: ${change.reason}`);
-    else if (change.questionOnly && !decision.note?.trim()) issues.push(`Klärung dokumentieren: ${change.reason}`);
     if (change.requiresThreadId && decision?.action === "accept" && approval.decisions[`thread:${change.requiresThreadId}`]?.action !== "accept") issues.push("Die Logo-Korrektur muss diesem Auftrag ausdrücklich zugeordnet werden.");
   }
   for (const thread of review.analysis.threads.filter(t => t.relevance === "uncertain" && !review.analysis.changes.some(c => c.requiresThreadId === t.id))) {
     const decision = approval.decisions?.[`thread:${thread.id}`];
-    if (!decision || (decision.action === "accept" && !decision.note.trim())) issues.push(`Mailzuordnung klären: ${thread.reason}`);
+    if (!decision) issues.push(`Mailzuordnung klären: ${thread.reason}`);
   }
   for (const attachment of review.attachments) {
     if (!["keep", "remove"].includes(approval.attachments?.[attachment.id])) issues.push(`Datei prüfen: ${reviewAttachmentLabel(review, attachment)}`);
