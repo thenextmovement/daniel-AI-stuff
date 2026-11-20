@@ -1,0 +1,9 @@
+# Additive Umsetzung – 20.11.2026
+
+Der frühere Entwurf ist für diesen Schritt durch den engeren Nutzerauftrag ersetzt: zwei Ebenen Kunde/Organisation, keine Standorte, keine kanonische Kundenmigration, keine Änderung bestehender Importpfade oder Hauptfelder. Bis zu zehn zusätzliche E-Mails und zehn E.164-Nummern pro bestehender Kunden-ID in customer_contact_points. Vorhandenes master_customers.customer_organization_id bleibt die Organisationsverknüpfung. Service-RPC erlaubt tenantgeprüftes Setzen/Ändern/Entfernen.
+
+Shopify-Zuordnungen werden separat in shopify_order_customer_links ergänzt. Der Schreibvorgang erzeugt keine master_orders oder supplier_sales und ändert keine Shopify-Quelldaten. Eindeutige normalisierte Haupt- oder zusätzliche E-Mail; mehrdeutige, fehlende, tenantfremde, Test-/unverifizierte und suppliergetaggte Treffer bleiben unberührt. Bereits gespeicherte Verknüpfungen werden nicht neu zugeordnet. Organisationszugehörigkeit wird beim Lesen vom Kunden ermittelt. Kunden werden nicht automatisch angelegt oder verschmolzen; Firmen werden nicht aus Domains erfunden.
+
+Isolierte PostgreSQL-16-Integration: bootstrap, Migration, integration.sql über psql ON_ERROR_STOP getestet. Prüft Kontaktlimits/Validierung/Duplikate, unveränderte Hauptfelder, Dry-run, Ausschlüsse, Idempotenz, Organisationswechsel/Entfernung, Mandantentrennung, E-Mail-Wechsel nach Verknüpfung und Rechte.
+
+Noch nicht Bestandteil dieser SQL-Veröffentlichung: UI-Editor, Abfragen bestehender Anwendungen, automatischer laufender Aufruf der Nachbefüllung. Neue Daten sind über die vorhandene Supabase-Serviceverbindung abrufbar, aber werden nicht ungefragt von bisherigen Anwendungen genutzt. Die bisherigen Import-Überschreibungen von Hauptfeldern werden dadurch nicht repariert; Zusatzkontakte liegen getrennt und bleiben davon unberührt.
