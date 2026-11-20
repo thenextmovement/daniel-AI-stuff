@@ -62,7 +62,7 @@ grant execute on function public.set_customer_organization_v1(uuid,uuid) to serv
 -- Caller supplies the confirmed tenant and recognized supplier tags. Dry-run is the default.
 create function public.backfill_shopify_customer_links_v1(
  p_tenant_id uuid,p_supplier_tags text[],p_apply boolean default false)
-returns jsonb language plpgsql security definer set search_path='' set statement_timeout='20s' set lock_timeout='2s' as $
+returns jsonb language plpgsql security definer set search_path='' set statement_timeout='20s' set lock_timeout='2s' as $$
 declare v_report jsonb; v_written integer:=0;
 begin
  if p_tenant_id is null or p_supplier_tags is null or cardinality(p_supplier_tags)=0 then
