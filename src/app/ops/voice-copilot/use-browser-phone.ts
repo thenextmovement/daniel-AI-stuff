@@ -249,6 +249,7 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  }
  async function dial(target:PhoneDialTarget,transport:"browser"|"mobile"="browser") {
   if((transport==="mobile"?!mobileAllowed:!allowed||!registered||!device.current)||starting.current||active.current||activeAi.current||activeTransfer.current||offer.current||externalOffer.current||otherBusy)return;
+  if(!window.confirm(`Möchtest du ${"phone" in target ? target.phone : "diesen Kunden"} jetzt ${transport==="mobile"?"über dein Handy":"im Browser"} anrufen?`))return;
   starting.current=true;setWorking(true);setError("");setNotice("");const epoch=generation.current;
   const signature=JSON.stringify({target,transport});
   if(request.current?.target!==signature)request.current={key:crypto.randomUUID(),target:signature};

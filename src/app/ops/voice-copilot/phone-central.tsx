@@ -243,7 +243,7 @@ export function PhoneCentral(props: Props) {
     phonePicker.current?.close();
     if(placetelCall.current){if(!placetelCall.current.start(target)){setNotice("Bitte schließe zuerst den bereits vorbereiteten Anruf ab oder prüfe seinen Status.");return;}}
     else if(event)openPhoneApp(event,target);
-    else {window.location.assign("tel:"+target);setNotice("Nummer an die Telefon-App übergeben.");}
+    else {if(!window.confirm(`Möchtest du ${target} jetzt mit der Telefon-App anrufen?`))return;window.location.assign("tel:"+target);setNotice("Nummer an die Telefon-App übergeben.");}
     if(briefCustomerId)setChosenPhone({customerId:briefCustomerId,phone:number});
   }
   const phone = chosenPhone && chosenPhone.customerId===briefCustomerId && phoneNumbers.includes(parsePhoneNumberFromString(chosenPhone.phone,"DE")?.number||chosenPhone.phone) ? chosenPhone.phone : customer?.phone || phoneNumbers[0] || "";
@@ -256,6 +256,7 @@ export function PhoneCentral(props: Props) {
   function openPhoneApp(event: MouseEvent<HTMLButtonElement>, phone: string) {
     const assisted = assistedDialReady && phone === dialPhone && readySession !== dialedSession.current;
     if (!event.nativeEvent.isTrusted || (busy && !assisted) || performance.now() - lastDialAt.current < 2000) return;
+    if (!window.confirm(`Möchtest du ${phone} jetzt mit der Telefon-App anrufen?`)) return;
     if (assisted && readySession) dialedSession.current = readySession;
     lastDialAt.current = performance.now();
     window.location.assign("tel:" + phone);
