@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNo
 import { Search, Phone, Headphones, ChevronLeft, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
+import {CustomerEditor} from "./customer-editor";
+import type {CustomerEditorData} from "@/lib/ops/voice-customer-editor";
 import {CustomerPhoneEditor} from "./customer-phone-editor";
 import { CallNotes } from "./call-notes";
 import { PlacetelCallButton } from "./placetel-call-button";
@@ -78,6 +80,17 @@ export function PhoneCentral(props: Props) {
   const [activeContact, setActiveContact] = useState<VoiceDirectoryContact | null>(null);
   const briefCustomerId = selected?.masterCustomerId || activeContact?.customerId;
   const briefRequestId = selected?.requestId || activeContact?.requestId || "";
+  const [customerRevision,setCustomerRevision]=useState(0);
+  const [organizationLabel,setOrganizationLabel]=useState<{customerId:string;name:string|null;manual:boolean}|null>(null);
+  useEffect(()=>{
+    if(!briefCustomerId)return;
+    const controller=new AbortController();
+    void fetch("/api/ops/voice-copilot/customer?"+new URLSearchParams({customerId:briefCustomerId}),{cache:"no-store",signal:controller.signal})
+      .then(response=>readPhoneCentralResponse<CustomerEditorData>(response,"Organisation konnte nicht geladen werden."))
+      .then(data=>{if(!controller.signal.aborted)setOrganizationLabel({customerId:briefCustomerId,name:data.organizations.find(org=>org.id===data.customer.customer_organization_id)?.name||null,manual:data.organizationManuallySet});})
+      .catch(()=>{});
+    return ()=>controller.abort();
+  },[briefCustomerId]);
   const [noteTarget, setNoteTarget] = useState<{requestId:string; callId:string; time:string} | null>(null);
   const selectNoteTarget = (callId:string, time = new Date().toISOString()) => setNoteTarget({requestId:briefRequestId, callId, time});
   const selectedNoteCall = noteTarget?.requestId === briefRequestId ? noteTarget : null;
@@ -190,6 +203,18 @@ export function PhoneCentral(props: Props) {
       if (current === selection.current) setContextLoading(false);
     }
   }
+  async function customerSaved(data: CustomerEditorData) {
+    const id=data.customer.id;
+    setCustomerRevision(n=>n+1);
+    setOrganizationLabel({customerId:id,name:data.organizations.find(org=>org.id===data.customer.customer_organization_id)?.name||null,manual:data.organizationManuallySet});
+    const response=await fetch("/api/ops/voice-copilot/context?directory=1&customerId="+encodeURIComponent(id),{cache:"no-store"});
+    const directory=await readPhoneCentralResponse<DirectoryResponse>(response,"Gespeichert. Bitte lade die Kundenansicht erneut.");
+    const contact=directory.results.find(row=>row.customerId===id);
+    if(!contact)throw Error("Gespeichert. Bitte lade die Kundenansicht erneut.");
+    setChosenPhone(null);
+    setResults(old=>old.map(row=>row.customerId===id?contact:row));
+    await select(contact);
+  }
   function changeNumber(value: string) {
     if (busy) return;
     ++selection.current;
@@ -200,6 +225,7 @@ export function PhoneCentral(props: Props) {
     setContextLoading(false); setContextError(""); setNotice("");
   }
   const customer = activeContact || selected?.customer;
+  const organization = organizationLabel && organizationLabel.customerId===briefCustomerId ? organizationLabel.name || (organizationLabel.manual ? null : customer?.company) : customer?.company;
   const name = customer?.displayName || customer?.company || "Dein nächstes Gespräch";
   const [chosenPhone,setChosenPhone]=useState<{customerId:string;phone:string}|null>(null);
   const phone = chosenPhone && chosenPhone.customerId===briefCustomerId ? chosenPhone.phone : customer?.phone || "";
@@ -265,7 +291,7 @@ export function PhoneCentral(props: Props) {
                 {customer ? initials(name) : <Phone size={23} />}
               </span>
               <div className={styles.customerIdentity}>
-                <h2>{browserPhone.call && !customer ? browserPhone.call.phone : name}</h2>
+                <div className={styles.customerNameRow}><h2>{browserPhone.call && !customer ? browserPhone.call.phone : name}</h2>{briefCustomerId && <CustomerEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={customerSaved}/>}</div>
                 {!customer && <p>{browserPhone.call ? browserPhone.call.customerId ? "Kundenanruf · kein Vorgang geöffnet" : "Freier Anruf · ohne Kundenzuordnung" : "Kontakt auswählen oder links eine Nummer wählen."}</p>}
                 {contextLoading && <small role="status">Gesprächsübersicht wird geladen …</small>}
                 {(activeContact?.phoneNumbers?.length || 0)>1 && <select aria-label="Rufnummer auswählen" disabled={busy} value={phone} onChange={e=>setChosenPhone({customerId:briefCustomerId!,phone:e.target.value})}>
@@ -309,14 +335,14 @@ export function PhoneCentral(props: Props) {
             </div>
             </div>
             {customer && <dl className={styles.contactFacts} aria-label="Kontaktdaten">
-              <div><dt>E-Mail:</dt><dd>{customer.email ? <a className={styles.factValue} title={customer.email} href={"mailto:" + customer.email}>{customer.email}</a> : <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
-              <div><dt>Telefonnummer:</dt><dd><div className={styles.phoneFact}><span>{phone || "Rufnummer fehlt"}</span>{briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
+              <div><dt>E-Mail:</dt><dd>{customer.email ? <a className={styles.factValue} title={customer.email} href={"mailto:" + customer.email}>{customer.email}</a> : <span className={styles.missingFact}>{briefCustomerId ? <CustomerEditor customerId={briefCustomerId} disabled={busy} onSaved={customerSaved} trigger="email"/> : "Nicht hinterlegt"}</span>}</dd></div>
+              <div><dt>Telefonnummer:</dt><dd><div className={styles.phoneFact}><span>{phone || (briefCustomerId ? <CustomerEditor customerId={briefCustomerId} disabled={busy} onSaved={customerSaved} trigger="phone"/> : "Rufnummer fehlt")}</span>{briefCustomerId && <CustomerPhoneEditor key={briefCustomerId} customerId={briefCustomerId} disabled={busy} onSaved={(saved,numbers)=>{
                   setChosenPhone({customerId:briefCustomerId,phone:saved});
                   setActiveContact(old=>old?.customerId===briefCustomerId?{...old,phone:old.phone||saved,phoneNumbers:numbers}:old);
                   setResults(old=>old.map(row=>row.customerId===briefCustomerId?{...row,phone:row.phone||saved,phoneNumbers:numbers}:row));
                 }}/>}</div></dd></div>
-              <div><dt>Organisation:</dt><dd>{customer.company ? <span className={styles.factValue} title={customer.company}>{customer.company}</span> : <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
-              <div><dt>Bisherige Bestellungen:</dt><dd>{briefCustomerId && <OrganizationOrdersButton key={briefCustomerId} customerId={briefCustomerId}/>}</dd></div>
+              <div><dt>Organisation:</dt><dd>{organization ? <span className={styles.factValue} title={organization}>{organization}</span> : <span className={styles.missingFact}>Nicht hinterlegt</span>}</dd></div>
+              <div><dt>Bisherige Bestellungen:</dt><dd>{briefCustomerId && <OrganizationOrdersButton key={briefCustomerId+":"+customerRevision} customerId={briefCustomerId}/>}</dd></div>
             </dl>}
             {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected}/>}
 

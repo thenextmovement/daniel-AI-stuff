@@ -620,6 +620,7 @@ test("manual import retry completes core effects and preserves existing manual a
       return json([]);
     }
 
+    if (url.pathname.endsWith("/rest/v1/customer_previous_primary_emails") && method === "GET") return json([]);
     if (url.pathname.endsWith("/rest/v1/master_customers") && method === "GET") {
       return json([]);
     }
@@ -810,6 +811,7 @@ test("audited import with a missing requested Trello card requires manual review
         attribution_raw: insertedRequest.attribution_raw,
       }]);
     }
+    if (url.pathname.endsWith("/rest/v1/customer_previous_primary_emails") && method === "GET") return json([]);
     if (url.pathname.endsWith("/rest/v1/master_customers") && method === "GET") return json([]);
     if (url.pathname.endsWith("/rest/v1/master_customers") && method === "POST") {
       return json([{ id: "customer-2", email: "trello@example.org", request_id: body.request_id }]);

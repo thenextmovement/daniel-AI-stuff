@@ -59,3 +59,14 @@ test("failed Supabase request never becomes an empty history",async()=>{
  const request=(async()=>{throw Error("upstream failed");}) as Parameters<typeof readVoiceSupabaseOrders>[0];
  await assert.rejects(readVoiceSupabaseOrders(request,now),/upstream failed/);
 });
+
+test("explicit organization spans domains and previous primary emails without merging same-domain outsiders",()=>{
+ const result=summarizeOrganizationOrders("new@example.de",[row("1","old@example.de"),row("2","colleague@other.de"),row("3","outsider@example.de"),row("4","unknown@example.net")],"now",
+ {explicit:true,name:"Example Group",emails:["new@example.de","old@example.de","colleague@other.de"],orderIds:["4"]});
+ assert.equal(result.count,3);assert.equal(result.organizationName,"Example Group");assert.equal(result.domain,null);
+});
+
+test("manually cleared organization excludes unrelated same-domain orders",()=>{
+ const result=summarizeOrganizationOrders("one@shared.test",[],"2026-11-20T10:00:00Z",{explicit:false,manual:true,name:null,emails:["one@shared.test"],orderIds:[]});
+ assert.equal(result.scope,"contact");assert.equal(result.domain,null);
+});

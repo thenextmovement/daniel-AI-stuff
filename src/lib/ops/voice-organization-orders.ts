@@ -2,7 +2,7 @@ import { supabaseRequest } from "../quotes/supabase-rest";
 import { customerOrganizationEmailDomains } from "./customer-records";
 
 export type OrganizationOrder = { id:string; name:string; email:string|null; createdAt:string; cancelledAt:string|null; test:boolean; displayFinancialStatus:string|null; currentTotalPriceSet:{shopMoney:{amount:string;currencyCode:string}} };
-export type OrganizationOrders = { scope:"organization"|"contact"; domain:string|null; count:number; totals:Array<{currency:string;amount:number}>; orders:Array<{id:string;name:string;email:string|null;createdAt:string;cancelled:boolean;status:string|null;amount:number;currency:string;href:string}>; checkedAt:string };
+export type OrganizationOrders = { scope:"organization"|"contact"; organizationName?:string|null; domain:string|null; count:number; totals:Array<{currency:string;amount:number}>; orders:Array<{id:string;name:string;email:string|null;createdAt:string;cancelled:boolean;status:string|null;amount:number;currency:string;href:string}>; checkedAt:string };
 const normalize = (value:string|null|undefined) => value?.trim().toLowerCase() || "";
 export function organizationOrderScope(email:string) {
   const normalized=normalize(email);
@@ -10,18 +10,21 @@ export function organizationOrderScope(email:string) {
   const domain=customerOrganizationEmailDomains([normalized])[0] || null;
   return { email:normalized, domain };
 }
-export function summarizeOrganizationOrders(email:string, source:OrganizationOrder[], checkedAt:string):OrganizationOrders {
+export type CustomerOrderMembership={explicit:boolean;manual?:boolean;name:string|null;emails:string[];orderIds:string[]};
+export function summarizeOrganizationOrders(email:string, source:OrganizationOrder[], checkedAt:string,membership?:CustomerOrderMembership):OrganizationOrders {
   const scope=organizationOrderScope(email);
   if(!scope) throw Error("organization_email_missing");
+  const domain=membership?.explicit||membership?.manual?null:scope.domain;
+  const emails=new Set(membership?.emails.map(normalize)||[]),orderIds=new Set(membership?.orderIds||[]);
   const unique=new Map(source.map(order=>[order.id,order]));
-  const orders=[...unique.values()].filter(order=>!order.test && (scope.domain ? normalize(order.email).split("@")[1]===scope.domain : normalize(order.email)===scope.email)).map(order=>({
+  const orders=[...unique.values()].filter(order=>!order.test && (emails.has(normalize(order.email)) || orderIds.has(order.id.split("/").at(-1)||"") || (!membership?.explicit && (domain ? normalize(order.email).split("@")[1]===domain : normalize(order.email)===scope.email)))).map(order=>({
     id:order.id,name:order.name,email:order.email,createdAt:order.createdAt,cancelled:!!order.cancelledAt,status:order.displayFinancialStatus,
     amount:Number(order.currentTotalPriceSet.shopMoney.amount),currency:order.currentTotalPriceSet.shopMoney.currencyCode,
     href:"https://admin.shopify.com/store/galaxybuzzdk/orders/"+order.id.split("/").at(-1),
   })).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const totals=new Map<string,number>();
   for(const order of orders) if(!order.cancelled) totals.set(order.currency,(totals.get(order.currency)||0)+Math.round(order.amount*100));
-  return {scope:scope.domain?"organization":"contact",domain:scope.domain,count:orders.filter(order=>!order.cancelled).length,totals:[...totals].map(([currency,cents])=>({currency,amount:cents/100})),orders,checkedAt};
+  return {scope:membership?.explicit||domain?"organization":"contact",organizationName:membership?.name,domain,count:orders.filter(order=>!order.cancelled).length,totals:[...totals].map(([currency,cents])=>({currency,amount:cents/100})),orders,checkedAt};
 }
 type MirrorOrder = {
  shopify_order_id:string;name:string;email:string|null;created_at:string;cancelled_at:string|null;
@@ -78,7 +81,7 @@ let snapshot:Awaited<ReturnType<typeof readVoiceSupabaseOrders>>|null=null;
 let expires=0;
 let pending:ReturnType<typeof readVoiceSupabaseOrders>|null=null;
 let retryAfter=0;
-export async function loadOrganizationOrders(email:string) {
+export async function loadOrganizationOrders(email:string,membership?:CustomerOrderMembership) {
  if(!snapshot || Date.now()>=expires) {
   if(Date.now()<retryAfter)throw Error("organization_mirror_retry_later");
   pending??=readVoiceSupabaseOrders().then(value=>{
@@ -86,5 +89,5 @@ export async function loadOrganizationOrders(email:string) {
   }).catch(error=>{retryAfter=Date.now()+15_000;throw error;}).finally(()=>{pending=null;});
   await pending;
  }
- return summarizeOrganizationOrders(email,snapshot!.orders,snapshot!.checkedAt);
+ return summarizeOrganizationOrders(email,snapshot!.orders,snapshot!.checkedAt,membership);
 }

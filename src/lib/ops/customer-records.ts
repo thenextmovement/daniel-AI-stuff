@@ -4871,6 +4871,12 @@ async function patchById<T extends Record<string, unknown>>(
   patch: Record<string, string | string[] | number | boolean | null>,
 ) {
   if (!Object.keys(patch).length) return null;
+  if (table === "master_customers" && Object.keys(patch).every(key =>
+    ["email", "billing_email", "cc_emails", "first_name", "last_name", "phone", "company", "company_name", "name"].includes(key))) {
+    return supabaseRequest<T>("rpc/patch_customer_record_contact_v1", {
+      method: "POST", body: JSON.stringify({ p_customer_id: id, p_patch: patch }),
+    });
+  }
   const rows = await supabaseRequest<T[]>(
     table,
     {
@@ -4982,6 +4988,13 @@ async function rollbackChanges(steps: Array<() => Promise<unknown>>) {
   return failures;
 }
 
+async function restoreCustomerContact(id: string, patch: Record<string, string | string[] | null>, saved: Record<string, unknown> | null) {
+  if (!saved?._contactRollback) throw new Error("customer_contact_rollback_state_missing");
+  return supabaseRequest("rpc/restore_customer_record_contact_v1", {
+    method: "POST", body: JSON.stringify({p_customer_id:id,p_patch:patch,p_state:saved._contactRollback}),
+  });
+}
+
 async function applyCustomerMutation(
   context: CustomerContext,
   current: EditableSnapshot,
@@ -5017,15 +5030,15 @@ async function applyCustomerMutation(
         name: context.master.name || null,
       };
       try {
-        await patchById("master_customers", context.master.id, plan.masterPatch);
-        rollbackSteps.push(() => patchById("master_customers", context.master.id, previousMaster));
+        const saved = await patchById("master_customers", context.master.id, plan.masterPatch);
+        rollbackSteps.push(() => restoreCustomerContact(context.master.id, previousMaster, saved));
       } catch (error) {
         if (!("cc_emails" in plan.masterPatch) || !isMissingCcEmailsColumn(error)) throw error;
         const { cc_emails: _ccEmails, ...legacyMasterPatch } = plan.masterPatch;
         const { cc_emails: _previousCcEmails, ...legacyPreviousMaster } = previousMaster;
         if (Object.keys(legacyMasterPatch).length) {
-          await patchById("master_customers", context.master.id, legacyMasterPatch);
-          rollbackSteps.push(() => patchById("master_customers", context.master.id, legacyPreviousMaster));
+          const saved = await patchById("master_customers", context.master.id, legacyMasterPatch);
+          rollbackSteps.push(() => restoreCustomerContact(context.master.id, legacyPreviousMaster, saved));
         }
       }
     }

@@ -380,7 +380,16 @@ async function findCustomerByEmail(email: string) {
     email: `eq.${email}`,
     limit: 1,
   });
-  return rows[0] || null;
+  if (rows[0]) return rows[0];
+  const aliases = await supabaseRequest<Array<{customer_id:string}>>("customer_previous_primary_emails", undefined, {
+    select: "customer_id", organization_id: "eq.a0000000-0000-0000-0000-000000000001", email: `eq.${email.trim().toLowerCase()}`, limit: 1,
+  });
+  if (!aliases[0]) return null;
+  const linked = await supabaseRequest<ManualImportCustomerRow[]>("master_customers", undefined, {
+    select: "id,email,billing_email,first_name,last_name,phone,company,company_name,name,request_id",
+    id: `eq.${aliases[0].customer_id}`, organization_id: "eq.a0000000-0000-0000-0000-000000000001", limit: 1,
+  });
+  return linked[0] || null;
 }
 
 async function findCustomerByPhone(phone: string | null) {

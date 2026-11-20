@@ -1,0 +1,21 @@
+# Additive Umsetzung – 20.11.2026
+
+Der frühere Entwurf ist für diesen Schritt durch den engeren Nutzerauftrag ersetzt: zwei Ebenen Kunde/Organisation, keine Standorte, keine kanonische Kundenmigration, keine Änderung bestehender Importpfade oder Hauptfelder. Bis zu zehn zusätzliche E-Mails und zehn E.164-Nummern pro bestehender Kunden-ID in customer_contact_points. Vorhandenes master_customers.customer_organization_id bleibt die Organisationsverknüpfung. Service-RPC erlaubt tenantgeprüftes Setzen/Ändern/Entfernen.
+
+Shopify-Zuordnungen werden separat in shopify_order_customer_links ergänzt. Der Schreibvorgang erzeugt keine master_orders oder supplier_sales und ändert keine Shopify-Quelldaten. Eindeutige normalisierte Haupt- oder zusätzliche E-Mail; mehrdeutige, fehlende, tenantfremde, Test-/unverifizierte und suppliergetaggte Treffer bleiben unberührt. Bereits gespeicherte Verknüpfungen werden nicht neu zugeordnet. Organisationszugehörigkeit wird beim Lesen vom Kunden ermittelt. Kunden werden nicht automatisch angelegt oder verschmolzen; Firmen werden nicht aus Domains erfunden.
+
+Isolierte PostgreSQL-16-Integration: bootstrap, Migration, integration.sql über psql ON_ERROR_STOP getestet. Prüft Kontaktlimits/Validierung/Duplikate, unveränderte Hauptfelder, Dry-run, Ausschlüsse, Idempotenz, Organisationswechsel/Entfernung, Mandantentrennung, E-Mail-Wechsel nach Verknüpfung und Rechte.
+
+Noch nicht Bestandteil dieser SQL-Veröffentlichung: UI-Editor, Abfragen bestehender Anwendungen, automatischer laufender Aufruf der Nachbefüllung. Neue Daten sind über die vorhandene Supabase-Serviceverbindung abrufbar, aber werden nicht ungefragt von bisherigen Anwendungen genutzt. Die bisherigen Import-Überschreibungen von Hauptfeldern werden dadurch nicht repariert; Zusatzkontakte liegen getrennt und bleiben davon unberührt.
+
+
+## Folgeauftrag: Telefonzentralen-Editor
+Der Nutzer hat danach ausdrücklich das Bearbeiten bestehender Hauptfelder autorisiert. Der Stift öffnet Vor-/Nachname, Haupt-E-Mail/-Nummer, bis zu zehn Zusatzkontakte je Typ und eine frei wählbare Organisation. Speichern erfolgt atomar unter unveränderter Kunden-ID, mit Revisionskontrolle und anschließendem Nachlesen. Der bestehende Telefon-Plus-Pfad spiegelt zusätzliche Nummern in die zentrale Tabelle und die bisherige Telefontabelle.
+
+Manuell geänderte Hauptfelder werden nur für bearbeitete Kunden vor späteren Importüberschreibungen geschützt. Frühere Haupt-E-Mails bleiben interne Zuordnungen für bestehende E-Mail-Upserts und historische Bestellungen; sie belegen keinen der zehn Zusatzkontaktplätze. Die Kundenakte verwendet einen gezielten Kontakt-RPC; ihre kompensierende Rücknahme stellt auch Feldhoheit und frühere E-Mail-Zuordnungen wieder her und verweigert das Überschreiben zwischenzeitlicher Änderungen. Nichtkontakt-Patches/Trello-Rücknahme bleiben auf dem bisherigen Pfad. n8n-Workflows werden nicht bearbeitet.
+
+Bestellungen berücksichtigen zugewiesene Organisationen, Zusatz-/frühere E-Mails und dauerhafte Shopify-IDs. Explizites Entfernen einer Organisation unterbindet Domain-Fallback; unbearbeitete Kunden behalten die bisherige Domainlogik. Firmenanzeige bleibt als Fallback erhalten, solange die Organisation nicht ausdrücklich geändert wurde. Keine Shopify-Schreibzugriffe, operative Bestellqueue-Nachbefüllung oder Kundennachrichten.
+
+Prüfung: 1902 Node-Tests bestanden; drei neue isolierte PostgreSQL-Integrationen prüfen atomare Speicherung, Konflikte, Importkompatibilität, vollständige Rücknahme, Organisationsmitglieder, Mandantentrennung und Telefon-Plus/Limit. Isolierte Playwright-Vorschau mit gemockten APIs prüft Desktop/Mobil, Speichern/Nachlesen/Abbrechen und Kontaktlimit. Unabhängiger Review: drei Randfälle behoben und erneut freigegeben. Finaler Produktionsbuild erfolgreich. Schema-/Appveröffentlichung nach exaktem CI- und Zielabgleich; Live-Nachweis im Kontrollstellen-Ticket.
+
+Rücknahme: Vor Rückkehr auf eine Appversion ohne Kontakt-RPC muss für bereits bearbeitete Kunden der neue zz_guard_manual_customer_contacts_v1-Trigger deaktiviert werden; Zusatzkontakte und frühere E-Mail-Zuordnungen bleiben erhalten. Keine Tabellen löschen. Keine Vollständigkeitsgarantie für sämtliche fremden n8n-Ausführungen; geprüft sind die direkt betroffenen Datenverträge.

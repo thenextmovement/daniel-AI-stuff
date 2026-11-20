@@ -9931,6 +9931,15 @@
       ]
     },
     {
+      "source": "src/app/api/ops/voice-copilot/customer/route.ts",
+      "sha256": "b4eca314a786d94665630aff5d2e24cb858c7774824b5c04a290e41cc0104844",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "coverage": "Customer contact edits require a personal enrolled phone device; use the connected Telefonzentrale UI. No server-side device impersonation."
+    },
+    {
       "source": "src/app/api/ops/voice-copilot/knowledge/email-review/route.ts",
       "sha256": "d679afce3e68e1324fe48ada828922b99cd9993039bcec54a01133dbbaa189a8",
       "methods": [
@@ -9976,7 +9985,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/orders/route.ts",
-      "sha256": "a7b670d982c8a46992b330cc38649ed6a7615b208f6e70965f40bd7b269db644",
+      "sha256": "6846dba183c57324776b935a42fd7f9b8150fb08edb31f2a347ae0dc3e38c378",
       "methods": [
         "GET"
       ],
@@ -9998,7 +10007,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/phones/route.ts",
-      "sha256": "be70b6421e710d4e81ccaa7785dd0d28e2ff3f685674b13f16bd94fe07e65b5d",
+      "sha256": "60aa695a6027a4bb61b2ad67643bbb906685c209d901e50f2cbe64bbd6c1c086",
       "methods": [
         "POST"
       ],
@@ -10222,7 +10231,7 @@
     },
     {
       "source": "src/lib/ops/customer-records.ts",
-      "sha256": "dbdea9b9662161bcb33e6fe9304378fc5bbecfc86a50bbd4e03e8f0ffc036ed1"
+      "sha256": "8d25c1b9068ed6e3f2fbd480937415f548145c48b97350a8244c56451c958130"
     },
     {
       "source": "src/lib/ops/customer-call-module.ts",
@@ -10294,7 +10303,7 @@
     },
     {
       "source": "src/lib/ops/manual-request-import.ts",
-      "sha256": "b7881f2660e199a1c6e597cc43c5294e8e1a629423286b89186db9f4f0da75c8"
+      "sha256": "698dd2317568924203dd715909d6b26333cd9e5323867d10e89c9a4f7ce6990d"
     },
     {
       "source": "src/lib/ops/design.ts",
