@@ -1,0 +1,86 @@
+{
+  "workflowId": "wqaTsVKuKqKnp2AG",
+  "baseVersionId": "42f419ea-9e07-44c9-8c4c-1e64cfcf61aa",
+  "nodes": [
+    {
+      "id": "delivery-check",
+      "name": "Check Existing Customer Delivery",
+      "parameters": {
+        "jsCode": "function verifiedRounding(ctx,doc,rows,expected,actual){\n  if(!Array.isArray(rows)||rows.length!==1||doc.is_draft!==false||\n     String(doc.id)!==String(ctx.easybillDocumentId)||\n     String(doc.currency)!==String(ctx.billingCase?.currency)||\n     Number(doc.calc_vat_from)!==1) return {};\n  const event=rows[0].payload;\n  const proof=event?.roundingProof;\n  if(event?.worker!=='n8n-easybill-document-v2'||\n     String(event.easybillDocumentId)!==String(doc.id)||\n     event.documentNumber!==ctx.documentNumber||\n     proof?.method!=='GROSS_AGGREGATE_VS_ROUNDED_LINES'||\n     proof.lineCount!==doc.items?.length||\n     !Number.isFinite(proof.vatPercent)||proof.vatPercent<=0) return {};\n  for(const key of ['netCents','vatCents','grossCents']){\n    if(proof.sourceAmounts?.[key]!==expected[key]||\n       proof.documentAmounts?.[key]!==actual[key]||\n       event.verifiedDocumentAmounts?.[key]!==actual[key]) return {};\n  }\n  if(expected.netCents+expected.vatCents!==expected.grossCents||\n     actual.grossCents!==expected.grossCents||\n     actual.netCents!==Math.round(actual.grossCents*100/(100+proof.vatPercent))||\n     actual.vatCents!==actual.grossCents-actual.netCents) return {};\n  return proof;\n}\nconst ctx=$('Prepare Customer Delivery').first().json;\nconst loaded=$('Easybill Load Customer Document').first().json;\nconst doc=loaded.body??loaded;\nconst verificationRows=$json.body??$json;\nif(!doc.id||String(doc.number||'')!==ctx.documentNumber)throw new Error('billing_customer_delivery_document_mismatch');\nconst amountCheckedKinds=new Set(['ORDER_CONFIRMATION_PROFORMA','PROFORMA_UPDATE','INVOICE']);\nif(amountCheckedKinds.has(String(ctx.kind||''))){\n  const actualGrossCents=Number(doc.amount);\n  const actualNetCents=Number(doc.amount_net);\n  const actualVatCents=actualGrossCents-actualNetCents;\n  const expectedNetCents=Number(ctx.billingCase?.subtotal_net_cents);\n  const expectedVatCents=Number(ctx.billingCase?.vat_cents);\n  const expectedGrossCents=Number(ctx.billingCase?.total_gross_cents);\n  if(!Number.isInteger(actualGrossCents)||!Number.isInteger(actualNetCents)||!Number.isInteger(expectedNetCents)||!Number.isInteger(expectedVatCents)||!Number.isInteger(expectedGrossCents)){\n    throw new Error('FATAL_billing_customer_delivery_amounts_missing');\n  }\n  const proof=verifiedRounding(ctx,doc,verificationRows,\n    {netCents:expectedNetCents,vatCents:expectedVatCents,grossCents:expectedGrossCents},\n    {netCents:actualNetCents,vatCents:actualVatCents,grossCents:actualGrossCents});\n  if((actualNetCents!==expectedNetCents||actualVatCents!==expectedVatCents||actualGrossCents!==expectedGrossCents)&&!proof.method){\n    throw new Error('FATAL_billing_customer_delivery_amount_mismatch:'+ctx.documentNumber);\n  }\n}\nconst output={...ctx,easybillDocument:doc,emailAlreadySent:Boolean(doc.last_postbox_id)};\nreturn [{json:output}];"
+      }
+    },
+    {
+      "id": "repair249-verified-amounts",
+      "name": "Load Verified Document Amounts",
+      "node": {
+        "id": "repair249-verified-amounts",
+        "name": "Load Verified Document Amounts",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          980,
+          200
+        ],
+        "parameters": {
+          "url": "={{ 'https://klibiejfisijpagzkxls.supabase.co/rest/v1/billing_events?select=payload&billing_case_id=eq.' + encodeURIComponent($('Prepare Customer Delivery').first().json.billingCase.id) + '&event_type=eq.BILLING_JOB_DONE&payload-%3E%3EeasybillDocumentId=eq.' + encodeURIComponent($('Prepare Customer Delivery').first().json.easybillDocumentId) + '&limit=2' }}",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "options": {
+            "timeout": 30000,
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        },
+        "onError": "continueErrorOutput"
+      }
+    }
+  ],
+  "connections": {
+    "Easybill Load Customer Document": {
+      "main": [
+        [
+          {
+            "node": "Load Verified Document Amounts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Customer Delivery Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Verified Document Amounts": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Customer Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Customer Delivery Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
