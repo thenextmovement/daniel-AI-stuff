@@ -106,3 +106,53 @@ test("a newer complaint and undelivered invoice cannot be dismissed by old invoi
  const f:any=fixture();f.data["Graph Read Prior Reminder Threads"][0].body.value.push({id:"complaint",internetMessageId:"<c>",conversationId:"thread1",from:{emailAddress:{address:"test@example.com"}},receivedDateTime:"2026-10-19T12:00:00Z",isDraft:false,internetMessageHeaders:[],subject:"#NEONT9000",body:{contentType:"text",content:"Das Schild ist beschädigt. Bitte klären."}});
  const r=run("reply-decision.js",f.data);assert.equal(r.requires_ai,true);assert.equal(r.resolved_document_request_evidence,false);
 });
+
+test("original proforma delivery uses exact attached invoice even when subject contains only order number",()=>{
+ const f:any=fixture();f.c.mirror_email="billing@gmail.com";f.c.shopify_email_hint="billing@gmail.com";
+ const m:any={id:"invoice4711",internetMessageId:"<invoice4711>",conversationId:"invoice-thread",from:{emailAddress:{address:"support@neontrip.de"}},sentDateTime:"2026-09-01T09:01:00Z",isDraft:false,hasAttachments:true,attachments:[{name:"Proforma-Rechnung-PF-NEONT9000-NT-NEONT9000.pdf",contentType:"application/pdf",isInline:false}],toRecipients:[{emailAddress:{address:"billing@gmail.com"}}],subject:"Auftragsbestätigung und Rechnung #NEONT9000"};
+ delete f.c.easybill_document_created_at; // The production selector omits this snapshot field.
+ f.data["Graph Read Prior Reminder Threads"][0].body.value.push(m);
+ assert.equal(run("reply-decision.js",f.data).invoice_delivery?.message_id,"invoice4711");
+ for(const change of [
+ ()=>{m.attachments[0].name="PF-NEONT90000.pdf";},
+ ()=>{m.attachments[0].name="PF-NEONT9000-1.pdf";},
+ ()=>{m.attachments[0].name="PF-NEONT9000.pdf";m["attachments@odata.nextLink"]="more";},
+ ()=>{delete m["attachments@odata.nextLink"];m.sentDateTime="2026-08-01T09:00:00Z";}
+ ]){change();assert.equal(run("reply-decision.js",f.data).invoice_delivery,null);}
+});
+test("same payer and amount on an explicitly different invoice does not block this invoice",()=>{
+ const f:any=fixture();f.o.billingAddress.company="Bodystreet GmbH";
+ const bank:any={id:"other-invoice",side:"credit",status:"completed",currency:"EUR",amount:"100.00",counterparty_name:"Bodystreet GmbH",reference:"RNr. NEONT3690 RDat. 16.09.2025"};
+ f.data["Normalize Qonto Live Gate"][0].transactions=[bank];
+ assert.equal(run("live-send-gate.js",f.data).send_allowed,true);
+ bank.reference="NEONT90000";assert.equal(run("live-send-gate.js",f.data).send_allowed,true);
+ bank.reference="NEONT3690 / NEONT9000";assert.ok(run("live-send-gate.js",f.data).reasons.includes("QONTO_UNREFLECTED_PAYMENT_PRESENT"));
+ bank.reference="Rechnung";assert.ok(run("live-send-gate.js",f.data).reasons.includes("QONTO_AMBIGUOUS_POSSIBLE_PAYMENT"));
+ bank.reference="NEONT9000";assert.ok(run("live-send-gate.js",f.data).reasons.includes("QONTO_UNREFLECTED_PAYMENT_PRESENT"));
+});
+
+test("live gate rechecks authoritative current proforma revision and rejects later revision changes",()=>{
+ const f:any=fixture();const old={...f.d,id:789,number:"PF-NEONT9000-OLD"};
+ f.data["Easybill Customer Documents"][0].body.push(old);
+ const c:any={shopify_order_id:"123",shopify_order_name:"#NEONT9000",current_revision:1,status:"PAYMENT_PENDING",currency:"EUR",total_gross_cents:10000,
+ billing_documents:[{document_type:"PROFORMA",revision:0,document_number:old.number,easybill_document_id:"789",amount_cents:10000,currency:"EUR",status:"SENT",sent_at:"2026-08-31T09:00:00Z"},{document_type:"PROFORMA",revision:1,document_number:f.d.number,easybill_document_id:"456",amount_cents:10000,currency:"EUR",status:"SENT",sent_at:"2026-09-01T09:00:00Z"}]};
+ f.data["Read Billing Revisions"]=[{statusCode:200,headers:{"content-range":"0-0/1"},body:[c]}];
+ assert.equal(run("live-send-gate.js",f.data).send_allowed,true);
+ c.current_revision=2;assert.ok(run("live-send-gate.js",f.data).reasons.includes("EASYBILL_PROFORMA_NOT_UNIQUE"));
+ c.current_revision=1;c.paid_at="2026-10-19T09:00:00Z";assert.equal(run("live-send-gate.js",f.data).send_allowed,false);
+});
+
+test("historic CC recipients are verified exactly but never copied to a new reminder",()=>{
+ const f:any=fixture();f.c.continuation.anchor.evidence="outlook_legacy";f.c.continuation.anchor.cc_emails=["colleague@example.com"];
+ f.data["Graph Read Prior Reminder Threads"][0].body.value[0].ccRecipients=[{emailAddress:{address:"colleague@example.com"}}];
+ assert.equal(run("live-send-gate.js",f.data).send_allowed,true);
+ f.data["Graph Read Prior Reminder Threads"][0].body.value[0].ccRecipients.push({emailAddress:{address:"unverified@example.net"}});
+ assert.ok(run("live-send-gate.js",f.data).reasons.includes("HISTORICAL_ANCHOR_NOT_LIVE_VERIFIED"));
+});
+test("all three billing revision consumers embed the same tested resolver",()=>{
+ const resolver=readFileSync("workflows/dunning/billing-revision.js","utf8").trim();
+ for(const file of ["intake.js","live-send-gate.js","daily-35-day-reconciliation.js"])
+   assert.ok(readFileSync("workflows/dunning/"+file,"utf8").includes(resolver),file);
+ const contract=readFileSync("workflows/dunning/historical-continuation.js","utf8").trim();
+ assert.ok(readFileSync("workflows/dunning/daily-35-day-reconciliation.js","utf8").includes(contract));
+});

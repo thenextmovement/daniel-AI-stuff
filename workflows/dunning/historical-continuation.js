@@ -29,7 +29,7 @@
     if (d.currency !== o.totalPriceSet?.shopMoney?.currencyCode || !/^[A-Z]{3}$/.test(d.currency || '') || !text(d.number) || !text(String(d.customer_id || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate || '') || !instant(o.updatedAt) || !text(d.created_at)) { exclude('DOCUMENT_FIELDS_MISSING'); continue; }
     let recipient = email(o.email);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) { exclude('RECIPIENT_INVALID'); continue; }
-    const outbound = mails.filter(m => m.direction === 'outbound' && m.source === 'outlook' && text(m.message_id) && text(m.internet_message_id) && text(m.conversation_id) && instant(m.sent_at) && m.to_emails?.length === 1 && !(m.cc_emails || []).length && !(m.bcc_emails || []).length);
+    const outbound = mails.filter(m => m.direction === 'outbound' && m.source === 'outlook' && text(m.message_id) && text(m.internet_message_id) && text(m.conversation_id) && instant(m.sent_at) && m.to_emails?.length === 1 && Array.isArray(m.cc_emails || []) && (m.cc_emails || []).length <= 20 && (m.cc_emails || []).every(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email(e))) && !(m.bcc_emails || []).length);
     const changedDocumentProof = proofs.some(p => p.status === 'sent' && String(p.document_id) === c.shopify_order_id && ['dunning.reviewed.reminder.v1','t099.sender.evidence.v1'].includes(p.metadata?.evidence_schema) && String(p.metadata?.easybill_document_id) !== String(d.id));
     if (changedDocumentProof) { exclude('DOCUMENT_CHANGED_SINCE_REMINDER'); continue; }
     const ownProofs = proofs.filter(p => p.status === 'sent' && String(p.document_id) === c.shopify_order_id && String(p.metadata?.easybill_document_id) === String(d.id));
@@ -42,7 +42,7 @@
       const a = reviewed[0].metadata;
       if (a.live_evidence?.review_ticket !== 'REPAIR-20261014-MAHN-35D' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email(a.recipient))) { exclude('REVIEWED_RECIPIENT_NOT_PROVEN'); continue; }
       recipient = email(a.recipient);
-      const m = outbound.find(m => m.message_id === a.provider_message_id && email(m.to_emails[0]) === recipient);
+      const m = outbound.find(m => m.message_id === a.provider_message_id && email(m.to_emails[0]) === recipient && !(m.cc_emails || []).length);
       const expectedKey = prefix + c.shopify_order_id + ':C-R20261014T35:S1';
       if (!m || a.lock_key !== expectedKey || a.provider_internet_message_id !== m.internet_message_id || a.provider_conversation_id !== m.conversation_id || instant(a.sent_at) !== instant(m.sent_at) || email(a.recipient) !== recipient || a.attachment_verified !== true || !/^[a-f0-9]{64}$/.test(a.pdf_sha256 || '') || a.pdf_sha256 !== a.attachment_content_sha256 || a.pdf_bytes < 1000) { exclude('REVIEWED_SEND_PROOF_INCOMPLETE'); continue; }
       cycleId = 'R20261014T35';
@@ -52,17 +52,17 @@
       // Legacy stages keep their four-stage model. Never manufacture missing previous stages.
       if (c.stage_source !== 'legacy' || c.stage >= 4 || !instant(state?.last_sent_at)) { exclude('HISTORICAL_STAGE_NOT_PROVEN'); continue; }
       const refs = [c.order.replace(/^#/, ''), String(d.number).replace(/^#/, '')].map(r => r.replace(/[^A-Za-z0-9-]/g,'')).filter(Boolean);
-      const mail = outbound.filter(m => email(m.to_emails[0]) === recipient && Math.abs(Date.parse(m.sent_at) - Date.parse(state.last_sent_at)) <= 60000 && refs.some(ref => new RegExp(ref + '(?![0-9])','i').test(m.subject || '')) && /mahnung|erinnerung|zahlung|rechnung.*angekommen/i.test(m.subject || ''));
+      const mail = outbound.filter(m => email(m.to_emails[0]) === recipient && Math.abs(Date.parse(m.sent_at) - Date.parse(state.last_sent_at)) <= 60000 && (refs.some(ref => new RegExp(ref + '(?![0-9])','i').test(m.subject || '')) && /mahnung|erinnerung|zahlung|rechnung.*angekommen/i.test(m.subject || '') || refs.some(ref => new RegExp('Rechnung\\s+#?' + ref + '(?![A-Z0-9-])\\s+(?:offen(?:\\s+bzw\\.)?\\s*(?:unbezahlt)?|unbezahlt)\\b','i').test(String(m.body_preview || '').split(/\n(?:Von:|From:|Gesendet:|Sent:)/i)[0]))));
       if (mail.length !== 1) { exclude('HISTORICAL_SEND_PROOF_MISSING'); continue; }
       const m = mail[0]; model = 'legacy_4';
-      anchor = { stage: c.stage, sent_at: instant(m.sent_at), message_id: m.message_id, internet_message_id: m.internet_message_id, conversation_id: m.conversation_id, lock_key: null, evidence: 'outlook_legacy' };
+      anchor = { stage: c.stage, sent_at: instant(m.sent_at), message_id: m.message_id, internet_message_id: m.internet_message_id, conversation_id: m.conversation_id, lock_key: null, evidence: 'outlook_legacy', cc_emails: (m.cc_emails || []).map(email).sort() };
     } else if (outbound.some(m => /mahnung|zahlungserinnerung|rückfrage.*rechnung|freundliche erinnerung/i.test(m.subject || '') && String(m.subject).includes(c.order.replace(/^#/, '')))) { exclude('UNASSIGNED_PRIOR_REMINDER'); continue; }
     if (!anchor && Date.parse(o.createdAt) >= Date.parse('2026-08-05T15:30:00Z')) { exclude('REGULAR_INTAKE'); continue; }
     const review = proofs.find(p => p.id === '8a19fc8c-1dbf-4bb2-bdbd-2325a04c179c' && p.action === 'one_time_correspondence_review' && p.status === 'success' && p.metadata?.schema === 'dunning.mailreview.v1' && p.metadata?.provider_mailbox === 'support@neontrip.de');
     const finding = review?.metadata?.findings?.[c.order.replace(/\D/g,'')];
     if (finding?.hold === true || finding?.outcome === 'auto_reply_and_billing_route') { exclude(finding.hold ? 'CORRESPONDENCE_REVIEW_HOLD' : 'BILLING_ROUTE_REVIEW_REQUIRED'); continue; }
     const reviewedAt = instant(review?.created_at);
-    const correspondenceReview = anchor?.evidence === 'reviewed_reminder' && finding?.hold === false && ['billing_recipient_context','delivery_change_answered','auto_reply_and_correct_contact','confirmed_order','no_new_objection','design_wait_resolved'].includes(finding.outcome) && reviewedAt && Date.parse(reviewedAt) >= Date.parse(anchor.sent_at) && Date.parse(reviewedAt) <= now ? {audit_id:review.id,reviewed_at:reviewedAt,outcome:finding.outcome} : null;
+    const correspondenceReview = ['reviewed_reminder','outlook_legacy'].includes(anchor?.evidence) && finding?.hold === false && ['billing_recipient_context','delivery_change_answered','auto_reply_and_correct_contact','confirmed_order','no_new_objection','design_wait_resolved','answered_billing_route'].includes(finding.outcome) && reviewedAt && Date.parse(reviewedAt) >= Date.parse(anchor.sent_at) && Date.parse(reviewedAt) <= now ? {audit_id:review.id,reviewed_at:reviewedAt,outcome:finding.outcome} : null;
     const continuation = { schema: 'dunning.historical.candidate.v1', stage_model: model, cycle_id: cycleId, cycle_prefix: prefix + c.shopify_order_id + ':C-' + cycleId, anchor, observed_at: observedAt, document_type: d.type, original_shopify_email: email(o.email), correspondence_review:correspondenceReview };
     candidates.push({
       candidate_key: 'shopify:' + c.shopify_order_id + '|easybill:' + d.id,
