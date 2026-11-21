@@ -1,0 +1,446 @@
+{
+  "ticket": 211,
+  "business": "NEONTRIP",
+  "applicationDeploymentRequired": false,
+  "workflows": [
+    {
+      "id": "2fRdyqdyVDMWwH4O",
+      "name": "NEONTRIP Qonto Webhook v2 Aktiv",
+      "fromVersion": "34bea469-58e8-49e3-9798-a086fcec7bc7",
+      "liveVersion": "29182a14-dc9d-4a21-b091-3d7338db26ba",
+      "activeBefore": true,
+      "activeAfter": true,
+      "changedNodes": [
+        {
+          "name": "Validate Order",
+          "sourceFile": "qonto-validate-order.js"
+        },
+        {
+          "name": "Legacy: Prepare Existing Invoice Case",
+          "sourceFile": "legacy-prepare-existing-invoice.js"
+        }
+      ],
+      "addedNodes": [
+        {
+          "id": "repair211-read-legacy-case",
+          "name": "Legacy: Verify Missing Billing Case",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [
+            2450,
+            1050
+          ],
+          "onError": "continueRegularOutput",
+          "credentials": {
+            "httpHeaderAuth": {
+              "id": "NTtNxoBGGzJCQi9u",
+              "name": "Header Auth account 2 | SUPABASE"
+            }
+          },
+          "parameters": {
+            "url": "={{ 'https://klibiejfisijpagzkxls.supabase.co/rest/v1/billing_cases?select=id&limit=2&or='+encodeURIComponent('(shopify_order_id.eq.'+String($json.shopifyOrderId)+',shopify_order_id.eq.gid://shopify/Order/'+String($json.shopifyOrderId)+')') }}",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "options": {
+              "timeout": 20000,
+              "response": {
+                "response": {
+                  "fullResponse": true,
+                  "neverError": true,
+                  "responseFormat": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "id": "repair211-confirm-legacy-case",
+          "name": "Legacy: Classify Missing Case",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            2680,
+            1050
+          ],
+          "parameters": {
+            "jsCode": {
+              "sourceFile": "legacy-case-check.js"
+            }
+          }
+        }
+      ],
+      "connectionChanges": [
+        {
+          "node": "Billing Payment Accepted?",
+          "before": {
+            "main": [
+              [
+                {
+                  "node": "Shopify Needs Update?",
+                  "type": "main",
+                  "index": 0
+                }
+              ],
+              [
+                {
+                  "node": "Billing Case Missing?",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "after": {
+            "main": [
+              [
+                {
+                  "node": "Shopify Needs Update?",
+                  "type": "main",
+                  "index": 0
+                }
+              ],
+              [
+                {
+                  "node": "Legacy: Verify Missing Billing Case",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        },
+        {
+          "node": "Collective: Verify Receipt",
+          "before": {
+            "main": [
+              null,
+              [
+                {
+                  "node": "Collective: Review",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "after": {
+            "main": [
+              [],
+              [
+                {
+                  "node": "Collective: Review",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        },
+        {
+          "node": "Legacy: Verify Missing Billing Case",
+          "before": null,
+          "after": {
+            "main": [
+              [
+                {
+                  "node": "Legacy: Classify Missing Case",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        },
+        {
+          "node": "Legacy: Classify Missing Case",
+          "before": null,
+          "after": {
+            "main": [
+              [
+                {
+                  "node": "Billing Case Missing?",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        }
+      ],
+      "settingsPreserved": true,
+      "credentialsAndSchedulesPreserved": true
+    },
+    {
+      "id": "u48KZyTcU2J9pw2P",
+      "name": "NEONTRIP Billing v2 - Easybill Document Worker",
+      "fromVersion": "7a5ba35f-635d-4a3b-8b35-e185dec7e237",
+      "liveVersion": "535bbe4e-531f-408b-b784-fca41e957d5f",
+      "activeBefore": true,
+      "activeAfter": true,
+      "changedNodes": [
+        {
+          "name": "Prepare Easybill Command",
+          "sourceFile": "prepare-easybill-command.js"
+        }
+      ],
+      "addedNodes": [
+        {
+          "id": "repair211-easybill-preflight",
+          "name": "Easybill Availability Read",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [
+            -520,
+            100
+          ],
+          "parameters": {
+            "url": "https://api.easybill.de/rest/v1/documents?limit=1&page=1",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "options": {
+              "response": {
+                "response": {
+                  "fullResponse": true,
+                  "responseFormat": "json",
+                  "neverError": true
+                }
+              },
+              "timeout": 20000
+            }
+          },
+          "credentials": {
+            "httpHeaderAuth": {
+              "id": "YF5qkE2gWbB3A6U2",
+              "name": "Header Auth account | Easybill"
+            }
+          },
+          "onError": "continueRegularOutput"
+        },
+        {
+          "id": "repair211-easybill-gate",
+          "name": "Gate Easybill Availability",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            -300,
+            100
+          ],
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "jsCode": {
+              "sourceFile": "provider-gate.js"
+            }
+          }
+        },
+        {
+          "id": "repair211-provider-healthy",
+          "name": "Easybill Available?",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 2.2,
+          "position": [
+            -80,
+            100
+          ],
+          "parameters": {
+            "conditions": {
+              "options": {
+                "caseSensitive": true,
+                "leftValue": "",
+                "typeValidation": "strict",
+                "version": 2
+              },
+              "conditions": [
+                {
+                  "id": "repair211-provider-healthy-condition",
+                  "leftValue": "={{ $json.providerHealthy }}",
+                  "rightValue": true,
+                  "operator": {
+                    "type": "boolean",
+                    "operation": "true",
+                    "singleValue": true
+                  }
+                }
+              ],
+              "combinator": "and"
+            },
+            "options": {}
+          }
+        },
+        {
+          "id": "repair211-provider-notify",
+          "name": "Notify Provider Failure?",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 2.2,
+          "position": [
+            140,
+            350
+          ],
+          "parameters": {
+            "conditions": {
+              "options": {
+                "caseSensitive": true,
+                "leftValue": "",
+                "typeValidation": "strict",
+                "version": 2
+              },
+              "conditions": [
+                {
+                  "id": "repair211-provider-notify-condition",
+                  "leftValue": "={{ $json.notifyProviderFailure }}",
+                  "rightValue": true,
+                  "operator": {
+                    "type": "boolean",
+                    "operation": "true",
+                    "singleValue": true
+                  }
+                }
+              ],
+              "combinator": "and"
+            },
+            "options": {}
+          }
+        },
+        {
+          "parameters": {
+            "toRecipients": "support@neontrip.de",
+            "subject": "={{ $json.emailSubject }}",
+            "bodyContent": "={{ $json.emailBody }}",
+            "additionalFields": {
+              "bodyContentType": "html"
+            }
+          },
+          "id": "repair211-provider-alert",
+          "name": "Send Provider Failure Alert",
+          "type": "n8n-nodes-base.microsoftOutlook",
+          "typeVersion": 2,
+          "position": [
+            360,
+            350
+          ],
+          "webhookId": "36b0d932-d7b9-4a1d-9d0b-1866a5aafbaa",
+          "credentials": {
+            "microsoftOutlookOAuth2Api": {
+              "id": "CTEmJD5CjYu9hawu",
+              "name": "Microsoft Outlook support@neontrip.de"
+            }
+          }
+        }
+      ],
+      "connectionChanges": [
+        {
+          "node": "Billing Worker Config",
+          "before": {
+            "main": [
+              [
+                {
+                  "node": "Claim Billing Job",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          },
+          "after": {
+            "main": [
+              [
+                {
+                  "node": "Easybill Availability Read",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        },
+        {
+          "node": "Easybill Availability Read",
+          "before": null,
+          "after": {
+            "main": [
+              [
+                {
+                  "node": "Gate Easybill Availability",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        },
+        {
+          "node": "Gate Easybill Availability",
+          "before": null,
+          "after": {
+            "main": [
+              [
+                {
+                  "node": "Easybill Available?",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        },
+        {
+          "node": "Easybill Available?",
+          "before": null,
+          "after": {
+            "main": [
+              [
+                {
+                  "node": "Claim Billing Job",
+                  "type": "main",
+                  "index": 0
+                }
+              ],
+              [
+                {
+                  "node": "Notify Provider Failure?",
+                  "type": "main",
+                  "index": 0
+                }
+              ]
+            ]
+          }
+        },
+        {
+          "node": "Notify Provider Failure?",
+          "before": null,
+          "after": {
+            "main": [
+              [
+                {
+                  "node": "Send Provider Failure Alert",
+                  "type": "main",
+                  "index": 0
+                }
+              ],
+              []
+            ]
+          }
+        }
+      ],
+      "settingsPreserved": true,
+      "credentialsAndSchedulesPreserved": true
+    },
+    {
+      "id": "wagSNzunU3INpEeN",
+      "name": "NEONTRIP Billing v2 - Easybill Proforma Void Worker (INACTIVE)",
+      "fromVersion": "dd63c346-790d-4403-b1c6-43d825f3572c",
+      "liveVersion": "1ff180ab-3623-4183-a724-bb005b3e876e",
+      "activeBefore": true,
+      "activeAfter": true,
+      "changedNodes": [
+        {
+          "name": "Prepare Void Failure",
+          "sourceFile": "void-failure.js"
+        }
+      ],
+      "addedNodes": [],
+      "connectionChanges": [],
+      "settingsPreserved": true,
+      "credentialsAndSchedulesPreserved": true
+    }
+  ]
+}
