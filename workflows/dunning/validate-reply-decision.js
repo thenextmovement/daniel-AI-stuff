@@ -30,7 +30,7 @@ const confidenceValid = decisionValid && typeof parsed.confidence === 'number' &
 const summaryValid = confidenceValid && typeof parsed.summary === 'string' && parsed.summary.trim().length > 0 && parsed.summary.length <= 500;
 const reasonsValid = summaryValid && Array.isArray(parsed.reason_codes) && parsed.reason_codes.length >= 1 && parsed.reason_codes.length <= 8 && parsed.reason_codes.every((value) => allowedReasons.has(value));
 const risksValid = reasonsValid && Array.isArray(parsed.risk_flags) && parsed.risk_flags.length <= 8 && parsed.risk_flags.every((value) => allowedRisks.has(value));
-const evidenceValid = risksValid && typeof parsed.evidence_quote === 'string' && parsed.evidence_quote.length <= 300 && String(meta.latest_reply?.body_text || '').includes(parsed.evidence_quote);
+const evidenceValid = risksValid && typeof parsed.evidence_quote === 'string' && parsed.evidence_quote.length <= 300 && String(meta.correspondence_body_text || meta.latest_reply?.body_text || '').includes(parsed.evidence_quote);
 const reviewFlagValid = evidenceValid && typeof parsed.requires_human_review === 'boolean' && (parsed.decision === 'uncertain' ? parsed.requires_human_review === true : parsed.requires_human_review === false);
 const confidencePolicyValid = reviewFlagValid && (parsed.decision === 'uncertain' || parsed.confidence >= 0.90);
 const resolutionProofValid = !(Array.isArray(parsed?.reason_codes) && parsed.reason_codes.includes('document_request_fulfilled')) || meta.resolved_document_request_evidence === true;
@@ -44,7 +44,15 @@ let reasonCodes = [];
 let riskFlags = [];
 let evidenceQuote = '';
 let requiresHumanReview = false;
-if (meta.cached_decision) {
+if (meta.blocking_delivery_reply) {
+  decision = 'uncertain';
+  confidence = 1;
+  summary = 'Rechnungsversand oder Verarbeitung abgelehnt bzw. Anforderungen offen. Empfänger, Dokument und Kundenkommunikation klären; bis dahin kein weiterer Mahnversand.';
+  reasonCodes = ['invoice_copy_or_document_request'];
+  riskFlags = ['document_needed'];
+  evidenceQuote = String(meta.blocking_delivery_reply.body_text || '').slice(0,300);
+  requiresHumanReview = true;
+} else if (meta.cached_decision) {
   decision = String(meta.cached_decision.decision || 'uncertain');
   confidence = Number(meta.cached_decision.confidence || 0);
   summary = String(meta.cached_decision.summary || '');
@@ -71,7 +79,7 @@ if (meta.cached_decision) {
     requiresHumanReview = parsed.requires_human_review;
   }
 }
-const isNewDecision = meta.requires_ai === true && Boolean(meta.latest_reply);
+const isNewDecision = (meta.requires_ai === true || Boolean(meta.blocking_delivery_reply)) && Boolean(meta.latest_reply);
 const esc = (value) => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 const currency = String(meta.currency || 'EUR').toUpperCase();
 const amountText = new Intl.NumberFormat('de-DE',{style:'currency',currency:/^[A-Z]{3}$/.test(currency)?currency:'EUR'}).format(Number(meta.amount_due_cents || 0)/100);
