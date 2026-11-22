@@ -3,6 +3,7 @@ import hashlib,json,re
 from pathlib import Path
 root=Path(__file__).resolve().parents[3]
 excluded={
+ "voice-copilot/hot-leads": 'Hot-lead scheduling uses the authenticated Telefonzentrale UI; no additional MCP operation is exposed. Existing automation workflows remain unchanged.',
  "voice-copilot/customer":'Customer contact edits use the authenticated Telefonzentrale UI; no additional MCP operation is exposed.',
  'voice-copilot/phones':'Customer contact edits use the authenticated Telefonzentrale UI; no additional MCP operation is exposed.',
  'voice-copilot/links':'Customer link edits require a personal enrolled phone device; use the connected Telefonzentrale UI. No server-side device impersonation.',
