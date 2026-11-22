@@ -16,7 +16,9 @@ async function phoneJson<T>(path:string,body?:Record<string,unknown>):Promise<T>
   cache:"no-store",signal:AbortSignal.timeout(body?.action==="cancel"?22000:body?.transport==="mobile"?25000:15000)});
  return readPhoneCentralResponse<T>(response,"Der Telefonanschluss ist gerade nicht erreichbar.");
 }
-export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
+export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean,onEnded?:(customerId:string,requestId:string,callId:string)=>void) {
+ const endedCallback=useRef(onEnded);endedCallback.current=onEnded;
+ const notifiedCall=useRef<string|null>(null);
  const [registered,setRegistered]=useState(false),[working,setWorking]=useState(false);
  const [call,setCall]=useState<BrowserCall|null>(null),[muted,setMuted]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [transfer,setTransfer]=useState<PhoneTransferView|null>(null),[incoming,setIncoming]=useState<PhoneTransferView|null>(null);
@@ -32,7 +34,9 @@ export function useBrowserPhone(identity:PhoneIdentity|null,otherBusy:boolean) {
  const allowed=!!identity?.browserCallingAvailable && !!profileId;
  const mobileAllowed=!!identity?.mobileCallingAvailable && !!profileId;
  function updateAi(value:AiHandoffView|null){activeAi.current=value;setAiHandoff(value);}
- function updateCall(value:BrowserCall|null) {active.current=value;setCall(value);}
+ function updateCall(value:BrowserCall|null) {active.current=value;setCall(value);
+  if(value&&terminal(value)&&!value.isTest&&value.direction==="outbound"&&value.customerId&&value.requestId&&notifiedCall.current!==value.id){notifiedCall.current=value.id;endedCallback.current?.(value.customerId,value.requestId,value.id);}
+ }
  function updateTransfer(value:PhoneTransferView|null) {activeTransfer.current=value;setTransfer(value);}
  function updateOffer(value:PhoneTransferView|null) {offer.current=value;setIncoming(value);}
  function updateExternalOffer(value:IncomingPhoneView|null) {

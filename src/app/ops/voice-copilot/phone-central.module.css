@@ -1044,3 +1044,18 @@
 .phoneChoice { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }
 .phoneChoice > span { overflow-wrap:anywhere; }
 .phoneChoice > button { grid-column:1 / -1; }
+
+.leadFilters {display:grid;gap:12px;margin:16px 0;}
+.leadFilters label,.leadSchedule label {display:grid;gap:6px;font-size:14px;}
+.leadFilters select,.leadSchedule input {width:100%;min-height:42px;padding:8px;border:1px solid #cbd5d0;border-radius:8px;background:white;color:#283c32;}
+.leadBadge {display:inline-block;margin-left:5px;padding:2px 6px;border-radius:5px;background:#e6eeea;color:#426252;font-size:11px;font-weight:500;vertical-align:middle;}
+.leadCard {border:1px solid #d8e0dc;border-radius:12px;margin:12px 0;background:white;overflow:visible;}
+.leadCard .result {border:0;margin:0;width:100%;border-radius:12px;}
+.leadActions {display:flex;flex-wrap:wrap;gap:8px;padding:10px;}
+.leadActions button,.leadActions summary,.leadSchedule button {padding:8px;border:1px solid #d8e0dc;border-radius:7px;background:white;color:#345b47;font-size:13px;cursor:pointer;}
+.leadActions button:disabled {opacity:.5;cursor:default;}
+.leadActions summary {display:flex;align-items:center;gap:5px;}
+.leadActions details {position:relative;}
+.leadSchedule {position:absolute;right:0;top:100%;z-index:10;width:240px;max-width:70vw;display:grid;gap:8px;padding:12px;background:white;border:1px solid #d8e0dc;border-radius:10px;box-shadow:0 8px 24px #0002;}
+.leadSchedule form {display:grid;gap:8px;}
+.leadFollowup {padding:14px;border:1px solid #adc8b8;border-radius:10px;background:#f0f6f2;margin:12px 0;display:grid;gap:8px;}
