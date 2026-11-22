@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { Search, Phone, Headphones, ChevronLeft, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
+import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
 import {HotLeads,leadAmount,DirectoryLeadSnooze} from "./hot-leads";
@@ -58,11 +58,6 @@ function initials(value: string) {
 }
 export function PhoneCentral(props: Props) {
   const { selected } = props;
-  const tableDesigns = ["Salbei", "Linien", "Zebra", "Karte", "Register", "Kontur", "Akzent", "Kacheln", "Papier", "Minimal"];
-  const [tableDesign, setTableDesign] = useState(0);
-  useEffect(() => { try { const saved = Number(localStorage.getItem("voice-contact-design")); if (Number.isInteger(saved) && saved >= 0 && saved < 10) setTableDesign(saved); } catch {} }, []);
-  function changeTableDesign(direction: number) { setTableDesign(current => { const next = (current + direction + 10) % 10; try { localStorage.setItem("voice-contact-design", String(next)); } catch {} return next; }); }
-
   const [finishedLeadCall,setFinishedLeadCall]=useState<{customerId:string;requestId:string;callId:string}|null>(null);
   const leadCallEnded=useCallback((customerId:string,requestId:string,callId:string)=>setFinishedLeadCall({customerId,requestId,callId}),[]);
   const [callHistoryRevision, setCallHistoryRevision] = useState(0);
@@ -285,7 +280,7 @@ export function PhoneCentral(props: Props) {
 
   return (
     <div className={styles.page}>
-    <main className={styles.shell} data-header-design="salbei" data-contact-design={tableDesign}>
+    <main className={styles.shell} data-header-design="salbei" data-contact-design="3">
       <header className={styles.top}>
         <div className={styles.brandrow}>
         <a className={styles.brand} href="/ops">
@@ -293,11 +288,6 @@ export function PhoneCentral(props: Props) {
         </a>
         <span className={styles.breadcrumb}>Ops / Telefonzentrale</span>
         <span className={styles.spacer} />
-        <div className={styles.designSwitch} role="group" aria-label="Kontakttabelle gestalten">
-          <button type="button" aria-label="Vorheriges Tabellendesign" onClick={() => changeTableDesign(-1)}><ChevronLeft size={16}/></button>
-          <output aria-live="polite">{tableDesign + 1}/10 · {tableDesigns[tableDesign]}</output>
-          <button type="button" aria-label="Nächstes Tabellendesign" onClick={() => changeTableDesign(1)}><ChevronRight size={16}/></button>
-        </div>
         <a
           className={styles.small}
           href="#voice-settings"
