@@ -357,6 +357,8 @@ aktuellen Kartenangaben Vorrang vor relativen Wünschen im zitierten Mailverlauf
 Bei ausdrücklicher Farbwahl verwende die bestellte Leuchtfarbe auch für die SVG-Pfade."""
     if design_count:
         prompt+=f'\nFür diese Bestellung sind {design_count} verschiedene Designs erforderlich.'
+    if card.get('update_context'):
+        prompt+='\nDies ist ein Update eines bestehenden Entwurfs. Lies Titel, Beschreibung, Felder und die aktuellen Änderungskommentare vollständig. Wende die neuen Wünsche auf die betroffenen Teile an; erhalte alle übrigen Motivteile, Linienarten, Farben und Maße. Bei widersprüchlichen Angaben hat der neueste ausdrückliche Änderungswunsch Vorrang. Der bisherige Entwurf ist Kontext, keine neue Kundenanforderung: '+json.dumps(card['update_context'],ensure_ascii=False)
     if feedback:
         prompt+='\nDie geometrische Prüfung des ersten Entwurfs ergibt: '+json.dumps(feedback,ensure_ascii=False)
         prompt+='''

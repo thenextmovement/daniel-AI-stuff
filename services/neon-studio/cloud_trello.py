@@ -134,6 +134,22 @@ class Trello:
             actual=next((i for i in copy.get('customFieldItems',[]) if i['idCustomField']==field),{})
             if any(actual.get(k)!=v for k,v in body.items()):raise ServiceError('Felder der Kopie nicht bestätigt.')
         return copy
+    def update_status(self,id,status):
+        names={'processing':('Auto-Update Processing, please wait.','yellow'),
+               'completed':('Auto Update Completed','green')}
+        labels=self.call('GET',f'boards/{BOARD}/labels?limit=1000')
+        active=set(self.call('GET',f'cards/{id}?fields=idLabels')['idLabels'])
+        wanted=names.get(status)
+        target=next((l['id'] for l in labels if wanted and l['name']==wanted[0]),None)
+        if wanted and not target:
+            target=self.call('POST','labels',json={'idBoard':BOARD,'name':wanted[0],'color':wanted[1]})['id']
+        for label in labels:
+            if label['name'] in {v[0] for v in names.values()} and label['id'] in active and label['id']!=target:
+                self.call('DELETE',f"cards/{id}/idLabels/{label['id']}")
+        if target and target not in active:self.call('POST',f'cards/{id}/idLabels',json={'value':target})
+        confirmed=set(self.call('GET',f'cards/{id}?fields=idLabels')['idLabels'])
+        if target and target not in confirmed:raise ServiceError('Update-Status konnte nicht bestätigt werden.')
+
     def comment_once(self,id,text,marker):
         comments=self.call('GET',f'cards/{id}/actions?filter=commentCard&limit=1000')
         if any(marker in x.get('data',{}).get('text','') for x in comments):return

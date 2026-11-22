@@ -1,4 +1,4 @@
-import fcntl,json,math,os,re,threading,time,traceback
+import base64,fcntl,json,math,os,re,threading,time,traceback
 from concurrent.futures import ThreadPoolExecutor
 from requests.exceptions import RequestException
 from datetime import datetime,timezone,timedelta
@@ -200,6 +200,29 @@ class Jobs:
 
     def reread(self,p):
         card=self.t.card(p[p['reread']])
+        if p.get('update_action'):
+            if card['idBoard']!=BOARD or card['idList']!=READY:
+                raise Review('Update abgebrochen: Karte steht nicht mehr in AutoQuote Ready.')
+            comments=[];before=None
+            while True:
+                page=self.t.call('GET',f"cards/{card['id']}/actions?filter=commentCard&limit=1000"+('&before='+before if before else ''))
+                comments.extend(page)
+                if len(page)<1000:break
+                before=page[-1]['id']
+            notes=[]
+            for action in sorted(comments,key=lambda a:(a['date'],a['id'])):
+                text=action.get('data',{}).get('text','')
+                if action['date']<=p.get('update_since','') or action['date']>p['update_action']['date']:continue
+                if text.startswith(('Neon Studio ','Neon-Studio-Projekt ','Auto-Quote ','Noch zu klären')):continue
+                notes.append(action['date']+'\n'+text)
+            if notes:card['desc']+='\n\nAktuelle Änderungskommentare (chronologisch):\n'+'\n\n'.join(notes)
+            card['update_context']=[]
+            for design in [p,*p.get('additional_designs',[])]:
+                if not design.get('model'):continue
+                image=self.store.info(design['model']).get('image','')
+                svg=base64.b64decode(image.split(',',1)[1]).decode('utf-8') if image.startswith('data:image/svg+xml;base64,') else None
+                card['update_context'].append({'spec':design.get('spec',{}),
+                                              'settings':design.get('settings',{}),'drawing':svg})
         if p['reread']=='copy':
             card['name']=plain_title(card['name'])
             outputs=set(p.get('generated_attachments',[]))
@@ -441,6 +464,34 @@ class Jobs:
             except Exception:
                 # Preserve intent and IDs for reconciliation. Never repeat an uncertain upload.
                 raise
+    def queue_update(self,action):
+        data=action.get('data',{});label=data.get('label',{})
+        if label.get('name','').strip().casefold()!='updates autoquote':return
+        event='label:'+action['id']
+        with self.db.connect() as c:
+            if c.execute('SELECT 1 FROM events WHERE id=?',(event,)).fetchone():return
+        card=self.t.card(data['card']['id'])
+        if card['idBoard']!=BOARD or card['idList']!=READY or label['id'] not in card.get('idLabels',[]):return
+        p=self.db.for_card(card['id'])
+        if not p or p.get('copy')!=card['id']:return
+        with self.project_lock(p['id']):
+            p=self.db.get(p['id'])
+            if p['status'] in ('copying','generating','publishing','queued','publish_queued'):
+                raise ServiceError('Update wartet auf den laufenden Auftrag.')
+            if p.get('upload_intent') or p.get('pending_attachments'):
+                raise ServiceError('Vor dem Update muss die unbestätigte Übertragung abgeglichen werden.')
+            with self.lock:self.t.update_status(card['id'],'processing')
+            # Claim the action and queue its job atomically; overlapping polls and
+            # service restarts must not generate or upload a second set of files.
+            with self.db.connect() as c:
+                c.execute('BEGIN IMMEDIATE')
+                if c.execute('SELECT 1 FROM events WHERE id=?',(event,)).fetchone():return
+                row=c.execute('SELECT data FROM projects WHERE id=?',(p['id'],)).fetchone()
+                saved=json.loads(row[0]);saved.update(reread='copy',error='',update_action={
+                    'id':action['id'],'date':action['date'],'label':label['id']})
+                c.execute("UPDATE projects SET data=?,status='queued',revision=revision+1,updated=? WHERE id=?",(json.dumps(saved),time.time(),p['id']))
+                c.execute('INSERT INTO events VALUES(?,?)',(event,p['id']))
+
     def poll(self):
         cursor=self.db.meta('cursor')
         if not cursor:
@@ -448,13 +499,14 @@ class Jobs:
         actions=[];before=None
         while True:
             from urllib.parse import quote
-            path=f'boards/{BOARD}/actions?filter=updateCard:idList,moveCardFromBoard&limit=1000&since='+quote((datetime.fromisoformat(cursor.replace('Z','+00:00'))-timedelta(seconds=1)).isoformat(),safe='')
+            path=f'boards/{BOARD}/actions?filter=updateCard:idList,moveCardFromBoard,addLabelToCard&limit=1000&since='+quote((datetime.fromisoformat(cursor.replace('Z','+00:00'))-timedelta(seconds=1)).isoformat(),safe='')
             if before:path+='&before='+before
             page=self.t.call('GET',path);actions.extend(page)
             if len(page)<1000:break
             before=page[-1]['id']
         for action in sorted(actions,key=lambda a:(a['date'],a['id'])):
             data=action.get('data',{})
+            if action.get('type')=='addLabelToCard':self.queue_update(action)
             if data.get('listAfter',{}).get('id')==TRIGGER:
                 try:self.ingest(data['card']['id'],'action:'+action['id'])
                 except Review:pass
@@ -489,6 +541,12 @@ class Jobs:
             try:
                 if p.get('reread'):
                     self.reread(p)
+                    if p.get('update_action'):
+                        self.publish(self.db.get(p['id']),generated=True)
+                        update=p['update_action']
+                        self.t.call('DELETE',f"cards/{p['copy']}/idLabels/{update['label']}")
+                        with self.lock:self.t.update_status(p['copy'],'completed')
+                        self.db.save(p['id'],{'update_since':update['date'],'update_action':None})
                 elif p['status']=='publish_queued':
                     self.publish(p)
                 else:self.process(p)
@@ -501,6 +559,13 @@ class Jobs:
                     message=f'Verarbeitung angehalten ({stage}, {type(e).__name__}). Bitte den Schritt im Studio prüfen.'
                 if p.get('reread'):
                     self.db.save(p['id'],{'reread':None,'error':'Neu einlesen fehlgeschlagen. '+message},status='review')
+                    if p.get('update_action'):
+                        try:
+                            with self.lock:self.t.update_status(p['copy'],None)
+                        except Exception:pass
+                        marker='Auto-Quote Update '+p['update_action']['id']
+                        try:self.t.comment_once(p['copy'],marker+'\nUpdate nicht vollständig bestätigt. Die bisherigen Dateien bleiben erhalten. Bitte den Projektstatus im Studio prüfen.',marker)
+                        except Exception:pass
                 else:self.fail(p['id'],message,public_reason=message if isinstance(e,(Review,SpacingLimitExceeded)) else None)
     def watch(self):
         while True:

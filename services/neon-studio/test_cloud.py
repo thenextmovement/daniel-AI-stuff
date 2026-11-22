@@ -8,6 +8,100 @@ import fitz
 from PIL import Image
 SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path d="M10 50 C60 0 80 0 110 50 M120 10 L180 50" fill="none" stroke="#f333a5" stroke-width="1"/></svg>'
 class CloudTests(unittest.TestCase):
+ def test_update_status_labels_preserve_unrelated_labels(self):
+  from unittest.mock import Mock
+  t=Trello.__new__(Trello)
+  labels=[{'id':'processing','name':'Auto-Update Processing, please wait.'},
+          {'id':'completed','name':'Auto Update Completed'}]
+  current=['completed','customer']
+  def call(method,path,**kw):
+   if path.startswith('boards/'):return labels
+   if method=='GET':return {'idLabels':current[:]}
+   if method=='POST':current.append(kw['json']['value']);return {}
+   if method=='DELETE':current.remove(path.rsplit('/',1)[1]);return {}
+  t.call=Mock(side_effect=call)
+  t.update_status('copy','processing')
+  self.assertEqual(set(current),{'processing','customer'})
+  t.update_status('copy','completed')
+  self.assertEqual(set(current),{'completed','customer'})
+  t.update_status('copy',None)
+  self.assertEqual(current,['customer'])
+
+ def test_update_label_queues_existing_copy_once_and_only_in_ready(self):
+  from unittest.mock import Mock
+  from cloud_trello import READY
+  p=self.db.enqueue('source','initial',{})
+  p=self.db.save(p['id'],{'copy':'copy'},status='ready')
+  card={'id':'copy','idBoard':BOARD,'idList':READY,'idLabels':['label']}
+  t=Mock();t.card.return_value=card
+  jobs=Jobs(self.db,None,t)
+  action={'id':'update1','date':'2026-11-22T12:00:00Z','type':'addLabelToCard',
+          'data':{'card':{'id':'copy'},'label':{'id':'label','name':'Updates AutoQuote'}}}
+  jobs.queue_update(action)
+  saved=self.db.get(p['id'])
+  t.update_status.assert_called_once_with('copy','processing')
+  self.assertEqual(saved['status'],'queued')
+  self.assertEqual(saved['reread'],'copy')
+  self.assertEqual(saved['update_action']['id'],'update1')
+  jobs.queue_update(action)
+  self.assertEqual(self.db.get(p['id'])['revision'],saved['revision'])
+  self.db.save(p['id'],{},status='ready');card['idList']='other'
+  jobs.queue_update({**action,'id':'update2'})
+  self.assertEqual(self.db.get(p['id'])['status'],'ready')
+  t.copy.assert_not_called()
+  card['idList']=READY
+  jobs.queue_update({**action,'id':'update3'})
+  self.assertEqual(self.db.get(p['id'])['update_action']['id'],'update3')
+  self.assertEqual(t.update_status.call_count,2)
+
+ def test_update_executes_reread_publish_then_removes_label(self):
+  from unittest.mock import Mock
+  p=self.db.enqueue('source','initial',{})
+  p=self.db.save(p['id'],{'copy':'copy','reread':'copy','update_action':{'id':'event','date':'2026-11-22T12:00:00Z','label':'label'}})
+  t=Mock();jobs=Jobs(self.db,None,t)
+  jobs.reread=Mock(side_effect=lambda p:self.db.save(p['id'],{'reread':None},status='draft'))
+  jobs.publish=Mock(side_effect=lambda p,**kw:self.db.save(p['id'],{},status='ready'))
+  jobs.execute(p)
+  jobs.reread.assert_called_once();jobs.publish.assert_called_once()
+  t.update_status.assert_called_once_with('copy','completed')
+  t.call.assert_called_once_with('DELETE','cards/copy/idLabels/label')
+  self.assertEqual(self.db.get(p['id'])['update_since'],'2026-11-22T12:00:00Z')
+
+ def test_failed_update_never_marks_completed_or_removes_trigger(self):
+  from unittest.mock import Mock
+  p=self.db.enqueue('source','initial',{})
+  p=self.db.save(p['id'],{'copy':'copy','reread':'copy','update_action':{'id':'event','date':'2026-11-22T12:00:00Z','label':'label'}})
+  t=Mock();jobs=Jobs(self.db,None,t)
+  jobs.reread=Mock(side_effect=Review('Kontur konnte nicht erstellt werden.'))
+  jobs.publish=Mock()
+  jobs.execute(p)
+  jobs.publish.assert_not_called();t.call.assert_not_called()
+  t.update_status.assert_called_once_with('copy',None)
+  t.comment_once.assert_called_once()
+  self.assertEqual(self.db.get(p['id'])['status'],'review')
+
+ def test_label_reread_includes_new_comments_and_preserves_original_uploads(self):
+  from unittest.mock import Mock,patch
+  from cloud_trello import READY
+  card={'id':'copy','idBoard':BOARD,'idList':READY,'name':'🤖 LED Neon 🤖','desc':'Acryl anpassen',
+        'attachments':[{'id':'1','name':'logo.png'},{'id':'3','name':'image.png'}]}
+  p=self.db.enqueue('source','event',{})
+  p=self.db.save(p['id'],{'copy':'copy','reread':'copy','generated_attachments':['3'],
+                        'update_since':'2026-11-21T12:00:00Z',
+                        'update_action':{'id':'event','date':'2026-11-22T12:00:00Z','label':'label'}})
+  t=Mock();t.card.return_value=card
+  t.call.return_value=[{'id':str(i),'date':date,'data':{'text':text}} for i,(date,text) in enumerate([
+    ('2026-11-20T12:00:00Z','alter Wunsch'),('2026-11-22T11:00:00Z','Neon Studio project Revision 8'),
+    ('2026-11-22T11:30:00Z','Acryl oben gerade verbinden'),('2026-11-22T13:00:00Z','späterer Wunsch')])]
+  jobs=Jobs(self.db,DurableStore(self.db),t)
+  data={'svg':SVG.replace('<path ', '<path id="logo" '),'line_plan':[{'name':'Logo','mode':'single','path_ids':['logo']}],'widths_mm':[600],'colors':'Kaltweiß','issues':[]}
+  with patch('cloud_jobs.generate',return_value=(data,{})) as gen:jobs.reread(p)
+  snapshot=gen.call_args.args[1]
+  self.assertIn('Acryl oben gerade verbinden',snapshot['desc'])
+  for excluded in ('alter Wunsch','Neon Studio project','späterer Wunsch'):self.assertNotIn(excluded,snapshot['desc'])
+  self.assertEqual([a['id'] for a in snapshot['attachments']],['1'])
+  self.assertTrue(all(call.args[0]=='GET' for call in t.call.call_args_list))
+
  def test_ingest_creates_verified_copy_before_worker_starts_and_deduplicates(self):
   from unittest.mock import Mock
   source={'id':'source','idBoard':BOARD,'name':'LED Neon Flex | waiting','desc':'customer details'}
