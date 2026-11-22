@@ -2,7 +2,7 @@ import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 const browser=await chromium.launch({headless:true});
 const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Berlin'}).format(new Date());
-const lead={id:'22222222-2222-4222-8222-222222222222',customerId:'11111111-1111-4111-8111-111111111111',requestId:'33333333-3333-4333-8333-333333333333',displayName:'Testkontakt',company:null,email:'test@example.invalid',phone:'+4930123456',requestTitle:'Synthetische Anfrage',requestCreatedAt:today+'T09:00:00Z',amount:2584.93,currency:'EUR',segment:'B2B',sourceAt:today+'T09:00:00Z',offerNumber:'TEST-123',reasons:['Heute','Angebot erstellt'],priority:55,revision:0,dueDate:null};
+const lead={canSchedule:true,id:'22222222-2222-4222-8222-222222222222',customerId:'11111111-1111-4111-8111-111111111111',requestId:'33333333-3333-4333-8333-333333333333',displayName:'Testkontakt',company:null,email:'test@example.invalid',phone:'+4930123456',requestTitle:'Synthetische Anfrage',requestCreatedAt:today+'T09:00:00Z',amount:2584.93,currency:'EUR',segment:'B2B',sourceAt:today+'T09:00:00Z',offerNumber:'TEST-123',reasons:['Heute','Angebot erstellt'],priority:55,revision:0,dueDate:null};
 try{
  for(const width of [1440,390]){
   const page=await browser.newPage({viewport:{width,height:1000}});let state=null;const writes=[];page.on("pageerror",e=>console.error(e.message));
@@ -17,7 +17,7 @@ try{
   });
   await page.goto('http://127.0.0.1:44222/ops/voice-copilot');
   await page.getByRole('button',{name:'Hot-Leads',exact:true}).click();
-  await page.waitForTimeout(1500); await page.getByRole('button',{name:'Nicht erreicht',exact:true}).click();
+  await page.waitForTimeout(1500); await page.screenshot({path:'/tmp/hot-leads-populated-'+width+'.png',fullPage:true}); await page.getByRole('button',{name:'Nicht erreicht',exact:true}).click();
   await page.getByText('Ignoriert. Dieser Eintrag ist aus der Liste entfernt.',{exact:true}).waitFor();
   assert.equal(writes[0].status,'ignored');
   await page.getByRole('button',{name:'Morgen wieder in Hot-Leads aufnehmen'}).click();
@@ -32,6 +32,10 @@ try{
   await page.getByLabel('Ein Datum wählen').fill('2027-02-01');
   await page.getByRole('button',{name:'Verschieben',exact:true}).click();
   await page.getByText(/Wiedervorlage gespeichert/).waitFor();assert.equal(writes[3].dueDate,'2027-02-01');
+  await page.getByRole('button',{name:'Verzeichnis',exact:true}).click();
+  await page.getByText('Verschieben',{exact:true}).first().click();
+  await page.getByRole('button',{name:'Auf morgen verschieben'}).click();
+  await page.getByText(/Wiedervorlage:/).waitFor();assert.equal(writes[4].status,'scheduled');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1),false);
   await page.screenshot({path:'/tmp/hot-leads-'+width+'.png',fullPage:true});
   console.log('PASS desktop/mobile',width,'ignore, tomorrow, week, custom date, persistent revision and no overflow');

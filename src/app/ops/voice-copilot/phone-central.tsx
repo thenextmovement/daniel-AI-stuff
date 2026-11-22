@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNo
 import { Search, Phone, Headphones, ChevronLeft, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
-import {HotLeads,leadAmount} from "./hot-leads";
+import {HotLeads,leadAmount,DirectoryLeadSnooze} from "./hot-leads";
 import {contactSegment} from "@/lib/ops/voice-hot-lead-rules";
 import type {VoiceHotLead} from "@/lib/ops/voice-hot-leads";
 import {CustomerEditor} from "./customer-editor";
@@ -449,20 +449,20 @@ export function PhoneCentral(props: Props) {
               <button type="button" className={styles.retry} onClick={() => setRetry(value => value + 1)}><RefreshCw size={15} />Erneut versuchen</button>
             </div> : null}
             <div className={styles.results}>
-              {results.map(contact => <button type="button" key={contact.customerId}
+              {results.map(contact => {const lead=directoryAmounts.find(item=>item.customerId===contact.customerId&&item.requestId===contact.requestId);return <div key={contact.customerId}><button type="button"
                 className={styles.result + " " + (activeContact?.customerId === contact.customerId ? styles.selected : "")}
                 disabled={busy} aria-pressed={activeContact?.customerId === contact.customerId}
                 onClick={() => void select(contact)}>
                 <span className={styles.contactAvatar}>{initials(contact.company || contact.displayName || "Kontakt")}</span>
                 <span className={styles.resultContent}>
                   <strong>{contact.company || contact.displayName || "Kontakt"} {contactSegment(contact.email)?<small className={styles.leadBadge} title="Automatisch anhand der E-Mail-Domain">{contactSegment(contact.email)}</small>:null}</strong>
-                  {directoryAmounts.find(lead=>lead.customerId===contact.customerId&&lead.requestId===contact.requestId)?.amount!=null?<strong>{leadAmount(directoryAmounts.find(lead=>lead.customerId===contact.customerId&&lead.requestId===contact.requestId)!)}</strong>:null}
+                  {lead?.amount!=null?<strong>{leadAmount(lead)}</strong>:null}
                   <span>{contact.company && contact.displayName ? contact.displayName + " · " : ""}{contact.phone || "Rufnummer fehlt"}</span>
                   <span>{contact.email || contact.requestTitle || "Kontaktdaten öffnen"}</span>
                   {contact.requestCreatedAt && <span>Letzte Anfrage: {new Date(contact.requestCreatedAt).toLocaleDateString("de-DE")}</span>}
                 </span>
                 <ChevronRight size={16} />
-              </button>)}
+              </button>{lead?.canSchedule?<DirectoryLeadSnooze lead={lead} onSaved={refreshCallHistory}/>:null}</div>;})}
             </div>
             {!loading && !error && !results.length && query.trim().length !== 1 ? <p className={styles.empty}>
               {nextOffset !== null ? "Auf dieser Seite kein passender Kontakt. Weitere Kontakte laden." :

@@ -64,13 +64,27 @@ export function HotLeads({onSelect,busy,revision,finishedCall}:{finishedCall:{cu
    <div className={styles.leadActions}>
     <button type="button" disabled={disabled} onClick={()=>void save(lead,"reached")}>Erreicht</button>
     <button type="button" disabled={disabled} onClick={()=>void save(lead,"ignored")}>Nicht erreicht</button>
-    <details><summary aria-label="Wiedervorlage verschieben"><CalendarClock size={16}/> Verschieben</summary><div className={styles.leadSchedule}>
-     <button type="button" disabled={disabled} onClick={()=>void save(lead,"scheduled",shiftLeadDate(berlinDate(),1))}>Auf morgen verschieben</button>
-     <button type="button" disabled={disabled} onClick={()=>void save(lead,"scheduled",shiftLeadDate(berlinDate(),7))}>Auf nächste Woche verschieben</button>
-     <form onSubmit={event=>{event.preventDefault();const day=new FormData(event.currentTarget).get("date");if(typeof day==="string")void save(lead,"scheduled",day);}}><label>Ein Datum wählen<input type="date" name="date" required min={berlinDate()}/></label><button type="submit" disabled={disabled}>Verschieben</button></form>
-    </div></details>
+    <SnoozeMenu disabled={disabled} onSchedule={day=>void save(lead,"scheduled",day)}/>
    </div>
   </article>)}</div>
   {data&&data.total>30?<div className={styles.leadActions}><button type="button" disabled={disabled||offset===0} onClick={()=>setOffset(Math.max(0,offset-30))}>Zurück</button><button type="button" disabled={disabled||data.nextOffset===null} onClick={()=>setOffset(data.nextOffset!)}>Weitere Leads</button></div>:null}
  </section>;
+}
+
+function SnoozeMenu({disabled,onSchedule}:{disabled:boolean;onSchedule:(day:string)=>void}){return <details><summary aria-label="Wiedervorlage verschieben"><CalendarClock size={16}/> Verschieben</summary><div className={styles.leadSchedule}>
+     <button type="button" disabled={disabled} onClick={()=>onSchedule(shiftLeadDate(berlinDate(),1))}>Auf morgen verschieben</button>
+     <button type="button" disabled={disabled} onClick={()=>onSchedule(shiftLeadDate(berlinDate(),7))}>Auf nächste Woche verschieben</button>
+     <form onSubmit={event=>{event.preventDefault();const day=new FormData(event.currentTarget).get("date");if(typeof day==="string")onSchedule(day);}}><label>Ein Datum wählen<input type="date" name="date" required min={berlinDate()}/></label><button type="submit" disabled={disabled}>Verschieben</button></form>
+    </div></details>;}
+export function DirectoryLeadSnooze({lead,onSaved}:{lead:VoiceHotLead;onSaved:()=>void}){
+ const [saving,setSaving]=useState(false),[message,setMessage]=useState("");
+ async function schedule(day:string){
+  setSaving(true);setMessage("");
+  try{
+   const response=await fetch("/api/ops/voice-copilot/hot-leads",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:lead.id,customerId:lead.customerId,status:"scheduled",sourceAt:lead.sourceAt,revision:lead.revision,dueDate:day})});
+   await readPhoneCentralResponse(response,"Wiedervorlage nicht gespeichert. Bitte aktualisieren und erneut versuchen.");
+   setMessage("Wiedervorlage: "+new Date(day+"T12:00:00").toLocaleDateString("de-DE"));onSaved();
+  }catch(e){setMessage(e instanceof Error?e.message:"Speichern fehlgeschlagen.");}finally{setSaving(false);}
+ }
+ return <div className={styles.leadActions} style={{justifyContent:"flex-end"}}><SnoozeMenu disabled={saving} onSchedule={day=>void schedule(day)}/>{message?<span role="status">{message}</span>:null}</div>;
 }
