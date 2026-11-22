@@ -8,6 +8,29 @@ import fitz
 from PIL import Image
 SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path d="M10 50 C60 0 80 0 110 50 M120 10 L180 50" fill="none" stroke="#f333a5" stroke-width="1"/></svg>'
 class CloudTests(unittest.TestCase):
+ def test_poll_finds_labels_without_actions_and_deduplicates_after_restart(self):
+  from unittest.mock import Mock
+  from cloud_trello import READY
+  p=self.db.enqueue('source','initial',{})
+  self.db.save(p['id'],{'copy':'copy'},status='ready')
+  label={'id':'label','name':'Updates AutoQuote'}
+  card={'id':'copy','idBoard':BOARD,'idList':READY,'idLabels':['label'],'labels':[label]}
+  t=Mock();t.card.return_value=card
+  t.call.side_effect=lambda method,path,**kw: [card] if path.startswith('lists/') else []
+  jobs=Jobs(self.db,None,t);jobs.poll()
+  saved=self.db.get(p['id'])
+  self.assertEqual(saved['status'],'queued')
+  self.assertEqual(saved['reread'],'copy')
+  t.update_status.assert_called_once_with('copy','processing')
+  # Even a failed job must not run repeatedly while its trigger remains set.
+  self.db.save(p['id'],{},status='review')
+  jobs=Jobs(self.db,None,t);jobs.poll()
+  self.assertEqual(t.update_status.call_count,1)
+  card['labels']=[];card['idLabels']=[];jobs.poll()
+  card['labels']=[label];card['idLabels']=['label'];jobs.poll()
+  self.assertEqual(t.update_status.call_count,2)
+  self.assertNotEqual(self.db.get(p['id'])['update_action']['id'],saved['update_action']['id'])
+
  def test_update_status_labels_preserve_unrelated_labels(self):
   from unittest.mock import Mock
   t=Trello.__new__(Trello)
@@ -59,6 +82,7 @@ class CloudTests(unittest.TestCase):
   p=self.db.enqueue('source','initial',{})
   p=self.db.save(p['id'],{'copy':'copy','reread':'copy','update_action':{'id':'event','date':'2026-11-22T12:00:00Z','label':'label'}})
   t=Mock();jobs=Jobs(self.db,None,t)
+  self.db.meta('update_labels',json.dumps({'copy':{'id':'claim','date':'2026-11-22T12:00:00Z'}}))
   jobs.reread=Mock(side_effect=lambda p:self.db.save(p['id'],{'reread':None},status='draft'))
   jobs.publish=Mock(side_effect=lambda p,**kw:self.db.save(p['id'],{},status='ready'))
   jobs.execute(p)
@@ -66,6 +90,7 @@ class CloudTests(unittest.TestCase):
   t.update_status.assert_called_once_with('copy','completed')
   t.call.assert_called_once_with('DELETE','cards/copy/idLabels/label')
   self.assertEqual(self.db.get(p['id'])['update_since'],'2026-11-22T12:00:00Z')
+  self.assertEqual(json.loads(self.db.meta('update_labels')), {})
 
  def test_failed_update_never_marks_completed_or_removes_trigger(self):
   from unittest.mock import Mock

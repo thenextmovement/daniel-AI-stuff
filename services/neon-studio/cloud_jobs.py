@@ -1,4 +1,5 @@
 import base64,fcntl,json,math,os,re,threading,time,traceback
+from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 from requests.exceptions import RequestException
 from datetime import datetime,timezone,timedelta
@@ -492,6 +493,25 @@ class Jobs:
                 c.execute("UPDATE projects SET data=?,status='queued',revision=revision+1,updated=? WHERE id=?",(json.dumps(saved),time.time(),p['id']))
                 c.execute('INSERT INTO events VALUES(?,?)',(event,p['id']))
 
+    def poll_update_labels(self):
+        # Trello label webhook events are not reliably returned by /actions.
+        # Observe the labels themselves and persist one claim per application.
+        with self.lock:
+            cards=self.t.call('GET',f'lists/{READY}/cards?fields=id,labels')
+            previous=json.loads(self.db.meta('update_labels') or '{}')
+            current={};actions=[]
+            for card in cards:
+                label=next((l for l in card.get('labels',[]) if l.get('name','').strip().casefold()=='updates autoquote'),None)
+                if not label:continue
+                claim=previous.get(card['id']) or {'id':'present:'+uuid4().hex,'date':datetime.now(timezone.utc).isoformat()}
+                current[card['id']]=claim
+                actions.append({**claim,'data':{'card':{'id':card['id']},'label':label}})
+            self.db.meta('update_labels',json.dumps(current))
+        for action in actions:
+            p=self.db.for_card(action['data']['card']['id'])
+            if p and p['status'] in ('copying','generating','publishing','queued','publish_queued'):continue
+            self.queue_update(action)
+
     def poll(self):
         cursor=self.db.meta('cursor')
         if not cursor:
@@ -499,19 +519,19 @@ class Jobs:
         actions=[];before=None
         while True:
             from urllib.parse import quote
-            path=f'boards/{BOARD}/actions?filter=updateCard:idList,moveCardFromBoard,addLabelToCard&limit=1000&since='+quote((datetime.fromisoformat(cursor.replace('Z','+00:00'))-timedelta(seconds=1)).isoformat(),safe='')
+            path=f'boards/{BOARD}/actions?filter=updateCard:idList,moveCardFromBoard&limit=1000&since='+quote((datetime.fromisoformat(cursor.replace('Z','+00:00'))-timedelta(seconds=1)).isoformat(),safe='')
             if before:path+='&before='+before
             page=self.t.call('GET',path);actions.extend(page)
             if len(page)<1000:break
             before=page[-1]['id']
         for action in sorted(actions,key=lambda a:(a['date'],a['id'])):
             data=action.get('data',{})
-            if action.get('type')=='addLabelToCard':self.queue_update(action)
             if data.get('listAfter',{}).get('id')==TRIGGER:
                 try:self.ingest(data['card']['id'],'action:'+action['id'])
                 except Review:pass
             if action['date']>cursor:
                 self.db.meta('cursor',action['date'])
+        self.poll_update_labels()
         self.db.meta('last_poll',time.time())
     def run(self):
         # One worker owns the shared database even during a rolling deployment.
@@ -545,7 +565,11 @@ class Jobs:
                         self.publish(self.db.get(p['id']),generated=True)
                         update=p['update_action']
                         self.t.call('DELETE',f"cards/{p['copy']}/idLabels/{update['label']}")
-                        with self.lock:self.t.update_status(p['copy'],'completed')
+                        with self.lock:
+                            self.t.update_status(p['copy'],'completed')
+                            claims=json.loads(self.db.meta('update_labels') or '{}')
+                            claims.pop(p['copy'],None)
+                            self.db.meta('update_labels',json.dumps(claims))
                         self.db.save(p['id'],{'update_since':update['date'],'update_action':None})
                 elif p['status']=='publish_queued':
                     self.publish(p)
