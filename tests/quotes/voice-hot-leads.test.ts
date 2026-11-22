@@ -51,9 +51,9 @@ test("invalid state writes are rejected before any database call",async()=>{
  await assert.rejects(()=>saveVoiceHotLead({id:"11111111-1111-4111-8111-111111111111",customerId:"22222222-2222-4222-8222-222222222222",status:"scheduled",revision:0,sourceAt:"2026-01-01T00:00:00Z",dueDate:"2026-02-30"}));
 });
 
-test("canonical offer ID links an offer on a different Trello card without matching other customers",async()=>{
+for (const offerCard of ["bbbbbbbbbbbbbbbbbbbbbbbb", "bbbbbbbbbbbbbbbbbbbbbbbb:special:1795193649198"]) test("canonical offer ID links an offer including special import: "+offerCard,async()=>{
  const oldFetch=globalThis.fetch,env={...process.env};
- const inquiryCard="aaaaaaaaaaaaaaaaaaaaaaaa",offerCard="bbbbbbbbbbbbbbbbbbbbbbbb";
+ const inquiryCard="aaaaaaaaaaaaaaaaaaaaaaaa";
  const offer={id:"offer_123",trelloCardId:offerCard,offerNumber:"123",status:"SENT",totalGross:2584.93,currency:"EUR",createdAt:"2026-11-22T09:00:00Z",sentAt:null,viewedAt:null,closed:false};
  const row={id:"request-internal",request_id:"external",customer_id:"customer",trello_card_id:inquiryCard,offer_ids:["offer_123"],title:"Synthetic",created_at:"2026-11-01T09:00:00Z",status:"new",deal_status:"open",name:"Test",company:null,company_name:null,email:"test@gmail.com",phone:null,additional_phones:[],estimated_amount:null,list_status:null,source_at:null,handled_at:null,due_date:null,revision:0,last_confirmed_call:null,blocked:false,callback_at:null};
  const queried:string[]=[];
@@ -61,11 +61,14 @@ test("canonical offer ID links an offer on a different Trello card without match
   process.env.SUPABASE_URL="https://db.invalid";process.env.SUPABASE_SERVICE_ROLE_KEY="synthetic";process.env.NEONTRIP_OFFERS_BASE_URL="https://offers.invalid";process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY="synthetic";
   globalThis.fetch=async(input)=>{
    const url=new URL(String(input));queried.push(url.search);
+   if(url.hostname==="db.invalid" && url.searchParams.has("trello_card_id"))assert.equal(url.searchParams.get("trello_card_id")?.includes(":special:"),false);
    return Response.json(url.hostname==="offers.invalid"?{results:url.searchParams.has("cardIds")?[]:[offer],nextCursor:null}:[row]);
   };
   const data=await listVoiceHotLeads("today","amount",0,new Date("2026-11-22T12:00:00Z"));
   assert.equal(data.results.length,1);assert.equal(data.results[0].amount,2584.93);
   assert.equal(data.results[0].requestId,"external");assert.equal(data.results[0].offerNumber,"123");
   assert.ok(queried.some(q=>q.includes("ids=offer_123")));
+  offer.currency="invalid";
+  await assert.rejects(()=>listVoiceHotLeads("today","amount",0,new Date("2026-11-22T12:00:00Z")),/Invalid offers feed/);
  }finally{globalThis.fetch=oldFetch;for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
 });
