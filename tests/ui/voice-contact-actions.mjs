@@ -11,7 +11,7 @@ try {
  await page.route('**/api/**',async route=>{
   const url=new URL(route.request().url());let body={};
   if(url.pathname==='/api/ops/voice-copilot/customer'){
-   if(route.request().method()==='PATCH'){patchCount++;const input=route.request().postDataJSON();record={...record,emails:input.emails,phones:input.phones.map(p=>p.phone)};}body=record;
+   if(route.request().method()==='PATCH'){patchCount++;const input=route.request().postDataJSON();record={...record,customer:{...record.customer,email:input.confirmPrimaryEmail?input.email:record.customer.email,phone:input.confirmPrimaryPhone?input.phone:record.customer.phone},emails:input.emails,phones:input.phones.map(p=>p.phone)};}body=record;
   }else if(url.pathname==='/api/ops/voice-copilot/context'){
    const customer={displayName:'Test Kontakt',company:null,email:record.customer.email,phone:record.customer.phone};
    body=url.searchParams.has('history')?{entries:[],brief:[],nextOffset:null}:url.searchParams.has('directory')?{results:[{...customer,customerId:id,requestId,phoneNumbers:[record.customer.phone,...record.phones],requestTitle:'Testvorgang'}],nextOffset:null}:{context:{masterCustomerId:id,requestId,customer,request:{title:'Testvorgang',colors:[]},offer:null,outlook:[],sourceStatus:{customerRecord:'ok',offer:'not_linked',outlook:'empty'}}};
@@ -83,6 +83,35 @@ try {
  await editor.waitFor({state:'hidden'});assert.equal(patchCount,1);
  assert.deepEqual(record.emails,['extra@example.test','new@example.test']);
  assert.deepEqual(record.phones,['+4915904208888']);
+
+ await page.getByRole('button',{name:'3 E-Mails – Kundendaten bearbeiten',exact:true}).click();
+ await editor.getByLabel('Vorname',{exact:true}).waitFor();
+ const mainEmail=editor.locator('input[type=email]').first(),mainPhone=editor.locator('input[type=tel]').first();
+ assert.equal(await mainEmail.getAttribute('readonly'),'');
+ assert.equal(await mainPhone.getAttribute('readonly'),'');
+ await editor.getByRole('button',{name:'Haupt-E-Mail bearbeiten',exact:true}).click();
+ const primary=page.getByRole('dialog',{name:'Hauptkontakt bearbeiten',exact:true});
+ await primary.getByRole('button',{name:'Abbrechen',exact:true}).click();
+ assert.equal(await mainEmail.getAttribute('readonly'),'');
+ await editor.getByRole('button',{name:'Haupt-E-Mail bearbeiten',exact:true}).click();
+ await primary.getByRole('button',{name:'Bearbeiten erlauben',exact:true}).click();
+ await mainEmail.fill('changed@example.test');
+ assert.equal(await mainPhone.getAttribute('readonly'),'');
+ await editor.getByRole('button',{name:'Hauptnummer bearbeiten',exact:true}).click();
+ await primary.getByRole('button',{name:'Bearbeiten erlauben',exact:true}).click();
+ await editor.getByLabel('Land für Hauptnummer',{exact:true}).waitFor();
+ await mainPhone.fill('+4915904209999');
+ assert.equal(await editor.getByRole('button',{name:'Hauptnummer mit Placetel anrufen',exact:true}).isDisabled(),true);
+ assert.equal(patchCount,1);
+ await editor.getByRole('button',{name:'Änderungen speichern',exact:true}).click();
+ await editor.waitFor({state:'hidden'});
+ assert.equal(record.customer.email,'changed@example.test');assert.equal(record.customer.phone,'+4915904209999');
+ await page.getByRole('button',{name:'3 E-Mails – Kundendaten bearbeiten',exact:true}).click();
+ await editor.getByLabel('Vorname',{exact:true}).waitFor();
+ assert.equal(await mainEmail.inputValue(),'changed@example.test');
+ assert.equal(await mainPhone.inputValue(),'+4915904209999');
+ assert.equal(await mainEmail.getAttribute('readonly'),'');assert.equal(await mainPhone.getAttribute('readonly'),'');
+ await editor.getByRole('button',{name:'Abbrechen',exact:true}).click();
  record={...record,emails:[],phones:[]};
  await page.reload();await page.getByText('Test Kontakt',{exact:true}).click();
  await page.getByRole('button',{name:'Kundendaten bearbeiten',exact:true}).first().click();await editor.getByLabel('Vorname',{exact:true}).waitFor();await editor.getByRole('button',{name:'Abbrechen',exact:true}).click();
@@ -96,5 +125,5 @@ try {
  assert.equal(nativeDialog.type(),'confirm');assert.match(nativeDialog.message(),/\+4930123456/);
  await nativeDialog.dismiss();await click;assert.equal(dialRequests.length,1);
  assert.deepEqual(errors,[]);
- console.log('PASS call confirmation (header, picker, editor), cancel without request, empty extra fields ignored, no automatic third email field, counts, editor access, copy, delete challenge/cancel, unsaved cancellation, responsive layout, selected-number Placetel request; all APIs mocked, no real calls or writes');
+ console.log('PASS confirmed main email/phone save and reopen, primary cancel and independent unlock, call confirmation (header, picker, editor), cancel without request, empty extra fields ignored, no automatic third email field, counts, editor access, copy, delete challenge/cancel, unsaved cancellation, responsive layout, selected-number Placetel request; all APIs mocked, no real calls or writes');
 } finally {await browser.close();}
