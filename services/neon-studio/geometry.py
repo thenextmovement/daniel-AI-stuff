@@ -1109,7 +1109,19 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
     if bands:
         # Replace the sloping hull only over text columns. The buffered neon
         # underneath retains local ascenders, descenders and the full clearance.
-        columns=unary_union([box(l,hull.bounds[1]-1,r,hull.bounds[3]+1) for l,t,r,b in bands])
+        columns=[]
+        for l,t,r,b in bands:
+            column=box(l,hull.bounds[1]-1,r,hull.bounds[3]+1)
+            # A short text row must not remove the recess-limiting cap of
+            # artwork in another row. Protect its envelope, including gaps
+            # between its components, while still allowing stepped text rows.
+            for other in ([line for line in lines if line.bounds[3]+padding<t],
+                          [line for line in lines if line.bounds[1]-padding>b]):
+                if other:
+                    envelope=unary_union(other).convex_hull.buffer(padding,quad_segs=20)
+                    column=column.difference(envelope)
+            columns.append(column)
+        columns=unary_union(columns)
         # Limit the dip from the shared baseline while following exposed glyph
         # edges. Closing the protected outline rounds narrow gaps between glyphs.
         shoulder=max(radius,padding*.7)

@@ -59,3 +59,24 @@ class LetterContourTests(unittest.TestCase):
         for line in lines:
             self.assertTrue(poly.covers(line))
             self.assertGreaterEqual(poly.exterior.distance(line),17.9)
+
+
+    def test_subline_does_not_cut_deep_notches_into_tall_artwork(self):
+        # Three tall shapes above a small subline: L, eye surround, and V.
+        artwork=[LineString([(0,0),(0,500),(310,500)]),
+                 LineString([(400,0),(540,100),(570,250),(540,400),(400,500)]),
+                 LineString([(650,0),(790,500),(810,500),(950,0),
+                             (920,0),(800,430),(680,0),(650,0)])]
+        subline=[box(x,600,x+25,650).exterior for x in range(0,950,65)]
+        lines=artwork+subline
+        names=['Logo L','Logo eye','Logo V']+['Schriftzug Subline']*len(subline)
+        bands=_letter_bands(lines,names,18)
+        self.assertTrue(bands)
+        poly=Polygon(sample_path(_full_shape(lines,18,3,20,bands=bands),128))
+        for x in (100,200,300,750,800,850):
+            with self.subTest(x=x):
+                upper=poly.intersection(LineString([(x,-100),(x,700)])).bounds[1]
+                self.assertLessEqual(upper,2.1)  # 20 mm maximum recess from y=-18.
+        for line in lines:
+            self.assertTrue(poly.covers(line))
+            self.assertGreaterEqual(poly.exterior.distance(line),17.9)
