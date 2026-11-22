@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNo
 import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
-import {HotLeads,leadAmount,DirectoryLeadSnooze} from "./hot-leads";
+import {HotLeads,leadAmount} from "./hot-leads";
 import {contactSegment} from "@/lib/ops/voice-hot-lead-rules";
 import type {VoiceHotLead} from "@/lib/ops/voice-hot-leads";
 import {CustomerEditor} from "./customer-editor";
@@ -452,7 +452,7 @@ export function PhoneCentral(props: Props) {
                   {contact.requestCreatedAt && <span>Letzte Anfrage: {new Date(contact.requestCreatedAt).toLocaleDateString("de-DE")}</span>}
                 </span>
                 <ChevronRight size={16} />
-              </button>{lead?.canSchedule?<DirectoryLeadSnooze lead={lead} onSaved={refreshCallHistory}/>:null}</div>;})}
+              </button></div>;})}
             </div>
             {!loading && !error && !results.length && query.trim().length !== 1 ? <p className={styles.empty}>
               {nextOffset !== null ? "Auf dieser Seite kein passender Kontakt. Weitere Kontakte laden." :

@@ -1,6 +1,6 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
-import {CalendarClock,RefreshCw} from "lucide-react";
+import {Clock,RefreshCw} from "lucide-react";
 import type {VoiceDirectoryContact} from "@/lib/ops/voice-directory";
 import type {VoiceHotLead} from "@/lib/ops/voice-hot-leads";
 import {berlinDate,shiftLeadDate} from "@/lib/ops/voice-hot-lead-rules";
@@ -54,8 +54,9 @@ export function HotLeads({onSelect,busy,revision,finishedCall}:{finishedCall:{cu
   <p role="status" className={styles.directoryStatus}>{loading?"Hot-Leads werden geladen …":data?data.total+" offene Einträge":""}</p>
   {!loading&&data&&!data.results.length?<p>Für diesen Zeitraum ist die Liste erledigt.</p>:null}
   <div className={styles.results}>{data?.results.map(lead=><article key={lead.id} className={styles.leadCard}>
+   <div className={styles.leadHeading}><button type="button" className={styles.leadName} disabled={disabled} onClick={()=>onSelect(lead)}>{lead.company||lead.displayName||"Kontakt"}</button><span className={styles.leadHeadingTools}>{lead.segment?<small className={styles.leadBadge} title="Automatisch anhand der E-Mail-Domain">{lead.segment}</small>:null}<SnoozeMenu disabled={disabled} onSchedule={day=>void save(lead,"scheduled",day)}/></span></div>
    <button type="button" className={styles.result} disabled={disabled} onClick={()=>onSelect(lead)}>
-    <span className={styles.resultContent}><strong>{lead.company||lead.displayName||"Kontakt"} {lead.segment?<small className={styles.leadBadge} title="Automatisch anhand der E-Mail-Domain">{lead.segment}</small>:null}</strong>
+    <span className={styles.resultContent}>
      <span>{lead.requestTitle}</span><span>{lead.phone||"Rufnummer fehlt"}</span><span>{lead.email}</span>
      {leadAmount(lead)?<strong>{lead.offerNumber?"Angebot "+lead.offerNumber+": ":"Anfrage: "}{leadAmount(lead)}</strong>:null}
      <span>{lead.reasons.join(" · ")}</span>
@@ -64,27 +65,15 @@ export function HotLeads({onSelect,busy,revision,finishedCall}:{finishedCall:{cu
    <div className={styles.leadActions}>
     <button type="button" disabled={disabled} onClick={()=>void save(lead,"reached")}>Erreicht</button>
     <button type="button" disabled={disabled} onClick={()=>void save(lead,"ignored")}>Nicht erreicht</button>
-    <SnoozeMenu disabled={disabled} onSchedule={day=>void save(lead,"scheduled",day)}/>
    </div>
   </article>)}</div>
   {data&&data.total>30?<div className={styles.leadActions}><button type="button" disabled={disabled||offset===0} onClick={()=>setOffset(Math.max(0,offset-30))}>Zurück</button><button type="button" disabled={disabled||data.nextOffset===null} onClick={()=>setOffset(data.nextOffset!)}>Weitere Leads</button></div>:null}
  </section>;
 }
 
-function SnoozeMenu({disabled,onSchedule}:{disabled:boolean;onSchedule:(day:string)=>void}){return <details><summary aria-label="Wiedervorlage verschieben"><CalendarClock size={16}/> Verschieben</summary><div className={styles.leadSchedule}>
+function SnoozeMenu({disabled,onSchedule}:{disabled:boolean;onSchedule:(day:string)=>void}){const [choosingDate,setChoosingDate]=useState(false);return <details className={styles.leadSnooze}><summary aria-label="Wiedervorlage verschieben" title="Verschieben"><Clock size={16}/></summary><div className={styles.leadSchedule}>
      <button type="button" disabled={disabled} onClick={()=>onSchedule(shiftLeadDate(berlinDate(),1))}>Auf morgen verschieben</button>
      <button type="button" disabled={disabled} onClick={()=>onSchedule(shiftLeadDate(berlinDate(),7))}>Auf nächste Woche verschieben</button>
-     <form onSubmit={event=>{event.preventDefault();const day=new FormData(event.currentTarget).get("date");if(typeof day==="string")onSchedule(day);}}><label>Ein Datum wählen<input type="date" name="date" required min={berlinDate()}/></label><button type="submit" disabled={disabled}>Verschieben</button></form>
+     <button type="button" disabled={disabled} onClick={()=>setChoosingDate(true)}>Datum wählen</button>
+     {choosingDate?<form onSubmit={event=>{event.preventDefault();const day=new FormData(event.currentTarget).get("date");if(typeof day==="string")onSchedule(day);}}><label>Ein Datum wählen<input type="date" name="date" required min={berlinDate()}/></label><button type="submit" disabled={disabled}>Verschieben</button></form>:null}
     </div></details>;}
-export function DirectoryLeadSnooze({lead,onSaved}:{lead:VoiceHotLead;onSaved:()=>void}){
- const [saving,setSaving]=useState(false),[message,setMessage]=useState("");
- async function schedule(day:string){
-  setSaving(true);setMessage("");
-  try{
-   const response=await fetch("/api/ops/voice-copilot/hot-leads",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:lead.id,customerId:lead.customerId,status:"scheduled",sourceAt:lead.sourceAt,revision:lead.revision,dueDate:day})});
-   await readPhoneCentralResponse(response,"Wiedervorlage nicht gespeichert. Bitte aktualisieren und erneut versuchen.");
-   setMessage("Wiedervorlage: "+new Date(day+"T12:00:00").toLocaleDateString("de-DE"));onSaved();
-  }catch(e){setMessage(e instanceof Error?e.message:"Speichern fehlgeschlagen.");}finally{setSaving(false);}
- }
- return <div className={styles.leadActions} style={{justifyContent:"flex-end"}}><SnoozeMenu disabled={saving} onSchedule={day=>void schedule(day)}/>{message?<span role="status">{message}</span>:null}</div>;
-}

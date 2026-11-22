@@ -3,7 +3,7 @@ import {QuoteValidationError} from "@/lib/quotes/validation";
 import {requireVoiceUuid} from "./voice-platform-contract";
 import {berlinDate,shiftLeadDate,hotLeadVisible,contactSegment,type HotLeadState} from "./voice-hot-lead-rules";
 import type {VoiceDirectoryContact} from "./voice-directory";
-type Offer={id:string;trelloCardId:string|null;offerNumber:string;status:string;totalGross:number;currency:string;createdAt:string;sentAt:string|null;viewedAt:string|null;closed:boolean};
+type Offer={id:string;trelloCardId:string|null;offerNumber:string|null;status:string;totalGross:number;currency:string;createdAt:string;sentAt:string|null;viewedAt:string|null;closed:boolean};
 type Candidate={offer_ids?:string[];id:string;request_id:string;customer_id:string;trello_card_id:string|null;title:string|null;created_at:string;status:string;deal_status:string|null;name:string|null;company:string|null;company_name:string|null;email:string|null;phone:string|null;additional_phones:string[];estimated_amount:number|null;list_status:HotLeadState["status"]|null;source_at:string|null;handled_at:string|null;due_date:string|null;revision:number;last_confirmed_call:string|null;blocked:boolean;callback_at:string|null};
 export type VoiceHotLead=VoiceDirectoryContact & {canSchedule:boolean;id:string;amount:number|null;currency:string;segment:"B2B"|"Privat"|null;sourceAt:string;offerNumber:string|null;reasons:string[];priority:number;revision:number;dueDate:string|null};
 const invalid=(message:string)=>new QuoteValidationError(message,["invalid_hot_lead"],422);
@@ -26,7 +26,7 @@ async function offers(filter:{since:string}|{cardIds:string}|{ids:string}){
   const response=await fetch(base+"/api/internal/offers/voice-leads?"+query,{cache:"no-store",headers:{Authorization:"Bearer "+key},signal:AbortSignal.timeout(15000)});
   if(!response.ok)throw Error("Offers feed unavailable");
   const data=await response.json() as {results:Offer[];nextCursor:string|null};
-  if(!Array.isArray(data.results)||data.results.some(x=>! /^[a-zA-Z0-9_-]{1,100}$/.test(x.id)|| (x.trelloCardId!==null&&!/^[a-f0-9]{24}$/.test(x.trelloCardId)) || !/^[A-Z]{3}$/.test(x.currency)||!Number.isFinite(x.totalGross)||!Number.isFinite(Date.parse(x.createdAt))))throw Error("Invalid offers feed");
+  if(!Array.isArray(data.results)||data.results.some(x=>! /^[a-zA-Z0-9_-]{1,100}$/.test(x.id)|| (x.trelloCardId!==null&&!/^[a-f0-9]{24}(?::special:[0-9]{13})?$/.test(x.trelloCardId)) || !/^[A-Z]{3}$/.test(x.currency)||!Number.isFinite(x.totalGross)||!Number.isFinite(Date.parse(x.createdAt))))throw Error("Invalid offers feed");
   all.push(...data.results);if(!data.nextCursor)return all;
   if(data.nextCursor===cursor)throw Error("Invalid offer cursor");cursor=data.nextCursor;
  }
@@ -55,7 +55,7 @@ export async function listVoiceHotLeads(filter:string,sort:string,offset:number,
  const today=berlinDate(now),since=shiftLeadDate(today,-21)+"T00:00:00Z";
  const recentOffers=await offers({since});
  const rows=await candidates({or:`(created_at.gte.${since},due_date.lte.${today})`});
- const cards=[...new Set(recentOffers.flatMap(x=>x.trelloCardId?[x.trelloCardId]:[]))];
+ const cards=[...new Set(recentOffers.flatMap(x=>x.trelloCardId&&/^[a-f0-9]{24}$/.test(x.trelloCardId)?[x.trelloCardId]:[]))];
  for(let i=0;i<cards.length;i+=100)rows.push(...await candidates({trello_card_id:"in.("+cards.slice(i,i+100).join(",")+")"}));
  const offerIds=recentOffers.map(o=>o.id);
  for(let i=0;i<offerIds.length;i+=100)rows.push(...await candidates({offer_ids:"ov.{"+offerIds.slice(i,i+100).join(",")+"}"}));
