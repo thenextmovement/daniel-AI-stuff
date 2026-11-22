@@ -4,8 +4,8 @@ import { Phone } from "lucide-react";
 import styles from "./phone-central.module.css";
 
 export type PlacetelCallHandle = { start: (number: string) => boolean };
-export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, disabled, onCallChange, onNoteTarget }: {
-  ref?: Ref<PlacetelCallHandle>; customerId: string; requestId: string; dialNumber?:string; disabled: boolean; onCallChange: () => void; onNoteTarget: (callId:string) => void;
+export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, disabled, onCallChange, onNoteTarget, onEnded }: {
+  onEnded?: (customerId:string,requestId:string,callId:string)=>void; ref?: Ref<PlacetelCallHandle>; customerId: string; requestId: string; dialNumber?:string; disabled: boolean; onCallChange: () => void; onNoteTarget: (callId:string) => void;
 }) {
   const confirmation = useRef<HTMLDialogElement>(null);
   const key = useRef<string | null>(null);
@@ -16,6 +16,8 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
   const [callId, setCallId] = useState("");
   const [phone, setPhone] = useState("");
   const expires = useRef(0);
+  const endedCallback=useRef(onEnded);endedCallback.current=onEnded;
+  const binding=useRef({customerId,requestId});
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (!callId || status !== "opened") return;
@@ -36,6 +38,7 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
           if (!controller.signal.aborted && typeof data.endedAt === "string" && Number.isFinite(Date.parse(data.endedAt))) {
             setStatus("ended");
             setMessage("Gespräch beendet");
+            endedCallback.current?.(binding.current.customerId,binding.current.requestId,callId);
             onCallChange();
             return;
           }
@@ -102,6 +105,7 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
         setMessage("Die Bestätigung für die Direktwahl steht aus.");
         return;
       }
+      binding.current={customerId,requestId};
       setCallId(data.callId);
       onNoteTarget(data.callId);
       expires.current = data.expiresAt;

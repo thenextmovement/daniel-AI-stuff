@@ -1,8 +1,11 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { Search, Phone, Headphones, ChevronLeft, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
+import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
+import {HotLeads,leadAmount,DirectoryLeadSnooze} from "./hot-leads";
+import {contactSegment} from "@/lib/ops/voice-hot-lead-rules";
+import type {VoiceHotLead} from "@/lib/ops/voice-hot-leads";
 import {CustomerEditor} from "./customer-editor";
 import type {CustomerEditorData} from "@/lib/ops/voice-customer-editor";
 import {ContactCopyButton} from "./contact-copy-button";
@@ -55,16 +58,13 @@ function initials(value: string) {
 }
 export function PhoneCentral(props: Props) {
   const { selected } = props;
-  const tableDesigns = ["Salbei", "Linien", "Zebra", "Karte", "Register", "Kontur", "Akzent", "Kacheln", "Papier", "Minimal"];
-  const [tableDesign, setTableDesign] = useState(0);
-  useEffect(() => { try { const saved = Number(localStorage.getItem("voice-contact-design")); if (Number.isInteger(saved) && saved >= 0 && saved < 10) setTableDesign(saved); } catch {} }, []);
-  function changeTableDesign(direction: number) { setTableDesign(current => { const next = (current + direction + 10) % 10; try { localStorage.setItem("voice-contact-design", String(next)); } catch {} return next; }); }
-
+  const [finishedLeadCall,setFinishedLeadCall]=useState<{customerId:string;requestId:string;callId:string}|null>(null);
+  const leadCallEnded=useCallback((customerId:string,requestId:string,callId:string)=>setFinishedLeadCall({customerId,requestId,callId}),[]);
   const [callHistoryRevision, setCallHistoryRevision] = useState(0);
   const refreshCallHistory = useCallback(() => setCallHistoryRevision(n => n + 1), []);
   const [phoneAdminOpen,setPhoneAdminOpen]=useState(false);
   const [phoneIdentity,setPhoneIdentity]=useState<PhoneIdentity|null>(null);
-  const browserPhone=useBrowserPhone(phoneIdentity,props.busy);
+  const browserPhone=useBrowserPhone(phoneIdentity,props.busy,leadCallEnded);
   const [outgoingRoute,setOutgoingRoute]=useState<"browser"|"mobile">("browser");
   const mobileAudio=(browserPhone.transfer?.role==="recipient"&&browserPhone.transfer.transport==="mobile")||browserPhone.call?.transport==="mobile"||(!browserPhone.call&&outgoingRoute==="mobile");
   const canDial=outgoingRoute==="mobile"?browserPhone.mobileAllowed:browserPhone.allowed;
@@ -99,6 +99,21 @@ export function PhoneCentral(props: Props) {
   const [noteTarget, setNoteTarget] = useState<{requestId:string; callId:string; time:string} | null>(null);
   const selectNoteTarget = (callId:string, time = new Date().toISOString()) => setNoteTarget({requestId:briefRequestId, callId, time});
   const selectedNoteCall = noteTarget?.requestId === briefRequestId ? noteTarget : null;
+  const [contactTab,setContactTab]=useState<"directory"|"leads">("directory");
+  const [directoryAmounts,setDirectoryAmounts]=useState<VoiceHotLead[]>([]);
+  const [amountError,setAmountError]=useState(false);
+  const directoryIds=results.map(c=>c.customerId).join(",");
+  useEffect(()=>{
+    setDirectoryAmounts([]);setAmountError(false);if(!directoryIds)return;
+    const controller=new AbortController();
+    const ids=directoryIds.split(",");
+    void Promise.all(Array.from({length:Math.ceil(ids.length/100)},(_,i)=>fetch("/api/ops/voice-copilot/hot-leads?"+new URLSearchParams({customerIds:ids.slice(i*100,i*100+100).join(",")}),{cache:"no-store",signal:controller.signal})
+      .then(r=>readPhoneCentralResponse<{results:VoiceHotLead[]}>(r,"Beträge nicht verfügbar"))))
+      .then(pages=>({results:pages.flatMap(page=>page.results)}))
+      .then(data=>{if(!controller.signal.aborted)setDirectoryAmounts(data.results);})
+      .catch(()=>{if(!controller.signal.aborted)setAmountError(true);});
+    return ()=>controller.abort();
+  },[directoryIds,callHistoryRevision]);
   const [panel, setPanel] = useState<"contacts" | "dial">("contacts");
   const [number, setNumber] = useState("");
   const [offset, setOffset] = useState(0);
@@ -265,7 +280,7 @@ export function PhoneCentral(props: Props) {
 
   return (
     <div className={styles.page}>
-    <main className={styles.shell} data-header-design="salbei" data-contact-design={tableDesign}>
+    <main className={styles.shell} data-header-design="salbei" data-contact-design="3">
       <header className={styles.top}>
         <div className={styles.brandrow}>
         <a className={styles.brand} href="/ops">
@@ -273,11 +288,6 @@ export function PhoneCentral(props: Props) {
         </a>
         <span className={styles.breadcrumb}>Ops / Telefonzentrale</span>
         <span className={styles.spacer} />
-        <div className={styles.designSwitch} role="group" aria-label="Kontakttabelle gestalten">
-          <button type="button" aria-label="Vorheriges Tabellendesign" onClick={() => changeTableDesign(-1)}><ChevronLeft size={16}/></button>
-          <output aria-live="polite">{tableDesign + 1}/10 · {tableDesigns[tableDesign]}</output>
-          <button type="button" aria-label="Nächstes Tabellendesign" onClick={() => changeTableDesign(1)}><ChevronRight size={16}/></button>
-        </div>
         <a
           className={styles.small}
           href="#voice-settings"
@@ -319,7 +329,7 @@ export function PhoneCentral(props: Props) {
             <div className={styles.actions + " " + styles.headerActions}>
               {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
                 <PlacetelCallButton ref={placetelCall} key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
-                  requestId={briefRequestId} dialNumber={dialPhone} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} />}
+                  requestId={briefRequestId} dialNumber={dialPhone} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} onEnded={leadCallEnded} />}
               {customer && !readySession && props.workspace !== "prepare" && (props.workspace === "assist" ? (
                 <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
                   disabled={busy || contextLoading || !selected}>
@@ -407,6 +417,11 @@ export function PhoneCentral(props: Props) {
             <button type="button" aria-pressed={panel === "dial"} onClick={() => setPanel("dial")}><Grid2X2 size={17} />Wählen</button>
           </div>
           {panel === "contacts" ? <>
+            <div className={styles.panelTabs} aria-label="Kundenliste">
+              <button type="button" aria-pressed={contactTab==="directory"} onClick={()=>setContactTab("directory")}>Verzeichnis</button>
+              <button type="button" aria-pressed={contactTab==="leads"} onClick={()=>setContactTab("leads")}>Hot-Leads</button>
+            </div>
+            {contactTab==="leads"?<HotLeads busy={busy} finishedCall={finishedLeadCall} revision={callHistoryRevision} onSelect={contact=>void select(contact)}/>:<>
             <h2 className={styles.leftTitle}>Kundenverzeichnis</h2>
             <label className={styles.search}>
               <Search size={18} />
@@ -417,26 +432,27 @@ export function PhoneCentral(props: Props) {
             <p className={styles.directoryStatus} role="status">
               {loading ? "Kontakte werden geladen …" : error ? "Suche derzeit nicht verfügbar" :
                 query.trim().length === 1 ? "Bitte mindestens zwei Zeichen eingeben." :
-                query.trim() ? results.length + (nextOffset !== null ? "+ Treffer" : " Treffer") : "Euer Kundenverzeichnis · alphabetisch"}
+                query.trim() ? results.length + (nextOffset !== null ? "+ Treffer" : " Treffer") : "Euer Kundenverzeichnis · neueste Anfrage zuerst"}
             </p>
             {error ? <div className={styles.searchError} role="alert">
               <p>{error}</p>
               <button type="button" className={styles.retry} onClick={() => setRetry(value => value + 1)}><RefreshCw size={15} />Erneut versuchen</button>
             </div> : null}
             <div className={styles.results}>
-              {results.map(contact => <button type="button" key={contact.customerId}
+              {results.map(contact => {const lead=directoryAmounts.find(item=>item.customerId===contact.customerId&&item.requestId===contact.requestId);return <div key={contact.customerId}><button type="button"
                 className={styles.result + " " + (activeContact?.customerId === contact.customerId ? styles.selected : "")}
                 disabled={busy} aria-pressed={activeContact?.customerId === contact.customerId}
                 onClick={() => void select(contact)}>
                 <span className={styles.contactAvatar}>{initials(contact.company || contact.displayName || "Kontakt")}</span>
                 <span className={styles.resultContent}>
-                  <strong>{contact.company || contact.displayName || "Kontakt"}</strong>
+                  <strong>{contact.company || contact.displayName || "Kontakt"} {contactSegment(contact.email)?<small className={styles.leadBadge} title="Automatisch anhand der E-Mail-Domain">{contactSegment(contact.email)}</small>:null}</strong>
+                  {lead?.amount!=null?<strong>{leadAmount(lead)}</strong>:null}
                   <span>{contact.company && contact.displayName ? contact.displayName + " · " : ""}{contact.phone || "Rufnummer fehlt"}</span>
                   <span>{contact.email || contact.requestTitle || "Kontaktdaten öffnen"}</span>
                   {contact.requestCreatedAt && <span>Letzte Anfrage: {new Date(contact.requestCreatedAt).toLocaleDateString("de-DE")}</span>}
                 </span>
                 <ChevronRight size={16} />
-              </button>)}
+              </button>{lead?.canSchedule?<DirectoryLeadSnooze lead={lead} onSaved={refreshCallHistory}/>:null}</div>;})}
             </div>
             {!loading && !error && !results.length && query.trim().length !== 1 ? <p className={styles.empty}>
               {nextOffset !== null ? "Auf dieser Seite kein passender Kontakt. Weitere Kontakte laden." :
@@ -444,6 +460,8 @@ export function PhoneCentral(props: Props) {
             </p> : null}
             {nextOffset !== null && !error ? <button type="button" className={styles.loadMore} disabled={loading}
               onClick={() => setOffset(nextOffset)}>Weitere Kontakte laden</button> : null}
+            {amountError?<p className={styles.small}>Angebotsbeträge gerade nicht verfügbar.</p>:null}
+            </>}
           </> : <section aria-label="Wahltasten" className={styles.dialer}>
             <h2 className={styles.leftTitle}>Nummer wählen</h2>
             <label className={styles.dialInput}>

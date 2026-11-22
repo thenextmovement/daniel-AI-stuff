@@ -9940,6 +9940,15 @@
       "coverage": "Customer contact edits use the authenticated Telefonzentrale UI; no additional MCP operation is exposed."
     },
     {
+      "source": "src/app/api/ops/voice-copilot/hot-leads/route.ts",
+      "sha256": "8f3271e10392ade225ad5992daef269f3e4a652e347ccbb69f5427730e9a5bb1",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "coverage": "Hot-lead scheduling uses the authenticated Telefonzentrale UI; no additional MCP operation is exposed. Existing automation workflows remain unchanged."
+    },
+    {
       "source": "src/app/api/ops/voice-copilot/knowledge/email-review/route.ts",
       "sha256": "d679afce3e68e1324fe48ada828922b99cd9993039bcec54a01133dbbaa189a8",
       "methods": [
