@@ -28,11 +28,11 @@ test("reads tenant-scoped contacts and saves atomically with server-owned tenant
  globalThis.fetch=async(url,init)=>{
   const u=new URL(String(url));let data:any=[];
   if(u.pathname.endsWith("/crm_organizations")){assert.equal(u.searchParams.get("slug"),"eq.neontrip");data=[{id:tenant}];}
-  else if(u.pathname.endsWith("/master_customers")){assert.equal(u.searchParams.get("organization_id"),"eq."+tenant);reads++;data=[{id,organization_id:tenant,email:rpc?rpc.p_email:"old@example.test",phone:null,updated_at:"2026-11-20T10:00:00Z"}];}
+  else if(u.pathname.endsWith("/master_customers")){assert.equal(u.searchParams.get("organization_id"),"eq."+tenant);reads++;data=[{id,organization_id:tenant,email:rpc?rpc.p_email:"old@example.test",phone:rpc?rpc.p_phone:null,updated_at:"2026-11-20T10:00:00Z"}];}
   else if(u.pathname.endsWith("/customer_contact_points"))data=[{kind:"email",value:"extra@example.test"},{kind:"phone",value:"+442079460018"}];
   else if(u.pathname.endsWith("/voice_customer_phone_numbers"))data=[{phone:"+442079460018"}];
   else if(u.pathname.endsWith("/customer_manual_contact_fields"))data=[{fields:["customer_organization_id"]}];
-  else if(u.pathname.endsWith("/save_voice_customer_v1")){rpc=JSON.parse(String(init?.body));data={customerId:id};}
+  else if(u.pathname.endsWith("/save_voice_customer_v2")){rpc=JSON.parse(String(init?.body));data={customerId:id};}
   else assert.ok(u.pathname.endsWith("/customer_organizations"),u.pathname);
   return new Response(JSON.stringify(data),{status:200});
  };
@@ -40,6 +40,12 @@ test("reads tenant-scoped contacts and saves atomically with server-owned tenant
   const initial=await readCustomerEditor(id);assert.deepEqual(initial.phones,["+442079460018"]);assert.equal(initial.organizationManuallySet,true);
   const result=await saveCustomerEditor(id,{...input(),tenantId:"untrusted"},"actor-id");
   assert.equal(rpc.p_tenant_id,tenant);assert.equal(rpc.p_actor,"actor-id");assert.equal(rpc.p_customer_id,id);assert.equal(result.customer.email,"old@example.test");assert.equal(rpc.p_phone,null);assert.equal(reads,3);
+  assert.equal(rpc.p_confirm_email,false);assert.equal(rpc.p_confirm_phone,false);
+  const saved=await saveCustomerEditor(id,{...input(),confirmPrimaryEmail:true,confirmPrimaryPhone:true},"actor-id");
+  assert.equal(rpc.p_confirm_email,true);assert.equal(rpc.p_confirm_phone,true);
+  assert.equal(saved.customer.email,"main@example.test");assert.equal(saved.customer.phone,"+4915904209999");
+  assert.equal(reads,5);
+
  }finally{globalThis.fetch=original;if(oldUrl===undefined)delete process.env.SUPABASE_URL;else process.env.SUPABASE_URL=oldUrl;if(oldKey===undefined)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=oldKey;}
 });
 
@@ -51,3 +57,17 @@ test("reads tenant-scoped contacts and saves atomically with server-owned tenant
  assert.deepEqual(validateCustomerEditor({...input(),phones:[{phone:"015904208888",country:"DE"}]}).phones,["+4915904208888"]);
  assert.throws(()=>validateCustomerEditor({...input(),phones:[{phone:"015904209999",country:"DE"}]},{email:"old@example.test",phone:"015904209999"}));
  });
+
+test("confirmed main contacts are normalized independently; unconfirmed fields stay unchanged",()=>{
+ const primary={email:"old@example.test",phone:"legacy number"};
+ const confirmed=validateCustomerEditor({...input(),confirmPrimaryEmail:true,confirmPrimaryPhone:true,phone:"020 7946 0018",phoneCountry:"GB"},primary);
+ assert.equal(confirmed.email,"main@example.test");assert.equal(confirmed.phone,"+442079460018");
+ const onlyEmail=validateCustomerEditor({...input(),confirmPrimaryEmail:true},primary);
+ assert.equal(onlyEmail.email,"main@example.test");assert.equal(onlyEmail.phone,"legacy number");
+ const onlyPhone=validateCustomerEditor({...input(),confirmPrimaryPhone:true},primary);
+ assert.equal(onlyPhone.email,"old@example.test");assert.equal(onlyPhone.phone,"+4915904209999");
+ assert.equal(validateCustomerEditor({...input(),confirmPrimaryEmail:"true"},primary).email,primary.email);
+ assert.throws(()=>validateCustomerEditor({...input(),confirmPrimaryEmail:true,email:"bad"},primary));
+ assert.throws(()=>validateCustomerEditor({...input(),confirmPrimaryPhone:true,phone:"123"},primary));
+ assert.throws(()=>validateCustomerEditor({...input(),confirmPrimaryEmail:true,emails:["main@example.test"]},primary));
+});

@@ -10,6 +10,10 @@ type Form={firstName:string;lastName:string;email:string;phone:string;emails:str
 export function CustomerEditor({customerId,disabled,onSaved,onDial,trigger="name",count}:{customerId:string;disabled:boolean;onSaved:(data:CustomerEditorData)=>Promise<void>;onDial?:(phone:string)=>void;count?:number;trigger?:"name"|"phone"|"email"}){
  const dialog=useRef<HTMLDialogElement>(null),titleId=useId();
  const [data,setData]=useState<CustomerEditorData|null>(null),[form,setForm]=useState<Form|null>(null);
+ const primaryDialog=useRef<HTMLDialogElement>(null);
+ const [primaryField,setPrimaryField]=useState<"email"|"phone"|null>(null);
+ const [primaryEdits,setPrimaryEdits]=useState({email:false,phone:false});
+ const [primaryCountry,setPrimaryCountry]=useState<CountryCode>("DE");
  const removalDialog=useRef<HTMLDialogElement>(null);
  const [removal,setRemoval]=useState<{kind:"emails"|"phones";index:number;code:string;value:string}|null>(null),[confirmation,setConfirmation]=useState("");
  const [phoneCountries,setPhoneCountries]=useState<CountryCode[]>([]);
@@ -18,17 +22,17 @@ export function CustomerEditor({customerId,disabled,onSaved,onDial,trigger="name
  const body=await response.json();if(!response.ok)throw Error(response.status===502?"Die Kundendaten sind gerade nicht erreichbar.":body.error||"Speichern fehlgeschlagen.");return body as CustomerEditorData;
  }
  async function open(){
- dialog.current?.showModal();setWorking(true);setError("");setForm(null);
+ dialog.current?.showModal();setWorking(true);setError("");setForm(null);setPrimaryEdits({email:false,phone:false});
  try{
  const result=await read(await fetch("/api/ops/voice-copilot/customer?"+new URLSearchParams({customerId}),{cache:"no-store",signal:AbortSignal.timeout(15000)}));
- setData(result);setPhoneCountries(result.phones.map(phone=>parsePhoneNumberFromString(phone)?.country||"DE"));const c=result.customer;
+ setPrimaryCountry(parsePhoneNumberFromString(result.customer.phone||"")?.country||"DE");setData(result);setPhoneCountries(result.phones.map(phone=>parsePhoneNumberFromString(phone)?.country||"DE"));const c=result.customer;
  setForm({firstName:c.first_name||"",lastName:c.last_name||"",email:c.email,phone:c.phone||"",emails:result.emails,phones:result.phones,organizationId:c.customer_organization_id||"",newOrganizationName:"",expectedUpdatedAt:c.updated_at});
  }catch(e){setError(e instanceof Error?e.message:"Kunde konnte nicht geladen werden.");}finally{setWorking(false);}
  }
  async function save(){
  if(!form)return;setWorking(true);setError("");
  try{
- const result=await read(await fetch("/api/ops/voice-copilot/customer",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({customerId,...form,emails:form.emails.map(email=>email.trim()).filter(Boolean),phones:form.phones.map((phone,i)=>({phone:phone.trim(),country:phoneCountries[i]||"DE"})).filter(entry=>entry.phone),organizationId:form.organizationId||null})}));
+ const result=await read(await fetch("/api/ops/voice-copilot/customer",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({customerId,...form,confirmPrimaryEmail:primaryEdits.email,confirmPrimaryPhone:primaryEdits.phone,phoneCountry:primaryCountry,emails:form.emails.map(email=>email.trim()).filter(Boolean),phones:form.phones.map((phone,i)=>({phone:phone.trim(),country:phoneCountries[i]||"DE"})).filter(entry=>entry.phone),organizationId:form.organizationId||null})}));
  // Only acknowledge after the server has read the saved customer back.
  await onSaved(result);dialog.current?.close();
  }catch(e){setError(e instanceof Error?e.message:"Speichern fehlgeschlagen.");}finally{setWorking(false);}
@@ -48,10 +52,11 @@ export function CustomerEditor({customerId,disabled,onSaved,onDial,trigger="name
  <div className={styles.contactEditorGrid}>
  <label>Vorname<input value={form.firstName} maxLength={120} onChange={e=>field("firstName",e.target.value)}/></label>
  <label>Nachname<input value={form.lastName} maxLength={120} onChange={e=>field("lastName",e.target.value)}/></label>
- <label>Haupt-E-Mail<div className={styles.primaryContactRow}><input type="email" readOnly value={form.email}/><ContactCopyButton value={form.email} label="Haupt-E-Mail"/></div></label>
- <label>Hauptnummer<div className={styles.primaryContactRow}><input type="tel" readOnly value={form.phone} placeholder="Nicht hinterlegt"/><ContactCopyButton value={form.phone} label="Hauptnummer"/>{form.phone&&onDial&&<button type="button" className={styles.contactAction} aria-label="Hauptnummer mit Placetel anrufen" title="Mit Placetel anrufen" onClick={()=>{dialog.current?.close();onDial(form.phone);}}><Phone size={16}/></button>}</div></label>
+ <label>Haupt-E-Mail<div className={styles.primaryContactRow}><input type="email" readOnly={!primaryEdits.email} required value={form.email} onChange={e=>field("email",e.target.value)}/><ContactCopyButton value={form.email} label="Haupt-E-Mail"/><button type="button" className={styles.contactAction} aria-label="Haupt-E-Mail bearbeiten" onClick={()=>{setPrimaryField("email");primaryDialog.current?.showModal();}}><Pencil size={16}/></button></div></label>
+ <label>Hauptnummer<div className={styles.primaryContactRow}><input type="tel" readOnly={!primaryEdits.phone} value={form.phone} onChange={e=>field("phone",e.target.value)} placeholder="Nicht hinterlegt"/><ContactCopyButton value={form.phone} label="Hauptnummer"/><button type="button" className={styles.contactAction} aria-label="Hauptnummer bearbeiten" onClick={()=>{setPrimaryField("phone");primaryDialog.current?.showModal();}}><Pencil size={16}/></button>{form.phone&&onDial&&<button type="button" className={styles.contactAction} aria-label="Hauptnummer mit Placetel anrufen" title="Mit Placetel anrufen" disabled={form.phone!==data?.customer.phone} onClick={()=>{dialog.current?.close();onDial(form.phone);}}><Phone size={16}/></button>}</div></label>
  </div>
- <small>Haupt-E-Mail und Hauptnummer bleiben unverändert. Weitere E-Mails und Telefonnummern kannst du unten hinzufügen.</small>
+ {primaryEdits.phone&&<PhoneCountrySelect label="Land für Hauptnummer" value={primaryCountry} onChange={setPrimaryCountry}/>}
+ <small>Hauptkontakte kannst du über den Stift nach Bestätigung bearbeiten. Änderungen werden erst mit „Änderungen speichern“ übernommen. Weitere Kontaktdaten kannst du unten hinzufügen.</small>
  {(["emails","phones"] as const).map(kind=><section key={kind} className={styles.contactEditorSection}>
  <h4>{kind==="emails"?"Zusätzliche E-Mails":"Zusätzliche Telefonnummern"} <small>{form[kind].length}/10</small></h4>
  {form[kind].map((value,index)=><div className={styles.contactEditorRow} key={index}>
@@ -73,6 +78,12 @@ export function CustomerEditor({customerId,disabled,onSaved,onDial,trigger="name
  <div className={styles.actions}><button type="submit" disabled={working} className={styles.button+" "+styles.primary}>{working?"Wird gespeichert …":"Änderungen speichern"}</button><button type="button" disabled={working} className={styles.button} onClick={()=>dialog.current?.close()}>Abbrechen</button></div>
  </form>}
  {!form&&!working&&<div className={styles.actions}><button type="button" className={styles.button} onClick={()=>void open()}>Erneut versuchen</button><button type="button" className={styles.button} onClick={()=>dialog.current?.close()}>Schließen</button></div>}
+ </dialog>
+ <dialog ref={primaryDialog} className={styles.phoneDialog} aria-label="Hauptkontakt bearbeiten" onClose={()=>setPrimaryField(null)}>
+ <h3>{primaryField==="email"?"Haupt-E-Mail-Adresse":"Hauptnummer"} ändern?</h3>
+ <p>Möchtest du diesen Hauptkontakt wirklich ändern? Du kannst stattdessen einen zusätzlichen Kontakt hinzufügen.</p>
+ <p>Die Änderung wird erst mit „Änderungen speichern“ übernommen.</p>
+ <div className={styles.actions}><button type="button" className={styles.button} onClick={()=>primaryDialog.current?.close()}>Abbrechen</button><button type="button" className={styles.button+" "+styles.primary} onClick={()=>{if(primaryField)setPrimaryEdits(old=>({...old,[primaryField]:true}));primaryDialog.current?.close();}}>Bearbeiten erlauben</button></div>
  </dialog>
  <dialog ref={removalDialog} className={styles.phoneDialog} aria-label="Kontakt entfernen" onClose={()=>setRemoval(null)}>
  <h3>Kontakt wirklich entfernen?</h3><p>{removal?.value || "Leeren Eintrag entfernen"}</p>
