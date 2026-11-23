@@ -9941,7 +9941,7 @@
     },
     {
       "source": "src/app/api/ops/voice-copilot/hot-leads/route.ts",
-      "sha256": "8f3271e10392ade225ad5992daef269f3e4a652e347ccbb69f5427730e9a5bb1",
+      "sha256": "68fa6c5d699874d58e40ead7308e8505980b67f03a7cefbad4c4e0ebd9871847",
       "methods": [
         "GET",
         "PATCH"
