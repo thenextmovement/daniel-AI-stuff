@@ -8,7 +8,7 @@ export async function GET(request:NextRequest){
  const denied=await authorizeVoiceCopilotApi(request);if(denied)return denied;
  try{
   const q=request.nextUrl.searchParams;
-  const data=q.has("customerIds")?await voiceDirectoryAmounts(q.get("customerIds")!.split(",").filter(Boolean)):await listVoiceHotLeads(q.get("filter")||"today",q.get("sort")||"priority",Number(q.get("offset")||0));
+  const data=q.has("customerIds")?await voiceDirectoryAmounts(q.get("customerIds")!.split(",").filter(Boolean)):await listVoiceHotLeads(q.get("filter")||"today",q.get("sort")||"priority",Number(q.get("offset")||0),new Date(),q.get("status")||"all",q.get("score")||"all");
   return NextResponse.json({ok:true,...data},{headers:{"cache-control":"no-store"}});
  }catch(error){return voiceCopilotApiFailure(error,"hot-leads-read");}
 }

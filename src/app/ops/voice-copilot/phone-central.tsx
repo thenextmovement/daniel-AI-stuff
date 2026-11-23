@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNo
 import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
-import {HotLeads,leadAmount} from "./hot-leads";
+import {HotLeads,leadAmount,LeadPlanner} from "./hot-leads";
 import {contactSegment} from "@/lib/ops/voice-hot-lead-rules";
 import type {VoiceHotLead} from "@/lib/ops/voice-hot-leads";
 import {CustomerEditor} from "./customer-editor";
@@ -58,6 +58,8 @@ function initials(value: string) {
 }
 export function PhoneCentral(props: Props) {
   const { selected } = props;
+  const [leadCallStart,setLeadCallStart]=useState<{customerId:string;requestId:string;startedAt:string}|null>(null);
+  const leadCallStarted=useCallback((customerId:string,requestId:string,startedAt:string)=>setLeadCallStart({customerId,requestId,startedAt}),[]);
   const [finishedLeadCall,setFinishedLeadCall]=useState<{customerId:string;requestId:string;callId:string}|null>(null);
   const leadCallEnded=useCallback((customerId:string,requestId:string,callId:string)=>setFinishedLeadCall({customerId,requestId,callId}),[]);
   const [callHistoryRevision, setCallHistoryRevision] = useState(0);
@@ -65,6 +67,7 @@ export function PhoneCentral(props: Props) {
   const [phoneAdminOpen,setPhoneAdminOpen]=useState(false);
   const [phoneIdentity,setPhoneIdentity]=useState<PhoneIdentity|null>(null);
   const browserPhone=useBrowserPhone(phoneIdentity,props.busy,leadCallEnded);
+  useEffect(()=>{const call=browserPhone.call;if(call?.customerId&&call.requestId&&call.startedAt)setLeadCallStart({customerId:call.customerId,requestId:call.requestId,startedAt:call.startedAt});},[browserPhone.call?.id,browserPhone.call?.startedAt,browserPhone.call?.customerId,browserPhone.call?.requestId]);
   const [outgoingRoute,setOutgoingRoute]=useState<"browser"|"mobile">("browser");
   const mobileAudio=(browserPhone.transfer?.role==="recipient"&&browserPhone.transfer.transport==="mobile")||browserPhone.call?.transport==="mobile"||(!browserPhone.call&&outgoingRoute==="mobile");
   const canDial=outgoingRoute==="mobile"?browserPhone.mobileAllowed:browserPhone.allowed;
@@ -258,7 +261,7 @@ export function PhoneCentral(props: Props) {
     phonePicker.current?.close();
     if(placetelCall.current){if(!placetelCall.current.start(target)){setNotice("Bitte schließe zuerst den bereits vorbereiteten Anruf ab oder prüfe seinen Status.");return;}}
     else if(event)openPhoneApp(event,target);
-    else {if(!window.confirm(`Möchtest du ${target} jetzt mit der Telefon-App anrufen?`))return;window.location.assign("tel:"+target);setNotice("Nummer an die Telefon-App übergeben.");}
+    else {if(!window.confirm(`Möchtest du ${target} jetzt mit der Telefon-App anrufen?`))return;if(briefCustomerId&&briefRequestId)leadCallStarted(briefCustomerId,briefRequestId,new Date().toISOString());window.location.assign("tel:"+target);setNotice("Nummer an die Telefon-App übergeben.");}
     if(briefCustomerId)setChosenPhone({customerId:briefCustomerId,phone:number});
   }
   const phone = chosenPhone && chosenPhone.customerId===briefCustomerId && phoneNumbers.includes(parsePhoneNumberFromString(chosenPhone.phone,"DE")?.number||chosenPhone.phone) ? chosenPhone.phone : customer?.phone || phoneNumbers[0] || "";
@@ -274,6 +277,7 @@ export function PhoneCentral(props: Props) {
     if (!window.confirm(`Möchtest du ${phone} jetzt mit der Telefon-App anrufen?`)) return;
     if (assisted && readySession) dialedSession.current = readySession;
     lastDialAt.current = performance.now();
+    if(briefCustomerId&&briefRequestId)leadCallStarted(briefCustomerId,briefRequestId,new Date().toISOString());
     window.location.assign("tel:" + phone);
     setNotice(assisted ? "Telefon-App geöffnet. Die Gesprächsbegleitung läuft in OPS weiter." : "Die Standard-Telefon-App öffnet sich. Anrufe darüber werden derzeit nicht automatisch mitgeschrieben.");
   }
@@ -329,7 +333,7 @@ export function PhoneCentral(props: Props) {
             <div className={styles.actions + " " + styles.headerActions}>
               {briefCustomerId && briefRequestId && dialPhone && props.workspace === "prepare" &&
                 <PlacetelCallButton ref={placetelCall} key={briefCustomerId + ":" + briefRequestId} customerId={briefCustomerId}
-                  requestId={briefRequestId} dialNumber={dialPhone} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} onEnded={leadCallEnded} />}
+                  requestId={briefRequestId} dialNumber={dialPhone} disabled={busy || contextLoading} onCallChange={refreshCallHistory} onNoteTarget={selectNoteTarget} onEnded={leadCallEnded} onStarted={leadCallStarted} />}
               {customer && !readySession && props.workspace !== "prepare" && (props.workspace === "assist" ? (
                 <button type="submit" form="phone-assist-start" className={styles.button + " " + styles.primary}
                   disabled={busy || contextLoading || !selected}>
@@ -569,9 +573,11 @@ export function PhoneCentral(props: Props) {
                           : "Wähle links einen Kontakt. Hier findest du seine letzten Absprachen, Nachrichten und Vorgänge."}
                     </p>
                   </div>
-                  {selected?.requestId && <CallNotes key={selected.requestId} requestId={selected.requestId} target={selectedNoteCall} onSaved={refreshCallHistory}/>}
+
                 </>
               ) : null}
+              {briefCustomerId && briefRequestId && <LeadPlanner key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} revision={callHistoryRevision} callStartedAt={leadCallStart?.customerId===briefCustomerId&&leadCallStart.requestId===briefRequestId?leadCallStart.startedAt:null} onRecorded={()=>setLeadCallStart(null)} onSaved={refreshCallHistory}/>}
+              {props.workspace === "prepare" && selected?.requestId && <CallNotes key={selected.requestId} requestId={selected.requestId} target={selectedNoteCall} onSaved={refreshCallHistory}/>}
               {props.children}
             </section>
             <aside className={styles.context} aria-label="Kundenübersicht">

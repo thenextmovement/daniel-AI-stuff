@@ -4,8 +4,8 @@ import { Phone } from "lucide-react";
 import styles from "./phone-central.module.css";
 
 export type PlacetelCallHandle = { start: (number: string) => boolean };
-export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, disabled, onCallChange, onNoteTarget, onEnded }: {
-  onEnded?: (customerId:string,requestId:string,callId:string)=>void; ref?: Ref<PlacetelCallHandle>; customerId: string; requestId: string; dialNumber?:string; disabled: boolean; onCallChange: () => void; onNoteTarget: (callId:string) => void;
+export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, disabled, onCallChange, onNoteTarget, onEnded, onStarted }: {
+  onStarted?: (customerId:string,requestId:string,startedAt:string)=>void; onEnded?: (customerId:string,requestId:string,callId:string)=>void; ref?: Ref<PlacetelCallHandle>; customerId: string; requestId: string; dialNumber?:string; disabled: boolean; onCallChange: () => void; onNoteTarget: (callId:string) => void;
 }) {
   const confirmation = useRef<HTMLDialogElement>(null);
   const key = useRef<string | null>(null);
@@ -67,6 +67,7 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
       setMessage("Die Vorbereitung ist abgelaufen. Bitte bereite den Anruf erneut vor.");
       return;
     }
+    onStarted?.(binding.current.customerId,binding.current.requestId,new Date().toISOString());
     setStatus("opened");
     window.location.assign("tel:" + number);
     setMessage("Nummer an Placetel übergeben. Die Gesprächsdokumentation erscheint hier, sobald die Aufnahme vorliegt.");

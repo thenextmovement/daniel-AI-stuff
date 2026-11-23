@@ -1,23 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {hotLeadVisible,berlinDate,shiftLeadDate,contactSegment} from "../../src/lib/ops/voice-hot-lead-rules";
-const today="2026-11-22";
-const source="2026-11-21T10:00:00Z";
-const state={status:"ignored" as const,source_at:source,due_date:null,handled_at:"2026-11-22T10:00:00Z",revision:1};
-test("ignore persists, but a genuinely new offer can qualify again",()=>{
- assert.equal(hotLeadVisible(source,state,today,null),false);
- assert.equal(hotLeadVisible("2026-11-23T10:00:00Z",state,"2026-11-23",null),true);
-});
-test("snooze remains hidden until its calendar date, then overrides old call history",()=>{
- const snoozed={...state,status:"scheduled" as const,due_date:"2026-11-23"};
- assert.equal(hotLeadVisible(source,snoozed,today,null),false);
- assert.equal(hotLeadVisible(source,snoozed,"2026-11-23","2026-11-22T09:00:00Z"),true);
- assert.equal(hotLeadVisible(source,snoozed,"2026-11-23","2026-11-23T09:00:00Z"),false);
-});
-test("confirmed call hides; absent call does not",()=>{
- assert.equal(hotLeadVisible(source,null,today,null),true);
- assert.equal(hotLeadVisible(source,null,today,"2026-11-22T09:00:00Z"),false);
-});
+import {berlinDate,shiftLeadDate,contactSegment} from "../../src/lib/ops/voice-hot-lead-rules";
 test("Berlin day and week shifts cross DST and month boundaries correctly",()=>{
  assert.equal(berlinDate(new Date("2026-11-22T23:30:00Z")),"2026-11-23");
  assert.equal(shiftLeadDate("2026-10-24",1),"2026-10-25");
@@ -30,7 +13,7 @@ test("domain indicator has unknown for missing email and handles private domains
 });
 
 import {listVoiceHotLeads,saveVoiceHotLead} from "../../src/lib/ops/voice-hot-leads";
-test("feed binds exact request, sorts globally and excludes closed, blocked, called and future callbacks",async()=>{
+test("feed binds exact request, sorts globally and excludes closed, blocked and future callbacks, without interpreting call end as reached",async()=>{
  const oldFetch=globalThis.fetch,env={...process.env};
  const base={request_id:"request",customer_id:"customer",trello_card_id:null,title:"Synthetic",created_at:"2026-11-22T09:00:00Z",status:"new",deal_status:"open",name:"Test",company:null,company_name:null,email:"test@gmail.com",phone:null,additional_phones:["+4930123456"],estimated_amount:100,list_status:null,source_at:null,handled_at:null,due_date:null,revision:0,last_confirmed_call:null,blocked:false,callback_at:null};
  const rows=[{...base,id:"eligible"},{...base,id:"won",status:"won"},{...base,id:"blocked",blocked:true},{...base,id:"called",last_confirmed_call:"2026-11-22T10:00:00Z"},{...base,id:"callback",callback_at:"2026-11-23T10:00:00Z"},{...base,id:"expensive",estimated_amount:1000},{...base,id:"old-due",created_at:"2026-09-01T00:00:00Z",list_status:"scheduled",source_at:"2026-09-01T00:00:00Z",handled_at:"2026-11-21T10:00:00Z",due_date:"2026-11-22",revision:1}];
@@ -39,7 +22,7 @@ test("feed binds exact request, sorts globally and excludes closed, blocked, cal
   process.env.SUPABASE_URL="https://db.invalid";process.env.SUPABASE_SERVICE_ROLE_KEY="synthetic";process.env.NEONTRIP_OFFERS_BASE_URL="https://offers.invalid";process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY="synthetic";
   globalThis.fetch=async(input,init)=>{const url=new URL(String(input));calls.push(url.pathname);assert.equal(init?.method||"GET","GET");return Response.json(url.hostname==="offers.invalid"?{results:[],nextCursor:null}:rows);};
   const data=await listVoiceHotLeads("today","amount",0,new Date("2026-11-22T12:00:00Z"));
-  assert.deepEqual(data.results.map(x=>x.id),["expensive","eligible","old-due"]);
+  assert.deepEqual(data.results.map(x=>x.id),["expensive","called","eligible","old-due"]);
   assert.equal(data.results[0].phone,"+4930123456");
   assert.ok(calls.every(p=>p==="/api/internal/offers/voice-leads"||p==="/rest/v1/voice_hot_lead_candidates"));
   globalThis.fetch=async()=>new Response("failure",{status:502});

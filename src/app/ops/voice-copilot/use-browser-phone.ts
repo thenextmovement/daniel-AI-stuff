@@ -4,7 +4,7 @@ import type {Call,Device} from "@twilio/voice-sdk";
 import type {PhoneIdentity} from "@/lib/ops/voice-phone-contract";
 import {readPhoneCentralResponse} from "./phone-central-data";
 
-export type BrowserCall = {transport?:"browser"|"mobile";id:string;state:string;direction?:"inbound"|"outbound";phone:string;connected:boolean;endedAt:string|null;cleanupPending:boolean;isTest:boolean;customerId?:string|null;requestId?:string|null};
+export type BrowserCall = {startedAt?:string;transport?:"browser"|"mobile";id:string;state:string;direction?:"inbound"|"outbound";phone:string;connected:boolean;endedAt:string|null;cleanupPending:boolean;isTest:boolean;customerId?:string|null;requestId?:string|null};
 export type AiHandoffView={id:string;attemptId:string;callId:string;phone:string;state:"preparing"|"ready"|"redirecting"|"connected"|"cancelled"|"failed";connected:boolean;cleanupPending:boolean};
 export type PhoneTransferView = {transport?:"browser"|"mobile";id:string;state:string;fromStaffId:string;toStaffId:string;call:BrowserCall;role:"source"|"recipient";fromName:string;toName:string;
  expiresAt:string;targetJoined:boolean;cancelRequested:boolean;ownerAdopted:boolean;endedAt:string|null;cleanupPending:boolean};
