@@ -14,18 +14,18 @@ export function LeadStages({lead}:{lead:VoiceHotLead}){
  return <ol className={styles.leadStages}>{labels.map((label,i)=>{const state=lead.indicators?.[i]||"open";return <li key={label} data-state={state} title={descriptions[state]}><span aria-label={descriptions[state]}>{state==='reached'?'✓':state==='not_reached'?'×':state==='skipped'?'–':'○'}</span> {label}</li>;})}</ol>;
 }
 export function HotLeads({onSelect,busy,revision,finishedCall}:{finishedCall:{customerId:string;requestId:string;callId:string}|null;onSelect:(contact:VoiceDirectoryContact)=>void;busy:boolean;revision:number}){
- const [status,setStatus]=useState("all"),[sort,setSort]=useState("priority"),[refresh,setRefresh]=useState(0),[offset,setOffset]=useState(0);
+ const [status,setStatus]=useState("all"),[age,setAge]=useState("all"),[sort,setSort]=useState("priority"),[refresh,setRefresh]=useState(0),[offset,setOffset]=useState(0);
  const [data,setData]=useState<{results:VoiceHotLead[];nextOffset:number|null;total:number}|null>(null);
  const [loading,setLoading]=useState(false),[error,setError]=useState("");
  useEffect(()=>{const reload=()=>{if(!document.hidden)setRefresh(n=>n+1);};const timer=window.setInterval(reload,60000);window.addEventListener('focus',reload);document.addEventListener('visibilitychange',reload);return()=>{clearInterval(timer);window.removeEventListener('focus',reload);document.removeEventListener('visibilitychange',reload);};},[]);
  useEffect(()=>{
   const controller=new AbortController();setLoading(true);setError("");
-  void fetch("/api/ops/voice-copilot/hot-leads?"+new URLSearchParams({status,sort,offset:String(offset)}),{cache:"no-store",signal:controller.signal})
+  void fetch("/api/ops/voice-copilot/hot-leads?"+new URLSearchParams({status,sort,age,offset:String(offset)}),{cache:"no-store",signal:controller.signal})
    .then(r=>readPhoneCentralResponse<NonNullable<typeof data>>(r,"Hot-Leads konnten nicht vollständig geladen werden. Bitte erneut versuchen."))
    .then(result=>{if(!controller.signal.aborted)setData(result);})
    .catch(e=>{if(!controller.signal.aborted){setData(null);setError(e.message);}}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
   return ()=>controller.abort();
- },[status,sort,offset,refresh,revision,finishedCall]);
+ },[status,sort,age,offset,refresh,revision,finishedCall]);
  const statusOptions={all:"Alle",inquiry:"Anfrage",offer:"Angebot",reminder:"Reminder"};
  const sortOptions={priority:"Score",overdue:"Fälligkeit",amount:"Betrag"};
  return <section aria-label="Hot-Leads" className={styles.hotLeads}>
@@ -38,10 +38,14 @@ export function HotLeads({onSelect,busy,revision,finishedCall}:{finishedCall:{cu
     <summary><ArrowDownWideNarrow size={14}/><span>{sortOptions[sort as keyof typeof sortOptions]}</span><ChevronDown size={12}/></summary>
     <div className={styles.leadMenuOptions} aria-label="Sortieren">{Object.entries(sortOptions).map(([value,label])=><button type="button" key={value} aria-pressed={sort===value} onClick={e=>{setSort(value);setOffset(0);e.currentTarget.closest('details')?.removeAttribute('open');}}>{label}{value==='overdue'?' · älteste zuerst':' · absteigend'}</button>)}</div>
    </details>
-   <button type="button" className={styles.leadRefresh} aria-label="Hot-Leads aktualisieren" title="Aktualisieren" disabled={loading} onClick={()=>setRefresh(n=>n+1)}><RefreshCw size={15}/></button>
+   <details className={styles.leadMenu} onKeyDown={e=>{if(e.key==='Escape')e.currentTarget.open=false;}}>
+    <summary title="Alter ab bestätigtem Angebotsversand"><span>{age==='all'?'Angebotsalter':`≤ ${age} ${age==='1'?'Tag':'Tage'}`}</span><ChevronDown size={12}/></summary>
+    <div className={styles.leadMenuOptions} aria-label="Angebotsalter filtern">{['all','1','3','5','7','14','30','60','90'].map(value=><button type="button" key={value} aria-pressed={age===value} onClick={e=>{setAge(value);setOffset(0);e.currentTarget.closest('details')?.removeAttribute('open');}}>{value==='all'?'Alle':`Bis ${value} ${value==='1'?'Tag':'Tage'}`}</button>)}</div>
+   </details>
+
   </div>
   {error?<p role="alert" className={styles.searchError}>{error}</p>:null}
-  <p role="status" className={styles.leadCount}>{loading?"Wird aktualisiert …":data?data.total+" fällige Einträge":""}</p>
+  <div className={styles.leadCount}><span role="status">{loading?"Wird aktualisiert …":data?data.total+" fällige Einträge":""}</span><button type="button" className={styles.leadRefresh} aria-label="Hot-Leads aktualisieren" title="Aktualisieren" disabled={loading} onClick={()=>setRefresh(n=>n+1)}><RefreshCw size={15}/></button></div>
   {!loading&&data&&!data.results.length?<p>Keine fälligen Einträge für diese Filter.</p>:null}
   <div className={styles.leadResults}>{data?.results.map(lead=><article key={lead.id} className={styles.leadCard}>
    <div className={styles.leadHeading}><button type="button" className={styles.leadName} disabled={busy} onClick={()=>onSelect(lead)}>{lead.company||lead.displayName||"Kontakt"}</button>{lead.segment?<small className={styles.leadBadge} title="Automatisch anhand der E-Mail-Domain">{lead.segment}</small>:null}</div>

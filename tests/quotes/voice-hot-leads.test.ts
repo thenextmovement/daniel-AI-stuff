@@ -55,3 +55,24 @@ for (const offerCard of ["bbbbbbbbbbbbbbbbbbbbbbbb", "bbbbbbbbbbbbbbbbbbbbbbbb:s
   await assert.rejects(()=>listVoiceHotLeads("today","amount",0,new Date("2026-11-22T12:00:00Z")),/Invalid offers feed/);
  }finally{globalThis.fetch=oldFetch;for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
 });
+
+test("offer age uses confirmed first send, filters before pagination and accepts inclusive limits",async()=>{
+ const oldFetch=globalThis.fetch,env={...process.env},now=new Date("2026-11-23T12:00:00Z");
+ const ages=[...Array(31).fill(10),1,3,5,7,14,30,60,90,90.01,null,-1];
+ const rows=ages.map((_,i)=>({id:`r${i}`,request_id:`request${i}`,customer_id:`customer${i}`,offer_ids:[`o${i}`],trello_card_id:null,title:"Synthetic",created_at:"2026-11-22T09:00:00Z",status:"new",deal_status:"open",name:"Test",company:null,company_name:null,email:null,phone:null,additional_phones:[],estimated_amount:null,list_status:null,source_at:null,handled_at:null,due_date:null,revision:0,blocked:false,callback_at:null}));
+ const offers=ages.map((days,i)=>({id:`o${i}`,trelloCardId:null,offerNumber:`${i}`,status:"SENT",totalGross:100,currency:"EUR",createdAt:"2026-08-01T09:00:00Z",sentAt:days===null?null:new Date(now.getTime()-days*86400000).toISOString(),viewedAt:null,closed:false}));
+ try{
+  process.env.SUPABASE_URL="https://db.invalid";process.env.SUPABASE_SERVICE_ROLE_KEY="synthetic";process.env.NEONTRIP_OFFERS_BASE_URL="https://offers.invalid";process.env.NEONTRIP_OFFERS_INTERNAL_API_KEY="synthetic";
+  globalThis.fetch=async input=>Response.json(new URL(String(input)).hostname==='offers.invalid'?{results:offers,nextCursor:null}:rows);
+  for(const days of [1,3,5,7,14,30,60,90]){
+   const data=await listVoiceHotLeads('today','amount',0,now,'all','all',String(days));
+   assert.equal(data.total,ages.filter(age=>age!==null&&age>=0&&age<=days).length);
+   assert.equal(data.results.length,Math.min(30,data.total));
+   assert.ok(data.results.every(lead=>lead.firstSentAt&&now.getTime()-Date.parse(lead.firstSentAt)<=days*86400000));
+  }
+  const page=await listVoiceHotLeads('today','amount',30,now,'all','all','90');
+  assert.equal(page.results.length,9);assert.equal(page.nextOffset,null);
+  const inquiry=await listVoiceHotLeads('today','amount',0,now,'inquiry','all','90');assert.equal(inquiry.total,0);
+  await assert.rejects(()=>listVoiceHotLeads('today','amount',0,now,'all','all','91'));
+ }finally{globalThis.fetch=oldFetch;for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
+});

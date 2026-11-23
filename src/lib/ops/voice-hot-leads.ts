@@ -58,8 +58,8 @@ function toLead(row:Candidate,offer:Offer|undefined,now=new Date()):VoiceHotLead
 function queueFor(row:Candidate,offer:Offer|undefined,now:Date){
  return leadQueue(row.created_at,offer?.sentAt??null,{status:row.list_status,stage:row.stage??null,dueDate:row.due_date,dueAt:row.due_at??null,outcomes:row.outcomes??{},handledAt:row.handled_at},row.callback_at,now);
 }
-export async function listVoiceHotLeads(filter:string,sort:string,offset:number,now=new Date(),status="all",score="all"){
- if(!["today","recent"].includes(filter)||!["priority","amount","newest","overdue"].includes(sort)||!Number.isSafeInteger(offset)||offset<0||offset>10000||!["all","inquiry","offer","reminder"].includes(status)||!["all","very_hot","hot","warm_plus","warm","cold","low_intent","problem","paused","unknown"].includes(score))throw invalid("Ungültiger Listenfilter.");
+export async function listVoiceHotLeads(filter:string,sort:string,offset:number,now=new Date(),status="all",score="all",age="all"){
+ if(!["all","1","3","5","7","14","30","60","90"].includes(age)||!["today","recent"].includes(filter)||!["priority","amount","newest","overdue"].includes(sort)||!Number.isSafeInteger(offset)||offset<0||offset>10000||!["all","inquiry","offer","reminder"].includes(status)||!["all","very_hot","hot","warm_plus","warm","cold","low_intent","problem","paused","unknown"].includes(score))throw invalid("Ungültiger Listenfilter.");
  const today=berlinDate(now);
  // Fixed rollout baseline: preserve the existing three-week workset, never age out its overdue items.
  const since="2026-11-02T00:00:00+01:00";
@@ -78,6 +78,10 @@ export async function listVoiceHotLeads(filter:string,sort:string,offset:number,
   if(row.list_status==='reached'&&!row.stage&&row.source_at&&Date.parse(lead.sourceAt)<=Date.parse(row.source_at))return [];
   if(status!=="all"&&lead.stage!==({inquiry:1,offer:2,reminder:3} as Record<string,number>)[status])return [];
   if(score!=="all"&&(lead.score?.level??"unknown")!==score)return [];
+  if(age!=="all"){
+   const elapsed=lead.firstSentAt?now.getTime()-Date.parse(lead.firstSentAt):NaN;
+   if(!Number.isFinite(elapsed)||elapsed<0||elapsed>Number(age)*86400000)return [];
+  }
   lead.reasons=[lead.stage===1?"Anfrage eingegangen":lead.stage===2?"Erstes Angebot gesendet":"Reminder",...(lead.needsPlanning?["Nachfassen noch planen"]:[])];
   return [lead];
  });
