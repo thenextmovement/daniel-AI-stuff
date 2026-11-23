@@ -48,7 +48,7 @@ export function HotLeads({onSelect,busy,revision,finishedCall}:{finishedCall:{cu
    <LeadStages lead={lead}/>
    <button type="button" className={styles.result} disabled={busy} onClick={()=>onSelect(lead)}><span className={styles.resultContent}><span>{lead.requestTitle}</span><span>{lead.phone||"Rufnummer fehlt"}</span><span>{lead.email}</span>{leadAmount(lead)?<strong>{lead.offerNumber?"Angebot "+lead.offerNumber+": ":"Anfrage: "}{leadAmount(lead)}</strong>:null}<span>{lead.reasons.join(" · ")}</span></span></button>
    <div className={styles.leadFooter}>
-    <span className={styles.leadSent}>{lead.firstSentAt?<>AN gesendet am: <time dateTime={lead.firstSentAt}>{new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin'}).format(new Date(lead.firstSentAt))}</time></>:"Noch nicht gesendet"}</span>
+    <span className={styles.leadSent}>{lead.firstSentAt?<>AN gesendet am: <time dateTime={lead.firstSentAt}>{new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin'}).format(new Date(lead.firstSentAt))}</time></>:"Versand nicht bestätigt"}</span>
     <span className={styles.leadScore} data-tone={!lead.score?'unknown':lead.score.score>=55?'green':lead.score.score>=22?'amber':'red'} aria-label={lead.score?`Angebots-Score ${lead.score.score} von 100`:'Score nicht verfügbar'} title={lead.score?`Angebots-Score: ${lead.score.score}/100. Grün ab 55, Gelb ab 22, Rot unter 22. Keine Abschlusswahrscheinlichkeit.`:'Score nicht verfügbar'}>{lead.score?lead.score.score:'–'}</span>
    </div>
   </article>)}</div>
