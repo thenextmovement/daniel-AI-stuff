@@ -13,6 +13,7 @@ export function LeadStages({lead}:{lead:VoiceHotLead}){
  const descriptions={open:"Offen",skipped:"Ohne Anruf übersprungen",reached:"Erreicht",not_reached:"Nicht erreicht"};
  return <ol className={styles.leadStages}>{labels.map((label,i)=>{const state=lead.indicators?.[i]||"open";return <li key={label} data-state={state} title={descriptions[state]}><span aria-label={descriptions[state]}>{state==='reached'?'✓':state==='not_reached'?'×':state==='skipped'?'–':'○'}</span> {label}</li>;})}</ol>;
 }
+export function LeadScore({lead}:{lead:VoiceHotLead}){return <span className={styles.leadScore} data-tone={!lead.score?'unknown':lead.score.score>=55?'green':lead.score.score>=22?'amber':'red'} aria-label={lead.score?`Angebots-Score ${lead.score.score} von 100`:'Score nicht verfügbar'} title={lead.score?`Angebots-Score: ${lead.score.score}/100. Grün ab 55, Gelb ab 22, Rot unter 22. Keine Abschlusswahrscheinlichkeit.`:'Score nicht verfügbar'}>{lead.score?lead.score.score:'–'}</span>;}
 export function HotLeads({onSelect,busy,revision,finishedCall}:{finishedCall:{customerId:string;requestId:string;callId:string}|null;onSelect:(contact:VoiceDirectoryContact)=>void;busy:boolean;revision:number}){
  const [status,setStatus]=useState("all"),[age,setAge]=useState("all"),[sort,setSort]=useState("priority"),[refresh,setRefresh]=useState(0),[offset,setOffset]=useState(0);
  const [data,setData]=useState<{results:VoiceHotLead[];nextOffset:number|null;total:number}|null>(null);
@@ -53,15 +54,16 @@ export function HotLeads({onSelect,busy,revision,finishedCall}:{finishedCall:{cu
    <button type="button" className={styles.result} disabled={busy} onClick={()=>onSelect(lead)}><span className={styles.resultContent}><span>{lead.requestTitle}</span><span>{lead.phone||"Rufnummer fehlt"}</span><span>{lead.email}</span>{leadAmount(lead)?<strong>{lead.offerNumber?"Angebot "+lead.offerNumber+": ":"Anfrage: "}{leadAmount(lead)}</strong>:null}<span>{lead.reasons.join(" · ")}</span></span></button>
    <div className={styles.leadFooter}>
     <span className={styles.leadSent}>{lead.firstSentAt?<>AN gesendet am: <time dateTime={lead.firstSentAt}>{new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin'}).format(new Date(lead.firstSentAt))}</time></>:"Versand nicht bestätigt"}</span>
-    <span className={styles.leadScore} data-tone={!lead.score?'unknown':lead.score.score>=55?'green':lead.score.score>=22?'amber':'red'} aria-label={lead.score?`Angebots-Score ${lead.score.score} von 100`:'Score nicht verfügbar'} title={lead.score?`Angebots-Score: ${lead.score.score}/100. Grün ab 55, Gelb ab 22, Rot unter 22. Keine Abschlusswahrscheinlichkeit.`:'Score nicht verfügbar'}>{lead.score?lead.score.score:'–'}</span>
+    <LeadScore lead={lead}/>
    </div>
   </article>)}</div>
   {data&&data.total>30?<div className={styles.leadActions}><button type="button" disabled={loading||offset===0} onClick={()=>setOffset(Math.max(0,offset-30))}>Zurück</button><button type="button" disabled={loading||data.nextOffset===null} onClick={()=>setOffset(data.nextOffset!)}>Weitere Leads</button></div>:null}
  </section>;
 }
 
-export function LeadPlanner({customerId,requestId,revision,callStartedAt,onRecorded,onSaved}:{customerId:string;requestId:string;revision:number;callStartedAt:string|null;onRecorded:()=>void;onSaved:()=>void}){
+export function LeadPlanner({customerId,requestId,revision,callStartedAt,onRecorded,onSaved,onLeadChange}:{customerId:string;requestId:string;revision:number;callStartedAt:string|null;onRecorded:()=>void;onSaved:()=>void;onLeadChange?:(lead:VoiceHotLead|null)=>void}){
  const [lead,setLead]=useState<VoiceHotLead|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[saving,setSaving]=useState(false),[refresh,setRefresh]=useState(0);
+ useEffect(()=>{onLeadChange?.(lead);},[lead,onLeadChange]);
  const [date,setDate]=useState(''),[time,setTime]=useState('');
  const frozen=useRef<(Pick<VoiceHotLead,'stage'|'capturedAt'> & {baseline:VoiceHotLead['stage']})|null>(null);
  const confirm=useRef<HTMLDialogElement>(null);
@@ -73,7 +75,7 @@ export function LeadPlanner({customerId,requestId,revision,callStartedAt,onRecor
   void fetch('/api/ops/voice-copilot/hot-leads?'+new URLSearchParams({customerIds:customerId}),{cache:'no-store',signal:controller.signal})
    .then(r=>readPhoneCentralResponse<{results:VoiceHotLead[]}>(r,'Anrufplanung konnte nicht geladen werden.'))
    .then(r=>{if(!controller.signal.aborted)setLead(r.results.find(x=>x.requestId===requestId||x.id===requestId)??null);})
-   .catch(e=>{if(!controller.signal.aborted)setError(e.message);});
+   .catch(e=>{if(!controller.signal.aborted){setLead(null);setError(e.message);}});
   return()=>controller.abort();
  },[customerId,requestId,revision,refresh]);
  async function save(status:'reached'|'not_reached'|'scheduled'|'ignored'|'no_followup'|'active',day:string|null=null,clock=''){

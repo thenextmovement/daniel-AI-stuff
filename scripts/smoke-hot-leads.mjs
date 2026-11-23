@@ -14,6 +14,8 @@ try{
     const visible=!['ignored','scheduled','no_followup'].includes(lead.listStatus);
     return route.fulfill({json:{ok:true,results:url.searchParams.has('customerIds')?[lead]:visible?[lead,...Array.from({length:12},(_,i)=>({...lead,id:lead.id+'-'+i,displayName:'Weitere Anfrage '+i}))]:[],nextOffset:null,total:visible?1:0,today}});
    }
+   if(url.pathname.endsWith('/context')&&url.searchParams.has('overview'))return route.fulfill({json:{ok:true,context:{masterCustomerId:lead.customerId,requestId:lead.requestId,customer:{displayName:lead.displayName,company:null,email:lead.email,phone:lead.phone},request:{title:lead.requestTitle,colors:[]},offer:{source:'offers',offerId:'test-offer',offerNumber:lead.offerNumber,label:'Testangebot',status:'sent',items:[],price:{amount:lead.amount,currency:'EUR',taxBasis:'gross'}},links:{offer:'/test-offer',trello:null},outlook:[],sourceStatus:{customerRecord:'ok',offer:'ok',outlook:'empty'}}}});
+   if(url.pathname.endsWith('/links'))return route.fulfill({json:{links:{offer:'/test-offer'}}});
    if(url.pathname.endsWith('/context')&&url.searchParams.has('directory'))return route.fulfill({json:{ok:true,results:[lead],nextOffset:null}});
    return route.fulfill({status:503,json:{ok:false,error:'Synthetic unavailable'}});
   });
@@ -52,8 +54,15 @@ try{
   await page.screenshot({path:'/tmp/hot-age-cards-'+width+'.png',fullPage:true});await list.getByRole('button',{name:'Testkontakt',exact:true}).click();
   const planner=page.getByRole('region',{name:'Nächsten Anruf planen'});
   await planner.getByRole('button',{name:'Erreicht',exact:true}).waitFor({timeout:10000}).catch(async e=>{console.log(errors);console.log((await page.locator('body').innerText()).slice(-5000));throw e;});
+  const header=page.getByLabel('Anrufstatus und Angebots-Score',{exact:true});
+  await header.getByLabel('Angebots-Score 64 von 100').waitFor();
+  assert.equal(await header.locator('li[data-state="not_reached"]').count(),1);
+  await page.getByRole('region',{name:'Kundenkarte',exact:true}).getByText('(20.11.2026)',{exact:true}).waitFor();
+  assert.ok((await page.getByRole('button',{name:'KI-Sprachtest',exact:true}).boundingBox()).height<=28);
+  await page.screenshot({path:'/tmp/hot-header-'+width+'.png',fullPage:true});
   await planner.getByRole('button',{name:'Erreicht',exact:true}).click();
   await planner.getByText('Erreicht gespeichert.',{exact:true}).waitFor();assert.equal(writes[0].status,'reached');assert.equal(writes[0].stage,2);
+  await header.locator('li[data-state="reached"]').waitFor();
   await planner.getByRole('button',{name:'+2',exact:true}).click();await planner.getByText(/Wiedervorlage:/).waitFor();assert.equal(writes[1].stage,3);assert.equal(writes[1].status,'scheduled');
   await planner.getByRole('button',{name:'Ignorieren',exact:true}).click();await page.getByRole('dialog').waitFor();assert.equal(writes.length,2);
   await page.getByRole('button',{name:'Abbrechen',exact:true}).click();assert.equal(writes.length,2);

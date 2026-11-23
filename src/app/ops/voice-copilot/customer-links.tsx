@@ -2,10 +2,11 @@
 import {useEffect,useRef,useState} from "react";
 import {ArrowUpRight, FileText, ImageIcon, PanelsTopLeft, Pencil, Plus, X} from "lucide-react";
 import type {VoiceCustomerContext} from "@/lib/ops/voice-knowledge";
+import type {VoiceHotLead} from "@/lib/ops/voice-hot-leads";
 import type {CustomerLinkKind} from "@/lib/ops/voice-customer-links";
 import styles from "./phone-central.module.css";
 const names={quentin:"Quentin Board",inquiry:"Anfrage Board",offer:"Angebot"};
-export function CustomerLinks({customerId,requestId,context}:{customerId:string;requestId:string;context:VoiceCustomerContext|null}){
+export function CustomerLinks({customerId,requestId,context,lead}:{customerId:string;requestId:string;context:VoiceCustomerContext|null;lead?:VoiceHotLead|null}){
  const [links,setLinks]=useState<Partial<Record<CustomerLinkKind,string>>>({});
  const [loaded,setLoaded]=useState(false),[failed,setFailed]=useState(false);
  const [kind,setKind]=useState<CustomerLinkKind>("offer"),[url,setUrl]=useState(""),[error,setError]=useState(""),[saving,setSaving]=useState(false);
@@ -28,6 +29,7 @@ export function CustomerLinks({customerId,requestId,context}:{customerId:string;
  }
  const [failedImage,setFailedImage]=useState<string|null>(null);
  const boundOfferMatches=!links.offer || links.offer===context?.links?.offer;
+ const sentAt=boundOfferMatches && lead?.offerNumber && lead.offerNumber===context?.offer?.offerNumber ? lead.firstSentAt : null;
  const price=boundOfferMatches?context?.offer?.price:null;
  return <section className={styles.customerLinks} aria-label="Kundenkarte">
  <div className={styles.customerLinkButtons}>
@@ -43,7 +45,7 @@ export function CustomerLinks({customerId,requestId,context}:{customerId:string;
    {href&&requestId&&<button className={styles.editLink} type="button" aria-label={names[k]+"-Link ändern"} onClick={open}><Pencil size={12}/></button>}
   </div>;
  })}
- {price?<span className={styles.offerValue}><strong>{new Intl.NumberFormat("de-DE",{style:"currency",currency:price.currency}).format(price.amount)}</strong><small>{price.taxBasis==="gross"?"inkl. MwSt.":price.taxBasis==="net"?"zzgl. MwSt.":"Angebotswert"}</small></span>:loaded&&!links.offer&&!context?.links?.offer&&<small className={styles.muted}>Kein Angebot vorhanden</small>}
+ {price?<span className={styles.offerValue}><strong>{new Intl.NumberFormat("de-DE",{style:"currency",currency:price.currency}).format(price.amount)}</strong><small>{price.taxBasis==="gross"?"inkl. MwSt.":price.taxBasis==="net"?"zzgl. MwSt.":"Angebotswert"}</small>{sentAt&&<small><time dateTime={sentAt} title="Angebot gesendet am">({new Intl.DateTimeFormat("de-DE",{timeZone:"Europe/Berlin"}).format(new Date(sentAt))})</time></small>}</span>:loaded&&!links.offer&&!context?.links?.offer&&<small className={styles.muted}>Kein Angebot vorhanden</small>}
  </div>
  {boundOfferMatches&&context?.offer?.thumbnailUrl&&failedImage!==context.offer.thumbnailUrl&&<div className={styles.offerPeek}>
   <button type="button" className={styles.offerPeekButton} aria-label="Angebotsbild vergrößern" onClick={()=>preview.current?.showModal()}><img src={context.offer.thumbnailUrl} alt={"Angebotsvorschau "+context.offer.label} onError={()=>setFailedImage(context.offer!.thumbnailUrl!)} referrerPolicy="no-referrer"/></button>

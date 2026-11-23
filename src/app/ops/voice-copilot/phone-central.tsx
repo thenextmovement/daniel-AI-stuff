@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNo
 import { Search, Phone, Headphones, ChevronRight, Bot, Delete, Users, Grid2X2, RefreshCw } from "lucide-react";
 import type { VoiceCopilotSuggestion } from "@/lib/ops/voice-copilot";
 import type { VoiceCustomerContext } from "@/lib/ops/voice-knowledge";
-import {HotLeads,leadAmount,LeadPlanner} from "./hot-leads";
+import {HotLeads,leadAmount,LeadPlanner,LeadStages,LeadScore} from "./hot-leads";
 import {contactSegment} from "@/lib/ops/voice-hot-lead-rules";
 import type {VoiceHotLead} from "@/lib/ops/voice-hot-leads";
 import {CustomerEditor} from "./customer-editor";
@@ -85,6 +85,8 @@ export function PhoneCentral(props: Props) {
   const [activeContact, setActiveContact] = useState<VoiceDirectoryContact | null>(null);
   const briefCustomerId = selected?.masterCustomerId || activeContact?.customerId;
   const briefRequestId = selected?.requestId || activeContact?.requestId || "";
+  const [headerLead,setHeaderLead]=useState<VoiceHotLead|null>(null);
+  const currentLead=headerLead && headerLead.customerId===briefCustomerId && (headerLead.requestId===briefRequestId||headerLead.id===briefRequestId)?headerLead:null;
   const [customerRevision,setCustomerRevision]=useState(0);
   const [contactDetails,setContactDetails]=useState<CustomerEditorData|null>(null);
   const phonePicker=useRef<HTMLDialogElement>(null);
@@ -354,14 +356,17 @@ export function PhoneCentral(props: Props) {
                   {props.workspace === "assist" && dialPhone ? (readySession ? "Anruf gestartet" : "Gesprächsbegleitung vorbereiten") : busy ? "Gespräch aktiv" : "Rufnummer fehlt"}
                 </button>
               ) : null}
+              <div className={styles.headerLeadRow}>
+                {currentLead && <div className={styles.headerLeadStatus} aria-label="Anrufstatus und Angebots-Score"><LeadStages lead={currentLead}/><LeadScore lead={currentLead}/></div>}
               <button
-                className={styles.button}
+                className={styles.button + " " + styles.aiTestCompact}
                 disabled={busy || contextLoading || Boolean(activeContact && !selected)}
                 onClick={() => props.onWorkspaceChange("live")}
               >
-                <Bot size={18} />
+                <Bot size={13} />
                 KI-Sprachtest
               </button>
+              </div>
 
             </div>
             </div>
@@ -384,7 +389,7 @@ export function PhoneCentral(props: Props) {
               </div>)}</div>
               <div className={styles.actions}><button type="button" className={styles.button} onClick={()=>phonePicker.current?.close()}>Schließen</button></div>
             </dialog>
-            {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected}/>}
+            {briefCustomerId && <CustomerLinks key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} context={selected} lead={currentLead}/>}
 
           </section>
       </div>
@@ -576,7 +581,7 @@ export function PhoneCentral(props: Props) {
 
                 </>
               ) : null}
-              {briefCustomerId && briefRequestId && <LeadPlanner key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} revision={callHistoryRevision} callStartedAt={leadCallStart?.customerId===briefCustomerId&&leadCallStart.requestId===briefRequestId?leadCallStart.startedAt:null} onRecorded={()=>setLeadCallStart(null)} onSaved={refreshCallHistory}/>}
+              {briefCustomerId && briefRequestId && <LeadPlanner key={briefCustomerId+":"+briefRequestId} customerId={briefCustomerId} requestId={briefRequestId} revision={callHistoryRevision} callStartedAt={leadCallStart?.customerId===briefCustomerId&&leadCallStart.requestId===briefRequestId?leadCallStart.startedAt:null} onRecorded={()=>setLeadCallStart(null)} onSaved={refreshCallHistory} onLeadChange={setHeaderLead}/>}
               {props.workspace === "prepare" && selected?.requestId && <CallNotes key={selected.requestId} requestId={selected.requestId} target={selectedNoteCall} onSaved={refreshCallHistory}/>}
               {props.children}
             </section>
