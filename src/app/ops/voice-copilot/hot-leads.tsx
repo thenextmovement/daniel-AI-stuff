@@ -1,6 +1,6 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
-import {RefreshCw} from "lucide-react";
+import {RefreshCw,ChevronDown,SlidersHorizontal,ArrowDownWideNarrow} from "lucide-react";
 import {Temporal} from "@js-temporal/polyfill";
 import type {VoiceDirectoryContact} from "@/lib/ops/voice-directory";
 import type {VoiceHotLead} from "@/lib/ops/voice-hot-leads";
@@ -14,34 +14,43 @@ export function LeadStages({lead}:{lead:VoiceHotLead}){
  return <ol className={styles.leadStages}>{labels.map((label,i)=>{const state=lead.indicators?.[i]||"open";return <li key={label} data-state={state} title={descriptions[state]}><span aria-label={descriptions[state]}>{state==='reached'?'✓':state==='not_reached'?'×':state==='skipped'?'–':'○'}</span> {label}</li>;})}</ol>;
 }
 export function HotLeads({onSelect,busy,revision,finishedCall}:{finishedCall:{customerId:string;requestId:string;callId:string}|null;onSelect:(contact:VoiceDirectoryContact)=>void;busy:boolean;revision:number}){
- const [status,setStatus]=useState("all"),[score,setScore]=useState("all"),[sort,setSort]=useState("priority"),[refresh,setRefresh]=useState(0),[offset,setOffset]=useState(0);
+ const [status,setStatus]=useState("all"),[sort,setSort]=useState("priority"),[refresh,setRefresh]=useState(0),[offset,setOffset]=useState(0);
  const [data,setData]=useState<{results:VoiceHotLead[];nextOffset:number|null;total:number}|null>(null);
  const [loading,setLoading]=useState(false),[error,setError]=useState("");
  useEffect(()=>{const reload=()=>{if(!document.hidden)setRefresh(n=>n+1);};const timer=window.setInterval(reload,60000);window.addEventListener('focus',reload);document.addEventListener('visibilitychange',reload);return()=>{clearInterval(timer);window.removeEventListener('focus',reload);document.removeEventListener('visibilitychange',reload);};},[]);
  useEffect(()=>{
   const controller=new AbortController();setLoading(true);setError("");
-  void fetch("/api/ops/voice-copilot/hot-leads?"+new URLSearchParams({status,score,sort,offset:String(offset)}),{cache:"no-store",signal:controller.signal})
+  void fetch("/api/ops/voice-copilot/hot-leads?"+new URLSearchParams({status,sort,offset:String(offset)}),{cache:"no-store",signal:controller.signal})
    .then(r=>readPhoneCentralResponse<NonNullable<typeof data>>(r,"Hot-Leads konnten nicht vollständig geladen werden. Bitte erneut versuchen."))
    .then(result=>{if(!controller.signal.aborted)setData(result);})
    .catch(e=>{if(!controller.signal.aborted){setData(null);setError(e.message);}}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
   return ()=>controller.abort();
- },[status,score,sort,offset,refresh,revision,finishedCall]);
- return <section aria-label="Hot-Leads"><h2 className={styles.leftTitle}>Hot-Leads</h2>
-  <div className={styles.leadFilters}>
-   <label>Status<select value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}><option value="all">Alle fälligen Anrufe</option><option value="inquiry">Anfrage eingegangen</option><option value="offer">Erstes Angebot gesendet</option><option value="reminder">Reminder</option></select></label>
-   <label>Score<select value={score} onChange={e=>{setScore(e.target.value);setOffset(0);}}><option value="all">Alle Bewertungen</option>{Object.entries({very_hot:'Sehr heiß',hot:'Heiß',warm_plus:'Warm+',warm:'Warm',cold:'Kalt',low_intent:'Wenig Interesse',problem:'Problem',paused:'Pausiert',unknown:'Ohne Bewertung'}).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
-   <label>Sortieren<select value={sort} onChange={e=>{setSort(e.target.value);setOffset(0);}}><option value="priority">Angebots-Score absteigend</option><option value="overdue">Am längsten überfällig</option><option value="amount">Betrag absteigend (EUR)</option></select></label>
+ },[status,sort,offset,refresh,revision,finishedCall]);
+ const statusOptions={all:"Alle",inquiry:"Anfrage",offer:"Angebot",reminder:"Reminder"};
+ const sortOptions={priority:"Score",overdue:"Fälligkeit",amount:"Betrag"};
+ return <section aria-label="Hot-Leads" className={styles.hotLeads}>
+  <div className={styles.leadToolbar}>
+   <details className={styles.leadMenu} onKeyDown={e=>{if(e.key==='Escape')e.currentTarget.open=false;}}>
+    <summary><SlidersHorizontal size={14}/><span>{statusOptions[status as keyof typeof statusOptions]}</span><ChevronDown size={12}/></summary>
+    <div className={styles.leadMenuOptions} aria-label="Status filtern">{Object.entries(statusOptions).map(([value,label])=><button type="button" key={value} aria-pressed={status===value} onClick={e=>{setStatus(value);setOffset(0);e.currentTarget.closest('details')?.removeAttribute('open');}}>{label}</button>)}</div>
+   </details>
+   <details className={styles.leadMenu} onKeyDown={e=>{if(e.key==='Escape')e.currentTarget.open=false;}}>
+    <summary><ArrowDownWideNarrow size={14}/><span>{sortOptions[sort as keyof typeof sortOptions]}</span><ChevronDown size={12}/></summary>
+    <div className={styles.leadMenuOptions} aria-label="Sortieren">{Object.entries(sortOptions).map(([value,label])=><button type="button" key={value} aria-pressed={sort===value} onClick={e=>{setSort(value);setOffset(0);e.currentTarget.closest('details')?.removeAttribute('open');}}>{label}{value==='overdue'?' · älteste zuerst':' · absteigend'}</button>)}</div>
+   </details>
+   <button type="button" className={styles.leadRefresh} aria-label="Hot-Leads aktualisieren" title="Aktualisieren" disabled={loading} onClick={()=>setRefresh(n=>n+1)}><RefreshCw size={15}/></button>
   </div>
-  <p className={styles.small}>Heute fällig und überfällig. Aktualisiert sich automatisch. Score aus der Angebotssoftware, keine Abschlusswahrscheinlichkeit.</p>
-  <button type="button" className={styles.retry} disabled={loading} onClick={()=>setRefresh(n=>n+1)}><RefreshCw size={15}/> Aktualisieren</button>
   {error?<p role="alert" className={styles.searchError}>{error}</p>:null}
-  <p role="status" className={styles.directoryStatus}>{loading?"Wird aktualisiert …":data?data.total+" fällige Einträge":""}</p>
+  <p role="status" className={styles.leadCount}>{loading?"Wird aktualisiert …":data?data.total+" fällige Einträge":""}</p>
   {!loading&&data&&!data.results.length?<p>Keine fälligen Einträge für diese Filter.</p>:null}
-  <div className={styles.results}>{data?.results.map(lead=><article key={lead.id} className={styles.leadCard}>
+  <div className={styles.leadResults}>{data?.results.map(lead=><article key={lead.id} className={styles.leadCard}>
    <div className={styles.leadHeading}><button type="button" className={styles.leadName} disabled={busy} onClick={()=>onSelect(lead)}>{lead.company||lead.displayName||"Kontakt"}</button>{lead.segment?<small className={styles.leadBadge} title="Automatisch anhand der E-Mail-Domain">{lead.segment}</small>:null}</div>
    <LeadStages lead={lead}/>
    <button type="button" className={styles.result} disabled={busy} onClick={()=>onSelect(lead)}><span className={styles.resultContent}><span>{lead.requestTitle}</span><span>{lead.phone||"Rufnummer fehlt"}</span><span>{lead.email}</span>{leadAmount(lead)?<strong>{lead.offerNumber?"Angebot "+lead.offerNumber+": ":"Anfrage: "}{leadAmount(lead)}</strong>:null}<span>{lead.reasons.join(" · ")}</span></span></button>
-   <div className={styles.leadFooter}><span>{lead.score?`${lead.score.label} · ${lead.score.score}/100`:"Score nicht verfügbar"}</span>{lead.overdueDays>0?<strong className={styles.leadOverdue}>Seit {lead.overdueDays} {lead.overdueDays===1?'Tag':'Tagen'} überfällig</strong>:null}</div>
+   <div className={styles.leadFooter}>
+    <span className={styles.leadSent}>{lead.firstSentAt?<>AN gesendet am: <time dateTime={lead.firstSentAt}>{new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin'}).format(new Date(lead.firstSentAt))}</time></>:"Noch nicht gesendet"}</span>
+    <span className={styles.leadScore} data-tone={!lead.score?'unknown':lead.score.score>=55?'green':lead.score.score>=22?'amber':'red'} aria-label={lead.score?`Angebots-Score ${lead.score.score} von 100`:'Score nicht verfügbar'} title={lead.score?`Angebots-Score: ${lead.score.score}/100. Grün ab 55, Gelb ab 22, Rot unter 22. Keine Abschlusswahrscheinlichkeit.`:'Score nicht verfügbar'}>{lead.score?lead.score.score:'–'}</span>
+   </div>
   </article>)}</div>
   {data&&data.total>30?<div className={styles.leadActions}><button type="button" disabled={loading||offset===0} onClick={()=>setOffset(Math.max(0,offset-30))}>Zurück</button><button type="button" disabled={loading||data.nextOffset===null} onClick={()=>setOffset(data.nextOffset!)}>Weitere Leads</button></div>:null}
  </section>;

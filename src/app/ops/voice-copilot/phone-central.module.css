@@ -1069,3 +1069,44 @@
 .leadSnooze summary:focus-visible {outline:2px solid #715985;outline-offset:2px;}
 
 .leadStages{display:flex;flex-wrap:wrap;gap:6px 14px;list-style:none;padding:0;margin:12px 0;font-size:12px}.leadStages li{color:#66736f}.leadStages li[data-state="reached"]{color:#216147}.leadStages li[data-state="not_reached"]{color:#a62e38}.leadStages li[data-state="skipped"]{color:#77817d}.leadStages span{font-size:17px;font-weight:700}.leadFooter{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;font-size:12px}.leadOverdue{color:#a62e38}.leadPlanner{border:1px solid #d2dfd8;border-radius:12px;padding:16px;margin:18px 0}.leadCalendar{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:14px 0}.leadCalendar label{display:grid;gap:5px;font-size:12px}.leadCalendar input{padding:8px;border:1px solid #cbd7d0;border-radius:7px;min-width:0;background:white;color:#253d32}.leadConfirm{max-width:min(440px,90vw);border:1px solid #cbd7d0;border-radius:14px;padding:24px}.leadConfirm::backdrop{background:#17241c66}
+
+/* Compact lead queue: filters stay small; the desktop sidebar scrolls independently. */
+.left .panelTabs { margin-bottom:10px; }
+.leadToolbar { display:flex; align-items:center; gap:6px; padding-top:2px; }
+.leadMenu { position:relative; min-width:0; }
+.leadMenu summary,.leadRefresh { display:flex; align-items:center; justify-content:center; gap:6px; height:32px; border:1px solid #d5dfd9; border-radius:7px; background:#fff; color:#385547; cursor:pointer; }
+.leadMenu summary { padding:0 9px; font-size:12px; list-style:none; }
+.leadMenu summary::-webkit-details-marker { display:none; }
+.leadMenu[open] summary { background:#eaf1ed; border-color:#9bb4a5; }
+.leadMenuOptions { position:absolute; top:calc(100% + 5px); left:0; z-index:20; min-width:170px; padding:5px; border:1px solid #d5dfd9; border-radius:9px; background:#fff; box-shadow:0 8px 24px #19352a18; }
+.leadMenuOptions button { display:block; width:100%; padding:8px 10px; border:0; border-radius:5px; background:transparent; text-align:left; font-size:12px; color:#385547; cursor:pointer; }
+.leadMenuOptions button:hover,.leadMenuOptions button[aria-pressed="true"] { background:#eaf1ed; }
+.leadRefresh { width:32px; flex-shrink:0; margin-left:auto; }
+.leadRefresh:disabled { opacity:.5; }
+.leadCount { margin:9px 0 8px; font-size:11px; color:#68766e; }
+.leadResults { display:grid; gap:10px; }
+.hotLeads .leadCard { margin:0; border-radius:10px; padding:12px; transition:border-color .15s; }
+.hotLeads .leadCard:hover { border-color:#a0b5a8; }
+.hotLeads .leadHeading { padding:0; align-items:flex-start; justify-content:space-between; gap:6px; }
+.hotLeads .leadName { font-size:14px; line-height:1.35; overflow-wrap:anywhere; }
+.hotLeads .leadBadge { margin:0; flex-shrink:0; font-size:10px; }
+.hotLeads .leadStages { margin:9px 0 8px; gap:5px 10px; font-size:10px; }
+.hotLeads .leadStages span { font-size:14px; }
+.hotLeads .leadCard .result { padding:0; border-radius:4px; }
+.hotLeads .resultContent > span { font-size:11px; line-height:1.45; }
+.hotLeads .resultContent strong { margin-top:7px; font-size:13px; }
+.hotLeads .leadFooter { flex-wrap:nowrap; align-items:center; gap:8px; border-top:1px solid #edf1ee; margin-top:10px; padding-top:9px; }
+.leadSent { color:#758078; font-size:10px; line-height:1.5; }
+.leadSent time { display:block; font-size:11px; color:#46594e; font-variant-numeric:tabular-nums; }
+.leadScore { display:grid; place-items:center; flex:0 0 34px; width:34px; height:34px; border-radius:50%; border:2px solid #ced7d2; background:#f2f5f3; color:#65736a; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; }
+.leadScore[data-tone="green"] { color:#226343; background:#e9f5ed; border-color:#76b28b; }
+.leadScore[data-tone="amber"] { color:#855b11; background:#fff5df; border-color:#dbb65e; }
+.leadScore[data-tone="red"] { color:#a34343; background:#fceded; border-color:#d6a0a0; }
+@media(min-width:761px) {
+ .left { position:sticky; top:12px; align-self:start; max-height:calc(100dvh - 24px); overflow-y:auto; overscroll-behavior-y:contain; scrollbar-gutter:stable; padding:14px; }
+ .left .results { max-height:none; overflow:visible; }
+}
+@media(max-width:760px) {
+ .leadResults { max-height:60dvh; overflow-y:auto; overscroll-behavior-y:contain; padding:2px; }
+ .leadMenu summary,.leadRefresh { min-height:36px; }
+}
