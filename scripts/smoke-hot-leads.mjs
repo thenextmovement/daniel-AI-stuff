@@ -56,6 +56,10 @@ try{
   await planner.getByRole('button',{name:'Erreicht',exact:true}).waitFor({timeout:10000}).catch(async e=>{console.log(errors);console.log((await page.locator('body').innerText()).slice(-5000));throw e;});
   const header=page.getByLabel('Anrufstatus und Angebots-Score',{exact:true});
   await header.getByLabel('Angebots-Score 64 von 100').waitFor();
+  await header.locator('li[aria-current="step"]').filter({hasText:'Angebot'}).waitFor();
+  assert.equal(await header.locator('li[aria-current="step"][data-state="open"]').count(),1);
+  await planner.locator('li[aria-current="step"]').filter({hasText:'Angebot'}).waitFor();
+  assert.ok((await planner.boundingBox()).height<(width>760?290:360),'Planner stays compact');
   assert.equal(await header.locator('li[data-state="not_reached"]').count(),1);
   await page.getByRole('region',{name:'Kundenkarte',exact:true}).getByText('(20.11.2026)',{exact:true}).waitFor();
   assert.ok((await page.getByRole('button',{name:'KI-Sprachtest',exact:true}).boundingBox()).height<=28);
@@ -69,10 +73,11 @@ try{
   await details.getByText('Synthetische Produktbeschreibung',{exact:true}).waitFor();
   await details.locator('summary').click();
   await brief.getByRole('heading',{name:'E-Mail- und Telefonverlauf',exact:true}).waitFor();
-  await page.screenshot({path:'/tmp/brief-compact-'+width+'.png',fullPage:true});
+  await page.screenshot({path:'/tmp/planner-compact-'+width+'.png',fullPage:true});
   await planner.getByRole('button',{name:'Erreicht',exact:true}).click();
   await planner.getByText('Erreicht gespeichert.',{exact:true}).waitFor();assert.equal(writes[0].status,'reached');assert.equal(writes[0].stage,2);
   await header.locator('li[data-state="reached"]').waitFor();
+  await header.locator('li[aria-current="step"]').filter({hasText:'Nachfassen'}).waitFor();
   await planner.getByRole('button',{name:'+2',exact:true}).click();await planner.getByText(/Wiedervorlage:/).waitFor();assert.equal(writes[1].stage,3);assert.equal(writes[1].status,'scheduled');
   await planner.getByRole('button',{name:'Ignorieren',exact:true}).click();await page.getByRole('dialog').waitFor();assert.equal(writes.length,2);
   await page.getByRole('button',{name:'Abbrechen',exact:true}).click();assert.equal(writes.length,2);

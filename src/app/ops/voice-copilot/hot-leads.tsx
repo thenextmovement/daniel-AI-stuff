@@ -10,8 +10,8 @@ import styles from "./phone-central.module.css";
 export function leadAmount(lead:Pick<VoiceHotLead,"amount"|"currency">){return lead.amount===null?null:new Intl.NumberFormat("de-DE",{style:"currency",currency:lead.currency}).format(lead.amount);}
 export function LeadStages({lead}:{lead:VoiceHotLead}){
  const labels=["Anfrage","Angebot","Nachfassen"];
- const descriptions={open:"Offen",skipped:"Ohne Anruf übersprungen",reached:"Erreicht",not_reached:"Nicht erreicht"};
- return <ol className={styles.leadStages}>{labels.map((label,i)=>{const state=lead.indicators?.[i]||"open";return <li key={label} data-state={state} title={descriptions[state]}><span aria-label={descriptions[state]}>{state==='reached'?'✓':state==='not_reached'?'×':state==='skipped'?'–':'○'}</span> {label}</li>;})}</ol>;
+ const descriptions={open:"Anruf offen",skipped:"Kein Anfrage-Anruf erfasst; Angebot bereits gesendet",reached:"Erreicht",not_reached:"Nicht erreicht"};
+ return <ol className={styles.leadStages} aria-label="Anrufphasen">{labels.map((label,i)=>{const state=lead.indicators?.[i]||"open";const current=lead.canSchedule&&lead.stage===i+1;return <li key={label} data-state={state} aria-current={current?'step':undefined} title={`${current?'Aktuelle Phase. ':''}${descriptions[state]}`}><span aria-label={descriptions[state]}>{state==='reached'?'✓':state==='not_reached'?'×':state==='skipped'?'–':'○'}</span> {label}{current?<small>aktuell</small>:null}</li>;})}</ol>;
 }
 export function LeadScore({lead}:{lead:VoiceHotLead}){return <span className={styles.leadScore} data-tone={!lead.score?'unknown':lead.score.score>=55?'green':lead.score.score>=22?'amber':'red'} aria-label={lead.score?`Angebots-Score ${lead.score.score} von 100`:'Score nicht verfügbar'} title={lead.score?`Angebots-Score: ${lead.score.score}/100. Grün ab 55, Gelb ab 22, Rot unter 22. Keine Abschlusswahrscheinlichkeit.`:'Score nicht verfügbar'}>{lead.score?lead.score.score:'–'}</span>;}
 export function HotLeads({onSelect,busy,revision,finishedCall}:{finishedCall:{customerId:string;requestId:string;callId:string}|null;onSelect:(contact:VoiceDirectoryContact)=>void;busy:boolean;revision:number}){
@@ -92,14 +92,14 @@ export function LeadPlanner({customerId,requestId,revision,callStartedAt,onRecor
  if(!lead)return error?<p role="alert">{error}</p>:null;
  if(!lead.canSchedule)return null;
  const removed=['ignored','no_followup'].includes(lead.listStatus||'');
- return <section className={styles.leadPlanner} aria-label="Nächsten Anruf planen"><h3>Nächsten Anruf planen</h3><LeadStages lead={lead}/>
+ return <section className={styles.leadPlanner} aria-label="Nächsten Anruf planen"><div className={styles.leadPlannerHead}><h3>Nächsten Anruf planen</h3><LeadStages lead={lead}/></div>
  {error?<p role="alert" className={styles.searchError}>{error}</p>:null}{notice?<p role="status">{notice}</p>:null}
  {removed?<button type="button" className={styles.button} disabled={saving} onClick={()=>void save('active')}>Wieder in Hot-Leads aufnehmen</button>:<>
  <div className={styles.leadActions}><button type="button" disabled={saving} onClick={()=>void save('reached')}>Erreicht</button><button type="button" disabled={saving} onClick={()=>void save('not_reached')}>Nicht erreicht</button></div>
- <p className={styles.small}>{lead.needsPlanning?'Nachfassen noch planen. ':''}+1 = morgen, +2 = übermorgen. Kalendertage, Europe/Berlin.</p>
- <div className={styles.leadActions}>{[1,2,3,4,5,6,7].map(n=><button key={n} type="button" disabled={saving} onClick={()=>void save('scheduled',shiftLeadDate(berlinDate(),n))}>+{n}</button>)}</div>
+ {lead.needsPlanning?<p className={styles.leadPlanningHint}>Nächsten Versuch planen:</p>:null}
+ <div className={`${styles.leadActions} ${styles.leadQuickDays}`} aria-label="Wiedervorlage in Kalendertagen"><small>In Tagen</small>{[1,2,3,4,5,6,7].map(n=><button key={n} type="button" title={n===1?"Morgen (Europe/Berlin)":`In ${n} Kalendertagen (Europe/Berlin)`} disabled={saving} onClick={()=>void save('scheduled',shiftLeadDate(berlinDate(),n))}>+{n}</button>)}</div>
  <form className={styles.leadCalendar} onSubmit={e=>{e.preventDefault();void save('scheduled',date,time);}}><label>Datum<input type="date" required min={berlinDate()} value={date} onChange={e=>setDate(e.target.value)}/></label><label>Uhrzeit (optional)<input type="time" value={time} onChange={e=>setTime(e.target.value)}/></label><button className={styles.button} disabled={saving||!date}>Planen</button></form>
- <div className={styles.leadActions}><button type="button" disabled={saving} onClick={()=>void save('no_followup')}>Kein weiterer Anruf</button><button type="button" disabled={saving} onClick={()=>confirm.current?.showModal()}>Ignorieren</button></div>
+ <div className={`${styles.leadActions} ${styles.leadDismissActions}`}><button type="button" disabled={saving} onClick={()=>void save('no_followup')}>Kein weiterer Anruf</button><button type="button" disabled={saving} onClick={()=>confirm.current?.showModal()}>Ignorieren</button></div>
  <dialog ref={confirm} className={styles.leadConfirm}><h3>Aus Hot-Leads entfernen?</h3><p>Dieser Vorgang bleibt ausgeblendet, bis du ihn im Verzeichnis wieder aufnimmst. Der Kunde bleibt gespeichert.</p><div className={styles.leadActions}><button type="button" onClick={()=>confirm.current?.close()}>Abbrechen</button><button type="button" onClick={()=>{confirm.current?.close();void save('ignored');}}>Ja, ignorieren</button></div></dialog>
  </>}
  </section>;
