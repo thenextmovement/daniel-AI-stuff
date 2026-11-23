@@ -1112,9 +1112,10 @@
 }
 
 /* Keep the added age menu inside narrow sidebar columns. */
-.leadToolbar { flex-wrap:wrap; gap:5px; }
+.leadToolbar { position:relative; flex-wrap:wrap; gap:5px; }
 .leadMenu summary { padding-inline:7px; gap:4px; }
-.leadMenu:nth-of-type(3) .leadMenuOptions { left:auto; right:0; max-height:320px; overflow-y:auto; }
+.leadMenu:nth-of-type(3) { position:static; }
+.leadMenu:nth-of-type(3) .leadMenuOptions { left:0; right:0; max-height:320px; overflow-y:auto; }
 
 .leadCount { display:flex; align-items:center; justify-content:space-between; min-height:24px; margin:5px 0; }
 .leadCount .leadRefresh { width:24px; height:24px; min-height:24px; border:0; background:transparent; }

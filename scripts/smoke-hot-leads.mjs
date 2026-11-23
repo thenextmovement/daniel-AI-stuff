@@ -30,6 +30,9 @@ try{
   await list.locator('summary').filter({hasText:'Betrag'}).waitFor();
   await list.locator('summary').filter({hasText:'Angebotsalter'}).click();
   assert.equal(await list.getByRole('button',{name:/^Bis /}).count(),8);
+  const agePopup=await list.locator('[aria-label="Angebotsalter filtern"]').boundingBox();
+  const sidebarBounds=await page.getByRole('complementary',{name:'Kundensuche und Team'}).boundingBox();
+  assert.ok(agePopup.x>=sidebarBounds.x&&agePopup.x+agePopup.width<=sidebarBounds.x+sidebarBounds.width,'Age popup stays inside sidebar');
   await list.getByRole('button',{name:'Bis 90 Tage',exact:true}).click();
   await list.locator('summary').filter({hasText:'≤ 90 Tage'}).waitFor();
   await page.waitForFunction(()=>!document.querySelector('[aria-label="Hot-Leads aktualisieren"]')?.disabled);
