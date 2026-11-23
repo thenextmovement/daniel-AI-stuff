@@ -1,0 +1,99 @@
+{
+  "id": "6NZnfGpyfUVikqpf",
+  "expectedVersionId": "6f74f900-bc96-4ddd-8611-ddb6cc833fd7",
+  "operations": [
+    {
+      "type": "updateNode",
+      "nodeName": "Admit or Claim Manual Paid Reconciliation",
+      "updates": {
+        "parameters": {
+          "method": "POST",
+          "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/rpc/billing_manual_paid_claim",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ {p_request: $json.request} }}",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "options": {
+            "timeout": 30000,
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            }
+          }
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        }
+      }
+    },
+    {
+      "type": "updateNode",
+      "nodeName": "Check Billing API Availability",
+      "updates": {
+        "parameters": {
+          "method": "GET",
+          "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/billing_manual_paid_claim_receipts?select=id&limit=0",
+          "options": {
+            "timeout": 10000,
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            }
+          },
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth"
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        }
+      }
+    },
+    {
+      "type": "updateNode",
+      "nodeName": "Recheck Billing API Availability",
+      "updates": {
+        "parameters": {
+          "method": "GET",
+          "url": "https://klibiejfisijpagzkxls.supabase.co/rest/v1/billing_manual_paid_claim_receipts?select=id&limit=0",
+          "options": {
+            "timeout": 10000,
+            "response": {
+              "response": {
+                "fullResponse": true,
+                "responseFormat": "json"
+              }
+            }
+          },
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth"
+        },
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "NTtNxoBGGzJCQi9u",
+            "name": "Header Auth account 2 | SUPABASE"
+          }
+        }
+      }
+    },
+    {
+      "type": "updateNode",
+      "nodeName": "Restore Verified Billing Intake",
+      "updates": {
+        "parameters": {
+          "jsCode": "// Same validation and revision normalization as the OPS claim route; guarded by source-parity tests.\nconst MANUAL_PAID_SCOPE = \"MANUAL_SHOPIFY_PAID\";\nconst object = (value) => Boolean(value && typeof value === \"object\" && !Array.isArray(value));\nconst integer = (value, min, max) => Number.isSafeInteger(value) && Number(value) >= min && Number(value) <= max;\nconst text = (value, min, max) => typeof value === \"string\" && value.length >= min && value.length <= max;\nconst timestamp = (value) => typeof value === \"string\" && /^\\d{4}-\\d\\d-\\d\\dT.*(?:Z|[+-]\\d\\d:\\d\\d)$/.test(value) && Number.isFinite(Date.parse(value));\nconst orderId = (value) => typeof value === \"string\" && /^[0-9]{1,30}$/.test(value);\nconst fingerprint = (value) => typeof value === \"string\" && /^[a-f0-9]{64}$/.test(value);\n// Missing/invalid raw Shopify revision is a cache miss, never a synthesized paid revision.\nfunction manualPaidSourceRevision(value) {\n    if (!object(value) || !timestamp(value.updatedAt) || !text(value.financialStatus, 1, 50) ||\n        !(value.cancelledAt === null || timestamp(value.cancelledAt)) || !integer(value.refundCount, 0, 1_000_000) ||\n        typeof value.manualPaidObserved !== \"boolean\" || !text(value.paymentRoute, 1, 50))\n        return null;\n    return { updatedAt: value.updatedAt, financialStatus: value.financialStatus, cancelledAt: value.cancelledAt,\n        refundCount: value.refundCount, manualPaidObserved: value.manualPaidObserved, paymentRoute: value.paymentRoute };\n}\nfunction validManualPaidClaim(value) {\n    if (!object(value) || value.scope !== MANUAL_PAID_SCOPE || ![\"admit\", \"claim\"].includes(String(value.operation)) ||\n        !text(value.worker, 3, 120) || !orderId(value.executionId) ||\n        !Array.isArray(value.jobTypes) || value.jobTypes.length !== 1 || value.jobTypes[0] !== \"RECONCILE\" ||\n        (value.leaseSeconds !== undefined && !integer(value.leaseSeconds, 30, 600)) ||\n        !Array.isArray(value.candidates) || value.candidates.length > 201)\n        return false;\n    const seen = new Set();\n    let handoffs = 0;\n    let legacy = 0;\n    for (const candidate of value.candidates) {\n        if (!object(candidate) || ![\"handoff\", \"legacy_due\"].includes(String(candidate.origin)) || !orderId(candidate.shopifyOrderId) ||\n            typeof candidate.shopifyOrderName !== \"string\" || !/^#NEONT[0-9]+$/.test(candidate.shopifyOrderName))\n            return false;\n        const key = `${candidate.origin}:${candidate.shopifyOrderId}`;\n        if (seen.has(key))\n            return false;\n        seen.add(key);\n        if (candidate.origin === \"handoff\")\n            handoffs += 1;\n        else {\n            legacy += 1;\n            if (!timestamp(candidate.firstSeenAt) || !timestamp(candidate.nextAttemptAt) || !integer(candidate.lockedUntil, 0, Number.MAX_SAFE_INTEGER))\n                return false;\n        }\n        if (candidate.amountCents != null && !integer(candidate.amountCents, 0, 999_999_999_999_999))\n            return false;\n        if (candidate.currency != null && candidate.currency !== \"EUR\")\n            return false;\n        if (candidate.sourceEventId != null && !text(candidate.sourceEventId, 1, 300))\n            return false;\n        if (candidate.sourceRevision != null && (!object(candidate.sourceRevision) || JSON.stringify(candidate.sourceRevision).length > 2000))\n            return false;\n        if (candidate.legacyAlerts !== undefined) {\n            if (!Array.isArray(candidate.legacyAlerts) || candidate.legacyAlerts.length > 200)\n                return false;\n            for (const alert of candidate.legacyAlerts) {\n                if (!object(alert) || !text(alert.key, 3, 160) || !String(alert.key).startsWith(`${candidate.shopifyOrderId}|`) ||\n                    !/^[A-Za-z0-9_-]+$/.test(String(alert.key).slice(String(candidate.shopifyOrderId).length + 1)) ||\n                    !timestamp(alert.markedAt) || Date.parse(String(alert.markedAt)) > Date.now())\n                    return false;\n            }\n        }\n    }\n    return handoffs <= 1 && legacy <= 200;\n}\nconst prepared = $('Prepare Manual Paid Durable Intake').first().json;\nconst response = $input.first()?.json;\nif (response?.statusCode !== 200 || !Array.isArray(response.body) || response.body.length !== 0) throw new Error('BILLING_API_UNAVAILABLE');\nif (!validManualPaidClaim(prepared?.request)) throw new Error('MANUAL_PAID_REQUEST_INVALID');\nreturn [{json:{...prepared,request:{...prepared.request,candidates:prepared.request.candidates.map(candidate => ({...candidate,sourceRevision:manualPaidSourceRevision(candidate.sourceRevision)}))}}}];\n"
+        }
+      }
+    }
+  ]
+}
