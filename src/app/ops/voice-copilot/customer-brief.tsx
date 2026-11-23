@@ -131,19 +131,15 @@ export function CustomerBrief({id,requestId,context,revision,onNoteTarget}:{revi
       {latestFailed && <button className={styles.link} onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button>}
     </>}
     </section>
-    {context && <p className={styles.small}>{[context.customer.email,context.customer.phone].filter(Boolean).join(" · ")}</p>}
-    {req ? <div className={styles.caseFacts}>
-      <strong>{req.title || "Anfrage"} · {requestId.slice(0,8)}</strong>
-      <dl><dt>Produktart:</dt><dd>{req.productType || "Keine Angabe"}</dd>
-        {context?.offer && <><dt>Angebot:</dt><dd>{context.offer.label}</dd></>}
-      </dl>
-      {(req.size || req.colors.length>0 || req.application || req.deliveryTime || req.description) && <details>
+    {req && <div className={styles.caseFacts}>
+      <details>
         <summary>Produktdetails</summary><dl>
-          {[["Größe",req.size],["Farbe",req.colors.join(", ")],["Einsatzort",req.application],["Liefertermin",req.deliveryTime],["Anfrage",req.description]].filter(([,value])=>value).map(([label,value])=>
+          {[["Produktart",req.productType],["Größe",req.size],["Farbe",req.colors.join(", ")],["Einsatzort",req.application],["Liefertermin",req.deliveryTime],["Anfrage",req.description]].filter(([,value])=>value).map(([label,value])=>
             <div key={label}><dt>{label}:</dt><dd>{value}</dd></div>)}
         </dl>
-      </details>}
-    </div> : <p>{requestId ? "Ausgewählter Vorgang · " + requestId.slice(0,8) : "Kein Vorgang ausgewählt."}</p>}
+        {![req.productType,req.size,req.colors.length,req.application,req.deliveryTime,req.description].some(Boolean) && <p>Keine Produktdetails hinterlegt.</p>}
+      </details>
+    </div>}
     {loading && <p role="status">Verlauf wird geladen …</p>}
     {error && <p role="status">Verlauf konnte nicht geladen werden. <button onClick={()=>setRetry(n=>n+1)}>Erneut versuchen</button></p>}
     <section aria-label="Kommunikationsverlauf"><h3>E-Mail- und Telefonverlauf</h3>

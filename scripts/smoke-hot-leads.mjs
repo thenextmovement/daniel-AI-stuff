@@ -14,7 +14,7 @@ try{
     const visible=!['ignored','scheduled','no_followup'].includes(lead.listStatus);
     return route.fulfill({json:{ok:true,results:url.searchParams.has('customerIds')?[lead]:visible?[lead,...Array.from({length:12},(_,i)=>({...lead,id:lead.id+'-'+i,displayName:'Weitere Anfrage '+i}))]:[],nextOffset:null,total:visible?1:0,today}});
    }
-   if(url.pathname.endsWith('/context')&&url.searchParams.has('overview'))return route.fulfill({json:{ok:true,context:{masterCustomerId:lead.customerId,requestId:lead.requestId,customer:{displayName:lead.displayName,company:null,email:lead.email,phone:lead.phone},request:{title:lead.requestTitle,colors:[]},offer:{source:'offers',offerId:'test-offer',offerNumber:lead.offerNumber,label:'Testangebot',status:'sent',items:[],price:{amount:lead.amount,currency:'EUR',taxBasis:'gross'}},links:{offer:'/test-offer',trello:null},outlook:[],sourceStatus:{customerRecord:'ok',offer:'ok',outlook:'empty'}}}});
+   if(url.pathname.endsWith('/context')&&url.searchParams.has('overview'))return route.fulfill({json:{ok:true,context:{masterCustomerId:lead.customerId,requestId:lead.requestId,customer:{displayName:lead.displayName,company:null,email:lead.email,phone:lead.phone},request:{title:lead.requestTitle,productType:'LED Neonschild',description:'Synthetische Produktbeschreibung',colors:[]},offer:{source:'offers',offerId:'test-offer',offerNumber:lead.offerNumber,label:'Testangebot',status:'sent',items:[],price:{amount:lead.amount,currency:'EUR',taxBasis:'gross'}},links:{offer:'/test-offer',trello:null},outlook:[],sourceStatus:{customerRecord:'ok',offer:'ok',outlook:'empty'}}}});
    if(url.pathname.endsWith('/links'))return route.fulfill({json:{links:{offer:'/test-offer'}}});
    if(url.pathname.endsWith('/context')&&url.searchParams.has('directory'))return route.fulfill({json:{ok:true,results:[lead],nextOffset:null}});
    return route.fulfill({status:503,json:{ok:false,error:'Synthetic unavailable'}});
@@ -59,7 +59,17 @@ try{
   assert.equal(await header.locator('li[data-state="not_reached"]').count(),1);
   await page.getByRole('region',{name:'Kundenkarte',exact:true}).getByText('(20.11.2026)',{exact:true}).waitFor();
   assert.ok((await page.getByRole('button',{name:'KI-Sprachtest',exact:true}).boundingBox()).height<=28);
-  await page.screenshot({path:'/tmp/hot-header-'+width+'.png',fullPage:true});
+  const brief=page.getByRole('region',{name:'Gesprächsüberblick',exact:true});
+  assert.equal(await brief.getByText(lead.email,{exact:false}).count(),0);
+  assert.equal(await brief.getByText(lead.phone,{exact:false}).count(),0);
+  assert.equal(await brief.getByText('Testangebot',{exact:true}).count(),0);
+  const details=brief.locator('details').filter({hasText:'Produktdetails'});
+  await details.locator('summary').click();
+  await details.getByText('LED Neonschild',{exact:true}).waitFor();
+  await details.getByText('Synthetische Produktbeschreibung',{exact:true}).waitFor();
+  await details.locator('summary').click();
+  await brief.getByRole('heading',{name:'E-Mail- und Telefonverlauf',exact:true}).waitFor();
+  await page.screenshot({path:'/tmp/brief-compact-'+width+'.png',fullPage:true});
   await planner.getByRole('button',{name:'Erreicht',exact:true}).click();
   await planner.getByText('Erreicht gespeichert.',{exact:true}).waitFor();assert.equal(writes[0].status,'reached');assert.equal(writes[0].stage,2);
   await header.locator('li[data-state="reached"]').waitFor();
