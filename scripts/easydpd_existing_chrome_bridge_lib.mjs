@@ -210,6 +210,7 @@ async function writeStatusBestEffort(config, state, detail = {}) {
 }
 
 const JOB_BINDING_FIELDS = [
+  "reuseExistingDpdTracking",
   "id",
   "parcelKind",
   "parentPurchaseJobId",
