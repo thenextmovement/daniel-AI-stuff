@@ -1326,3 +1326,29 @@ test("package handling gate ignores links, ordinary metadata, ambiguous text and
     note: "Paket nicht öffnen. Bitte Fernbedienung beilegen.",
   }).blocked, true);
 });
+
+test('fulfilled first shipment stays visible without planning another purchase or review email', async () => {
+  const { buildArrivalReviewNotification } = await import('../../src/lib/ops/arrival-labels/review-notifications');
+  const order = { ...standardOrder, fulfillmentStatus: 'FULFILLED' };
+  const result = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [order], productConfig: config });
+  assert.equal(result.status, 'manual_review');
+  assert.equal(result.selectedDpdProduct, null);
+  assert.deepEqual(result.reasons, ['shopify_already_fulfilled']);
+  assert.equal(buildArrivalReviewNotification(result), null);
+});
+
+test('unfulfilled and partially fulfilled orders retain normal label planning', () => {
+  for (const fulfillmentStatus of ['UNFULFILLED', 'PARTIALLY_FULFILLED']) {
+    const result = decideArrivalCase({ arrival: arrival(), trelloCards: [card()], shopifyOrders: [{...standardOrder, fulfillmentStatus}], productConfig: config });
+    assert.equal(result.status, 'label_planned');
+  }
+});
+
+test('fulfilled order still permits a separately verified replacement round', () => {
+  const replacementRound = {previousTrackingNumbers:['9999999999'], trackingNumbers:['1234567890'],
+    previousArrivedAt:'2026-07-01T10:00:00Z', arrivalActionId:'arrival',
+    addedAt:'2026-07-02T10:00:00Z', trackingActionId:'tracking'};
+  const c = {...card(), name:'#NEONT100 | Ada Beispiel', trackingField:'9999999999|1234567890', replacementRound};
+  const result = decideArrivalCase({ arrival: arrival(), trelloCards: [c], shopifyOrders: [{...standardOrder, fulfillmentStatus:'FULFILLED'}], productConfig: config });
+  assert.equal(result.status, 'label_planned');
+});
