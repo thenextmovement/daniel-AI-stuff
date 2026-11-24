@@ -8,6 +8,44 @@ import fitz
 from PIL import Image
 SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path d="M10 50 C60 0 80 0 110 50 M120 10 L180 50" fill="none" stroke="#f333a5" stroke-width="1"/></svg>'
 class CloudTests(unittest.TestCase):
+ def test_update_markers_tolerate_case_spacing_and_small_typos(self):
+  from cloud_ai import update_block
+  for start,end in [('Update start','Update end'),('UPDATE START:','update Ende:'),
+                    (' **Update   Start:** ','__Update_Ende__'),('Udpate strat','Updat ende'),
+                    ('UpdateStart','UpdateEnd'),('Update startt','Update edn')]:
+   with self.subTest(start=start,end=end):
+    old,new=update_block('Alt: blau\n'+start+'\nNur die Rückplatte rechteckig.\n'+end+'\nIndoor')
+    self.assertEqual(new,'Nur die Rückplatte rechteckig.')
+    self.assertEqual(old,'Alt: blau\nIndoor')
+  old,new=update_block('Update Start\nAlt\nUpdate End\nUpdate Start\nNeu\nUpdate Ende')
+  self.assertEqual(new,'Neu')
+  self.assertIn('Alt',old)
+  for text in ['Update: rechteckig','Das Update startet morgen.','Update start und bitte blau']:
+   self.assertEqual(update_block(text),(text,None))
+  for text in ['Update Start\nBlau','Update End','Update Start\nUpdate End',
+               'Update Start\nUpdate Start\nBlau\nUpdate End']:
+   with self.subTest(text=text),self.assertRaises(Review):update_block(text)
+
+ def test_update_block_is_separate_from_previous_description_in_ai_request(self):
+  from unittest.mock import Mock,patch
+  from cloud_ai import generate
+  logo=io.BytesIO();Image.new('RGB',(10,10),'blue').save(logo,'PNG')
+  card=dict(id='src',name='Logo Smallest Size + 100 cm',desc='Vorher blau, zwei Designs\nUpdate start\nJetzt rot\nUpdate end\nIndoor',
+            attachments=[dict(id='art',name='logo.png',isUpload=True)])
+  t=Mock();t.download.return_value=logo.getvalue()
+  with patch.dict('os.environ',{'OPENAI_API_KEY':'test'}),patch('cloud_ai.requests.post',side_effect=RuntimeError('sent')) as post:
+   with self.assertRaisesRegex(RuntimeError,'sent'):generate(t,card)
+  prompt=post.call_args.kwargs['json']['input'][0]['content'][0]['text']
+  self.assertIn('"update_request": "Jetzt rot"',prompt)
+  self.assertIn('"description": "Vorher blau, zwei Designs\\nIndoor"',prompt)
+  self.assertIn('Nur update_request ist der neue Änderungsauftrag',prompt)
+  self.assertNotIn('"verbindliche_titelgroessen":',prompt)
+  self.assertNotIn('Für diese Bestellung sind 2 verschiedene Designs erforderlich.',prompt)
+  card['desc']='Update Start\nJetzt rot'
+  with patch('cloud_ai.requests.post') as post:
+   with self.assertRaisesRegex(Review,'Update End fehlt'):generate(t,card)
+   post.assert_not_called()
+
  def test_poll_finds_labels_without_actions_and_deduplicates_after_restart(self):
   from unittest.mock import Mock
   from cloud_trello import READY

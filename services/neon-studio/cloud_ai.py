@@ -5,6 +5,40 @@ from cloud_trello import named_fields,ServiceError
 from vector_import import render_pdf_page, _svg_pdf
 class Review(ValueError):pass
 
+def update_block(description):
+    """Separate the last bounded update; tolerate one typo per marker word."""
+    def near(word,expected):
+        if word==expected:return True
+        if len(word)==len(expected):
+            different=[i for i,(a,b) in enumerate(zip(word,expected)) if a!=b]
+            if len(different)==1:return True
+            return (len(different)==2 and different[1]==different[0]+1
+                    and word[different[0]:different[1]+1]==expected[different[0]:different[1]+1][::-1])
+        if abs(len(word)-len(expected))!=1:return False
+        longer,shorter=(word,expected) if len(word)>len(expected) else (expected,word)
+        return any(longer[:i]+longer[i+1:]==shorter for i in range(len(longer)))
+    opened=None;blocks=[];offset=0
+    for line in description.splitlines(keepends=True):
+        marker=re.sub(r'[\s:*#_>\-：]','',line.casefold())
+        kinds={kind for i in range(5,8) if near(marker[:i],'update')
+               for kind,words in [('start',('start',)),('end',('end','ende'))]
+               if any(near(marker[i:],word) for word in words)}
+        kind=next(iter(kinds)) if len(kinds)==1 else None
+        if kind=='start':
+            if opened is not None:raise Review('Update Start doppelt: Bitte jeden Update-Block mit Update End abschließen.')
+            opened=(offset,offset+len(line))
+        elif kind=='end':
+            if opened is None:raise Review('Update End ohne Update Start. Bitte beide Markierungen prüfen.')
+            start,body=opened
+            text=description[body:offset].strip()
+            if not text:raise Review('Der Update-Block ist leer. Bitte die Änderung zwischen Start und Ende eintragen.')
+            blocks.append((start,offset+len(line),text));opened=None
+        offset+=len(line)
+    if opened is not None:raise Review('Update End fehlt. Bitte den Änderungsauftrag mit Update End oder Update Ende abschließen.')
+    if not blocks:return description,None
+    start,end,text=blocks[-1]
+    return (description[:start]+description[end:]).strip(),text
+
 def smallest_title_widths(title):
     """Read absolute extra widths from the size clause of a Trello title."""
     marker=re.search(r'\b(?:smallest|small(?:\s+is)?)\s+size\b',title,re.I)
@@ -211,6 +245,7 @@ def eps_pdf(raw):
             raise Review('EPS konnte nicht in eine PDF umgewandelt werden. Bitte Vektor-PDF verwenden.') from None
 
 def generate(trello,card,selected=None,feedback=None):
+    previous_description,update_request=update_block(card.get('desc',''))
     # All attachments remain on the copy. Only raster/PDF customer art is sent for analysis.
     candidates=[a for a in card.get('attachments',[]) if a.get('isUpload') and
         re.search(r'\.(png|jpe?g|webp|pdf|svg|eps)$',a.get('fileName') or a['name'],re.I) and
@@ -253,9 +288,12 @@ def generate(trello,card,selected=None,feedback=None):
         out=io.BytesIO();image.save(out,'PNG')
         content.extend([{'type':'input_text','text':'Kundenanhang-ID: '+a['id']+'; Name: '+a['name']+'; Bildgröße: '+dimensions},
             {'type':'input_image','image_url':'data:image/png;base64,'+base64.b64encode(out.getvalue()).decode(),'detail':'original'}])
-    context={'title':card['name'],'description':card['desc'],'fields':named_fields(card)}
-    title_widths=smallest_title_widths(card['name'])
-    heights=requested_heights(card['name'],card['desc'])
+    context={'title':card['name'],'description':previous_description,'fields':named_fields(card)}
+    if update_request is not None:context['update_request']=update_request
+    # A bounded update may supersede old size/count clauses. Keep those in
+    # context, but do not force them back onto the AI's updated result.
+    title_widths=smallest_title_widths(card['name']) if update_request is None else None
+    heights=requested_heights(card['name'],card['desc']) if update_request is None else requested_heights('',update_request)
     if heights:
         context['verbindliche_schildhoehen_mm']=heights
     elif title_widths is not None:
@@ -329,12 +367,13 @@ gerade und tangential fortsetzen, keine kleinen Stopps, Knicke oder erfundenen V
 Kein Font-Ersatz, keine eingebetteten Bilder, keine text-Elemente. fill=none, stroke-Farbe,
 runde Linienenden. Nur svg/g/path; Befehle M L C Q Z. viewBox passend zur Zeichnung.
 Daten der Anfrage: """+json.dumps(context,ensure_ascii=False)
-    order=card['name']+'\n'+card['desc']
+    order=card['name']+'\n'+card['desc'] if update_request is None else update_request
+    count_description=card['desc'] if update_request is None else update_request
     two_designs_required=bool((re.search(r'\b(?:2|two|zwei)\s+(?:fonts|schriftarten)\b',order,re.I) and
         re.search(r'\b(?:2|two|zwei)\s+(?:quotes|angebote)\b',order,re.I)) or re.search(r'\b(?:2|zwei|two)\s+designs\b',order,re.I) or
         (re.search(r'\b(?:2|zwei|two)\s+(?:schilder|signs)\b',order,re.I) and
-         len(re.findall(r'[„“"]([^„“”"\n]+)[“”"]',card['desc']))>=2 and
-         re.search(r'\bjeweils\s+(?:ein|1)\s+Stück\b',card['desc'],re.I)))
+         len(re.findall(r'[„“"]([^„“”"\n]+)[“”"]',count_description))>=2 and
+         re.search(r'\bjeweils\s+(?:ein|1)\s+Stück\b',count_description,re.I)))
     count_match=re.search(r'\b([2-9]|[1-9][0-9]|zwei|drei|vier|two|three|four)\s+designs\b',order,re.I)
     count_words={'zwei':2,'two':2,'drei':3,'three':3,'vier':4,'four':4}
     design_count=2 if two_designs_required else None
@@ -359,6 +398,8 @@ Bei ausdrücklicher Farbwahl verwende die bestellte Leuchtfarbe auch für die SV
         prompt+=f'\nFür diese Bestellung sind {design_count} verschiedene Designs erforderlich.'
     if card.get('update_context'):
         prompt+='\nDies ist ein Update eines bestehenden Entwurfs. Lies Titel, Beschreibung, Felder und die aktuellen Änderungskommentare vollständig. Wende die neuen Wünsche auf die betroffenen Teile an; erhalte alle übrigen Motivteile, Linienarten, Farben und Maße. Bei widersprüchlichen Angaben hat der neueste ausdrückliche Änderungswunsch Vorrang. Der bisherige Entwurf ist Kontext, keine neue Kundenanforderung: '+json.dumps(card['update_context'],ensure_ascii=False)
+    if update_request is not None:
+        prompt+='\nNur update_request ist der neue Änderungsauftrag aus dem letzten vollständigen Update-Block. Titel, description, Felder, frühere Update-Blöcke und der bisherige Entwurf sind Bestandskontext. Ändere ausschließlich die in update_request betroffenen Teile; erhalte alle übrigen Vorgaben. Bei Konflikten mit dem Bestand hat update_request Vorrang. Widersprüche innerhalb von update_request bleiben offene Rückfragen. Die Markierungen selbst gehören nicht zum Motiv.'
     if feedback:
         prompt+='\nDie geometrische Prüfung des ersten Entwurfs ergibt: '+json.dumps(feedback,ensure_ascii=False)
         prompt+='''
