@@ -27,3 +27,13 @@ test('unrelated domain, QA URL and other campaign do not carry an old X click',a
     const s=await setup({storage:new Map(first.storage),url});await s.checkout();assert.equal(s.calls.length,0);
   }
 });
+
+test('current shop domain captures a consented X checkout, never a browser purchase',async()=>{
+ const s=await setup({url:'https://shop.neontrip.de/checkouts/fixture?twclid=test_click'});await s.checkout('checkout_completed');
+ assert.equal(s.calls.length,1);assert.equal(s.calls[0].marketing_allowed,true);assert.equal(s.calls[0].twclid,'test_click');assert.equal(s.calls[0].value,undefined);
+});
+test('current shop domain still rejects missing consent and insecure or unrelated origins',async()=>{
+ for(const options of [{url:'https://shop.neontrip.de/?twclid=test_click',allowed:false},{url:'http://shop.neontrip.de/?twclid=test_click'},{url:'https://shop.riesenobjekte.de/?twclid=test_click'}]){
+ const s=await setup(options);await s.checkout();assert.equal(s.calls.length,0);assert.equal(s.storage.size,0);
+ }
+});
