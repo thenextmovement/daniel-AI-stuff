@@ -1087,8 +1087,29 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
         poly=Polygon(line.coords) if len(line.coords)>=3 else Polygon()
         core=poly if poly.is_valid and poly.area>1 else line
         pieces.append(_directional_buffer(core,paddings) if paddings else core.buffer(padding, quad_segs=20))
-    merged=unary_union(pieces)
-    # Connect disjoint components by the shortest visible bridge, never emit islands.
+    # Join vertically separated motif rows across their full facing width.
+    # A nearest-point bridge can leave an entire subtitle hanging from one neck;
+    # keep the filled inter-row corridor even when text bands replace the hull.
+    rows=[]
+    for i in sorted(range(len(lines)),key=lambda i:lines[i].bounds[1]):
+        top,bottom=lines[i].bounds[1],lines[i].bounds[3]
+        if rows and top<=rows[-1][1]:
+            rows[-1][1]=max(rows[-1][1],bottom)
+            rows[-1][2].append(i)
+        else:
+            rows.append([top,bottom,[i]])
+    connectors=[]
+    for upper,lower in zip(rows,rows[1:]):
+        a=unary_union([pieces[i] for i in upper[2]])
+        b=unary_union([pieces[i] for i in lower[2]])
+        if min(a.bounds[2],b.bounds[2])<=max(a.bounds[0],b.bounds[0]):
+            continue
+        envelope=unary_union([a,b]).convex_hull
+        corridor=box(max(a.bounds[0],b.bounds[0]),upper[1]-padding,
+                     min(a.bounds[2],b.bounds[2]),lower[0]+padding)
+        connectors.append(envelope.intersection(corridor))
+    merged=unary_union([*pieces,*connectors])
+    # Connect remaining disjoint components, never emit islands.
     while merged.geom_type=='MultiPolygon':
         parts=list(merged.geoms)
         _,a,b=min((parts[i].distance(parts[j]),i,j) for i in range(len(parts)) for j in range(i))
