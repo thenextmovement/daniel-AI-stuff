@@ -2102,13 +2102,26 @@ export function mirrorSourceHealth<T extends {ingested_at: string | null}>(audit
   const observedAt = validIso(meta?.observed_at);
   const verifiedAt = validIso(meta?.verified_at);
   const count = Number(meta?.source_count);
-  // Retained historical rows are not part of the provider's verified snapshot.
-  // A partial newer write still fails the exact count/timestamp checks.
-  const currentRows = observedAt ? rows.filter(row => validIso(row.ingested_at) === observedAt) : [];
+  const incremental = source === "bank" && meta?.schema === "ops.source-mirror.v2";
+  const baselineAt = validIso(meta?.baseline_at);
+  const previousAt = validIso(meta?.previous_observed_at);
+  const windowFrom = validIso(meta?.window_from);
+  const deltaCount = meta?.delta_count;
+  const incrementalValid = Boolean(incremental && baselineAt && previousAt && windowFrom && observedAt &&
+    Date.parse(baselineAt) <= Date.parse(previousAt) && Date.parse(previousAt) < Date.parse(observedAt) &&
+    Date.parse(windowFrom) <= Date.parse(previousAt) && Number.isSafeInteger(deltaCount) &&
+    Number(deltaCount) >= 0 && meta?.written_count === deltaCount);
+  // Incremental syncs retain the confirmed baseline; pre-baseline historical rows stay excluded.
+  // Any write newer than the audit still invalidates the snapshot below.
+  const currentRows = observedAt ? rows.filter(row => {
+    const at = validIso(row.ingested_at);
+    return incremental ? Boolean(at && baselineAt && Date.parse(at) >= Date.parse(baselineAt)) : at === observedAt;
+  }) : [];
   const complete = Boolean(audit?.status === "success" &&
-    meta?.schema === "ops.source-mirror.v1" && meta?.source === source &&
+    (meta?.schema === "ops.source-mirror.v1" || incrementalValid) && meta?.source === source &&
     meta?.source_complete === true && Number.isSafeInteger(count) && count > 0 &&
-    count === currentRows.length && meta?.written_count === count && observedAt && verifiedAt &&
+    count === currentRows.length && (incremental ? incrementalValid && Number(deltaCount) <= count &&
+      currentRows.filter(row => validIso(row.ingested_at) === observedAt).length === deltaCount : meta?.written_count === count) && observedAt && verifiedAt &&
     Date.parse(verifiedAt) >= Date.parse(observedAt) &&
     rows.every(row => {
       const ingestedAt = validIso(row.ingested_at);

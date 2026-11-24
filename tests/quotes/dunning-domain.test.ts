@@ -1196,3 +1196,25 @@ test('future evidence and payment reviews for another invoice never hide a recei
     assert.equal(buildDunningCases({...input(),paymentReviews:[paymentReview(patch)]} as BuildInput).length,1);
   }
 });
+
+test('incremental bank mirror retains baseline payments and accepts a verified empty delta', () => {
+ const baseline='2026-11-24T08:00:00.000Z', observed='2026-11-24T10:00:00.000Z';
+ const rows=[{ingested_at:baseline},{ingested_at:'2026-11-24T09:00:00.000Z'},{ingested_at:'2026-01-01T00:00:00.000Z'}];
+ const audit:any={status:'success',metadata:{schema:'ops.source-mirror.v2',source:'bank',source_complete:true,source_count:2,written_count:0,delta_count:0,baseline_at:baseline,previous_observed_at:'2026-11-24T09:00:00.000Z',window_from:'2026-11-23T09:00:00.000Z',observed_at:observed,verified_at:'2026-11-24T10:00:10.000Z'}};
+ const result=mirrorSourceHealth(audit,'bank',rows,new Date('2026-11-24T10:15:00Z'));
+ assert.equal(result.complete,true);assert.equal(result.fresh,true);assert.deepEqual(result.rows,rows.slice(0,2));
+ assert.equal(mirrorSourceHealth(audit,'bank',rows,new Date('2026-11-24T10:46:00Z')).fresh,false);
+ for(const patch of [{source_count:3},{written_count:1},{baseline_at:null},{window_from:'2026-11-24T09:01:00Z'},{previous_observed_at:'2026-11-24T11:00:00Z'}]) {
+  assert.equal(mirrorSourceHealth({...audit,metadata:{...audit.metadata,...patch}},'bank',rows).complete,false);
+ }
+ assert.equal(mirrorSourceHealth(audit,'shopify',rows).complete,false);
+ assert.equal(mirrorSourceHealth(audit,'bank',[...rows,{ingested_at:'2026-11-24T10:01:00Z'}]).complete,false);
+});
+
+ test('incremental bank mirror verifies changed row count and keeps unchanged old payments', () => {
+ const baseline='2026-11-24T08:00:00.000Z', observed='2026-11-24T10:00:00.000Z';
+ const rows=[{ingested_at:baseline},{ingested_at:observed}];
+ const audit:any={status:'success',metadata:{schema:'ops.source-mirror.v2',source:'bank',source_complete:true,source_count:2,written_count:1,delta_count:1,baseline_at:baseline,previous_observed_at:baseline,window_from:'2026-11-23T08:00:00.000Z',observed_at:observed,verified_at:'2026-11-24T10:00:10.000Z'}};
+ assert.equal(mirrorSourceHealth(audit,'bank',rows,new Date('2026-11-24T10:15:00Z')).complete,true);
+ assert.equal(mirrorSourceHealth(audit,'bank',[{ingested_at:baseline},{ingested_at:baseline}]).complete,false);
+ });
