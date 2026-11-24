@@ -955,7 +955,7 @@ export function decideArrivalCase(input: {
   }
 
   const reprintTrackings = [...new Set(orderMatch.order.fulfillments
-    .filter(f => f.status === "SUCCESS" && /^DPD$/i.test(f.trackingCompany || "") && /^\d{14}$/.test(f.trackingNumber || ""))
+    .filter(f => f.status === "SUCCESS" && /^DPD(?: Germany)?$/i.test(f.trackingCompany || "") && /^\d{14}$/.test(f.trackingNumber || ""))
     .map(f => f.trackingNumber as string))];
   const reuseExistingDpdTracking = !trelloMatch.card.replacementRound && reprintTrackings.length === 1
     ? reprintTrackings[0] : undefined;
