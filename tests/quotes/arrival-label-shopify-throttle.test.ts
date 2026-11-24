@@ -119,3 +119,15 @@ for (const codes of [["ACCESS_DENIED"], ["THROTTLED", "ACCESS_DENIED"]]) {
     assert.deepEqual(waits, []);
   });
 }
+
+test("Shopify fulfillment status reaches the arrival decision unchanged", async t => {
+  const client = setup(t);
+  t.mock.method(globalThis, "fetch", async (_input: unknown, init: RequestInit) => {
+    assert.match(JSON.parse(String(init.body)).query, /displayFulfillmentStatus/);
+    const payload = page([4829]);
+    return Response.json({data:{orders:{...payload.data.orders,
+      nodes:payload.data.orders.nodes.map(order=>({...order,displayFulfillmentStatus:"FULFILLED"}))}}});
+  });
+  const orders = await client.listRecentOrders("2026-11-24");
+  assert.equal(orders[0].fulfillmentStatus, "FULFILLED");
+});

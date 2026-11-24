@@ -342,6 +342,7 @@ const ARRIVAL_ORDERS_QUERY = `
         id
         name
         displayFinancialStatus
+        displayFulfillmentStatus
         note
         tags
         customAttributes { key value }
@@ -519,6 +520,7 @@ function mapShopifyOrder(raw: JsonRecord, shopDomain: string): ShopifyOrderEvide
     adminUrl: `https://${shopDomain}/admin/orders/${numericId}`,
     customerName: customer ? String(customer.displayName || "").trim() || null : null,
     financialStatus,
+    fulfillmentStatus: typeof raw.displayFulfillmentStatus === "string" ? raw.displayFulfillmentStatus : undefined,
     note: String(raw.note || "").trim() || null,
     shippingAddress: shippingAddress ? {
       name: String(shippingAddress.name || "").trim() || null,
