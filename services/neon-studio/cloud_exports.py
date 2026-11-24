@@ -5,7 +5,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
 import fitz
 from PIL import Image, ImageFilter, ImageChops
-from export_pdf import _paint
+from export_pdf import _paint, _print_uv
 from neon_pricing import drawing_price
 def de(value,places=2):return f'{float(value):.{places}f}'.replace('.',',')
 CUT={'shape':'Formzuschnitt','rectangle':'Rechteck','bottom':'Nur unten'}
@@ -23,6 +23,7 @@ def artwork(c,d,x,y,width,height,technical=False):
     scale=min(width/d['width'],height/d['height'])
     c.saveState();c.translate(x,y);c.scale(scale,scale)
     bx,by=d['bounds'][:2]
+    _print_uv(c,d,-bx,d['height']+by)
     _paint(c,d['outer'],-bx,d['height']+by,'#333333',max(.12,.3/scale/mm))
     for seam in (d.get('acrylicSplit') or {}).get('seams',[]):
         _paint(c,seam,-bx,d['height']+by,'#777777',max(.12,.3/scale/mm))
@@ -97,6 +98,9 @@ def product_rows(d,spec):
             rows.append((label,de(spec[key]/10)+' cm'))
     if d.get('acrylicSplit'):
         rows.append(('Acrylic parts / Acrylteile',str(len(d['acrylicSplit']['pieces']))))
+    materials=(d.get('uv') or {}).get('materials',[])
+    if materials:
+        rows.append(('Unlit artwork / Unbeleuchtetes Motiv',' + '.join({'uv':'UV print / UV-Druck','plot':'Vinyl plot / Folienplot'}[m] for m in materials)))
     return rows+[
         ('Product type / Produktart','LED Neon Flex'),
         ('Material','Silicone / Silikon'),
@@ -184,6 +188,16 @@ def mockup_image(d):
         glow=neon.filter(ImageFilter.GaussianBlur(radius)).point(lambda v:v*strength)
         wall=ImageChops.screen(wall,glow)
     wall=ImageChops.screen(wall,neon)
+    if d.get('uv'):
+        printed=io.BytesIO();c=Canvas(printed,pagesize=(w,h))
+        c.translate(x,y);c.scale(scale/mm,scale/mm)
+        _print_uv(c,d,-bx,d['height']+by)
+        c.showPage();c.save()
+        with fitz.open(stream=printed.getvalue(),filetype='pdf') as doc:
+            pix=doc[0].get_pixmap(alpha=True)
+            # MuPDF samples are premultiplied; PNG decoding supplies straight alpha.
+            layer=Image.open(io.BytesIO(pix.tobytes('png'))).convert('RGBA')
+        wall=Image.alpha_composite(wall.convert('RGBA'),layer).convert('RGB')
     jpeg=io.BytesIO();wall.save(jpeg,'JPEG',quality=95,subsampling=0)
     return jpeg.getvalue()
 

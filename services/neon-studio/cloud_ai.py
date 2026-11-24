@@ -77,7 +77,7 @@ def validate_svg(svg):
     try:root=ET.fromstring(svg)
     except ET.ParseError:raise Review('KI hat keine gültige Vektordatei geliefert.')
     allowed={'svg','g','path','rect','circle','ellipse','line','polyline','polygon','title','desc'}
-    attributes={'xmlns','viewBox','width','height','fill','stroke','stroke-width','stroke-linecap','stroke-linejoin','d','id','x','y','x1','y1','x2','y2','cx','cy','r','rx','ry','points','transform','opacity','stroke-opacity','fill-opacity','version'}
+    attributes={'xmlns','viewBox','width','height','fill','fill-rule','stroke','stroke-width','stroke-linecap','stroke-linejoin','d','id','x','y','x1','y1','x2','y2','cx','cy','r','rx','ry','points','transform','opacity','stroke-opacity','fill-opacity','version'}
     paths=0
     for e in root.iter():
         if e.tag.split('}')[-1] not in allowed or any(k.split('}')[-1] not in attributes for k in e.attrib):raise Review('SVG enthält nicht unterstützte Elemente.')
@@ -159,7 +159,7 @@ def drawing_model(data):
     plan=data.get('line_plan');assignments={}
     if not isinstance(plan,list) or not plan:raise Review('Linienarten je Motivbereich fehlen.')
     for region in plan:
-        if not isinstance(region,dict) or region.get('mode') not in ('single','double') or not isinstance(region.get('name'),str) or not region['name'].strip():
+        if not isinstance(region,dict) or region.get('mode') not in ('single','double','uv','plot') or not isinstance(region.get('name'),str) or not region['name'].strip():
             raise Review('Linienart oder Name für einen Motivbereich fehlt.')
         paths=region.get('path_ids');dots=region.get('dot_ids',[])
         if not isinstance(paths,list) or not paths or not isinstance(dots,list) or any(not isinstance(x,str) for x in paths+dots) or not set(dots)<=set(paths):
@@ -170,8 +170,22 @@ def drawing_model(data):
     if set(assignments)!=set(ids):raise Review('Nicht alle Neonpfade haben eine Linienart.')
     model=analyze_vector(data['svg'].encode(),'KI-Zeichnung.svg')
     groups={item.get('originalGroup') for item in model['modes']['double']}
-    if groups!=set(range(len(ids))) or model.get('vectorHasFills'):
+    if groups!=set(range(len(ids))):
         raise Review('Linienplan konnte der importierten Zeichnung nicht eindeutig zugeordnet werden.')
+    print_groups={i for i,key in enumerate(ids) if assignments[key][0]['mode'] in ('uv','plot')}
+    if any(item.get('filled') and item['originalGroup'] not in print_groups for item in model['modes']['double']):
+        raise Review('Neonpfade müssen ungefüllte Linien sein.')
+    if print_groups:
+        model['printArtwork']=[{**item,'material':assignments[ids[item['originalGroup']]][0]['mode']}
+                               for item in model['artwork'] if item['originalGroup'] in print_groups]
+        for mode in model['modes']:
+            model['modes'][mode]=[item for item in model['modes'][mode] if item['originalGroup'] not in print_groups]
+        if not model['modes']['double']:raise Review('Mindestens ein Neonbereich ist erforderlich.')
+        neon_parts={item['partId'] for item in model['modes']['double']}
+        model['parts']=[part for part in model['parts'] if part['id'] in neon_parts]
+        model.update(vectorHasFills=False,singleReady=True)
+    if bool(data.get('uv_print')) != any(assignments[key][0]['mode']=='uv' for key in ids):
+        raise Review('UV-Druck muss als sichtbare Fläche im Linienplan und in der Zeichnung enthalten sein.')
     part_modes={}
     for items in model['modes'].values():
         for item in items:
@@ -317,7 +331,7 @@ Diese expliziten Maße haben Vorrang vor einem pauschalen Smallest Size im Titel
 widths_mm=[1240], shape=rectangle, smallest_requested=false, minimum_first=false. Zeichne nur das Motiv,
 niemals den Plattenrand als Neonpfad. Auch bei getrennten Maßen gelten Ausschlüsse, Farben und Linienarten je Bereich.
 evidence (kurze wörtliche Belege für bestellte Größen und Materialwünsche),
-line_plan (Liste pro Schriftzeile/Logobereich mit name, mode: single oder double,
+line_plan (Liste pro Schriftzeile/Logobereich mit name, mode: single, double, uv oder plot,
 reason: deutsche Begründung anhand der Vorlage, path_ids: alle zugehörigen SVG-Pfad-IDs,
 dot_ids: IDs ausschließlich von i/j-Punkten, keine dekorativen Logopunkte/-quadrate).
 Benenne jede waagerechte Schriftzeile einzeln mit „Schriftzug“ und ihrem Text. Verwende dieses Präfix ausschließlich für waagerechte Schrift, auch bei kombinierten Wort-Bild-Marken.
@@ -351,7 +365,11 @@ Formuliere jede tatsächlich offene Entscheidung als kurze Frage:
 Benenne den betroffenen Motivteil und erkläre in einem zweiten Satz, welche Angabe fehlt oder welche Angaben sich widersprechen.
 Fehlende Usage: Innen; fehlender Zuschnitt: shape. Randabstand später 15mm.
 Falls verbindliche_titelgroessen vorliegen, gelten sie für normale Größenvarianten. Ausnahme: Explizit getrennte Platten- und Neonmaße aus der Beschreibung haben Vorrang; übernimm sie vollständig in fixed_board und berechne keine vergrößerte Mindestvariante. Ohne fixed_board keine weiteren Breiten aus Beschreibung oder Vorlage übernehmen; dann wird die geometrische Mindestbreite automatisch berechnet. Fehlende Mindestbreite ist kein issue. Nur Rückfragen, deren Antwort Zeichnung oder Kalkulation tatsächlich verändert und die weder durch die Vorlage noch durch die vereinbarten Standardwerte geklärt sind, gehören in issues. Reine Erläuterungen, Bestätigungswünsche und allgemeine Produktionshinweise sind keine issues. Pro offenem Sachverhalt genau eine kurze, verständliche Frage auf Deutsch. Erstelle den Entwurf mit der am besten belegten Ausführung und nenne die getroffene Annahme in der Frage. Keine Größe erfinden. smallest_requested ist true, wenn die kleinste machbare Variante gewünscht wird; dafür keine Breite und kein issue erfinden. Bei unklarer Motivwahl frage nur nach, wenn sich aus der Bestellung nicht ergibt, welche Motive angeboten werden sollen. Für die Zeichnung immer 6 mm Neonflex annehmen.
-Die SVG enthält ausschließlich die tatsächlich benötigten Neonpfade: smooth Mittellinien bei
+Die SVG enthält alle tatsächlich bestellten Motivteile einschließlich sichtbarer UV-Druck-/Folienplot-Unterzeilen.
+Ordne unbeleuchtete Bereiche im line_plan mode=uv (UV-Druck) oder mode=plot (Folienplot) zu.
+Zeichne diese Bereiche als vollständige farbige Flächenpfade, einschließlich Text in Kurven und Aussparungen.
+Ein Name, Preis oder uv_print=true ersetzt niemals die sichtbaren Druckpfade. uv_print=true genau dann, wenn mode=uv vorkommt.
+Neonbereiche verwenden single/double: smooth Mittellinien bei
 Schreibschrift/dünnen Strichen, vorhandene Umrisslinien bei bewusst breiten Outline-Logos.
 Keine Leuchthöfe, Schattierungen, Acrylkontur, Beschriftungen, Bemaßung oder Bildrahmen.
 Ein leuchtender Neon-Rahmen IST ein Neonpfad und muss erhalten bleiben.
@@ -364,7 +382,7 @@ Wenn die Anfrage das Zeichen ausdrücklich als Teil der Neonzeichnung verlangt, 
 Ein R im Schriftzug, ein eigenständiges ℝ, i/j-Punkte, kleine Schriftzüge wie „DJ“ und
 Logodetails bleiben erhalten. Bei unklarer Zuordnung das Detail beibehalten. An Kreuzungen
 gerade und tangential fortsetzen, keine kleinen Stopps, Knicke oder erfundenen Verbindungen.
-Kein Font-Ersatz, keine eingebetteten Bilder, keine text-Elemente. fill=none, stroke-Farbe,
+Kein Font-Ersatz, keine eingebetteten Bilder, keine text-Elemente. Neon: fill=none, stroke-Farbe; UV/Plot: Originalfüllfarben, fill-rule bei Aussparungen,
 runde Linienenden. Nur svg/g/path; Befehle M L C Q Z. viewBox passend zur Zeichnung.
 Daten der Anfrage: """+json.dumps(context,ensure_ascii=False)
     order=card['name']+'\n'+card['desc'] if update_request is None else update_request

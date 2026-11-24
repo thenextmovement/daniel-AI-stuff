@@ -30,7 +30,7 @@ def drawing_price(drawing,options):
     item={'width_cm':drawing['width']/10,'height_cm':drawing['height']/10,
           'neon_m':drawing['neonMeters'],'color':options.get('color','single'),
           'outdoor':options.get('outdoor',False),'waterproof_psus':options.get('waterproof_psus',0),
-          'uv_print':bool(drawing.get('uv')) or options.get('uv_print',False),'controllers':max(1,controllers)}
+          'uv_print':bool(drawing.get('uv') and 'uv' in drawing['uv'].get('materials',['uv'])) or options.get('uv_print',False),'controllers':max(1,controllers)}
     mode=options.get('mode','single')
     if mode not in ('single','pair','split'):raise ValueError('Unbekannte Paketoption.')
     request={'items':[item,item.copy()] if mode=='pair' else [item],

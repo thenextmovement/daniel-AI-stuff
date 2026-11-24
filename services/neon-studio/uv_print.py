@@ -133,16 +133,25 @@ def uv_geometry(model,strokes,reference,mode='original',hidden=()):
     """Return brush coverage, backing footprint and the actual print clip."""
     from geometry import sample_path, path_bounds
     if mode not in ('original','forms'):raise ValueError('Unbekannte UV-Druck-Auswahl.')
-    if not strokes:return GeometryCollection(),GeometryCollection(),GeometryCollection()
+    shapes=[]
+    for item in model.get('printArtwork',[]):
+        if item.get('filled'):
+            shapes.append(filled_shape(item['commands'],item.get('evenodd',False)))
+        else:
+            shapes.extend(LineString(sample_path(path,50)).buffer(max(.01,item.get('originalStrokeWidth',.1))/2)
+                          for path in subpaths(item['commands']) if len(path)>1)
+    footprint=unary_union(shapes) if shapes else GeometryCollection()
+    # Separate print paths support the board without clipping nearby neon.
+    if not strokes:return GeometryCollection(),footprint,footprint
     x,y,w,h=model['imageBounds']
     bounds=[path_bounds(p['commands']) for p in model['modes']['double']]
     x0=min(x,*[b[0] for b in bounds]);y0=min(y,*[b[1] for b in bounds])
     x1=max(x+w,*[b[2] for b in bounds]);y1=max(y+h,*[b[3] for b in bounds])
     mask=mask_from_strokes(strokes,[x0,y0,x1-x0,y1-y0],reference)
-    if mask.is_empty:return mask,GeometryCollection(),mask
+    if mask.is_empty:return mask,footprint,footprint
     if mode=='forms':
         print_mask=recognized_shapes(model,hidden).intersection(mask)
-        return mask,print_mask,print_mask
+        return mask,print_mask.union(footprint),print_mask.union(footprint)
     shapes=[]
     for item in model['modes']['double']:
         for path in subpaths(item['commands']):
@@ -151,4 +160,4 @@ def uv_geometry(model,strokes,reference,mode='original',hidden=()):
             if item.get('filled') or path[-1][0]=='h':shape=Polygon(points).buffer(0)
             else:shape=LineString(points).buffer(item.get('originalStrokeWidth',.1)/2)
             if mask.intersects(shape):shapes.append(shape.intersection(mask))
-    return mask,unary_union(shapes) if shapes else GeometryCollection(),mask
+    return mask,unary_union(shapes).union(footprint) if shapes else footprint,mask.union(footprint)

@@ -1250,7 +1250,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
     source=[dict(catalog[leaf]) for key in bases for leaf in expanded[key]]
     if not source:
         raise ValueError('Keine verwertbaren Neonlinien erkannt.')
-    scale_bounds=np.array([path_bounds(item['commands']) for item in source])
+    scale_bounds=np.array([path_bounds(item['commands']) for item in source+model.get('printArtwork',[])])
     scale_width=scale_bounds[:,2].max()-scale_bounds[:,0].min()
     source=[item for item in source if not any(a in hidden for a in ancestors(item['key']))]
     # A division is only a selection change. Keep the original sampling for
@@ -1531,13 +1531,14 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
         {'ok':not missing,'label':('Sichtbare Motivelemente enthalten' if hidden_paths else 'Alle Motivelemente enthalten') if not missing else 'Motivelemente ohne Neonpfade'},
     ]
     uv=None
-    if not uv_mask.is_empty and uv_support:
+    if uv_support:
         clip=transform(polygon_commands(uv_clip),scale,-reference[0]*scale,-reference[1]*scale)
         uv=dict(clip=clip,clipData=path_d(clip),image=model['image'],
+                materials=sorted({item['material'] for item in model.get('printArtwork',[])}) if not settings.get('uvStrokes') else ['uv'],
                 artwork=[{**item,'commands':transform(item['commands'],scale,-reference[0]*scale,-reference[1]*scale),
                           'originalStrokeWidth':item.get('originalStrokeWidth',0)*scale}
-                         for item in model.get('artwork',model['modes']['double'])] if model['sourceKind']=='vector' else None)
-        notices.append('UV-Druck: Originaldarstellung, ohne Neonmeter. Die Druckflächen werden bei der Acrylkontur berücksichtigt.')
+                         for item in (model.get('printArtwork') if model.get('printArtwork') and not settings.get('uvStrokes') else model.get('artwork',model['modes']['double']))] if model['sourceKind']=='vector' else None)
+        notices.append('UV-Druck / Folienplot: Originaldarstellung, ohne Neonmeter. Die Flächen werden bei der Acrylkontur berücksichtigt.')
     return dict(acrylicSplit=split,pathBoundsMm=path_boxes,pathLengthsMm=lengths,pathEditSources=edit_paths,outlineVisibleControls=transform(visible_path,1,shift_x,shift_y),outlineControls=outline_controls,uv=uv,paths=paths, names=[p['name'] for p in source], outer=outer,
                 pathColors=[resolved_colors[p['key']] for p in source],colorSources=color_sources,neonPalette=NEON_COLORS,
                 pathPartIds=[p['partId'] for p in source],pathModes=[p['mode'] for p in source],pathRoles=[p.get('role','stroke') for p in source],pathKeys=[p['key'] for p in source],
