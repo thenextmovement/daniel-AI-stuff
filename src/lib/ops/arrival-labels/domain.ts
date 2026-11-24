@@ -143,6 +143,7 @@ export type ProductConfig = {
 };
 
 export type ArrivalCaseDecision = {
+  reuseExistingDpdTracking?: string;
   idempotencyKey: string;
   trackingNumber: string;
   lastSix: string;
@@ -953,10 +954,15 @@ export function decideArrivalCase(input: {
     };
   }
 
-  // A fulfilled first shipment has no remaining items in EasyDPD. Keep the
+  const reprintTrackings = [...new Set(orderMatch.order.fulfillments
+    .filter(f => f.status === "SUCCESS" && /^DPD$/i.test(f.trackingCompany || "") && /^\d{14}$/.test(f.trackingNumber || ""))
+    .map(f => f.trackingNumber as string))];
+  const reuseExistingDpdTracking = !trelloMatch.card.replacementRound && reprintTrackings.length === 1
+    ? reprintTrackings[0] : undefined;
+  // A fulfilled first shipment without a unique DPD label cannot be printed. Keep the
   // case visible without queuing another purchase; a verified replacement
   // round is separately authorized and retains its existing release gates.
-  if (orderMatch.order.fulfillmentStatus === "FULFILLED" && !trelloMatch.card.replacementRound) {
+  if (orderMatch.order.fulfillmentStatus === "FULFILLED" && !trelloMatch.card.replacementRound && !reuseExistingDpdTracking) {
     return {
       idempotencyKey: buildIdempotencyKey(orderMatch.order.id, input.arrival.trackingNumber),
       trackingNumber: input.arrival.trackingNumber,
@@ -1014,6 +1020,7 @@ export function decideArrivalCase(input: {
     deliveryNoteRequired: destination.deliveryNoteRequired,
     deliveryNoteStatus: destination.deliveryNoteStatus,
     selectedDpdProduct: product,
+    reuseExistingDpdTracking,
     existingDpdTracking: null,
     status: "label_planned",
     manualReviewReason: null,

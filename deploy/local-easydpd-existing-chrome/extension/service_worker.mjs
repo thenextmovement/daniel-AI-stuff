@@ -1,3 +1,4 @@
+import { existingLabelReprintUrl } from "./policy.mjs";
 import {
   BRIDGE_PROTOCOL_VERSION,
   EASYDPD_FRAME_ORIGIN,
@@ -11,6 +12,8 @@ import {
 
 const ALARM_NAME = "neontrip-easydpd-existing-chrome-cycle";
 const EXTENSION_BUILD_COMMIT = "__NEONTRIP_EXTENSION_BUILD_COMMIT__";
+const CONSENT_HOLD = "easyDpdPendingAuthorization";
+const CONSENT_ERROR = "EasyDPD-App-Freigabe ausstehend. Berechtigungen in Shopify prüfen.";
 const STATE_KEY = "neontripEasyDpdBridgeState";
 const AUDIT_KEY = "neontripEasyDpdBridgeAudit";
 const MAX_AUDIT_ENTRIES = 50;
@@ -173,16 +176,46 @@ async function frameMessageWhenReady(tabId, frameId, payload, timeoutMs = 20_000
   throw lastError || new Error("EasyDPD-App-Frame antwortete nicht rechtzeitig.");
 }
 
-async function validateAndPrepareFrame(tabId, job) {
-  let frameId = await easyDpdFrameId(tabId);
+async function orderFrameBeforePurchase(tabId, job) {
   try {
-    return { frameId, prepared: await frameMessageWhenReady(tabId, frameId, { action: "validate_and_prepare", job }) };
+    return await easyDpdFrameId(tabId);
+  } catch (error) {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.url !== validateOrderUrl(job.orderUrl) || !/\bAuthorize easyDPD\b/i.test(tab.title || "")) throw error;
+    await chrome.storage.local.set({ [CONSENT_HOLD]: {
+      orderUrl: job.orderUrl, orderName: job.orderName, jobId: job.id,
+    } });
+    throw new Error(CONSENT_ERROR);
+  }
+}
+
+// A fresh read of the affected order tests the same embedded app route as a purchase.
+async function verifyAuthorizationRestored(hold) {
+  const tab = await createFreshEasyDpdTab(hold);
+  try {
+    await waitForTabComplete(tab.id, hold.orderUrl);
+    const frame = await easyDpdFrameId(tab.id);
+    await frameMessageWhenReady(tab.id, frame, { action: "inspect_history", job: hold });
+    // If someone booked manually during the pause, reconcile on this job's next preflight.
+    await chrome.storage.local.set({ ["consentRetry:" + hold.jobId]: true });
+    await chrome.storage.local.remove(CONSENT_HOLD);
+  } finally {
+    await chrome.tabs.remove(tab.id).catch(() => undefined);
+  }
+}
+
+async function validateAndPrepareFrame(tabId, job) {
+  const retryKey = "consentRetry:" + job.id;
+  const authorizationRetry = Boolean((await chrome.storage.local.get(retryKey))[retryKey]);
+  let frameId = await orderFrameBeforePurchase(tabId, job);
+  try {
+    return { frameId, authorizationRetry, prepared: await frameMessageWhenReady(tabId, frameId, { action: "validate_and_prepare", job }) };
   } catch (error) {
     if (!isMissingFrameReceiver(error)) throw error;
     await record("content_script_reload", { jobId: job.id, orderName: job.orderName });
     await reloadAndWaitForTabComplete(tabId, job.orderUrl);
-    frameId = await easyDpdFrameId(tabId);
-    return { frameId, prepared: await frameMessageWhenReady(tabId, frameId, { action: "validate_and_prepare", job }) };
+    frameId = await orderFrameBeforePurchase(tabId, job);
+    return { frameId, authorizationRetry, prepared: await frameMessageWhenReady(tabId, frameId, { action: "validate_and_prepare", job }) };
   }
 }
 
@@ -367,7 +400,7 @@ async function recoverPostDispatchDownload(tabId, job, settleDelayMs = 0, primar
   const evidence = safeHistoryEvidence(observed);
   await record("post_dispatch_history_checked", { jobId: job.id, orderName: job.orderName, evidence });
   if (!evidence.found) throw new Error("EasyDPD-History blieb nach frischem Reload ohne Label; kein automatischer Wiederholungskauf.");
-  if (!recoveredUrl) throw new Error("Kein neues Zusatzlabel nachweisbar; kein automatischer Wiederholungskauf.");
+  if (!recoveredUrl) throw new Error(`Kein neues ${job.parcelKind === "acrylic_table_device" ? "Zusatzlabel" : "Sendungslabel"} nachweisbar; kein automatischer Wiederholungskauf.`);
   const downloadUrl = validateEasyDpdLabelDownloadUrl(recoveredUrl);
   const startedAt = Date.now();
   const downloadId = await chrome.downloads.download({ url: downloadUrl, saveAs: false, conflictAction: "uniquify" });
@@ -396,8 +429,24 @@ async function processJob(nativeSession, tab, job) {
   let historyBaseline = null;
   try {
     await waitForTabComplete(tab.id, job.orderUrl);
-    const { frameId, prepared } = await validateAndPrepareFrame(tab.id, job);
-    if (job.parcelKind === "acrylic_table_device" && prepared.existingLabel?.found && !prepared.primaryLabelVerified) {
+    const { frameId, prepared, authorizationRetry } = await validateAndPrepareFrame(tab.id, job);
+    if (job.reuseExistingDpdTracking) {
+      const url = existingLabelReprintUrl(prepared.reprintHistory, job);
+      await updateJob(nativeSession, job, "validated");
+      await updateJob(nativeSession, job, "reprint_ready");
+      dispatchStarted = true; // Artifact recovery only; there is no purchase click.
+      const startedAt = Date.now();
+      const downloadId = await chrome.downloads.download({url, saveAs:false, conflictAction:"uniquify"});
+      if (!Number.isInteger(downloadId)) throw new Error("Vorhandenes Etikett konnte nicht geladen werden.");
+      const download = await waitForDownloadId(downloadId, startedAt, url);
+      artifactUploadStarted = true;
+      const uploaded = await nativeSession.send({type:"upload_artifact",job,filePath:download.filename});
+      if (!uploaded?.ok) throw new Error("Nachdruck-PDF konnte nicht verarbeitet werden.");
+      serverCompleted = true;
+      await record("existing_label_reprint_queued", {jobId:job.id,orderName:job.orderName}).catch(() => undefined);
+      return;
+    }
+    if ((authorizationRetry || job.parcelKind === "acrylic_table_device") && prepared.existingLabel?.found && !prepared.primaryLabelVerified) {
       const trackingNumbers = prepared.existingLabel.trackingNumbers || [];
       await updateJob(nativeSession, job, "existing_label", {
         existingDpdTracking: trackingNumbers.length === 1 ? trackingNumbers[0] : null,
@@ -479,7 +528,7 @@ async function processJob(nativeSession, tab, job) {
     await downloadPromise?.catch(() => undefined);
     await pageErrorPromise?.catch(() => undefined);
     let finalError = error;
-    if (dispatchStarted && !purchaseRejected && !serverCompleted && !postDispatchReconciliationAttempted && !artifactUploadStarted) {
+    if (!job.reuseExistingDpdTracking && dispatchStarted && !purchaseRejected && !serverCompleted && !postDispatchReconciliationAttempted && !artifactUploadStarted) {
       postDispatchReconciliationAttempted = true;
       try {
         const download = await recoverPostDispatchDownload(tab.id, job, 5_000, primaryLabelPath, historyBaseline);
@@ -512,11 +561,15 @@ async function runCycle(source) {
   cycleRunning = true;
   const nativeSession = createNativeSession();
   try {
-    const status = await nativeSession.send({ type: "status" });
+    const hold = (await chrome.storage.local.get(CONSENT_HOLD))[CONSENT_HOLD];
+    const status = hold
+      ? await nativeSession.send({ type: "status", authorizationPending: true })
+      : await nativeSession.send({ type: "status" });
     if (status.mode !== "live" || status.liveEnabled !== true) {
       await record("dry_run_ready", { source, extensionId: chrome.runtime.id });
       return;
     }
+    if (hold) await verifyAuthorizationRestored(hold);
     const claimed = await nativeSession.send({ type: "claim" });
     if (!claimed.job) {
       await record(claimed.activeJobPending ? "active_job_pending" : "idle", { source });
@@ -524,6 +577,7 @@ async function runCycle(source) {
     }
     const tab = await createFreshEasyDpdTab(claimed.job);
     await processJob(nativeSession, tab, claimed.job);
+    await chrome.storage.local.remove("consentRetry:" + claimed.job.id);
     await chrome.tabs.remove(tab.id).catch(() => undefined);
   } catch (error) {
     await record("bridge_error", { source, error: String(error?.message || error).slice(0, 500) });

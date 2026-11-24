@@ -210,7 +210,7 @@ export async function claimJob(configuration, capability = undefined) {
   }, { retryClaim: true });
   if (response.status === 204) return null;
   const payload = await response.json();
-  if (payload.job?.parcelKind === "acrylic_table_device" && capability !== "acrylic-parcel-v1") {
+  if (payload.job?.parcelKind === "acrylic_table_device" && !["acrylic-parcel-v1", "existing-label-reprint-v1"].includes(capability)) {
     throw new BrowserWorkerError("Zusatzpaket ist fuer diesen Worker nicht freigegeben.");
   }
   return validateClaimedJob(payload.job);

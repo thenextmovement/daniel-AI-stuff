@@ -7,7 +7,7 @@ import { blockArrivalBrowserPurchaseForExistingLabel, updateArrivalBrowserPurcha
 
 export const dynamic = "force-dynamic";
 type Params = { params: Promise<{ jobId: string }> };
-const RESULTS = new Set<BrowserPurchaseResult>(["validated", "dispatching", "retryable_error", "uncertain", "existing_label"]);
+const RESULTS = new Set<BrowserPurchaseResult>(["reprint_ready", "validated", "dispatching", "retryable_error", "uncertain", "existing_label"]);
 const NO_STORE = { "Cache-Control": "no-store" };
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     } : null;
     if (body.result === "existing_label" && evidence?.found !== true) throw new PrintInputError("Vorhandenes EasyDPD-Label ist nicht belegt.");
     if (body.result === "retryable_error" && await acknowledgeArrivalDispatchHold("browser", jobId, workerId)) return NextResponse.json({ ok: true, status: "manual_review" }, { headers: NO_STORE });
-    if (body.result === "dispatching") await assertArrivalDispatchAllowed("browser", jobId, workerId);
+    if (body.result === "dispatching" || body.result === "reprint_ready") await assertArrivalDispatchAllowed("browser", jobId, workerId);
     const job = body.result === "existing_label"
       ? await blockArrivalBrowserPurchaseForExistingLabel({
         jobId,

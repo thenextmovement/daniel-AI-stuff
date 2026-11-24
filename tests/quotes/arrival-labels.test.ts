@@ -1352,3 +1352,21 @@ test('fulfilled order still permits a separately verified replacement round', ()
   const result = decideArrivalCase({ arrival: arrival(), trelloCards: [c], shopifyOrders: [{...standardOrder, fulfillmentStatus:'FULFILLED'}], productConfig: config });
   assert.equal(result.status, 'label_planned');
 });
+
+test('fulfilled first shipment with one DPD label plans reuse, not another purchase', () => {
+  const order = {...standardOrder, fulfillmentStatus:'FULFILLED', fulfillments:[{
+    id:'f1', status:'SUCCESS', trackingCompany:'DPD', trackingNumber:'01476814750251', trackingUrl:null,
+  }]};
+  const result = decideArrivalCase({arrival:arrival(),trelloCards:[card()],shopifyOrders:[order],productConfig:config});
+  assert.equal(result.status,'label_planned');
+  assert.equal(result.reuseExistingDpdTracking,'01476814750251');
+  assert.equal(result.manualReviewReason,null);
+});
+test('conflicting existing DPD labels do not select an arbitrary reprint', () => {
+  const fulfillments=['01476814750251','01476814750252'].map(trackingNumber=>({
+    id:trackingNumber,status:'SUCCESS',trackingCompany:'DPD',trackingNumber,trackingUrl:null,
+  }));
+  const result=decideArrivalCase({arrival:arrival(),trelloCards:[card()],shopifyOrders:[{...standardOrder,fulfillmentStatus:'FULFILLED',fulfillments}],productConfig:config});
+  assert.equal(result.status,'manual_review');
+  assert.equal(result.reuseExistingDpdTracking,undefined);
+});

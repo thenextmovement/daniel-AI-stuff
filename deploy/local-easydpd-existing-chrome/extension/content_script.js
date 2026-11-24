@@ -46,6 +46,25 @@
     return exactlyOne(matches, "EasyDPD-Gesamtgewicht");
   }
 
+  function validateItemQuantities(weight) {
+    // EasyDPD item quantities are bounded integer inputs; never select items for the operator.
+    const quantities = [...document.querySelectorAll('input[type="number"], input[role="spinbutton"]')]
+      .filter((element) => element !== weight);
+    if (!quantities.length) throw new Error("EasyDPD-Artikelmenge ist nicht sicher erkennbar; kein Kauf.");
+    let selected = 0;
+    for (const element of quantities) {
+      const value = normalized(element.value);
+      const maximum = normalized(element.getAttribute("max"));
+      if (element.getAttribute("min") !== "0" || !/^\d+$/.test(value) || !/^\d+$/.test(maximum)
+        || !Number.isSafeInteger(Number(value)) || !Number.isSafeInteger(Number(maximum))
+        || Number(value) > Number(maximum)) {
+        throw new Error("EasyDPD-Artikelmenge ist ungueltig oder nicht sicher erkennbar; kein Kauf.");
+      }
+      selected += Number(value);
+    }
+    if (selected <= 0) throw new Error("EasyDPD-Artikelmenge ist null; Artikelauswahl manuell pruefen, kein Kauf.");
+  }
+
   function createButton() {
     const matches = [...document.querySelectorAll("button")]
       .filter((element) => normalized(element.textContent) === "Create label");
@@ -131,12 +150,17 @@
 
   function validateAndPrepare(job) {
     orderLink(job);
+    if (job.reuseExistingDpdTracking) {
+      if (!/^\d{14}$/.test(job.reuseExistingDpdTracking) || job.parcelKind === "acrylic_table_device") throw new Error("Ungueltiger Nachdruckauftrag.");
+      return { ready: true, changed: false, reprintHistory: collectExistingLabelEvidence() };
+    }
     if (!PRODUCT_LABELS.has(job.productLabel) || job.labelFormat !== "Einzeln auf A6" || job.packageWeightGrams !== 500) {
       throw new Error("Browser-Auftrag liegt ausserhalb der lokalen EasyDPD-Freigabe.");
     }
     const product = selectWithOptions(["B2C", "B2C Predict", "DPD Express 8:30", "DPD Express 12:00", "DPD Express 18:00"], "EasyDPD-Produkt");
     const format = selectWithOptions(["4 Labels auf A4", "Einzeln auf A6"], "EasyDPD-Format");
     const weight = weightInput();
+    validateItemQuantities(weight);
     const button = createButton();
     const evidence = collectExistingLabelEvidence();
     const primaryLabelVerified = job.parcelKind === "acrylic_table_device"
@@ -221,6 +245,7 @@
   }
 
   function purchaseOnce(job, dispatchNonce, primaryLabelPath, historyBaseline) {
+    if (job.reuseExistingDpdTracking) return {clicked:false,error:"Nachdruckauftrag darf kein Etikett kaufen."};
     let clickAttempted = false;
     try {
       const prepared = validateAndPrepare(job);
