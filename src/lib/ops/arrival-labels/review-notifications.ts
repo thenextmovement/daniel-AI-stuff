@@ -79,6 +79,7 @@ function reviewSnapshot(decision: ArrivalCaseDecision) {
 
 export function buildArrivalReviewNotification(decision: ArrivalCaseDecision): ArrivalReviewNotification | null {
   if (!BLOCKED_STATUSES.has(decision.status)) return null;
+  if (decision.reasons.length === 1 && decision.reasons[0] === "shopify_already_fulfilled") return null;
   const shopifyOrderUrl = decision.shopifyOrder?.adminUrl && isTrustedShopifyAdminUrl(decision.shopifyOrder.adminUrl)
     ? decision.shopifyOrder.adminUrl
     : null;

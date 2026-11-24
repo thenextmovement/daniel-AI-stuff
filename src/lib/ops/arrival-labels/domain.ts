@@ -111,6 +111,7 @@ export type ShopifyOrderEvidence = {
   adminUrl: string;
   customerName: string | null;
   financialStatus: ShopifyFinancialStatus;
+  fulfillmentStatus?: string;
   note: string | null;
   shippingAddress: ShopifyShippingAddressEvidence | null;
   customAttributes: Array<{ key: string; value: string }>;
@@ -949,6 +950,31 @@ export function decideArrivalCase(input: {
       manualReviewReason: "Versandart konnte nicht sicher bestimmt werden.",
       relevantOrderNote: null,
       reasons,
+    };
+  }
+
+  // A fulfilled first shipment has no remaining items in EasyDPD. Keep the
+  // case visible without queuing another purchase; a verified replacement
+  // round is separately authorized and retains its existing release gates.
+  if (orderMatch.order.fulfillmentStatus === "FULFILLED" && !trelloMatch.card.replacementRound) {
+    return {
+      idempotencyKey: buildIdempotencyKey(orderMatch.order.id, input.arrival.trackingNumber),
+      trackingNumber: input.arrival.trackingNumber,
+      lastSix: input.arrival.lastSix,
+      expectedArrival: `${input.arrival.localDate} (${input.arrival.deliveryState})`,
+      trelloCard: trelloMatch.card,
+      shopifyOrder: orderMatch.order,
+      shippingClass: shipping.shippingClass,
+      destinationCountryCode: destination.destinationCountryCode,
+      destinationClass: destination.destinationClass,
+      deliveryNoteRequired: destination.deliveryNoteRequired,
+      deliveryNoteStatus: destination.deliveryNoteStatus,
+      selectedDpdProduct: null,
+      existingDpdTracking: null,
+      status: "manual_review",
+      manualReviewReason: "Shopify meldet die Bestellung bereits vollstaendig versendet. Vorhandenen Versand zuordnen; kein weiterer automatischer Labelkauf.",
+      relevantOrderNote: null,
+      reasons: ["shopify_already_fulfilled"],
     };
   }
 
