@@ -19,7 +19,7 @@ export const EXTENSION_BUILD_MISMATCH_CODE = "extension_build_mismatch";
 export const EXTENSION_PROTOCOL_MISMATCH_CODE = "extension_protocol_mismatch";
 export const NATIVE_HOST_NAME = "de.neontrip.easydpd_existing_chrome";
 const MAX_NATIVE_MESSAGE_BYTES = 1024 * 1024;
-const ALLOWED_UPDATE_RESULTS = new Set(["validated", "dispatching", "retryable_error", "uncertain", "existing_label"]);
+const ALLOWED_UPDATE_RESULTS = new Set(["reprint_ready", "validated", "dispatching", "retryable_error", "uncertain", "existing_label"]);
 const RESUMABLE_ACTIVE_JOB_PHASES = new Set(["claimed", "validated"]);
 
 export class ExistingChromeBridgeError extends BrowserWorkerError {
@@ -210,6 +210,7 @@ async function writeStatusBestEffort(config, state, detail = {}) {
 }
 
 const JOB_BINDING_FIELDS = [
+  "reuseExistingDpdTracking",
   "id",
   "parcelKind",
   "parentPurchaseJobId",
@@ -324,6 +325,7 @@ export async function handleNativeRequest(config, rawMessage) {
     const state = active ? "active_job_pending" : config.liveEnabled ? "live_ready" : "dry_run_ready";
     await writeStatus(config, state, {
       ...verifiedExtension,
+      authorizationPending: message.authorizationPending === true,
       activeJobId: active?.job?.id || null,
       activeJobState: active?.state || null,
       purchaseClicked: false,
@@ -360,7 +362,7 @@ export async function handleNativeRequest(config, rawMessage) {
       return { ok: true, job: null, activeJobPending: true };
     }
     try {
-      const job = await claimJob(configuration, "acrylic-parcel-v1");
+      const job = await claimJob(configuration, "existing-label-reprint-v1");
       if (job) await storeActiveJob(config, job);
       else await clearClaimSlot(config);
       await writeStatusBestEffort(config, job ? "job_claimed" : "idle", { ...verifiedExtension, jobId: job?.id || null, orderName: job?.orderName || null, purchaseClicked: false });
@@ -374,7 +376,7 @@ export async function handleNativeRequest(config, rawMessage) {
   if (message.type === "update") {
     const result = cleanString(message.result, "Browser-Ergebnis", 40);
     if (!ALLOWED_UPDATE_RESULTS.has(result)) throw new ExistingChromeBridgeError("Browser-Ergebnis ist nicht freigegeben.", 65);
-    if (result === "dispatching") await updateActiveJobPhase(config, job.id, "dispatching");
+    if (result === "dispatching" || result === "reprint_ready") await updateActiveJobPhase(config, job.id, "dispatching");
     await updateJob(configuration, job, result, message.error || null, {
       existingDpdTracking: message.existingDpdTracking || null,
       evidence: message.evidence || null,
@@ -399,7 +401,7 @@ export async function handleNativeRequest(config, rawMessage) {
     originalPdfSha256: sha256,
     dpdTrackingNumber: uploaded.dpdTrackingNumber,
     printJobId: uploaded.printJobId,
-    purchaseClicked: true,
+    purchaseClicked: !job.reuseExistingDpdTracking,
   });
   await clearActiveJob(config, job.id);
   return { ok: true, ...uploaded, originalPdfSha256: sha256 };

@@ -67,6 +67,8 @@ Die Trello-Listensperre ist ausschließlich ein zusätzlicher Stopper. Ein Wechs
 
 ## Vorhandene und alte Labels
 
+Freigabe 24.11.2026: Ein bereits gedrucktes Label derselben Sendung darf automatisch erneut gedruckt werden. Für einen noch nicht abgearbeiteten Eingang mit genau einem erfolgreichen DPD-Fulfillment wird ausschließlich das dazu passende einzelne EasyDPD-PDF heruntergeladen, geprüft, annotiert und einmal in die vorhandene Druckqueue gestellt. Es erfolgt kein Carrier-Kauf und keine Fehlermail allein wegen des vorhandenen Labels. Erledigte Eingänge werden durch wiederholte Prüfungen nicht erneut gedruckt. Ersatzlieferungen und mehrdeutige/fehlende PDFs bleiben ausgenommen. Diese Freigabe ersetzt für diesen eindeutig belegten Nachdruck die folgende frühere manuelle Freigaberegel.
+
 `existing_label` bedeutet zunächst nur: kein zweites Carrier-Label kaufen.
 
 Ein vorhandenes Tracking allein erlaubt keinen automatischen Download oder Druck. Vor dem manuellen Verwenden muss belegt sein, dass das Label aktuell, für genau diesen DHL-Eingang bestimmt und noch verwendbar ist. Ein bereits für den ursprünglichen Kundenversand benutztes oder zeitlich nicht zuordenbares Label darf niemals für eine Ersatz- oder Nachlieferung wiederverwendet werden. Bei Zweifel bleibt der Fall manuell.

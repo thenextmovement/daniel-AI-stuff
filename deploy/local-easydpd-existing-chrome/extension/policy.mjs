@@ -158,3 +158,14 @@ export function matchingDownloadedPdf(item, tabId, startedAt, orderName = "") {
     return false;
   }
 }
+
+export function existingLabelReprintUrl(observed, job) {
+  if (job.parcelKind && job.parcelKind !== "main") throw new Error("Nachdruck ist nur fuer das zugeordnete Hauptlabel freigegeben.");
+  if (!/^\d{14}$/.test(job.reuseExistingDpdTracking || "")
+    || !observed?.found || observed.labelCount !== 1
+    || observed.trackingNumbers?.length !== 1
+    || observed.trackingNumbers[0] !== job.reuseExistingDpdTracking) {
+    throw new Error("Vorhandenes Etikett ist nicht eindeutig der freigegebenen Sendung zugeordnet.");
+  }
+  return validateEasyDpdLabelDownloadUrl(observed.downloadUrl);
+}

@@ -286,6 +286,7 @@ export async function loadTrelloSignShippedTriggerSettings(): Promise<TrelloSign
 }
 
 export type ArrivalBrowserPurchaseJobRow = {
+  reuse_existing_dpd_tracking?: string | null;
   id: string;
   parcel_kind: ArrivalParcelKind;
   parent_purchase_job_id: string | null;
@@ -323,18 +324,19 @@ export async function enqueueArrivalBrowserPurchase(caseId: string) {
   return rows[0];
 }
 
-export async function claimArrivalBrowserPurchase(input: { workerId: string; leaseSeconds?: number; acrylicCapable?: boolean }) {
+export async function claimArrivalBrowserPurchase(input: { workerId: string; leaseSeconds?: number; acrylicCapable?: boolean; reprintCapable?: boolean }) {
   const rows = await supabaseRpc<ArrivalBrowserPurchaseJobRow[]>("arrival_labels_claim_browser_purchase", {
     p_worker_id: input.workerId,
     p_lease_seconds: input.leaseSeconds || 300,
     p_acrylic_capable: input.acrylicCapable === true,
+    p_reprint_capable: input.reprintCapable === true,
   });
   return rows[0] || null;
 }
 
 export async function loadOwnedArrivalBrowserPurchase(input: { jobId: string; workerId: string }) {
   const rows = await supabaseRequest<ArrivalBrowserPurchaseJobRow[]>("arrival_label_browser_purchase_jobs", undefined, {
-    select: "id,parcel_kind,parent_purchase_job_id,expected_primary_dpd_tracking,case_id,idempotency_key,shop_domain,shopify_order_id,shopify_order_numeric_id,shopify_order_name,order_url,selected_dpd_product,easydpd_product_label,label_format,package_weight_grams,maximum_purchase_cents,observed_purchase_cents,incoming_dhl_tracking_number,incoming_dhl_last_six,status,attempts,max_attempts,lease_owner,lease_expires_at,dpd_tracking_number,original_pdf_sha256,annotated_pdf_sha256,print_job_id,last_error",
+    select: "id,reuse_existing_dpd_tracking,parcel_kind,parent_purchase_job_id,expected_primary_dpd_tracking,case_id,idempotency_key,shop_domain,shopify_order_id,shopify_order_numeric_id,shopify_order_name,order_url,selected_dpd_product,easydpd_product_label,label_format,package_weight_grams,maximum_purchase_cents,observed_purchase_cents,incoming_dhl_tracking_number,incoming_dhl_last_six,status,attempts,max_attempts,lease_owner,lease_expires_at,dpd_tracking_number,original_pdf_sha256,annotated_pdf_sha256,print_job_id,last_error",
     id: `eq.${input.jobId}`,
     lease_owner: `eq.${input.workerId}`,
     limit: 1,
@@ -345,7 +347,7 @@ export async function loadOwnedArrivalBrowserPurchase(input: { jobId: string; wo
 export async function updateArrivalBrowserPurchase(input: {
   jobId: string;
   workerId: string;
-  result: "validated" | "dispatching" | "purchased" | "completed" | "retryable_error" | "uncertain";
+  result: "reprint_ready" | "validated" | "dispatching" | "purchased" | "completed" | "retryable_error" | "uncertain";
   dpdTrackingNumber?: string | null;
   originalPdfSha256?: string | null;
   observedPurchaseCents?: number | null;
@@ -693,6 +695,7 @@ export async function upsertArrivalCase(input: {
       manual_review_reason: parcelHold || input.decision.manualReviewReason,
       source_snapshot: {
         arrivalSources: input.arrival.sourceKinds,
+        reuseExistingDpdTracking: input.decision.reuseExistingDpdTracking || null,
         replacementRound: card?.replacementRound || null,
         trelloTrigger: input.arrival.trelloTrigger,
         reasons: input.decision.reasons,
@@ -746,6 +749,7 @@ export async function linkArrivalCaseToRun(input: {
       decision_snapshot: {
         idempotencyKey: input.decision.idempotencyKey,
         arrivalSources: input.arrival.sourceKinds,
+        reuseExistingDpdTracking: input.decision.reuseExistingDpdTracking || null,
         trelloTrigger: input.arrival.trelloTrigger,
         shippingClass: input.decision.shippingClass,
         destinationCountryCode: input.decision.destinationCountryCode,

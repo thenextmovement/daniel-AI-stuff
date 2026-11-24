@@ -133,6 +133,9 @@ export function validateClaimedJob(job) {
   }
   if (typeof job.orderName !== "string" || job.orderName.length < 2 || /[\r\n]/.test(job.orderName)) throw new BrowserWorkerError("Shopify-Bestellname ist ungueltig.", 65);
   const kind = job.parcelKind || "main";
+  if (job.reuseExistingDpdTracking != null && (kind !== "main" || !/^\d{14}$/.test(job.reuseExistingDpdTracking))) {
+    throw new BrowserWorkerError("Nachdruck-Zuordnung ist ungueltig.", 65);
+  }
   if (!["main", "acrylic_table_device"].includes(kind)
     || (kind === "main" && (job.parentPurchaseJobId || job.expectedPrimaryDpdTracking))
     || (kind === "acrylic_table_device" && (
@@ -210,7 +213,7 @@ export async function claimJob(configuration, capability = undefined) {
   }, { retryClaim: true });
   if (response.status === 204) return null;
   const payload = await response.json();
-  if (payload.job?.parcelKind === "acrylic_table_device" && capability !== "acrylic-parcel-v1") {
+  if (payload.job?.parcelKind === "acrylic_table_device" && !["acrylic-parcel-v1", "existing-label-reprint-v1"].includes(capability)) {
     throw new BrowserWorkerError("Zusatzpaket ist fuer diesen Worker nicht freigegeben.");
   }
   return validateClaimedJob(payload.job);

@@ -132,7 +132,7 @@ test("actual content script permits only the proven primary, then exactly one ne
     document: { querySelectorAll: (selector: string) => {
       if (selector === "a[href]") return [{ textContent: job.orderName, href: "https://admin.shopify.com/store/galaxybuzzdk/orders/1234567890" }, ...hrefs.map((href) => ({ href, textContent: "label" }))];
       if (selector === "select") return [product, format];
-      if (selector.startsWith("input")) return [weight];
+      if (selector.startsWith("input")) return [weight, { value: "1", getAttribute: (name: string) => name === "min" ? "0" : name === "max" ? "1" : null }];
       if (selector === "button") return [button];
       return [];
     } },

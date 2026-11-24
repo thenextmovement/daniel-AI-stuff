@@ -546,6 +546,8 @@ test("content permits an old order label but pins history and never clicks the s
   const product = select(["B2C", "B2C Predict", "DPD Express 8:30", "DPD Express 12:00", "DPD Express 18:00"], "B2C");
   const format = select(["4 Labels auf A4", "Einzeln auf A6"], "Einzeln auf A6");
   const weight = { value: "500", getAttribute: () => "Total package weight g" };
+  const quantity = { value: "1", getAttribute: (name: string) => (({ min: "0", max: "1" } as Record<string, string>)[name] ?? null) };
+  let quantities = [quantity];
   let clicks = 0;
   const button = { textContent: "Create label", disabled: false, getAttribute: () => null, click: () => { clicks++; } };
   const storage = new Map();
@@ -558,7 +560,7 @@ test("content permits an old order label but pins history and never clicks the s
       if (selector === "a[href]") return anchors;
       if (selector === "select") return [product, format];
       if (selector === "button") return [button];
-      if (selector.startsWith("input")) return [weight];
+      if (selector.startsWith("input")) return [weight, ...quantities];
       if (selector === '[role="alert"]') return [];
       throw new Error(selector);
     } },
@@ -567,10 +569,30 @@ test("content permits an old order label but pins history and never clicks the s
   const send = (action: string, extra: Record<string, unknown> = {}): Promise<any> => new Promise(resolve => listener({
     target: "neontrip-easydpd-frame", action, job: job(), ...extra,
   }, {}, resolve));
+  for (const value of ["0", "", "-1", "0.5", "2", "NaN"]) {
+    quantity.value = value;
+    const blocked = await send("validate_and_prepare");
+    assert.equal(blocked.ok, false, `quantity ${value} must fail before dispatch`);
+    assert.match(blocked.error, /Artikelmenge/);
+    const click = await send("purchase_once", { dispatchNonce: "quantity-test" });
+    assert.equal(click.result.clicked, false);
+    assert.equal(clicks, 0);
+    assert.equal(storage.size, 0);
+    assert.equal(quantity.value, value);
+  }
+  quantities = [];
+  assert.equal((await send("validate_and_prepare")).ok, false);
+  quantities = [quantity];
+  quantity.value = "1";
   const prepared = await send("validate_and_prepare");
   assert.equal(prepared.ok, true);
   assert.equal(prepared.result.ready, true);
   const historyBaseline = prepared.result.historyBaseline;
+  quantity.value = "0";
+  assert.equal((await send("purchase_once", { dispatchNonce: "quantity-changed", historyBaseline })).result.clicked, false);
+  assert.equal(clicks, 0);
+  assert.equal(storage.size, 0);
+  quantity.value = "1";
   assert.deepEqual(JSON.parse(JSON.stringify(historyBaseline)), { paths: [new URL(oldUrl).pathname], trackingNumbers: ["01470000000001"] });
   anchors.push({ href: "https://easydpd.247apps.de/labels/11/download/other.pdf", textContent: "" });
   assert.equal((await send("purchase_once", { dispatchNonce: "test", historyBaseline })).result.clicked, false);
@@ -604,4 +626,70 @@ test("a definite no-click rejection never recovers a concurrently added external
   await assert.rejects(context.runProcess({ send: async () => { uploaded++; return {}; } }, { id: 1 }, job()), /History changed|Kaufklick/);
   assert.equal(recovered, 0);
   assert.equal(uploaded, 0);
+});
+
+test("a Shopify authorization screen pauses claims until the affected order history loads in a fresh tab", async () => {
+  const source = await readFile("deploy/local-easydpd-existing-chrome/extension/service_worker.mjs", "utf8");
+  const state: Record<string, any> = {};
+  const calls: string[] = [];
+  let frameReady = false;
+  const original = job();
+  const context: any = {
+    CONSENT_HOLD: "hold", CONSENT_ERROR: "consent", cycleRunning: false, validateOrderUrl,
+    createNativeSession: () => ({
+      send: async (message: any) => {
+        calls.push(message.authorizationPending ? "status:held" : message.type);
+        return { mode: "live", liveEnabled: true, job: null };
+      }, close() {},
+    }),
+    record: async () => {}, waitForTabComplete: async () => {},
+    createFreshEasyDpdTab: async (hold: any) => {
+      assert.equal(hold.orderUrl, original.orderUrl);
+      return { id: 7 };
+    },
+    easyDpdFrameId: async () => { if (!frameReady) throw Error("frame_timeout"); return 3; },
+    frameMessageWhenReady: async (_tab: number, _frame: number, request: any) => {
+      assert.equal(request.action, "inspect_history");
+      assert.equal(request.job.orderName, original.orderName);
+      calls.push("history");
+      return { labelCount: 0 };
+    },
+    chrome: {
+      tabs: { get: async () => ({ url: original.orderUrl, title: "NEONTRIP · Authorize easyDPD · Shopify" }),
+        remove: async () => { calls.push("close"); } },
+      storage: { local: { get: async () => state, set: async (item: any) => Object.assign(state, item),
+        remove: async (key: string) => { delete state[key]; } } },
+    },
+  };
+  const helpers = source.slice(source.indexOf("async function orderFrameBeforePurchase"), source.indexOf("async function validateAndPrepareFrame"));
+  const cycle = source.slice(source.indexOf("async function runCycle("), source.indexOf("async function ensureAlarm("));
+  runInNewContext(helpers + cycle + "\nglobalThis.frame = orderFrameBeforePurchase;globalThis.cycle = runCycle;", context);
+  await assert.rejects(context.frame(1, original), /consent/);
+  await context.cycle("alarm");
+  await context.cycle("alarm");
+  assert.deepEqual(calls, ["status:held", "close", "status:held", "close"]);
+  frameReady = true;
+  await context.cycle("alarm");
+  assert.deepEqual(calls.slice(-4), ["status:held", "history", "close", "claim"]);
+  assert.equal(state.hold, undefined);
+  assert.equal(state["consentRetry:" + original.id], true);
+});
+
+test("existing-label reprint downloads and queues once without purchase form or click", async () => {
+ const source = await readFile("deploy/local-easydpd-existing-chrome/extension/service_worker.mjs", "utf8");
+ const processSource = source.slice(source.indexOf("async function processJob("), source.indexOf("\nasync function runCycle("));
+ const events: string[]=[];
+ const reprint={...job(),reuseExistingDpdTracking:"01476814750251"};
+ const context:any={
+   validateBridgeJob, waitForTabComplete:async()=>{},
+   validateAndPrepareFrame:async()=>({frameId:1,prepared:{reprintHistory:{}}}),
+   existingLabelReprintUrl:()=> "https://easydpd.247apps.de/labels/1/download/test",
+   updateJob:async (_session:any,_job:any,result:string)=>events.push(result),
+   chrome:{downloads:{download:async()=>{events.push("download");return 9;}}},
+   waitForDownloadId:async()=>({filename:"/tmp/label.pdf"}),
+   record:async()=>{}, frameMessage:async()=>{throw Error("purchase path invoked");},
+ };
+ runInNewContext(processSource+"; this.processJob=processJob;",context);
+ await context.processJob({send:async(message:any)=>{events.push(message.type);return {ok:true};}}, {id:1}, reprint);
+ assert.deepEqual(events,["validated","reprint_ready","download","upload_artifact"]);
 });
