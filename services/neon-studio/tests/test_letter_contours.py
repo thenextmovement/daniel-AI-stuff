@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from shapely.geometry import LineString, Polygon, box
+from shapely.geometry import LineString, Point, Polygon, box
 from geometry import L, M, _full_shape, _letter_bands, _review_cut_to_shape, sample_path
 
 
@@ -17,6 +17,10 @@ class LetterContourTests(unittest.TestCase):
         lines=diamonds+letters
         bands=_letter_bands(lines,['Logo']*5+['Schriftzug PSG']*3,18)
         poly=Polygon(sample_path(_full_shape(lines,18,3,20,bands=bands),128))
+        # Multiple existing supports span the logo: do not add rectangular
+        # shoulders outside its sloping sides when connecting other rows.
+        for x in (70,530):
+            self.assertFalse(poly.covers(Point(x,260)))
         for x in (20,30,40,50,550,560,570,580):
             with self.subTest(x=x):
                 top=poly.intersection(LineString([(x,-100),(x,500)])).bounds[1]

@@ -1102,8 +1102,16 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
     for upper,lower in zip(rows,rows[1:]):
         a=unary_union([pieces[i] for i in upper[2]])
         b=unary_union([pieces[i] for i in lower[2]])
-        if min(a.bounds[2],b.bounds[2])<=max(a.bounds[0],b.bounds[0]):
+        shared=min(a.bounds[2],b.bounds[2])-max(a.bounds[0],b.bounds[0])
+        if shared<=0:
             continue
+        contact=a.intersection(b)
+        # Already broad contact (for example several diamonds over a word)
+        # needs no extra shoulder. A single narrow neck must still be filled.
+        if not contact.is_empty:
+            contact_width=contact.bounds[2]-contact.bounds[0]
+            if contact_width>=shared*.5:
+                continue
         envelope=unary_union([a,b]).convex_hull
         corridor=box(max(a.bounds[0],b.bounds[0]),upper[1]-padding,
                      min(a.bounds[2],b.bounds[2]),lower[0]+padding)
