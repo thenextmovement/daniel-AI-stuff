@@ -81,12 +81,20 @@ test("only atomic winner gets the complete Graph draft", async () => {
 test("mailbox mismatch never reserves", async () => {
   await mockedDb(async()=>{await assert.rejects(reserveInstallationDelivery({...input,mailboxProfile:{id:"wrong",mail:"support@neontrip.de"}}),/mailbox_mismatch/);},()=>{throw new Error("must not call DB");});
 });
-test("unknown/backlit stores review reason without returning a draft", async () => {
-  const backlit=structuredClone(order); backlit.line_items[0].title="3D Backlit";
-  const result=await mockedDb(()=>reserveInstallationDelivery({...input,order:backlit}),(url,body)=>{
-    assert(body.p_metadata.review_reason.includes("backlit_manual_not_cleared")); assert.equal(body.p_metadata.expected,null); return [{id:ID}];
+test("backlit reserves only the approved power notice with accurate customer copy", async () => {
+  const item = { id: 1, title: "3D Backlit", quantity: 1 };
+  const backlit = { ...order, line_items: [item], fulfillments: [{ ...order.fulfillments[0], line_items: [item] }] };
+  const result = await mockedDb(() => reserveInstallationDelivery({ ...input, order: backlit }), (_url, body) => {
+    assert.equal(body.p_metadata.backlit_fallback, true);
+    assert.equal(body.p_metadata.review_reason, null);
+    assert.deepEqual(body.p_metadata.document_ids, ["power"]);
+    assert.equal(body.p_metadata.expected.attachments.length, 1);
+    return [{ id: ID }];
   });
-  assert.equal(result.ready,false); assert(!("graphDraft" in result));
+  assert(result.ready);
+  assert(result.graphDraft);
+  assert.match(result.graphDraft.body.content, /keine produktspezifische Montageanleitung/);
+  assert.match(result.graphDraft.subject, /Hinweise zu Ihrer Lieferung/);
 });
 test("authorize advances only after validated draft and returns one permit", async () => {
   let writes=0;

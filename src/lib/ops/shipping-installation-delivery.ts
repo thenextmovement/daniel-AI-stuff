@@ -50,7 +50,7 @@ export async function reserveInstallationDelivery(input: Obj) {
   const rows = await supabaseRpc<Obj[]>("shipping_reserve_installation_documents", {
     p_order_id: prepared.selection.orderId, p_fulfillment_id: fulfillmentId, p_tracking_numbers: trackingNumbers,
     p_recipient: str(order.email).trim().toLowerCase() || "missing-recipient", p_owner: owner,
-    p_metadata: { expected, document_ids: prepared.selection.documentIds, review_reason: prepared.ready ? null : prepared.selection.reviewReasons.join(", ") },
+    p_metadata: { expected, ...(prepared.ready && prepared.selection.hasBacklit ? { backlit_fallback: true } : {}), document_ids: prepared.selection.documentIds, review_reason: prepared.ready ? null : prepared.selection.reviewReasons.join(", ") },
   });
   if (!rows?.length) return { ready: false, reason: "no_new_transport_scan_or_already_reserved" };
   if (!prepared.ready) return { ready: false, notificationId: rows[0].id, reason: "document_review_required" };

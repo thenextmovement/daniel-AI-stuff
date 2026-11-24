@@ -16,6 +16,20 @@ credential, scheduler or AI-generated customer text.
 Allowed paths: private installation assets, installation server route/modules, existing shipping
 notification RPCs, three necessary Shopify import nodes and a new branch in the same Shipping Agent.
 
+## Backlit fallback (2026-11-24)
+
+Backlit without another review reason uses the existing automatic mail with the approved
+power notice and any other applicable approved documents. The mail identifies the missing
+product-specific guide. Legacy Backlit-only review holds remain visible in Ops and are omitted
+from the internal email monitor. Uncertain sends and other review reasons remain monitored.
+
+The matching SQL migration lets the regular poll reuse a legacy Backlit-only reservation if
+the scan is still eligible, the current order prepares a valid fallback draft, and the row
+has zero attempts and no draft or send evidence. It preserves the original reservation ID and
+creation time and refreshes the 15-minute authorization window once. No historical backfill
+or workflow change is required. Apply only the reviewed migration using the existing release
+flow. The matching rollback restores the prior functions without resetting send evidence.
+
 ## Entry points and handoffs
 
 - `src/lib/ops/shipping-installation-documents.ts`: deterministic order/fulfillment and PDF selection.

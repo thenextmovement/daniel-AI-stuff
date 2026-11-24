@@ -73,19 +73,20 @@ test("advertised ceiling mounting in descriptions is not a purchased option", ()
   assert.deepEqual(result.reviewReasons, []);
   assert(!result.documentIds.includes("ceiling"));
 });
-test("unsupported products and backlit are held for review", async () => {
-  for (const title of ["3D Rückbeleuchtet", "3D Frontlit", "3D Unbeleuchtet", "Leuchtkasten"]) {
+test("unsupported products are held for review", async () => {
+  for (const title of ["3D Frontlit", "3D Unbeleuchtet", "Leuchtkasten"]) {
     const result = await prepareInstallationMail(order([{ ...led, title }]), "456");
     assert.equal(result.ready, false, title);
   }
 });
-test("backlit order with canonical delivery and outdoor surcharge has only the genuine manual-review reason", () => {
+test("backlit order with canonical delivery and outdoor surcharge selects the approved power notice", () => {
   const result = selectInstallationDocuments(order([
     { ...led, title: "3D Schild Rückleuchtend – Test" },
     { id: 2, title: "3D Standardversand ca. 20 Werktage", quantity: 1 },
     { id: 3, title: "Outdoor/IP67 Ausführung", quantity: 1 },
   ]), "456");
-  assert.deepEqual(result.reviewReasons, ["backlit_manual_not_cleared"]);
+  assert.deepEqual(result.reviewReasons, []);
+  assert(result.hasBacklit);
   assert.deepEqual(result.documentIds, ["power"]);
 });
 test("service words embedded in an unknown physical product never bypass review", () => {

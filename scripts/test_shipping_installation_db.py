@@ -279,6 +279,47 @@ class DeliveryWarningTests(unittest.TestCase):
         self.assertEqual(self.claim(),'')
         self.assertEqual(sql("select status || ':' || recipient_email from shipping_notifications;"),'pending:customer@example.test')
 
+class BacklitFallbackTests(unittest.TestCase):
+    def setUp(self):
+        InstallationTests.setUp(self)
+        self.migration('migrations', '20261109121935_shipping_customer_delivery_warning.sql')
+        self.migration('migrations', '20261124105529_shipping_backlit_document_fallback.sql')
+
+    def tearDown(self):
+        self.migration('rollbacks', '20261124105529_shipping_backlit_document_fallback.sql')
+        self.migration('migrations', '20261103090555_shipping_monitor_case_dedup.sql')
+
+    @staticmethod
+    def migration(directory, filename):
+        sql((ROOT/'supabase'/directory/filename).read_text())
+
+    def test_legacy_backlit_hold_is_quiet_and_resumes_once(self):
+        event()
+        nid = reserve(metadata='{"review_reason":"backlit_manual_not_cleared","expected":null}')
+        sql(f"update shipping_notifications set created_at=now()-interval '1 day', updated_at=now()-interval '1 day' where id='{nid}';")
+        monitor = 'select issue_count from shipping_claim_notification_monitor_alert();'
+        self.assertEqual(sql(monitor),'')
+        metadata = '{"backlit_fallback":true,"expected":{"sentFolderId":"sent-folder"}}'
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(lambda _: reserve(metadata=metadata), range(4)))
+        self.assertEqual(results.count(nid),1)
+        self.assertEqual(authorize(nid),nid)
+        self.assertEqual(authorize(nid),'')
+        self.assertEqual(reserve(metadata=metadata),'')
+        sql(f"update shipping_notifications set claimed_at=now()-interval '1 hour' where id='{nid}';")
+        self.assertEqual(sql(monitor),'1')
+
+    def test_other_review_and_old_scan_keep_existing_guards(self):
+        event(when="now()-interval '22 days'")
+        self.assertEqual(reserve(),'')
+        sql("delete from shipping_tracking_events;")
+        event()
+        nid = reserve(metadata='{"review_reason":"unknown_product","expected":null}')
+        metadata = '{"backlit_fallback":true,"expected":{"sentFolderId":"sent-folder"}}'
+        self.assertEqual(reserve(metadata=metadata),'')
+        sql(f"update shipping_notifications set updated_at=now()-interval '1 day' where id='{nid}';")
+        self.assertEqual(sql('select issue_count from shipping_claim_notification_monitor_alert();'),'1')
+
 if __name__=='__main__':
     try:
         run(['docker','run','--pull=never','--name',CONTAINER,'--network','none','--tmpfs','/var/lib/postgresql/data','-e','POSTGRES_HOST_AUTH_METHOD=trust','-d','postgres:17-alpine'])

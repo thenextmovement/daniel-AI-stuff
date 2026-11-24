@@ -10,6 +10,7 @@ export type InstallationDocumentId = keyof typeof manifest;
 export type InstallationSelection = {
   documentIds: InstallationDocumentId[];
   reviewReasons: string[];
+  hasBacklit: boolean;
   fulfillmentId: string;
   orderId: string;
   notificationKey: string;
@@ -95,6 +96,7 @@ export function selectInstallationDocuments(orderInput: unknown, fulfillmentId: 
   if (!shipped.length) reasons.add("fulfillment_items_missing");
   if (new Set(shipped.map(i => text(i.id))).size !== shipped.length) reasons.add("duplicate_fulfillment_item");
   let led = false;
+  let hasBacklit = false;
   let otherProduct = false;
   let hasMounting = false;
   const selectedItems: { title: string; variantTitle: string; selectionDetails: string[]; quantity: number }[] = [];
@@ -111,7 +113,7 @@ export function selectInstallationDocuments(orderInput: unknown, fulfillmentId: 
     const type = classify(fullItem);
     if (type === "led") { led = true; docs.add("led_connection"); }
     if (type === "mounting") hasMounting = true;
-    if (type === "backlit") { otherProduct = true; reasons.add("backlit_manual_not_cleared"); }
+    if (type === "backlit") { otherProduct = true; hasBacklit = true; }
     if (type === "unknown") reasons.add("unknown_product");
     if (type === "frontlit" || type === "nonlit") {
       otherProduct = true;
@@ -133,7 +135,7 @@ export function selectInstallationDocuments(orderInput: unknown, fulfillmentId: 
     if (mounting.hanging) docs.add("ceiling");
   }
   return {
-    documentIds: [...docs], reviewReasons: [...reasons], fulfillmentId, orderId,
+    documentIds: [...docs], reviewReasons: [...reasons], hasBacklit, fulfillmentId, orderId,
     notificationKey: `customer:installation_documents:shopify:${orderId}:${fulfillmentId}`,
   };
 }
@@ -155,14 +157,20 @@ export async function prepareInstallationMail(orderInput: unknown, fulfillmentId
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) selection.reviewReasons.push("recipient_invalid");
   if (selection.reviewReasons.length) return { ready: false as const, selection };
   const attachments = await loadInstallationAttachments(selection.documentIds);
-  const subject = `Ihre NEONTRIP Bestellung ${text(order.name)} – Montageanleitungen und wichtige Hinweise`;
+  const subject = `Ihre NEONTRIP Bestellung ${text(order.name)} – ${selection.hasBacklit ? "Hinweise zu Ihrer Lieferung" : "Montageanleitungen und wichtige Hinweise"}`;
   const labels: Record<InstallationDocumentId, string> = {
     wall: "Wandmontage für LED-Neon", ceiling: "Abhängeset / Deckenmontage", led_connection: "LED-Neon: Anschluss und Bedienung",
     frontlit: "3D-Buchstaben: frontbeleuchtet", nonlit: "3D-Buchstaben: unbeleuchtet", power: "Wichtige Hinweise zur Stromversorgung",
   };
+  const introduction = selection.hasBacklit
+    ? "anbei erhalten Sie die verfügbaren Unterlagen zu Ihrer NEONTRIP Lieferung."
+    : `anbei erhalten Sie die Montage- und Anschlusshinweise zu Ihrer NEONTRIP Lieferung${order.name ? ` (${html(order.name)})` : ""}.`;
+  const backlitNote = selection.hasBacklit
+    ? "<p>Für die rückbeleuchteten Buchstaben liegt diesen Unterlagen keine produktspezifische Montageanleitung bei. Bitte klären Sie deren Montage und Anschluss vor der Inbetriebnahme mit uns.</p>"
+    : "";
   const bodyHtml = `<div style="font:15px/1.6 Arial,Helvetica,sans-serif;color:#111;max-width:600px">
-<p>Guten Tag,</p><p>anbei erhalten Sie die Montage- und Anschlusshinweise zu Ihrer NEONTRIP Lieferung${order.name ? ` (${html(order.name)})` : ""}. Bitte lesen Sie die passenden Unterlagen vor der Montage und geben Sie diese auch an die ausführende Montageperson weiter.</p>
-<ul>${selection.documentIds.map(id => `<li>${labels[id]}</li>`).join("")}</ul>
+<p>Guten Tag,</p><p>${introduction} Bitte lesen Sie die passenden Unterlagen vor der Montage und geben Sie diese auch an die ausführende Montageperson weiter.</p>
+<ul>${selection.documentIds.map(id => `<li>${labels[id]}</li>`).join("")}</ul>${backlitNote}
 <p><strong>Wichtig bei mitgelieferten Netzteilen:</strong> Bitte verwenden Sie alle für Ihr Schild vorgesehenen Netzteile und Anschlüsse – auch wenn das Schild bereits mit weniger Netzteilen leuchtet. Eine unvollständige Versorgung kann zu Überlastung und Überhitzung führen. Beachten Sie unbedingt die beigefügten Anschluss- und Sicherheitshinweise.</p>
 <p>Falls etwas unklar ist, antworten Sie vor der Montage oder Inbetriebnahme einfach auf diese E-Mail.</p><p>Viele Grüße</p></div>${MIKA_INSTALLATION_SIGNATURE_HTML}`;
   const graphDraft = {
