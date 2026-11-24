@@ -133,6 +133,9 @@ export function validateClaimedJob(job) {
   }
   if (typeof job.orderName !== "string" || job.orderName.length < 2 || /[\r\n]/.test(job.orderName)) throw new BrowserWorkerError("Shopify-Bestellname ist ungueltig.", 65);
   const kind = job.parcelKind || "main";
+  if (job.reuseExistingDpdTracking != null && (kind !== "main" || !/^\d{14}$/.test(job.reuseExistingDpdTracking))) {
+    throw new BrowserWorkerError("Nachdruck-Zuordnung ist ungueltig.", 65);
+  }
   if (!["main", "acrylic_table_device"].includes(kind)
     || (kind === "main" && (job.parentPurchaseJobId || job.expectedPrimaryDpdTracking))
     || (kind === "acrylic_table_device" && (
