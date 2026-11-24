@@ -8,6 +8,23 @@ from geometry import L, M, _full_shape, _letter_bands, _review_cut_to_shape, sam
 
 
 class LetterContourTests(unittest.TestCase):
+    def test_narrow_logo_above_wide_word_has_no_artificial_side_spikes(self):
+        # PSG-like layout: a diamond pyramid above a wide word. The outside
+        # letters need level shoulders, not remnants of the sloping hull.
+        diamonds=[LineString([(x,y-60),(x+60,y),(x,y+60),(x-60,y),(x,y-60)])
+                  for x,y in ((300,60),(220,140),(380,140),(140,220),(460,220))]
+        letters=[box(x,300,x+180,430).exterior for x in (0,210,420)]
+        lines=diamonds+letters
+        bands=_letter_bands(lines,['Logo']*5+['Schriftzug PSG']*3,18)
+        poly=Polygon(sample_path(_full_shape(lines,18,3,20,bands=bands),128))
+        for x in (20,30,40,50,550,560,570,580):
+            with self.subTest(x=x):
+                top=poly.intersection(LineString([(x,-100),(x,500)])).bounds[1]
+                self.assertAlmostEqual(top,282,delta=.1)
+        for line in lines:
+            self.assertTrue(poly.covers(line))
+            self.assertGreaterEqual(poly.exterior.distance(line),17.9)
+
     def test_export_repairs_flat_or_excessive_recess(self):
         def contour(dip):
             return [M(0,0), L(30,0), L(40,dip), L(50,0), L(80,0),

@@ -1111,7 +1111,15 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
         # underneath retains local ascenders, descenders and the full clearance.
         columns=[]
         for l,t,r,b in bands:
-            column=box(l,hull.bounds[1]-1,r,hull.bounds[3]+1)
+            # The level band starts inside the end glyphs to preserve their
+            # rounded ends. Its subtraction column must cover the whole row,
+            # otherwise the sloping cap leaves triangular spikes at each end.
+            row=[line.bounds for line in lines
+                 if line.bounds[1]>=t+padding-.1 and line.bounds[3]<=b-padding+.1
+                 and line.bounds[2]>=l and line.bounds[0]<=r]
+            left=min([l,*[v[0]-padding for v in row]])
+            right=max([r,*[v[2]+padding for v in row]])
+            column=box(left,hull.bounds[1]-1,right,hull.bounds[3]+1)
             # A short text row must not remove the recess-limiting cap of
             # artwork in another row. Protect its envelope, including gaps
             # between its components, while still allowing stepped text rows.
