@@ -69,8 +69,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       throw new PrintInputError("Zusatzpaket braucht eine eigene DPD-Sendungsnummer; Hauptlabel nicht erneut drucken.");
     }
     if (job.dpd_tracking_number && job.dpd_tracking_number !== dpdTrackingNumber) throw new PrintInputError("Dieser Auftrag ist bereits mit einer anderen DPD-Sendungsnummer verknuepft.");
+    if (job.reuse_existing_dpd_tracking && dpdTrackingNumber !== job.reuse_existing_dpd_tracking) throw new PrintInputError("PDF gehoert nicht zum freigegebenen vorhandenen Etikett.");
     stage = "persist_purchase";
-    await updateArrivalBrowserPurchase({
+    if (!job.reuse_existing_dpd_tracking) await updateArrivalBrowserPurchase({
       jobId,
       workerId,
       result: "purchased",

@@ -18,12 +18,13 @@ export async function POST(request: NextRequest) {
     if (!['dry_run', 'live'].includes(String(body.mode))) throw new PrintInputError("Browser-Worker-Modus ist ungueltig.");
     if (body.mode === "dry_run") return new NextResponse(null, { status: 204, headers: NO_STORE });
 
-    const job = await claimArrivalBrowserPurchase({ workerId, acrylicCapable: body.capability === "acrylic-parcel-v1" });
+    const job = await claimArrivalBrowserPurchase({ workerId, acrylicCapable: ["acrylic-parcel-v1", "existing-label-reprint-v1"].includes(body.capability || ""), reprintCapable: body.capability === "existing-label-reprint-v1" });
     if (!job) return new NextResponse(null, { status: 204, headers: NO_STORE });
     return NextResponse.json({
       ok: true,
       job: {
         id: job.id,
+        reuseExistingDpdTracking: job.reuse_existing_dpd_tracking || null,
         parcelKind: job.parcel_kind,
         parentPurchaseJobId: job.parent_purchase_job_id,
         expectedPrimaryDpdTracking: job.expected_primary_dpd_tracking,

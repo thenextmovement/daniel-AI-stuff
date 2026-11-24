@@ -269,6 +269,16 @@ export async function runArrivalLabels(options: RunArrivalLabelsOptions = {}): P
             decision: cases[index],
           });
         }
+        // A fresh, fully gated decision may recover only a confirmed pre-purchase
+        // empty selection. SQL keeps every post-dispatch/uncertain hold intact.
+        if (mode === "execute" && cases[index].status === "label_planned"
+          && cases[index].reuseExistingDpdTracking && stored.status === "manual_review") {
+          const recovered = await enqueueArrivalBrowserPurchase(stored.id);
+          if (["queued", "claimed", "validated"].includes(recovered?.status || "")) {
+            stored.status = "label_planned";
+            stored.manual_review_reason = null;
+          }
+        }
         effectiveCases[index] = projectPersistedBrowserManualReview(cases[index], stored);
         const trelloTrigger = arrivals[index].trelloTrigger;
         const trelloSource = trelloTrigger?.listId === ARRIVAL_LABEL_CREATE_INVOICE_LIST_ID
