@@ -1353,9 +1353,9 @@ test('fulfilled order still permits a separately verified replacement round', ()
   assert.equal(result.status, 'label_planned');
 });
 
-test('fulfilled first shipment with one DPD label plans reuse, not another purchase', () => {
+for (const trackingCompany of ['DPD', 'DPD Germany']) test(`fulfilled first shipment with ${trackingCompany} plans label reuse`, () => {
   const order = {...standardOrder, fulfillmentStatus:'FULFILLED', fulfillments:[{
-    id:'f1', status:'SUCCESS', trackingCompany:'DPD', trackingNumber:'01476814750251', trackingUrl:null,
+    id:'f1', status:'SUCCESS', trackingCompany, trackingNumber:'01476814750251', trackingUrl:null,
   }]};
   const result = decideArrivalCase({arrival:arrival(),trelloCards:[card()],shopifyOrders:[order],productConfig:config});
   assert.equal(result.status,'label_planned');
