@@ -810,11 +810,13 @@ function SaleCard({
   onAction,
   saving,
   now,
+  onReviewOpenChange,
 }: {
   sale: SupplierSale;
   operatorName: string;
   saving: boolean;
   now: number;
+  onReviewOpenChange: (sale: SupplierSale, open: boolean) => void;
   onAction: (body: Record<string, unknown>) => Promise<SupplierSalesApiResponse | null>;
 }) {
   const [supplier, setSupplier] = useState<SupplierSelection>(defaultSupplierSelection(sale));
@@ -836,18 +838,21 @@ function SaleCard({
   const [approvedDesignBusy, setApprovedDesignBusy] = useState(false);
   const [approvedDesignUpload, setApprovedDesignUpload] = useState<SupplierSaleApprovedDesignUpload | null>(null);
   const [productionReviewOpen, setProductionReviewOpen] = useState(false);
+  useEffect(() => { onReviewOpenChange(sale, productionReviewOpen); }, [productionReviewOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const [manualHandoffOpen, setManualHandoffOpen] = useState(false);
   const [manualHandoffCard, setManualHandoffCard] = useState("");
   const [manualHandoffConfirmed, setManualHandoffConfirmed] = useState(false);
   useEffect(() => {
-    setProductionReviewOpen(false);
     setManualHandoffConfirmed(false);
   }, [supplier, assignmentNote, deliveryDate, paymentDecision]);
   useEffect(() => {
+    if (productionReviewOpen) return;
     setAssignmentNote(sale.assignmentNote || "");
-  }, [sale.id, sale.assignmentNote]);
+  }, [sale.id, sale.assignmentNote]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // Board refreshes must not replace an employee's open, persisted review context.
+    if (productionReviewOpen) return;
     setSupplier(defaultSupplierSelection(sale));
     setSpecialSupplierName(sale.specialSupplierName || "");
     setShopifySupplierTagConfirmed(false);
@@ -862,7 +867,7 @@ function SaleCard({
     setTrelloLinkSaved(false);
     setApprovedDesignBusy(false);
     setApprovedDesignUpload(null);
-  }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.productSummary, sale.items, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus, sale.paymentLink, sale.shopifyOrderUrl]);
+  }, [sale.id, sale.assignedSupplier, sale.recommendedSupplier, sale.productSummary, sale.items, sale.supplierDueDate, sale.customerDueDate, sale.shopifyPaymentStatus, sale.paymentDecisionStatus, sale.paymentLink, sale.shopifyOrderUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (sale.postOrderReview.status !== "open") return;
@@ -1397,7 +1402,7 @@ function SaleCard({
                 {supplier === "quentin" && (sale.offerId || sale.productionReviewStatus) ? sale.productionReviewStatus === "partial" ? "Übergabe prüfen" : "Vergabe prüfen" : supplier === "quentin" ? "Manuell vergeben" : "Vergeben"}
               </button>
               {supplier === "quentin" && !assignmentSaved && !["pending", "partial", "synced"].includes(sale.productionReviewStatus || "") ? (
-                <button type="button" disabled={saving || trelloDescriptionBusy} onClick={async () => {
+                <button type="button" disabled={saving || trelloDescriptionBusy || productionReviewOpen} title={productionReviewOpen ? "Prüfung zuerst speichern und schließen." : undefined} onClick={async () => {
                   setManualHandoffOpen(true);
                   setManualHandoffConfirmed(false);
                   setProductionReviewOpen(false);
@@ -1742,9 +1747,10 @@ function SaleCard({
           </div>
         </div>
       </div>
-      {productionReviewOpen && supplier === "quentin" ? <ProductionReviewPanel
+      {productionReviewOpen ? <div hidden={supplier !== "quentin"}><ProductionReviewPanel
         saleId={sale.id}
         assignment={{ requestedDeliveryDate: deliveryDate, paymentDecisionStatus: needsManualPaymentRelease ? paymentDecision : "paid_confirmed", assignmentNote, operatorName }}
+        onRestoreAssignment={(draft) => { setAssignmentNote(draft.assignmentNote); setDeliveryDate(draft.requestedDeliveryDate); }}
         blockReason={assignBlockReason}
         paymentConfirmation={needsManualPaymentRelease && paymentDecision === "manual_approved_unpaid" ? institutionPaymentOpen
           ? `${sale.publicInstitution?.institution}: Institutionellen Auftrag und Zahlungsziel geprüft? Vor Zahlung an Quentin vergeben? Die Zahlung bleibt offen.`
@@ -1752,7 +1758,7 @@ function SaleCard({
         saving={saving}
         onAction={onAction}
         onClose={() => setProductionReviewOpen(false)}
-      /> : null}
+      /></div> : null}
     </article>
   );
 }
@@ -1771,6 +1777,7 @@ export function SupplierSalesClient({
   const [token, setToken] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [board, setBoard] = useState<SupplierSaleBoard | null>(null);
+  const [openReviewSales, setOpenReviewSales] = useState<Record<string, SupplierSale>>({});
   const [scope, setScope] = useState<ScopeFilter>("active");
   const [supplier, setSupplier] = useState<SupplierFilter>("all");
   const [payment, setPayment] = useState<PaymentFilter>("all");
@@ -1830,6 +1837,15 @@ export function SupplierSalesClient({
     if (quickFilter === "deadline") return items.filter(isDeadlineRelevant);
     return items;
   }, [items, quickFilter]);
+  // An open review survives filtering and background board loads until explicitly closed.
+  const retainedReviews = Object.values(openReviewSales).filter(sale => !visibleItems.some(item => item.id === sale.id));
+  const displayedItems = [...visibleItems, ...retainedReviews.map(sale => boardItems.find(item => item.id === sale.id) || sale)];
+  function reviewOpenChanged(sale: SupplierSale, open: boolean) {
+    setOpenReviewSales(current => {
+      if (Boolean(current[sale.id]) === open) return current;
+      const next = { ...current }; if (open) next[sale.id] = sale; else delete next[sale.id]; return next;
+    });
+  }
 
   async function login() {
     setError(null);
@@ -1927,6 +1943,7 @@ export function SupplierSalesClient({
         body: JSON.stringify({ ...body, operatorName }),
       }, body.productionApproval ? 240_000 : 30_000);
       const payload = (await response.json().catch(() => null)) as SupplierSalesApiResponse | null;
+      if ((!response.ok || !payload?.ok) && body.productionApproval) return { ...payload, ok: false, error: payload?.error || formatApiError(payload) };
       if (!response.ok || !payload?.ok) throw new Error(formatApiError(payload));
       setMessage(actionMessage(body.action, payload));
       if (payload.sale) setBoard((current) => replaceBoardSale(current, payload.sale));
@@ -2257,19 +2274,21 @@ export function SupplierSalesClient({
         <LiveCheckPanel liveCheck={liveCheck} />
 
         <section className="grid gap-4">
-          {loading ? (
+          {retainedReviews.length ? <p className="text-sm text-stone-600">Offene Prüfungen bleiben eingeblendet, bis du sie schließt.</p> : null}
+          {loading && !board ? (
             <div className="rounded-[0.5rem] border border-stone-200 bg-white p-8 text-center text-stone-500" role="status" aria-live="polite">
               <RefreshCcw className="mx-auto h-7 w-7 animate-spin text-stone-700" />
               <p className="mt-3">Sales werden geladen...</p>
             </div>
-          ) : visibleItems.length ? (
-            visibleItems.map((sale) => (
+          ) : displayedItems.length ? (
+            displayedItems.map((sale) => (
               <SaleCard
                 key={sale.id}
                 sale={sale}
                 operatorName={operatorName}
                 saving={savingSaleId === sale.id}
                 now={boardNow}
+                onReviewOpenChange={reviewOpenChanged}
                 onAction={(body) => runSaleAction(sale.id, body)}
               />
             ))

@@ -683,23 +683,35 @@ async function main() {
     reason: "KI-Rückfrage zur alten Referenz", evidence: [] });
   prepared.attachments.push({ ...prepared.attachments[0], id: "variant-2", name: "Variant-2.png" },
     { ...prepared.attachments[0], id: "document", name: "Delivery-note.pdf", mimeType: "application/pdf" });
-  let reviewHandoff = null, rejectNextAssignment = true, failNextReviewRead = false; const reviewPosts = [];
+  let reviewHandoff = null, reviewDraft = null, rejectNextAssignment = true, failNextReviewRead = false, failNextSave = false; const reviewPosts = [], draftSaves = [];
   await reviewPage.route("**/api/**", async route => {
     const request = route.request(), url = new URL(request.url());
     if (request.method() === "POST") {
-      const body = request.postDataJSON(); reviewPosts.push(body);
+      const body = request.postDataJSON();
+      if (body.action === "save_production_review_draft") {
+        draftSaves.push(body);
+        if (failNextSave) { failNextSave = false; return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Speichern vorübergehend nicht möglich.", recoveryAction: "retry" }) }); }
+        if (body.expectedRevision !== (reviewDraft?.revision || 0)) return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Eine andere Ansicht hat den Entwurf gespeichert. Bitte den neueren Stand ansehen.", code: "draft_conflict", recoveryAction: "load" }) });
+        reviewDraft = { ...body.draft, version: 1, revision: (reviewDraft?.revision || 0) + 1, savedAt: new Date().toISOString(), savedBy: "QA", previousChoices: [] };
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, draft: reviewDraft }) });
+      }
+      reviewPosts.push(body);
+      if (body.action === "prepare_production_review") {
+        prepared.id += "-new";
+        if (reviewDraft) reviewDraft = { ...reviewDraft, approval: { ...reviewDraft.approval, reviewId: prepared.id }, revision: reviewDraft.revision + 1 };
+      }
       if (body.action === "assign_supplier" && rejectNextAssignment) {
         rejectNextAssignment = false; failNextReviewRead = true;
-        return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Die Bestellung hat sich geändert. Bitte neu vorbereiten." }) });
+        return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Die Bestellung hat sich geändert. Bitte neu vorbereiten.", code: "sources_changed", recoveryAction: "prepare" }) });
       }
       if (body.action === "assign_supplier") reviewHandoff = { status: "synced", backups: [], verifiedAt: now };
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, board: reviewBoard, sale: reviewedSale, review: prepared }) });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, board: reviewBoard, sale: reviewedSale, review: prepared, draft: reviewDraft }) });
     }
     if (url.searchParams.get("action") === "production_review" && failNextReviewRead) {
       failNextReviewRead = false;
       return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Test: status temporarily unavailable" }) });
     }
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(url.searchParams.get("action") === "production_review" ? { ok: true, review: prepared, handoff: reviewHandoff } : { ok: true, board: reviewBoard, tasks: [] }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(url.searchParams.get("action") === "production_review" ? { ok: true, review: prepared, handoff: reviewHandoff, draft: reviewDraft } : { ok: true, board: reviewBoard, tasks: [] }) });
   });
   reviewedSale.offerId = null;
   await reviewPage.goto(`${target}/ops/sales-vergabe`);
@@ -725,6 +737,42 @@ async function main() {
   assert((await panel.innerText()).includes("Cable Position: Bottom left"), "Auswahl aktualisiert die Produktionsvorschau nicht");
   assert(!await release.isEnabled(), "Unbezahlte Freigabe fehlt als ausdrückliche Inline-Bestätigung");
   const paymentConsent = panel.getByRole("checkbox", { name: /Ich gebe diesen Auftrag bewusst vor Zahlung frei/ });
+  await panel.getByText(/^Gespeichert /).waitFor();
+  await panel.getByRole("button", { name: "Produktionsvorschau schließen" }).click();
+  await reviewPage.getByRole("button", { name: "Vergabe prüfen", exact: true }).click();
+  await panel.getByText(/^Gespeichert /).waitFor();
+  assert(await panel.getByLabel("Datei: Delivery-note.pdf").inputValue() === "keep", "Schließen und Wiederöffnen verliert die Dateiauswahl");
+  await reviewPage.getByLabel("Additional Information (English)").fill("Keep the purchased design.");
+  await panel.getByText(/^Gespeichert /).waitFor();
+  assert(await panel.isVisible() && (await panel.innerText()).includes("Keep the purchased design."), "Zusatztext schließt den Prüfbereich oder fehlt in der Vorschau");
+  await reviewPage.reload();
+  await reviewPage.getByRole("button", { name: "Vergabe prüfen", exact: true }).click();
+  await panel.getByText(/^Gespeichert /).waitFor();
+  assert(await reviewPage.getByLabel("Additional Information (English)").inputValue() === "Keep the purchased design.", "Neuladen verliert den Zusatztext");
+  assert(await panel.getByLabel("Datei: Variant.png").inputValue() === "remove", "Neuladen verliert eine bestätigte Datei");
+  await panel.getByText("Interne Prüfnote ergänzen", { exact: true }).click();
+  const note = panel.getByLabel("Interne Prüfnote", { exact: true });
+  await note.fill("x".repeat(4001));
+  await panel.getByText(/^Gespeichert /).waitFor();
+  assert((await panel.innerText()).includes("4001 / 4000 Zeichen") && (await panel.innerText()).includes("Angaben korrigieren"), "Textgrenze hat keine konkrete Feldhilfe");
+  assert(!(await panel.innerText()).includes("0 Entscheidungen offen"), "Textfehler wird als 0 Entscheidungen versteckt");
+  await note.fill(""); await panel.getByText(/^Gespeichert /).waitFor();
+  failNextSave = true;
+  await note.fill("Meine aktuelle Prüfung");
+  await panel.getByRole("button", { name: "Speichern erneut versuchen" }).waitFor();
+  await panel.getByRole("button", { name: "Produktionsvorschau schließen" }).click();
+  assert(await panel.isVisible() && await note.inputValue() === "Meine aktuelle Prüfung", "Fehlgeschlagene Speicherung verwirft die Eingabe beim Schließen");
+  await panel.getByRole("button", { name: "Speichern erneut versuchen" }).click();
+  await panel.getByText(/^Gespeichert /).waitFor();
+  reviewDraft = { ...reviewDraft, revision: reviewDraft.revision + 1, approval: { ...reviewDraft.approval, operatorNote: "Andere Mitarbeiterin" } };
+  await note.fill("Meine konkurrierende Auswahl");
+  await panel.getByRole("button", { name: "Neueren Stand ansehen" }).click();
+  await panel.getByText("Gespeicherten Stand mit deiner Auswahl vergleichen", { exact: true }).waitFor();
+  assert(await note.inputValue() === "Meine konkurrierende Auswahl", "Versionskonflikt überschreibt lokale Entscheidung");
+  assert((await panel.innerText()).includes("Andere Mitarbeiterin"), "Konflikt zeigt die andere Auswahl nicht");
+  await panel.getByRole("button", { name: "Meine Auswahl stattdessen speichern" }).click();
+  await panel.getByText(/^Gespeichert /).waitFor();
+  assert(reviewDraft.approval.operatorNote === "Meine konkurrierende Auswahl", "Bewusste Konfliktentscheidung nicht gespeichert");
   await paymentConsent.check();
   assert(await release.isEnabled(), "Belegte Auswahl verlangt unnötig Freitext");
   for (const width of [390, 1440]) {
@@ -736,17 +784,15 @@ async function main() {
   await panel.getByRole("alert").getByText(/Die Bestellung hat sich geändert\. Bitte neu vorbereiten\./).waitFor();
   assert(reviewPosts.length === 1 && !await release.isEnabled(), "Abgelehnter veralteter Entwurf wird erneut gesendet");
   assert((await panel.innerText()).includes("Übertragungsstand prüfen"), "Unklarer Rücklesestand ist nicht sichtbar");
-  await panel.getByRole("button", { name: "Stand laden", exact: true }).click();
-  await panel.getByRole("alert").getByText(/Wähle „Neu vorbereiten“/).waitFor();
+  await panel.getByRole("button", { name: "Stand laden", exact: true }).first().click();
+  await panel.getByRole("button", { name: "Neu vorbereiten – Entscheidungen abgleichen", exact: true }).waitFor();
   assert(await panel.getByLabel("Datei: Delivery-note.pdf").inputValue() === "keep" && reviewPosts.length === 1, "Lesende Statusprüfung verwirft Entscheidungen oder wiederholt Freigabe");
   assert(!(await panel.innerText()).includes("Die Freigabe wurde nicht bestätigt."), "Konkreter API-Fehler wird noch verborgen");
   assert(!(await panel.innerText()).includes("Alles geprüft – du kannst freigeben"), "Fehlerzustand meldet gleichzeitig Freigabebereitschaft");
   await panel.getByRole("button", { name: "Neu vorbereiten", exact: true }).click();
-  await panel.getByRole("button", { name: "Vorschlag übernehmen", exact: true }).click();
+  await panel.getByText(/^Gespeichert /).waitFor();
+  assert(await panel.getByLabel("Datei: Variant.png").inputValue() === "remove" && await panel.getByLabel("Datei: Delivery-note.pdf").inputValue() === "keep", "Neu vorbereiten verliert identische Entscheidungen");
   await panel.getByRole("button", { name: "KI-Rückfrage selbst geprüft – erledigt", exact: true }).click();
-  await panel.getByRole("button", { name: "Selbst geprüft – so lassen", exact: true }).click();
-  await panel.getByRole("button", { name: "2 Bilddateien sichern und entfernen", exact: true }).click();
-  await panel.getByLabel("Datei: Delivery-note.pdf").selectOption("keep");
   assert(!await release.isEnabled(), "Neue Vorbereitung übernimmt eine alte Zahlungsbestätigung");
   await paymentConsent.check();
   await release.click();
@@ -760,6 +806,8 @@ async function main() {
   assert(finalReview.decisions["human-question"].action === "reject" && finalReview.decisions["human-question"].note === "", "Menschliches Prüfergebnis wurde nicht übernommen");
   assert(finalReview.decisions.cable.note === "", "Belegte Auswahl fordert unnötige Begründung");
   assert(finalReview.title.includes("2 PCS - Two Pieces") && finalReview.description.includes("Two Pieces Shipped Together"), "Stückzahl fehlt in der freigegebenen Vorschau");
+  assert(draftSaves.length > 0 && draftSaves.every(s => s.draft.approval.confirmed === false), "Speichern erteilt eine Produktionsfreigabe");
+  assert(reviewPosts.at(-1).productionDraftRevision === reviewDraft.revision, "Freigabe verwendet nicht die gespeicherte Entwurfsversion");
   assert(reviewDialogs.length === 0, "Prüfablauf öffnet weiterhin zusätzliche Dialogfenster");
   await reviewPage.close();
 

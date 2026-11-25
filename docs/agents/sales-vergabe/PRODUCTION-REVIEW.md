@@ -7,6 +7,81 @@ NEONTRIP, Quentin-Board 62bae9b97705e7419ed64593.
 Veröffentlichung benötigt die exakte saubere Commit-SHA. Ältere Abschnitte dokumentieren
 den damaligen Prüf-/Veröffentlichungsstand.
 
+## Zuverlässiges Speichern und konkrete Fehlerhilfe (2026-11-25, Kandidat)
+
+**Ziel:** Entscheidungen, Dateien, Cover, Produktionsliste, Kartentext, Zusatztext
+und Liefertermin bleiben nach Schließen und Neuladen erhalten. Unvollständige
+Entwürfe dürfen gespeichert werden; erst die Produktionsfreigabe verlangt vollständige
+und gültige Angaben. Der Speicherstatus erscheint erst nach Serverbestätigung.
+
+Der vorhandene Ops-Endpunkt speichert über `save_production_review_draft` in
+`supplier_sales.metadata.production_review_draft`. Keine neue Tabelle, Queue oder
+Anbindung. Entwurfsrevision und `updated_at` schützen vor stillen Überschreibungen.
+Ein verlorener Speicherbeleg kann idempotent wiederholt werden; gleiche Inhalte
+werden unabhängig von JSONB-Schlüsselreihenfolge verglichen. Bestehende Metadatenwriter
+erhalten das Feld. Eine begonnene Übergabe friert ihren freigegebenen Stand ein.
+
+Die UI speichert Entscheidungen sofort und Texte kurz verzögert, arbeitet
+Speicherungen nacheinander ab und wartet beim Schließen auf die Bestätigung.
+Speicherfehler erhalten die lokale Auswahl und bieten eine konkrete Wiederholung.
+Bei zwei abweichenden Mitarbeiterständen werden beide sichtbar; die Mitarbeiterin
+wählt ausdrücklich den gespeicherten oder ihren lokalen Stand. Keine automatische
+Zusammenführung. Ungespeicherte Arbeit wird vor Navigation gewarnt; Filter und
+Listenaktualisierungen behalten offene Prüfungen, bis sie bewusst geschlossen werden.
+Änderungen an Zusatztext, Lieferdatum oder Zahlungsentscheidung schließen sie nicht.
+
+Neue Vorbereitungen übernehmen nur eindeutig gleiche Produkt-/Feld-/Wert- und
+Belegkombinationen. Modellgenerierte IDs sind keine Identität. Dateientscheidungen
+brauchen dieselbe Identität und unveränderte Kartenquelle beziehungsweise denselben
+PDF-Hash. Nicht übernommene Entscheidungen bleiben zum Abgleich lesbar. Manueller
+Kartentext bleibt erhalten und verlangt bei neuen Quellen eine Bestätigung.
+
+Validierung liefert `code`, `recoveryAction` und feldbezogene `problems`.
+Ein veralteter Review wird vor unbekannten Auswahl-IDs erkannt. Längenfehler nennen
+Feld, tatsächliche Länge und Grenze, mit Zeichenzähler und Sprung zum Feld.
+Technische Fehler können nicht mehr durch die Gruppierung von Dateientscheidungen
+als „0 Entscheidungen offen“ verdeckt werden. Diagnoseprotokolle enthalten nur
+Aktions-/Auftrags-/Review-Bezug, Fehlercode und betroffene Feldnamen.
+
+**Nachbar:** Menschliche Entscheidungen ohne Pflichtbegründung, Zahlungsstatus,
+Produkt-/Bildidentität, Stückzahl, UPDATE NEW SIZE und bestehende Handoff-Idempotenz
+bleiben erhalten. Eine reine Metadatenaktualisierung während längerer Quellenlesevorgänge
+verlangt keinen vollständigen KI-Neustart: vor dem atomaren Claim werden Auftrag,
+Review, Entwurfsrevision und Übergabe erneut gelesen und fachlich verglichen.
+Alte freigegebene Auswahl-Hashes bleiben nach JSONB-Rücklesen wiederholbar.
+
+**Wirkung:** Speichern schreibt ausschließlich den internen Arbeitsentwurf. Keine
+Produktionsfreigabe, Shopify-/Trello-Änderung, Dateioperation oder Nachricht.
+Die Produktionsfreigabe verwendet weiterhin die vorhandene Reservierung,
+Quellprüfung, private Dateisicherung und abschließende verifizierte Listenbewegung.
+Ein unklarer Übergabestand muss zuerst zurückgelesen werden.
+
+### Ergänzende Reparatur des Shopify-Ersatzimports
+
+Bei einer Ersatzbestellung zu einem bereits verknüpften Angebot wurde bisher der
+gesamte Beschreibungstext als Zusatzpositionsmerkmal durchsucht. Dadurch konnte
+„Inklusive: Montageschablone“ ein tatsächlich bestelltes 3D-Schild als Nichtproduktion
+einstufen und den gesamten Ersatzauftrag überspringen. Der bestehende Fallback
+klassifiziert hierfür jetzt nur Positionsbezeichnung und strukturierte Kategorie.
+Reine Versand-/Aufpreisrechnungen bleiben ausgeschlossen. Die stornierte ursprüngliche
+Bestellung bleibt erhalten; der Ersatz wird separat mit bestehender Änderungsprüfung
+angelegt. Ein Replay legt keinen zweiten Sale an. Keine Angebotsannahme wird erfunden.
+
+Abgeschlossene Shopify-Entwurfsbestellungen sind grundsätzlich importierbar. Ohne
+angenommenen Offers-Designstand bleibt der vorhandene manuelle Vergabeweg bestehen;
+dieser Kandidat erweitert nicht die KI-Prüfung um eine neue Bestellquelle.
+
+**Verifikation:** Regressionen prüfen Speicherung und Rücklesen, verlorene Antworten,
+JSONB-Reihenfolge, konkurrierende Revisionen, unveränderte versus geänderte Belege,
+stale Claims, alte abgeschlossene Übergaben, Ops-Sitzungsgrenze und Ersatzimport mit
+Replay. Der bestehende UI-Smoke prüft Schließen/Neuladen, Zusatztext, Feldgrenzen,
+Speicherfehler, konkurrierende Auswahl und getrennte Zahlungsbestätigung. Zusätzlich
+wurden gespeicherte echte Amazon-/Praxis-Fälle lokal mit ausschließlich abgefangenen
+Schreibzugriffen bedient. Keine echte Produktionsfreigabe oder produktive Entwurfsänderung.
+Der Live-Importnachweis und die produktive Speicherprüfung stehen bis zum freigegebenen
+Livegang aus. Rollback folgt dem bestehenden Release-Gate; gespeicherte Entwürfe oder
+bereits ausgeführte Übergaben werden dabei nicht gelöscht oder erneut ausgelöst.
+
 ## Menschliche Entscheidung und verständlicher Freigabestand (2026-11-20, noch nicht veröffentlicht)
 
 **Ziel:** Die KI informiert; die Mitarbeiterin entscheidet ausdrücklich. Allgemeine

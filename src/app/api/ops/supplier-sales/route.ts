@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import type { ReviewApproval } from "@/lib/ops/supplier-sale-review";
+import type { ReviewApproval, ReviewDraftInput } from "@/lib/ops/supplier-sale-review";
 import { hasOpsSession, isOpsPortalBypassed, isOpsPortalConfigured } from "@/lib/ops/auth";
 import {
   assignSupplierSale,
   prepareSupplierSaleProductionReview,
   readSupplierSaleProductionReview,
+  saveSupplierSaleReviewDraft,
+  ProductionReviewError,
   downloadSupplierSaleFileBackup,
   acknowledgeSupplierSalePostOrderChange,
   applyNoPaymentReminderShopifyTag,
@@ -61,7 +63,8 @@ type SupplierSalesPostBody = {
     | "sync_completed_offers"
     | "sync_shopify_supplier_tags"
     | "diagnose_sales_flow"
-    | "prepare_production_review";
+    | "prepare_production_review"
+    | "save_production_review_draft";
   payload?: unknown;
   sale?: unknown;
   order?: unknown;
@@ -85,6 +88,9 @@ type SupplierSalesPostBody = {
   idempotencyKey?: string | null;
   limit?: number | string | null;
   productionApproval?: ReviewApproval | null;
+  productionDraftRevision?: number;
+  draft?: ReviewDraftInput;
+  expectedRevision?: number;
   manualTrelloHandoff?: { card: string; confirmed: boolean } | null;
 };
 
@@ -97,6 +103,10 @@ function notConfigured() {
 }
 
 function failureResponse(error: unknown) {
+  if (error instanceof ProductionReviewError) {
+    return NextResponse.json({ ok: false, error: error.message, issues: error.issues, code: error.code,
+      recoveryAction: error.recoveryAction, problems: error.problems }, { status: error.status });
+  }
   if (error instanceof QuoteValidationError) {
     return NextResponse.json({ ok: false, error: error.message, issues: error.issues }, { status: error.status });
   }
@@ -304,10 +314,15 @@ export async function POST(request: NextRequest) {
   if (!actor) return unauthorized();
 
   try {
+    if (action === "save_production_review_draft") {
+      const draft = await saveSupplierSaleReviewDraft(String(body.saleId || ""), body.draft, Number(body.expectedRevision ?? -1), actor);
+      return NextResponse.json({ ok: true, draft }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (action === "prepare_production_review") {
       try {
-        const review = await prepareSupplierSaleProductionReview(String(body.saleId || ""));
-        return NextResponse.json({ ok: true, review }, { headers: { "Cache-Control": "private, no-store" } });
+        await prepareSupplierSaleProductionReview(String(body.saleId || ""));
+        const state = await readSupplierSaleProductionReview(String(body.saleId || ""));
+        return NextResponse.json({ ok: true, ...state }, { headers: { "Cache-Control": "private, no-store" } });
       } catch (error) {
         if (error instanceof QuoteValidationError || error instanceof SupabaseRestError) throw error;
         throw new QuoteValidationError("Die Vorbereitung konnte nicht abgeschlossen werden.", [
@@ -418,6 +433,7 @@ export async function POST(request: NextRequest) {
         operatorName: body.operatorName || null,
         assigneeLabel: body.assigneeLabel || null,
         productionApproval: body.productionApproval || null,
+        productionDraftRevision: body.productionDraftRevision,
         manualTrelloHandoff: body.manualTrelloHandoff || null,
       }, actor);
       return NextResponse.json({ ok: true, action, sale });
@@ -462,6 +478,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: false, error: "unsupported_action" }, { status: 400 });
   } catch (error) {
+    if (error instanceof ProductionReviewError) console.warn("ops production review rejected", {
+      action, saleId: typeof body.saleId === "string" ? body.saleId.slice(0, 80) : null,
+      reviewId: String(body.productionApproval?.reviewId || body.draft?.approval?.reviewId || "").slice(0, 100) || null,
+      code: error.code, fields: error.problems.map(p => p.field).filter(Boolean),
+    });
     return failureResponse(error);
   }
 }

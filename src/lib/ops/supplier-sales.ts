@@ -7,7 +7,8 @@ import { prepareSupplierSaleDocuments, mailDocumentSourcesMatch } from "./suppli
 import { backupSupplierFile, checkSupplierFileStorage, readSupplierFileBackup, type SupplierFileBackup } from "./supplier-sale-files";
 import { executeProductionHandoff, type ProductionHandoff } from "./supplier-sale-handoff";
 import {
-  QUENTIN_REVIEW_BOARD, PRODUCTION_LISTS, reviewApprovalIssues, productionPriorityFromDeliveryTitles, type ProductionReview, type ReviewApproval,
+  QUENTIN_REVIEW_BOARD, PRODUCTION_LISTS, reviewApprovalProblems, productionPriorityFromDeliveryTitles, type ProductionReview, type ReviewApproval,
+  reviewDraftInputIssues, reviewDraftContent, reviewApprovalContent, migrateReviewDraft, type ReviewDraft, type ReviewDraftInput, type ReviewProblem, type ReviewRecoveryAction,
   type ReviewProduct, type ReviewSource,
 } from "./supplier-sale-review";
 import { createOpsInternalTask, listOpsInternalTasks, type OpsInternalTaskActor } from "@/lib/ops/internal-tasks";
@@ -486,6 +487,7 @@ export type SupplierSaleAssignInput = {
   operatorName?: string | null;
   assigneeLabel?: string | null;
   productionApproval?: ReviewApproval | null;
+  productionDraftRevision?: number;
   manualTrelloHandoff?: { card: string; confirmed: boolean } | null;
 };
 
@@ -3190,13 +3192,14 @@ async function patchSaleRow(saleId: string, patch: Partial<SupplierSaleRow>) {
     // These entries belong to the production handoff. Legacy metadata writers
     // must not erase them with a stale full-JSON replacement.
     const current = await fetchSaleRowById(saleId);
-    if (current?.metadata.production_review || current?.metadata.production_handoff || current?.metadata.manual_trello_handoff) {
+    if (current?.metadata.production_review || current?.metadata.production_handoff || current?.metadata.manual_trello_handoff || current?.metadata.production_review_draft) {
       const rows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
         method: "PATCH", headers: { Prefer: "return=representation" },
         body: JSON.stringify({ ...patch, metadata: {
           ...patch.metadata,
           production_review: current.metadata.production_review,
           production_handoff: current.metadata.production_handoff,
+          ...(current.metadata.production_review_draft ? { production_review_draft: current.metadata.production_review_draft } : {}),
           ...(current.metadata.manual_trello_handoff ? { manual_trello_handoff: current.metadata.manual_trello_handoff } : {}),
         } }),
       }, { id: `eq.${saleId}`, updated_at: `eq.${current.updated_at}`, select: "*" });
@@ -3445,6 +3448,7 @@ function buildSalePayload(input: SupplierSaleInput, existing?: SupplierSaleRow |
     metadata: {
       ...(existing?.metadata || {}),
       ...(input.metadata || {}),
+      ...(existing?.metadata.production_review_draft ? { production_review_draft: existing.metadata.production_review_draft } : {}),
       supplier_rule_version: SUPPLIER_RULE_VERSION,
       fulfillment_status: shopifyFulfillmentStatusFromPayload(rawShopify) || nullableText(input.metadata?.fulfillment_status, 120) || nullableText(existing?.metadata?.fulfillment_status, 120) || null,
       shopify_cancelled_at: shopifyCancelledAt || null,
@@ -4219,8 +4223,14 @@ async function syncRecentShopifyOrdersFromAdmin(
           skippedExisting += 1;
           continue;
         }
-        if (existing?.shopify_order_id && parsed.sale.lineItems.every((item) =>
-          isNonProductionLine(item) || /^aufpreis\b/i.test(cleanText(item.title, 500)))) {
+        if (existing?.shopify_order_id && parsed.sale.lineItems.every((item) => {
+          // Classify the position itself. A sign's description may include
+          // "Montageschablone" or shipping instructions without becoming a surcharge.
+          const sections = arrayRecords(item.rawLineItem?.properties || item.rawLineItem?.customAttributes)
+            .filter(p => /^(bereich|section|category|product type)$/i.test(String(p.name || p.key)));
+          return isNonProductionLine({ ...item, description: null, rawLineItem: { properties: sections } })
+            || /^(aufpreis|liefertermin)\b/i.test(cleanText(item.title, 500));
+        })) {
           // A separately invoiced shipping/payment surcharge is not a new sign.
           skippedExisting += 1;
           continue;
@@ -6519,6 +6529,42 @@ async function reserveSupplierAssignmentAttempt(input: {
   }
 }
 
+/** Structured recovery stays scoped to the reviewed production path. */
+export class ProductionReviewError extends QuoteValidationError {
+  constructor(public readonly code: string, message: string, public readonly recoveryAction: ReviewRecoveryAction,
+    public readonly problems: ReviewProblem[] = [], status = 409) {
+    super(message, problems.map(p => p.message), status);
+  }
+}
+
+export async function saveSupplierSaleReviewDraft(saleId: string, value: unknown, expectedRevision: number, actor?: SupplierSaleActor | null): Promise<ReviewDraft> {
+  const invalid = reviewDraftInputIssues(value);
+  if (invalid.length || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new ProductionReviewError("draft_format", invalid[0] || "Die Entwurfsversion fehlt. Bitte den aktuellen Stand laden.", "edit", [], 422);
+  const input = reviewDraftContent(value as ReviewDraftInput);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const row = await fetchSaleRowById(saleId);
+    const review = row?.metadata.production_review as ProductionReview | undefined;
+    if (!row || !review) throw new ProductionReviewError("review_missing", "Für diesen Auftrag fehlt der Prüfentwurf. Bitte neu vorbereiten.", "prepare");
+    if (review.id !== input.approval.reviewId) throw new ProductionReviewError("review_changed", "Der Prüfentwurf wurde inzwischen erneuert. Deine lokale Auswahl bleibt sichtbar; bitte den aktuellen Stand laden.", "load");
+    const handoff = row.metadata.production_handoff as ProductionHandoff | undefined;
+    if (row.metadata.manual_trello_handoff || ["completed", "canceled", "in_production"].includes(row.assignment_status)
+      || handoff?.status === "pending" || handoff?.releaseAttempted || (handoff && handoff.reviewId === review.id)) {
+      throw new ProductionReviewError("handoff_locked", "Die Übergabe wurde bereits gestartet. Bitte ihren Stand laden; der freigegebene Entwurf wird nicht überschrieben.", "status");
+    }
+    const current = row.metadata.production_review_draft as ReviewDraft | undefined;
+    // A lost save acknowledgement can be retried without creating another revision.
+    if (current?.approval.reviewId === review.id && productionHash(reviewDraftContent(current)) === productionHash(input)) return current;
+    if ((current?.revision || 0) !== expectedRevision) throw new ProductionReviewError("draft_conflict", "Dieser Prüfentwurf wurde in einer anderen Ansicht gespeichert. Deine lokale Auswahl wurde nicht überschrieben. Bitte den neueren Stand ansehen.", "load");
+    const draft: ReviewDraft = { ...input, version: 1, revision: expectedRevision + 1, savedAt: new Date().toISOString(),
+      savedBy: nullableText(actor?.operatorName, 120), previousChoices: current?.previousChoices || [] };
+    const saved = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
+      method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ metadata: { ...row.metadata, production_review_draft: draft } }),
+    }, { id: `eq.${row.id}`, updated_at: `eq.${row.updated_at}`, select: "id" });
+    if (saved[0]) return draft;
+  }
+  throw new ProductionReviewError("draft_busy", "Der Auftrag wird gerade gleichzeitig aktualisiert. Deine Auswahl ist noch nicht gespeichert. Bitte Speichern erneut versuchen.", "retry");
+}
+
 function productionHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
@@ -6733,13 +6779,27 @@ export async function prepareSupplierSaleProductionReview(saleId: string) {
         : "Variante oder Referenz prüfen: behalten oder gesichert entfernen.",
     })),
   };
-  const latest = await fetchSaleRowById(row.id);
-  if (!latest || latest.metadata.manual_trello_handoff || productionOrderHash(latest, await fetchItemsForSale(row.id)) !== orderHash || jsonRecord(latest.metadata.production_handoff).status === "pending") throw new QuoteValidationError("Die Bestellung wurde während der Vorbereitung geändert. Bitte erneut prüfen.", [], 409);
-  const saved = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
-    method: "PATCH", headers: { Prefer: "return=representation" },
-    body: JSON.stringify({ metadata: { ...latest.metadata, production_review: review } }),
-  }, { id: `eq.${row.id}`, updated_at: `eq.${latest.updated_at}`, select: "id" });
-  if (!saved[0]) throw new QuoteValidationError("Eine andere Prüfung hat die Sale geändert. Bitte neu vorbereiten.", [], 409);
+  let stored = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const latest = await fetchSaleRowById(row.id);
+    const handoff = jsonRecord(latest?.metadata.production_handoff);
+    if (!latest || latest.metadata.manual_trello_handoff || ["completed", "canceled", "in_production"].includes(latest.assignment_status)
+      || handoff.status === "pending" || handoff.status === "synced" || handoff.releaseAttempted
+      || productionOrderHash(latest, await fetchItemsForSale(row.id)) !== orderHash) throw new ProductionReviewError("sources_changed", "Die Bestellung wurde während der Vorbereitung geändert. Bitte erneut prüfen.", "prepare");
+    const oldReview = latest.metadata.production_review as ProductionReview | undefined;
+    if (oldReview?.id !== (row.metadata.production_review as ProductionReview | undefined)?.id) throw new ProductionReviewError("review_changed", "Eine andere Ansicht hat bereits einen neuen Prüfentwurf erstellt. Bitte den aktuellen Stand laden.", "load");
+    const oldDraft = latest.metadata.production_review_draft as ReviewDraft | undefined;
+    const draft = oldReview && oldDraft?.approval.reviewId === oldReview.id ? {
+      ...migrateReviewDraft(oldReview, review, oldDraft), version: 1, revision: oldDraft.revision + 1,
+      savedAt: new Date().toISOString(), savedBy: oldDraft.savedBy,
+    } : null;
+    const saved = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
+      method: "PATCH", headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ metadata: { ...latest.metadata, production_review: review, production_review_draft: draft } }),
+    }, { id: `eq.${row.id}`, updated_at: `eq.${latest.updated_at}`, select: "id" });
+    if (saved[0]) { stored = true; break; }
+  }
+  if (!stored) throw new ProductionReviewError("draft_busy", "Der Auftrag wird gleichzeitig aktualisiert. Der bisherige Entwurf bleibt erhalten. Bitte die Vorbereitung erneut versuchen.", "prepare");
   return review;
 }
 
@@ -6750,7 +6810,7 @@ export async function readSupplierSaleProductionReview(saleId: string) {
   const attempt = handoff ? (await supabaseRequest<Array<{ metadata: JsonRecord }>>("supplier_assignment_attempts", undefined, {
     select: "metadata", attempt_key: `eq.${handoff.attemptKey}`, sale_id: `eq.${row.id}`, limit: 1,
   }))[0] : null;
-  return { review: row.metadata.production_review || null, handoff: handoff || null,
+  return { review: row.metadata.production_review || null, handoff: handoff || null, draft: row.metadata.production_review_draft || null,
     approval: handoff?.reviewId === (row.metadata.production_review as ProductionReview | undefined)?.id ? attempt?.metadata.approval || null : null };
 }
 export async function downloadSupplierSaleFileBackup(saleId: string, attachmentId: string) {
@@ -6769,36 +6829,51 @@ async function assignReviewedSupplierSale(input: SupplierSaleAssignInput, decisi
   const review = row.metadata.production_review as ProductionReview | undefined;
   const approval = input.productionApproval!;
   if (!review) throw new QuoteValidationError("Bitte zuerst Vergabe prüfen.", [], 409);
-  const issues = reviewApprovalIssues(review, approval);
-  if (issues.length) throw new QuoteValidationError("Die Vorbereitung benötigt noch eine Entscheidung.", issues, 422);
-  const approvalHash = productionHash(approval);
+  const problems = reviewApprovalProblems(review, approval);
+  if (problems.length) throw new ProductionReviewError(problems[0].code, "Die Vorbereitung benötigt noch eine Entscheidung.", problems[0].action, problems, 422);
+  const checkDraft = (current: SupplierSaleRow) => {
+    const draft = current.metadata.production_review_draft as ReviewDraft | undefined;
+    if (draft && (draft.revision !== input.productionDraftRevision
+      || productionHash(reviewApprovalContent(draft.approval)) !== productionHash(reviewApprovalContent(approval))
+      || draft.assignmentNote !== (input.assignmentNote || "") || draft.requestedDeliveryDate !== deliveryDate)) {
+      throw new ProductionReviewError("draft_conflict", "Die Freigabe passt nicht zum zuletzt gespeicherten Entwurf. Bitte den aktuellen Stand laden.", "load");
+    }
+    if (draft?.manualTextNeedsReview) throw new ProductionReviewError("manual_text_review", "Bitte den manuell bearbeiteten Kartentext mit den geänderten Angaben abgleichen und bestätigen.", "edit");
+  };
+  checkDraft(row);
+  const approvalHash = productionHash(reviewApprovalContent(approval));
+  const legacyApprovalHash = productionHash(approval);
   const prior = row.metadata.production_handoff as ProductionHandoff | undefined;
   if (prior?.status === "synced") {
-    if (prior.approvalHash === approvalHash) return getSupplierSale(row.id);
+    if ([approvalHash, legacyApprovalHash].includes(prior.approvalHash)) return getSupplierSale(row.id);
+    const completed = (await supabaseRequest<Array<{ sale_id: string; metadata: { approval?: ReviewApproval } }>>("supplier_assignment_attempts", undefined,
+      { select: "sale_id,metadata", attempt_key: `eq.${prior.attemptKey}`, limit: 1 }))[0];
+    if (completed?.sale_id === row.id && completed.metadata.approval
+      && productionHash(reviewApprovalContent(completed.metadata.approval)) === approvalHash) return getSupplierSale(row.id);
     throw new QuoteValidationError("Diese Vergabe wurde bereits freigegeben.", [], 409);
   }
-  if (prior?.status === "pending") throw new QuoteValidationError("Eine Freigabe läuft bereits oder benötigt nach einem Abbruch eine Prüfung. Nicht erneut auslösen.", [], 409);
+  if (prior?.status === "pending") throw new ProductionReviewError("handoff_pending", "Eine Freigabe läuft bereits oder benötigt nach einem Abbruch eine Prüfung. Bitte Stand laden; nicht erneut auslösen.", "status");
   const checkSources = async () => {
     const current = await fetchSaleRowById(input.saleId);
     if (!current || ["completed", "canceled"].includes(current.assignment_status) || postOrderReviewFromRow(current).status === "change_requested"
       || (current.payment_decision_status === "wait_for_payment" && row!.payment_decision_status !== "wait_for_payment")
-      || productionOrderHash(current, await fetchItemsForSale(input.saleId)) !== review.orderHash) throw new QuoteValidationError("Die Bestellung hat sich geändert. Bitte neu vorbereiten.", [], 409);
+      || productionOrderHash(current, await fetchItemsForSale(input.saleId)) !== review.orderHash) throw new ProductionReviewError("sources_changed", "Die Bestellung hat sich geändert. Bitte neu vorbereiten.", "prepare");
     const mails = await readSupplierSaleMail({ email: current.customer_email || "", requestId: current.request_id });
-    if (productionHash(mails) !== review.mailHash) throw new QuoteValidationError("Neue oder geänderte E-Mail gefunden. Bitte neu vorbereiten und prüfen.", [], 409);
+    if (productionHash(mails) !== review.mailHash) throw new ProductionReviewError("mail_changed", "Neue oder geänderte E-Mail gefunden. Bitte neu vorbereiten und prüfen.", "prepare");
     for (const mailId of new Set((review.documents || []).filter(d => d.origin === "mail" && d.status === "read").map(d => d.mailId))) {
       const mail = mails.find(m => m.id === mailId);
-      if (!mail) throw new QuoteValidationError("Die Dokumentquelle fehlt. Bitte neu vorbereiten.", [], 409);
+      if (!mail) throw new ProductionReviewError("document_changed", "Die Dokumentquelle fehlt. Bitte neu vorbereiten.", "prepare");
       const currentPdfs = await readSupplierSaleMailPdfs(mail);
       const previousPdfs = review.documents!.filter(d => d.origin === "mail" && d.mailId === mailId);
       if (!mailDocumentSourcesMatch(previousPdfs, currentPdfs)) {
-        throw new QuoteValidationError("Die Mailanhänge haben sich geändert oder sind nicht mehr lesbar. Bitte neu vorbereiten.", [], 409);
+        throw new ProductionReviewError("document_changed", "Die Mailanhänge haben sich geändert oder sind nicht mehr lesbar. Bitte neu vorbereiten.", "prepare");
       }
     }
   };
   await checkSources();
   if (!prior || prior.reviewId !== review.id) {
     const currentCard = await readProductionTrelloCard(review.cardId);
-    if (productionCardHash(currentCard) !== review.cardHash) throw new QuoteValidationError("Die Karte hat sich geändert. Bitte neu vorbereiten.", [], 409);
+    if (productionCardHash(currentCard) !== review.cardHash) throw new ProductionReviewError("card_changed", "Die Karte hat sich geändert. Bitte neu vorbereiten.", "prepare");
   }
   const attemptKey = prior?.attemptKey || `supplier-sale:${row.id}:assign:quentin:${deliveryDate}`;
   const previousAttempt = prior ? (await supabaseRequest<Array<{ sale_id: string; requested_delivery_date: string; status: string; metadata: JsonRecord }>>("supplier_assignment_attempts", undefined, {
@@ -6807,7 +6882,10 @@ async function assignReviewedSupplierSale(input: SupplierSaleAssignInput, decisi
   if (prior && (!previousAttempt || previousAttempt.sale_id !== row.id || previousAttempt.status !== "partial" || previousAttempt.requested_delivery_date !== deliveryDate)) {
     throw new QuoteValidationError("Der bestehende Vergabeversuch muss mit seinem bestätigten Lieferdatum fortgesetzt werden.", [], 409);
   }
-  if (prior?.reviewId === review.id && prior.approvalHash !== approvalHash) throw new QuoteValidationError("Für geänderte Entscheidungen bitte zuerst neu vorbereiten.", [], 409);
+  if (prior?.reviewId === review.id && ![approvalHash, legacyApprovalHash].includes(prior.approvalHash)
+    && (!previousAttempt?.metadata.approval || productionHash(reviewApprovalContent(previousAttempt.metadata.approval as ReviewApproval)) !== approvalHash)) {
+    throw new ProductionReviewError("handoff_changed", "Für geänderte Entscheidungen bitte zuerst neu vorbereiten.", "prepare");
+  }
   const previousProducts = (previousAttempt?.metadata.production_review as ProductionReview | undefined)?.products || [];
   const state: ProductionHandoff = {
     reviewId: review.id, attemptKey, approvalHash, status: "pending", error: null,
@@ -6816,13 +6894,28 @@ async function assignReviewedSupplierSale(input: SupplierSaleAssignInput, decisi
     releaseAttempted: prior?.releaseAttempted || false, verifiedAt: null,
   };
   const operatorName = nullableText(input.operatorName || actor?.operatorName, 120);
-  // One atomic row claim serializes different dates and multiple employee tabs, before provider writes.
-  const claimRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
-    method: "PATCH", headers: { Prefer: "return=representation" },
-    body: JSON.stringify({ metadata: { ...row.metadata, production_handoff: state } }),
-  }, { id: `eq.${row.id}`, updated_at: `eq.${row.updated_at}`, select: "*" });
-  if (!claimRows[0]) throw new QuoteValidationError("Eine andere Prüfung hat die Sale geändert. Bitte neu laden.", [], 409);
-  row = claimRows[0];
+  // Refresh after slow read-only checks. Harmless metadata writes do not invalidate the source review.
+  // Each retry still compares content, draft revision and the handoff before an atomic claim.
+  let claimed: SupplierSaleRow | undefined;
+  const priorHash = productionHash(prior || null);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const current = await fetchSaleRowById(input.saleId);
+    if (!current || current.metadata.manual_trello_handoff || ["completed", "canceled", "in_production"].includes(current.assignment_status)
+      || productionOrderHash(current, await fetchItemsForSale(input.saleId)) !== review.orderHash
+      || (current.payment_decision_status === "wait_for_payment" && row.payment_decision_status !== "wait_for_payment")) {
+      throw new ProductionReviewError("sources_changed", "Die Bestellung hat sich geändert. Bitte neu vorbereiten.", "prepare");
+    }
+    if ((current.metadata.production_review as ProductionReview | undefined)?.id !== review.id) throw new ProductionReviewError("review_changed", "Der Prüfentwurf wurde inzwischen erneuert. Bitte den aktuellen Stand laden.", "load");
+    if (productionHash(current.metadata.production_handoff || null) !== priorHash) throw new ProductionReviewError("handoff_pending", "Eine andere Ansicht hat die Übergabe aktualisiert. Bitte zuerst Stand laden.", "status");
+    checkDraft(current);
+    const claimRows = await supabaseRequest<SupplierSaleRow[]>("supplier_sales", {
+      method: "PATCH", headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ metadata: { ...current.metadata, production_handoff: state } }),
+    }, { id: `eq.${current.id}`, updated_at: `eq.${current.updated_at}`, select: "*" });
+    if (claimRows[0]) { claimed = claimRows[0]; break; }
+  }
+  if (!claimed) throw new ProductionReviewError("concurrent_update", "Eine andere Prüfung oder Aktualisierung hat den Auftrag geändert. Dein Entwurf bleibt gespeichert. Bitte Stand laden.", "load");
+  row = claimed;
   const tag = supplierTagValue("quentin");
   let ownsAttempt = Boolean(previousAttempt);
   const save = async (next: ProductionHandoff) => {
@@ -6908,7 +7001,8 @@ async function assignReviewedSupplierSale(input: SupplierSaleAssignInput, decisi
       state.status = "partial"; state.error = error instanceof Error ? error.message : "Vergabe unvollständig.";
       await save(state);
     }
-    throw new QuoteValidationError("Produktionsübergabe ist noch nicht vollständig.", [state.error || "Bitte erneut prüfen."], 409);
+    if (error instanceof ProductionReviewError) throw error;
+    throw new ProductionReviewError("handoff_partial", "Produktionsübergabe ist noch nicht vollständig. " + (state.error || "Bitte Stand laden."), "status");
   }
   return getSupplierSale(input.saleId);
 }

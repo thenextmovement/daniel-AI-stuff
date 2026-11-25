@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHmac, createHash } from "node:crypto";
-import { defaultReviewApproval, type ProductionReview, QUENTIN_REVIEW_BOARD } from "@/lib/ops/supplier-sale-review";
+import { defaultReviewApproval, type ProductionReview, type ReviewDraft, type ReviewDraftInput, QUENTIN_REVIEW_BOARD } from "@/lib/ops/supplier-sale-review";
 import test from "node:test";
+import { QuoteValidationError } from "@/lib/quotes/validation";
 import { NextRequest } from "next/server";
 
 import { GET as supplierSalesGET, POST as supplierSalesPOST } from "@/app/api/ops/supplier-sales/route";
@@ -11,6 +12,9 @@ import {
   assignSupplierSale,
   productionOrderHash,
   prepareSupplierSaleProductionReview,
+  saveSupplierSaleReviewDraft,
+  readSupplierSaleProductionReview,
+  ProductionReviewError,
   buildShopifyOrderTrelloTitle,
   buildSupplierSaleBoardFromRows,
   buildSupplierSalesDiagnostics,
@@ -3477,6 +3481,18 @@ test("copied offer references import distinct Shopify orders without reviving or
   });
   const orders = [order("2001"), order("2002"), order("2003", "Liefertermin Express", 1),
     order("2004", "Aufpreis Leuchtschild Design", 1), order("3001")];
+  // Real failing shape: a replacement sign includes a mounting template in its
+  // description, beside shipping and a separate mounting-rail surcharge.
+  const replacementWithTemplate = order("2005", "3D Schild Frontleuchtend – Beju", 1);
+  replacementWithTemplate.lineItems.nodes[0].customAttributes = [
+    { key: "Bereich", value: "3D-Leuchtschild" },
+    { key: "Beschreibung", value: "Produktart: 3D\nInklusive: Montageschablone\nGröße: 120x53cm\nRückplatte: Einzelne Buchstaben" },
+  ];
+  replacementWithTemplate.lineItems.nodes.push(
+    order("2005-shipping", "3D Standardversand ca. 20 Werktage", 1).lineItems.nodes[0],
+    order("2005-rail", "Aufpreis für eine Montageschiene", 1).lineItems.nodes[0],
+  );
+  orders.push(replacementWithTemplate);
   await withMockedAssignmentFetch(async (url, init) => {
     const method = String(init?.method || "GET").toUpperCase();
     if (url.hostname === "angebote.test") return Response.json({ ok: true, sales: [] });
@@ -3536,11 +3552,13 @@ test("copied offer references import distinct Shopify orders without reviving or
     process.env.SUPPLIER_ASSIGNMENT_TASKS_ENABLED = "false";
     const first = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" });
     assert.equal(first.failed, 0, JSON.stringify(first));
-    assert.equal(first.sources?.shopifyOrders.upserted, 2);
+    assert.equal(first.sources?.shopifyOrders.upserted, 3);
     assert.equal(first.sources?.shopifyOrders.skippedExisting, 3, "Surcharges and a linked GID order stay out of production import");
     const second = await syncCompletedOffersFromOffersApp({ operatorName: "Ops" });
     assert.equal(second.sources?.shopifyOrders.upserted, 0);
-    assert.equal(second.sources?.shopifyOrders.skippedExisting, 5);
+    assert.equal(second.sources?.shopifyOrders.skippedExisting, 6);
+    assert.equal(items.get("sale-2005")?.length, 3, "Replacement keeps the sign, shipping and surcharge positions");
+    assert.equal(rows.get("sale-2005")?.metadata.post_order_review && (rows.get("sale-2005")!.metadata.post_order_review as Record<string, unknown>).status, "change_requested");
 
     // Direct webhook replay also retains the order identity and a completed review.
     const sibling = rows.get("sale-2001")!;
@@ -3555,11 +3573,11 @@ test("copied offer references import distinct Shopify orders without reviving or
     assert.equal(sale.postOrderReview.status, "closed");
     assert.equal(sale.items[0].quantity, 12);
   });
-  assert.equal(rows.size, 4);
+  assert.equal(rows.size, 5);
   assert.deepEqual(rows.get(original.id), originalSnapshot);
   assert.deepEqual(rows.get(knownGidOrder.id), knownGidOrder);
-  assert.deepEqual(writes, ["sale-2001", "sale-2002"]);
-  assert.equal(eventKeys.size, 2, "Copied idempotency keys must not collide across orders");
+  assert.deepEqual(writes, ["sale-2001", "sale-2002", "sale-2005"]);
+  assert.equal(eventKeys.size, 3, "Copied idempotency keys must not collide across orders");
   assert.equal(rows.get("sale-2002")?.metadata.post_order_review && (rows.get("sale-2002")!.metadata.post_order_review as { status: string }).status, "change_requested");
 });
 
@@ -5493,10 +5511,10 @@ test("reviewed assignment rejects pending attempts, changed orders, new mail and
     await assert.rejects(assignSupplierSale(input),/Neue oder geänderte E-Mail/);assert.equal(writes.length,0);
     review.mailHash=digest([]);
     await assert.rejects(assignSupplierSale(input),/andere Prüfung/);
-    assert.deepEqual(writes,["/rest/v1/supplier_sales"]);
+    assert.deepEqual(writes,Array(3).fill("/rest/v1/supplier_sales"));
     row.assignment_status="assigned";row.assigned_supplier="quentin";row.shopify_tag_sync_status="synced";row.trello_projection_status="synced";row.supplier_trello_card_id=card.id;
     await assert.rejects(markSupplierSaleInProduction({saleId:row.id}),/Produktion kann noch nicht/);
-    assert.equal(writes.length,1);
+    assert.equal(writes.length,3);
   });
 });
 
@@ -5509,6 +5527,8 @@ test("new production review and file backup routes require an Ops session, not a
     const headers={host:"ops.neontrip.de",authorization:"Bearer automation","content-type":"application/json"};
     const post=await supplierSalesPOST(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales",{method:"POST",headers,body:JSON.stringify({action:"prepare_production_review",saleId:"fixture"})}));
     assert.equal(post.status,401);
+    const savePost=await supplierSalesPOST(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales",{method:"POST",headers,body:JSON.stringify({action:"save_production_review_draft",saleId:"fixture",expectedRevision:0,draft:{}})}));
+    assert.equal(savePost.status,401,"draft saving requires the existing Ops session");
     const manualPost=await supplierSalesPOST(new NextRequest("https://ops.neontrip.de/api/ops/supplier-sales",{method:"POST",headers,body:JSON.stringify({action:"assign_supplier",saleId:"fixture",manualTrelloHandoff:{card:"https://trello.com/c/2TpKYpx9",confirmed:true}})}));
     assert.equal(manualPost.status,401,"manual completion requires the existing Ops session");
     for(const action of ["production_review","production_file_backup"]){
@@ -5706,5 +5726,150 @@ test("manual handoff keeps a failed Shopify sync recoverable without claiming pr
     assert.equal(attempt.status, "partial");
     assert.equal(supplierSaleVisibleInActiveOverview(result), true);
     await assert.rejects(markSupplierSaleInProduction({ saleId: row.id }), /noch nicht/);
+  });
+});
+
+
+function jsonbRoundTrip<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().reverse().map(key => [key, item[key]])) : item));
+}
+
+function reviewDraftFixture() {
+  const row = saleRow({ customer_email: "customer@example.test" });
+  const item = itemRow({});
+  const review: ProductionReview = {
+    version: 1, id: "draft-review", saleId: row.id, preparedAt: "2026-11-25T10:00:00Z", sourceHash: "all", orderHash: productionOrderHash(row, [item]), mailHash: "mail", cardHash: "card",
+    orderName: row.shopify_order_name!, customerName: "Test", requestId: row.request_id,
+    cardId: "aaaaaaaaaaaaaaaaaaaaaaaa", cardUrl: "https://trello.com/c/fixture", originalTitle: "Original", originalDescription: "Original", originalListId: "waiting", originalCoverId: null, originalPos: 1,
+    products: [{ id: item.id, title: "LED Neon Sign", quantity: 1, fields: [{ label: "Size", value: "120 cm" }], imageUrl: "https://angebote.neontrip.de/image", imageId: "image", imageTitle: "Final", imageHash: "hash" }],
+    accessories: [], sources: [], analysis: { summary: "Prüfung", changes: [], threads: [] }, attachments: [], priority: "standard", mailCount: 0, blockers: [],
+  };
+  row.metadata.production_review = review;
+  const input: ReviewDraftInput = { approval: defaultReviewApproval(review), edited: false, assignmentNote: "", requestedDeliveryDate: "2026-12-11", manualTextNeedsReview: false };
+  return { row, item, review, input };
+}
+
+test("review drafts survive readback, incomplete decisions and lost acknowledgements without provider effects", async () => {
+  const { row, input } = reviewDraftFixture();
+  input.approval.operatorNote = "x".repeat(4001); input.approval.title = ""; input.approval.confirmed = true;
+  let writes = 0;
+  await withMockedAssignmentFetch((url, init) => {
+    assert.ok(url.pathname.endsWith("/supplier_sales"), "draft saving only accesses the existing sale row");
+    if (init?.method === "PATCH") {
+      writes++; assert.equal(url.searchParams.get("updated_at"), `eq.${row.updated_at}`);
+      Object.assign(row, JSON.parse(String(init.body))); row.updated_at = `revision-${writes}`;
+      row.metadata = jsonbRoundTrip(row.metadata);
+    }
+    return Response.json([row]);
+  }, async () => {
+    const saved = await saveSupplierSaleReviewDraft(row.id, input, 0, { operatorName: "Test" });
+    assert.equal(saved.revision, 1); assert.equal(saved.approval.confirmed, false); assert.equal(saved.approval.operatorNote.length, 4001);
+    const loaded = await readSupplierSaleProductionReview(row.id);
+    assert.deepEqual(loaded.draft, saved); assert.equal(loaded.handoff, null);
+    assert.equal((await saveSupplierSaleReviewDraft(row.id, input, 0)).revision, 1); assert.equal(writes, 1, "retry of lost response is idempotent");
+    await assert.rejects(saveSupplierSaleReviewDraft(row.id, { ...input, assignmentNote: "New" }, 0), error => error instanceof ProductionReviewError && error.code === "draft_conflict");
+    assert.equal(writes, 1);
+  });
+});
+
+test("legacy completed approvals replay after JSONB key reordering without another provider action", async () => {
+  const { row, item, review, input } = reviewDraftFixture();
+  const original = { ...input.approval, confirmed: true };
+  row.metadata.production_handoff = { reviewId: review.id, attemptKey: "legacy-attempt", status: "synced",
+    approvalHash: createHash("sha256").update(JSON.stringify(original)).digest("hex") };
+  const reordered = jsonbRoundTrip(original);
+  let attemptReads = 0;
+  await withMockedAssignmentFetch((url, init) => {
+    assert.equal(init?.method || "GET", "GET", "replay never writes or calls a provider");
+    if (url.pathname.endsWith("/supplier_sales")) return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sale_items")) return Response.json([item]);
+    if (url.pathname.endsWith("/supplier_assignment_attempts")) {
+      attemptReads++; return Response.json([{ sale_id: row.id, metadata: { approval: reordered } }]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_events")) return Response.json([]);
+    throw new Error("Unexpected provider access: " + url.pathname);
+  }, async () => {
+    const assigned = await assignSupplierSale({ saleId: row.id, supplier: "quentin", requestedDeliveryDate: input.requestedDeliveryDate, productionApproval: reordered });
+    assert.equal(assigned.id, row.id); assert.equal(attemptReads, 1);
+    await assert.rejects(assignSupplierSale({ saleId: row.id, supplier: "quentin", requestedDeliveryDate: input.requestedDeliveryDate,
+      productionApproval: { ...reordered, operatorNote: "Different decision" } }), /bereits freigegeben/);
+  });
+});
+
+test("draft save retries harmless metadata CAS conflict but preserves a second employee's revision", async () => {
+  const { row, input } = reviewDraftFixture(); let writes = 0, competing = false;
+  await withMockedAssignmentFetch((url, init) => {
+    assert.ok(url.pathname.endsWith("/supplier_sales"));
+    if (init?.method === "PATCH") {
+      writes++;
+      if (writes === 1 || competing) {
+        row.updated_at += "-sync"; row.metadata.background_sync = "preserved";
+        if (competing) row.metadata.production_review_draft = { ...(row.metadata.production_review_draft as ReviewDraft), revision: 2, assignmentNote: "Other employee" };
+        return Response.json([]);
+      }
+      Object.assign(row, JSON.parse(String(init.body)));
+    }
+    return Response.json([row]);
+  }, async () => {
+    assert.equal((await saveSupplierSaleReviewDraft(row.id, input, 0)).revision, 1);
+    assert.equal(row.metadata.background_sync, "preserved"); assert.equal(writes, 2);
+    competing = true;
+    await assert.rejects(saveSupplierSaleReviewDraft(row.id, { ...input, assignmentNote: "My choice" }, 1), error => error instanceof ProductionReviewError && error.code === "draft_conflict");
+    assert.equal((row.metadata.production_review_draft as ReviewDraft).assignmentNote, "Other employee"); assert.equal(writes, 3);
+  });
+});
+
+test("renewed review, frozen handoff and stale saved approval stop writes with an actionable code", async () => {
+  const { row, item, review, input } = reviewDraftFixture(); let writes = 0;
+  await withMockedAssignmentFetch((url, init) => {
+    if (init?.method && init.method !== "GET") writes++;
+    if (url.pathname.endsWith("/supplier_sales")) return Response.json([row]);
+    if (url.pathname.endsWith("/supplier_sale_items")) return Response.json([item]);
+    if (url.pathname.endsWith("/supplier_sale_events")) return Response.json([]);
+    throw new Error("Unexpected provider access");
+  }, async () => {
+    await assert.rejects(saveSupplierSaleReviewDraft(row.id, { ...input, approval: { ...input.approval, reviewId: "old" } }, 0), error => error instanceof ProductionReviewError && error.code === "review_changed");
+    row.metadata.production_handoff = { status: "pending", reviewId: review.id };
+    await assert.rejects(saveSupplierSaleReviewDraft(row.id, input, 0), error => error instanceof ProductionReviewError && error.code === "handoff_locked");
+    delete row.metadata.production_handoff;
+    row.metadata.production_review_draft = { ...input, version: 1, revision: 2, savedAt: "now", savedBy: null, previousChoices: [] };
+    await assert.rejects(assignSupplierSale({ saleId: row.id, supplier: "quentin", requestedDeliveryDate: input.requestedDeliveryDate, productionApproval: { ...input.approval, confirmed: true }, productionDraftRevision: 1 }), error => error instanceof ProductionReviewError && error.code === "draft_conflict");
+    assert.equal(writes, 0);
+  });
+});
+
+test("reviewed claim refreshes a metadata-only update after slow mail reads without losing it", async () => {
+  const { row, item, review, input } = reviewDraftFixture();
+  row.metadata.production_review_draft = jsonbRoundTrip({ ...input, version: 1, revision: 2, savedAt: "now", savedBy: null, previousChoices: [] });
+  const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const card = { id: review.cardId, idBoard: QUENTIN_REVIEW_BOARD, idList: "waiting", name: "Original", desc: "Original", idAttachmentCover: null, closed: false, attachments: [], pos: 1 };
+  review.mailHash = digest([]); review.cardHash = digest({ id: card.id, board: card.idBoard, list: card.idList, name: card.name, desc: card.desc, cover: null, closed: false, attachments: [] });
+  let claimSeen = false; const providerWrites: string[] = [];
+  await withMockedAssignmentFetch((url, init) => {
+    const method = init?.method || "GET";
+    if (url.host === "login.microsoftonline.com") return Response.json({ access_token: "fixture" });
+    if (url.host === "graph.microsoft.com") { row.updated_at = "fresh-after-mail"; row.metadata.background = "keep"; return Response.json({ value: [] }); }
+    if (url.pathname.endsWith("/supplier_sales")) {
+      if (method === "PATCH") {
+        assert.equal(url.searchParams.get("updated_at"), "eq.fresh-after-mail");
+        const patch = JSON.parse(String(init?.body));
+        if (patch.metadata.production_handoff?.status === "pending") { claimSeen = true; assert.equal(patch.metadata.background, "keep"); }
+        Object.assign(row, patch);
+      }
+      return Response.json([row]);
+    }
+    if (url.pathname.endsWith("/supplier_sale_items")) return Response.json([item]);
+    if (url.pathname.endsWith("/customer_email_messages")) return Response.json([]);
+    if (url.pathname.endsWith("/cards/" + card.id)) { if (method !== "GET") providerWrites.push(method); return Response.json(card); }
+    if (url.pathname.endsWith("/supplier_assignment_attempts")) throw new Error("TEST_STOP_BEFORE_PROVIDER");
+    if (url.pathname.endsWith("/supplier_sale_events")) return Response.json([]);
+    throw new Error("Unexpected request: " + url.pathname);
+  }, async () => {
+    process.env.MICROSOFT_GRAPH_MAILBOX = "support@neontrip.de";
+    process.env.MICROSOFT_GRAPH_TENANT_ID = "fixture"; process.env.MICROSOFT_GRAPH_CLIENT_ID = "fixture"; process.env.MICROSOFT_GRAPH_CLIENT_SECRET = "fixture";
+    delete process.env.MICROSOFT_GRAPH_CLIENT_ID_NEXT; delete process.env.MICROSOFT_GRAPH_CLIENT_SECRET_NEXT;
+    await assert.rejects(assignSupplierSale({ saleId: row.id, supplier: "quentin", requestedDeliveryDate: input.requestedDeliveryDate, productionDraftRevision: 2, productionApproval: { ...input.approval, confirmed: true } }), error => error instanceof QuoteValidationError && error.issues.includes("TEST_STOP_BEFORE_PROVIDER"));
+    assert.equal(claimSeen, true); assert.equal(row.metadata.background, "keep"); assert.deepEqual(providerWrites, []);
   });
 });

@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, RefreshCcw, X } from "lucide-react";
 import {
-  defaultReviewApproval, renderProductionReview, reviewApprovalIssues, PRODUCTION_LISTS,
+  defaultReviewApproval, renderReviewWithAssignment, reviewApprovalProblems, reviewDraftContent, PRODUCTION_LISTS,
   designMappingQuestions, confirmPurchasedDesigns, openImageVariants, decideImageVariants, reviewAttachmentLabel, reviewOpenStepCount,
   openDocumentSuggestions, confirmDocumentSuggestions, reviewedDeliveryNote, confirmDeliveryNote, drawingReviewRecommendation,
   drawingSizeUpdate, confirmDrawingSizeUpdate,
-  type ProductionReview, type ReviewApproval, type ProductionPriority,
+  type ProductionReview, type ReviewApproval, type ProductionPriority, type ReviewDraft, type ReviewDraftInput, type ReviewRecoveryAction, type ReviewProblem,
 } from "@/lib/ops/supplier-sale-review";
 import type { ProductionHandoff } from "@/lib/ops/supplier-sale-handoff";
 
@@ -15,63 +15,194 @@ const fieldClass = "w-full min-w-0 rounded-lg border border-stone-300 bg-white p
 const buttonClass = "inline-flex items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium disabled:opacity-50";
 const safeLink = (value: string | null) => value?.startsWith("https://") ? value : undefined;
 
-export function ProductionReviewPanel({ saleId, assignment, blockReason, paymentConfirmation, saving, onAction, onClose }: {
+type ReviewState = { review: ProductionReview; draft?: ReviewDraft | null; approval?: ReviewApproval | null; handoff?: ProductionHandoff | null };
+type ReviewFailure = { message: string; code?: string; action: ReviewRecoveryAction };
+function responseFailure(payload: { error?: string; issues?: string[]; code?: string; recoveryAction?: ReviewRecoveryAction }, status?: number): ReviewFailure {
+  return { message: status === 401 ? "Deine Ops-Anmeldung ist abgelaufen. Bitte erneut anmelden und den gespeicherten Entwurf öffnen."
+    : [payload.error, ...(payload.issues || [])].filter(Boolean).join(" ") || "Der Stand konnte nicht geladen werden. Bitte erneut versuchen.",
+    code: payload.code, action: payload.recoveryAction || (status === 401 ? "load" : "retry") };
+}
+
+export function ProductionReviewPanel({ saleId, assignment, blockReason, paymentConfirmation, saving, onAction, onClose, onRestoreAssignment }: {
   saleId: string; assignment: Record<string, unknown>; blockReason: string | null; saving: boolean;
   paymentConfirmation?: string | null;
   onAction(body: Record<string, unknown>): Promise<unknown>; onClose(): void;
+  onRestoreAssignment?(draft: Pick<ReviewDraftInput, "assignmentNote" | "requestedDeliveryDate">): void;
 }) {
   const [review, setReview] = useState<ProductionReview | null>(null);
   const [approval, setApproval] = useState<ReviewApproval | null>(null);
   const [handoff, setHandoff] = useState<ProductionHandoff | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recoveryAction, setRecoveryAction] = useState<ReviewRecoveryAction>("retry");
   const [statusUnclear, setStatusUnclear] = useState(false);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [edited, setEdited] = useState(false);
   const [editText, setEditText] = useState(false);
+  const [manualTextNeedsReview, setManualTextNeedsReview] = useState(false);
+  const [previousChoices, setPreviousChoices] = useState<ReviewDraft["previousChoices"]>([]);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState<ReviewFailure | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [remoteState, setRemoteState] = useState<ReviewState | null>(null);
+  const [retainedLocal, setRetainedLocal] = useState<{ input: ReviewDraftInput; review: ProductionReview } | null>(null);
   const panel = useRef<HTMLElement>(null);
-  function rendered(r: ProductionReview, decisions: ReviewApproval["decisions"]) {
-    const text = renderProductionReview(r, decisions);
-    const note = typeof assignment.assignmentNote === "string" ? assignment.assignmentNote.trim() : "";
-    if (note) {
-      const blocks = text.description.split("\n\n");
-      blocks.splice(blocks[0]?.startsWith("UPDATE NEW SIZE\n") ? 1 : 0, 0, `CHECK INFO\n${note}`);
-      text.description = blocks.join("\n\n");
-      if (!text.title.includes("CHECK INFO")) text.title = text.title.replace(r.orderName + " |", r.orderName + " | CHECK INFO |");
-    }
-    return text;
+  const inputRef = useRef<ReviewDraftInput | null>(null);
+  const revisionRef = useRef(0);
+  const savedKey = useRef("");
+  const lastDecisionKey = useRef("");
+  const savingPromise = useRef<Promise<boolean> | null>(null);
+  const mounted = useRef(true);
+  const loaded = useRef(false);
+  const saveErrorRef = useRef<ReviewFailure | null>(null);
+  const actionContext = useRef("");
+  actionContext.current = JSON.stringify({ assignment, blockReason, paymentConfirmation, paymentConfirmed });
+  const observedAssignment = useRef({ note: String(assignment.assignmentNote || ""), date: String(assignment.requestedDeliveryDate || "") });
+  const assignmentNote = String(assignment.assignmentNote || "");
+  const requestedDeliveryDate = String(assignment.requestedDeliveryDate || "");
+  const frozenDraft = Boolean(handoff && (handoff.status !== "partial" || handoff.reviewId === review?.id));
+  if (loaded.current && approval) inputRef.current = reviewDraftContent({ approval, edited, assignmentNote, requestedDeliveryDate, manualTextNeedsReview });
+  const inputKey = inputRef.current ? JSON.stringify(inputRef.current) : "";
+  const dirty = Boolean(loaded.current && inputKey && inputKey !== savedKey.current && !frozenDraft);
+  function rendered(r: ProductionReview, decisions: ReviewApproval["decisions"]) { return renderReviewWithAssignment(r, decisions, assignmentNote); }
+  function showFailure(failure: ReviewFailure) { setError(failure.message); setRecoveryAction(failure.action); }
+  function install(state: ReviewState) {
+    const stored = state.draft?.approval.reviewId === state.review.id ? state.draft : null;
+    const context = stored || { assignmentNote, requestedDeliveryDate };
+    const next = state.approval ? { ...state.approval, confirmed: false } : stored?.approval || defaultReviewApproval(state.review);
+    const nextEdited = stored?.edited ?? Boolean(state.approval);
+    if (!nextEdited) Object.assign(next, renderReviewWithAssignment(state.review, next.decisions, context.assignmentNote));
+    const input = reviewDraftContent({ approval: next, edited: nextEdited, ...context, manualTextNeedsReview: stored?.manualTextNeedsReview || false });
+    inputRef.current = input;
+    revisionRef.current = stored?.revision || 0;
+    savedKey.current = stored ? JSON.stringify(reviewDraftContent(stored)) : "";
+    observedAssignment.current = { note: context.assignmentNote, date: context.requestedDeliveryDate };
+    loaded.current = true;
+    setReview(state.review); setApproval(input.approval); setEdited(nextEdited);
+    setManualTextNeedsReview(input.manualTextNeedsReview); setPreviousChoices(stored?.previousChoices || []);
+    setHandoff(state.handoff || null); setStatusUnclear(false); setPaymentConfirmed(false);
+    setSaveState(stored ? "saved" : "idle"); setSavedAt(stored?.savedAt || null);
+    setSaveError(null); saveErrorRef.current = null; setRemoteState(null);
+    if (stored) onRestoreAssignment?.(context);
   }
+  async function persist(): Promise<boolean> {
+    if (savingPromise.current) return savingPromise.current;
+    if (!loaded.current || !inputRef.current || frozenDraft) return true;
+    if (saveErrorRef.current) return false;
+    const operation = (async () => {
+      while (inputRef.current && JSON.stringify(inputRef.current) !== savedKey.current) {
+        const input = inputRef.current;
+        setSaveState("saving");
+        try {
+          const response = await fetch("/api/ops/supplier-sales", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "save_production_review_draft", saleId, expectedRevision: revisionRef.current, draft: input }), signal: AbortSignal.timeout(30_000) });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok || !payload.draft) {
+            const failure = responseFailure(payload, response.status);
+            saveErrorRef.current = failure;
+            if (mounted.current) { setSaveError(failure); setSaveState("error"); }
+            return false;
+          }
+          revisionRef.current = payload.draft.revision;
+          savedKey.current = JSON.stringify(reviewDraftContent(payload.draft));
+          if (mounted.current) setSavedAt(payload.draft.savedAt);
+        } catch {
+          const failure: ReviewFailure = { message: "Speichern wurde nicht bestätigt. Deine Auswahl bleibt geöffnet. Bitte Speichern erneut versuchen.", action: "retry" };
+          saveErrorRef.current = failure;
+          if (mounted.current) { setSaveError(failure); setSaveState("error"); }
+          return false;
+        }
+      }
+      if (mounted.current) { setSaveState("saved"); setSaveError(null); }
+      return true;
+    })();
+    savingPromise.current = operation;
+    try { return await operation; } finally { savingPromise.current = null; }
+  }
+  async function retrySave() { saveErrorRef.current = null; setSaveError(null); await persist(); }
   async function load(regenerate = false) {
-    setBusy(true); setError(null);
+    // Loading a newer draft must not silently discard unsaved work from another tab.
+    if (loaded.current && !saveErrorRef.current && !(await persist())) return;
+    if (regenerate && saveErrorRef.current) return;
+    setBusy(true);
+    const initialInput = loaded.current ? JSON.stringify(inputRef.current) : null;
+    const previousId = review?.id;
     try {
       const response = await fetch(regenerate ? "/api/ops/supplier-sales" : `/api/ops/supplier-sales?action=production_review&saleId=${encodeURIComponent(saleId)}`, regenerate ? {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "prepare_production_review", saleId }), signal: AbortSignal.timeout(180_000),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "prepare_production_review", saleId }), signal: AbortSignal.timeout(180_000),
       } : { cache: "no-store", signal: AbortSignal.timeout(30_000) });
       const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error([payload.error, ...(payload.issues || [])].filter(Boolean).join(" "));
+      if (!response.ok || !payload.ok) { showFailure(responseFailure(payload, response.status)); return; }
       if (!payload.review && !regenerate) { await load(true); return; }
-      const keepChoices = !regenerate && !payload.approval && approval?.reviewId === payload.review?.id;
-      setReview(payload.review);
-      const draft = payload.approval ? { ...payload.approval, confirmed: false } : payload.review ? defaultReviewApproval(payload.review) : null;
-      if (draft && !payload.approval) Object.assign(draft, rendered(payload.review, draft.decisions));
-      if (!keepChoices) { setApproval(draft); setEdited(Boolean(payload.approval)); setPaymentConfirmed(false); }
-      setHandoff(payload.handoff || null); setStatusUnclear(false);
-      if (keepChoices && needsRefresh && payload.handoff?.status !== "synced") setError(error);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Die Vorbereitung konnte nicht geladen werden."); }
+      if (!payload.review) throw new Error("Prüfentwurf fehlt.");
+      if (initialInput && initialInput !== JSON.stringify(inputRef.current)) {
+        showFailure({ message: "Deine Angaben haben sich beim Laden geändert und bleiben erhalten. Bitte den Stand nochmals laden.", action: "load" }); return;
+      }
+      if (saveErrorRef.current && inputRef.current && JSON.stringify(inputRef.current) !== savedKey.current) {
+        setRemoteState(payload); return;
+      }
+      install(payload);
+      if (regenerate || previousId !== payload.review.id || payload.handoff?.status === "synced" || recoveryAction !== "prepare") setError(null);
+    } catch { showFailure({ message: "Der Prüfstand konnte nicht geladen werden. Deine bisherige Auswahl bleibt erhalten. Bitte Stand laden erneut versuchen.", action: "load" }); }
     finally { setBusy(false); }
   }
-  useEffect(() => { void load(); panel.current?.scrollIntoView({ block: "start" }); /* Only on opening this sale. */ }, [saleId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setPaymentConfirmed(false); }, [paymentConfirmation]);
-  function update(patch: Partial<ReviewApproval>) { setApproval(a => a && ({ ...a, ...patch, confirmed: false })); }
+  useEffect(() => {
+    mounted.current = true;
+    void load(); panel.current?.scrollIntoView({ block: "start" });
+    return () => { mounted.current = false; };
+  }, [saleId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!loaded.current || !review || !approval || frozenDraft) return;
+    const old = observedAssignment.current;
+    observedAssignment.current = { note: assignmentNote, date: requestedDeliveryDate };
+    if (old.note !== assignmentNote) {
+      if (edited) setManualTextNeedsReview(true);
+      else setApproval(a => a && ({ ...a, ...renderReviewWithAssignment(review, a.decisions, assignmentNote), confirmed: false }));
+    }
+    if (old.date !== requestedDeliveryDate) setPaymentConfirmed(false);
+  }, [assignmentNote, requestedDeliveryDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setPaymentConfirmed(false); }, [paymentConfirmation, assignment.paymentDecisionStatus]);
+  useEffect(() => {
+    if (!dirty || busy || saveErrorRef.current) return;
+    const a = inputRef.current?.approval;
+    const decisionKey = JSON.stringify([a?.attachments, a?.coverProductId, a?.priority, Object.entries(a?.decisions || {}).map(([id, d]) => [id, d.action])]);
+    const delay = decisionKey !== lastDecisionKey.current ? 0 : 300;
+    lastDecisionKey.current = decisionKey;
+    const timer = window.setTimeout(() => { void persist(); }, delay);
+    return () => window.clearTimeout(timer);
+  }, [inputKey, dirty, busy]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const guard = (event: BeforeUnloadEvent) => {
+      if (inputRef.current && JSON.stringify(inputRef.current) !== savedKey.current && !frozenDraft) { event.preventDefault(); event.returnValue = ""; }
+    };
+    const navigationGuard = (event: MouseEvent) => {
+      const link = (event.target as Element)?.closest?.("a");
+      if (link && link.target !== "_blank" && !link.hasAttribute("download") && inputRef.current && JSON.stringify(inputRef.current) !== savedKey.current && !frozenDraft) {
+        event.preventDefault(); event.stopPropagation();
+        showFailure({ message: "Deine Auswahl ist noch nicht gespeichert. Bitte die Speicherung abwarten oder Speichern erneut versuchen, bevor du die Seite verlässt.", action: "edit" });
+        panel.current?.scrollIntoView({ block: "start" });
+      }
+    };
+    window.addEventListener("beforeunload", guard);
+    document.addEventListener("click", navigationGuard, true);
+    return () => { window.removeEventListener("beforeunload", guard); document.removeEventListener("click", navigationGuard, true); };
+  }, [frozenDraft]);
+  function update(patch: Partial<ReviewApproval>) {
+    setApproval(a => a && ({ ...a, ...patch, ...(!edited && review && patch.decisions ? rendered(review, patch.decisions) : {}), confirmed: false }));
+    if (recoveryAction === "edit") setError(null);
+  }
   function decide(id: string, action: "accept" | "reject", note?: string) {
     if (!review || !approval) return;
     const decisions = { ...approval.decisions, [id]: { action, note: note ?? approval.decisions[id]?.note ?? "" } };
     const linkedThread = review.analysis.changes.find(c => c.id === id)?.requiresThreadId;
     if (linkedThread) decisions[`thread:${linkedThread}`] = { action, note: action === "accept" ? "Wörtliche Logo-Korrektur dem Auftrag zugeordnet und Vorschau geprüft." : "Korrektur gehört zu einer anderen Bestellung." };
     update({ decisions, ...(!edited ? rendered(review, decisions) : {}) });
+    if (edited && note === undefined) setManualTextNeedsReview(true);
   }
-  const issues = review && approval ? reviewApprovalIssues(review, { ...approval, confirmed: true }) : [];
+  const problems = review && approval ? reviewApprovalProblems(review, { ...approval, confirmed: true }) : [];
+  if (manualTextNeedsReview) problems.push({ code: "manual_text_review", message: "Manuell bearbeiteten Kartentext mit den geänderten Angaben abgleichen und bestätigen.", field: "description", action: "edit" });
+  if (assignmentNote.length > 1000) problems.push({ code: "text_too_long", message: `Zusatztext: ${assignmentNote.length} von 1000 Zeichen. Bitte den Zusatztext oben kürzen.`, action: "edit" });
+  const issues = problems.map(p => p.message);
   const designQuestions = review ? designMappingQuestions(review) : [];
   const openImages = review && approval ? openImageVariants(review, approval) : [];
   const openDocuments = review && approval ? openDocumentSuggestions(review, approval) : [];
@@ -83,39 +214,75 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
   }) : [];
   const openSteps = review && approval ? reviewOpenStepCount(review, approval, issues) : 0;
   const designsConfirmed = designQuestions.length > 0 && designQuestions.every(c => approval?.decisions[c.id]);
-  const locked = busy || saving || statusUnclear || handoff?.status === "pending" || handoff?.status === "synced";
+  const transferring = busy || saving || statusUnclear || handoff?.status === "pending" || handoff?.status === "synced";
+  const locked = transferring || frozenDraft;
   const paymentNeeded = Boolean(paymentConfirmation && !paymentConfirmed);
-  const needsRefresh = Boolean(error && /neu vorbereiten|erneut prüfen|neue oder geänderte|nicht mehr aktuell/i.test(error));
-  const releaseBlocked = locked || issues.length > 0 || Boolean(blockReason) || paymentNeeded || needsRefresh;
+  const needsRefresh = Boolean(error && ["prepare", "load", "status"].includes(recoveryAction));
+  const releaseBlocked = transferring || issues.length > 0 || Boolean(blockReason) || paymentNeeded || needsRefresh || Boolean(saveError) || manualTextNeedsReview;
   const statusTitle = handoff?.status === "synced" ? "An Produktion übergeben"
     : handoff?.status === "pending" || statusUnclear ? "Übertragungsstand prüfen"
     : busy || saving ? "Stand wird geprüft …"
     : handoff?.status === "partial" ? "Übergabe teilweise erledigt"
+    : saveError ? "Auswahl noch nicht gespeichert"
     : error ? "Freigabe nicht abgeschlossen"
     : blockReason ? "Freigabe noch nicht möglich"
+    : problems.some(p => !["decision_missing", "thread_missing", "attachment_missing"].includes(p.code)) ? "Angaben korrigieren"
     : issues.length ? `${openSteps} ${openSteps === 1 ? "Entscheidung" : "Entscheidungen"} offen`
     : paymentNeeded ? "Freigabe vor Zahlung bestätigen" : "Alles geprüft – du kannst freigeben";
+  function focusField(field: string) {
+    setEditText(["title", "description"].includes(field) ? true : editText);
+    window.setTimeout(() => {
+      const element = panel.current?.querySelector<HTMLElement>(`[data-review-field="${CSS.escape(field)}"]`);
+      let parent: HTMLElement | null = element || null;
+      while (parent) { if (parent instanceof HTMLDetailsElement) parent.open = true; parent = parent.parentElement; }
+      element?.scrollIntoView({ block: "center", behavior: "smooth" }); element?.focus();
+    }, 0);
+  }
+  function fieldFeedback(field: string, length: number, max: number) {
+    return <div className="mt-1 text-xs"><p className={length > max ? "font-semibold text-rose-800" : "text-stone-500"}>{length} / {max} Zeichen</p>{problems.filter(p => p.field === field).map(p => <p key={p.code} className="mt-1 text-rose-800">{p.message}</p>)}</div>;
+  }
+  function draftSummary(input: ReviewDraftInput, source: ProductionReview) {
+    const a = input.approval;
+    return <div className="mt-2 space-y-2 text-xs">
+      <p className="font-medium">{a.title || "Titel noch leer"}</p><pre className="max-h-48 overflow-auto whitespace-pre-wrap">{a.description}</pre>
+      <p>Zusatztext: {input.assignmentNote || "–"} · Liefertermin: {input.requestedDeliveryDate || "–"}</p>
+      <p>Produktionsliste: {PRODUCTION_LISTS[a.priority]?.name || a.priority} · Cover: {source.products.find(p => p.id === a.coverProductId)?.imageTitle || "Noch offen"}</p>
+      {Object.entries(a.decisions).map(([id, choice]) => <p key={id}><strong>{source.analysis.changes.find(c => c.id === id)?.reason || source.analysis.threads.find(t => `thread:${t.id}` === id)?.reason || "Bisheriger Prüfpunkt"}</strong>: {choice.action === "accept" ? "Übernehmen" : "Selbst geprüft / verwerfen"}{choice.note ? ` · ${choice.note}` : ""}</p>)}
+      {source.attachments.map(file => <p key={file.id}>{reviewAttachmentLabel(source, file)}: {a.attachments[file.id] === "keep" ? "Behalten" : a.attachments[file.id] === "remove" ? "Sichern und entfernen" : "Noch offen"}</p>)}
+      {a.operatorNote ? <p>Interne Prüfnote: {a.operatorNote}</p> : null}
+    </div>;
+  }
+  async function close() { if (!busy && !saving && await persist()) onClose(); }
   async function release() {
     if (!review || !approval || releaseBlocked) return;
-    setBusy(true); setError(null);
-    let actionError: string | null = null;
+    const expectedContext = actionContext.current;
+    const expectedInput = JSON.stringify(inputRef.current);
+    setBusy(true);
+    if (!(await persist())) { setBusy(false); return; }
+    if (expectedContext !== actionContext.current || expectedInput !== JSON.stringify(inputRef.current)) {
+      showFailure({ message: "Deine Angaben haben sich während des Speicherns geändert. Bitte die aktuelle Vorschau prüfen und anschließend freigeben.", action: "edit" });
+      setBusy(false); return;
+    }
+    setError(null);
+    let actionFailure: ReviewFailure | null = null;
     try {
-      const result = await onAction({ ...assignment, action: "assign_supplier", saleId, supplier: "quentin", productionApproval: { ...approval, confirmed: true } }) as { ok?: boolean; error?: string } | null;
-      if (!result?.ok) actionError = result?.error || "Die Übertragung hat keine eindeutige Bestätigung geliefert.";
+      const latest = inputRef.current?.approval || approval;
+      const result = await onAction({ ...assignment, action: "assign_supplier", saleId, supplier: "quentin", productionDraftRevision: revisionRef.current,
+        productionApproval: { ...latest, confirmed: true } }) as { ok?: boolean; error?: string; code?: string; recoveryAction?: ReviewRecoveryAction } | null;
+      if (!result?.ok) actionFailure = responseFailure(result || { error: "Die Übertragung hat keine eindeutige Bestätigung geliefert." });
       const response = await fetch(`/api/ops/supplier-sales?action=production_review&saleId=${encodeURIComponent(saleId)}`, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
-      if (!response.ok) throw new Error("Der Freigabestand konnte nicht zurückgelesen werden. Bitte Stand laden.");
+      if (!response.ok) throw new Error("Der Freigabestand konnte nicht zurückgelesen werden.");
       const state = await response.json();
-      if (!state.ok) throw new Error("Der Freigabestand konnte nicht bestätigt werden. Bitte Stand laden.");
+      if (!state.ok) throw new Error("Der Freigabestand konnte nicht bestätigt werden.");
       setHandoff(state.handoff || null);
       if (state.handoff?.status === "synced") setError(null);
-      else if (state.handoff?.error) setError(state.handoff.error);
-      else if (actionError) setError(actionError);
-      else if (!state.handoff) { setStatusUnclear(true); setError("Die Übertragung ist noch nicht bestätigt. Bitte zuerst den Stand laden."); }
-    } catch (cause) {
+      else if (actionFailure) showFailure(actionFailure);
+      else if (state.handoff?.error) showFailure({ message: state.handoff.error, action: "status" });
+      else if (!state.handoff) { setStatusUnclear(true); showFailure({ message: "Die Übertragung ist noch nicht bestätigt. Bitte zuerst Stand laden.", action: "status" }); }
+    } catch {
       setStatusUnclear(true);
-      setError([actionError, cause instanceof Error ? cause.message : "Freigabestand unklar. Bitte Stand laden."].filter(Boolean).join(" "));
-    }
-    finally { setBusy(false); }
+      showFailure({ message: [actionFailure?.message, "Der Freigabestand konnte nicht bestätigt werden. Bitte zuerst Stand laden; nicht erneut freigeben."].filter(Boolean).join(" "), action: actionFailure?.action || "status" });
+    } finally { setBusy(false); }
   }
   return (
     <section id={`production-review-${saleId}`} ref={panel} aria-label="Vorbereitete Produktionsvergabe" className="mt-4 scroll-mt-4 rounded-lg border border-violet-200 bg-stone-50 p-4">
@@ -123,12 +290,13 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
         <div><h3 className="font-semibold text-stone-950">Vergabe prüfen</h3><p className="mt-1 text-sm text-stone-600">Bestellung, E-Mails und Quentin-Karte gemeinsam prüfen.</p></div>
         <div className="flex gap-2">
           {handoff || error || statusUnclear ? <button type="button" className={buttonClass} disabled={busy || saving} onClick={() => void load()}>Stand laden</button> : null}
-          <button type="button" className={buttonClass} disabled={locked || handoff?.releaseAttempted} onClick={() => void load(true)}><RefreshCcw className="h-4 w-4" />Neu vorbereiten</button>
-          <button type="button" className={buttonClass} aria-label="Produktionsvorschau schließen" onClick={onClose}><X className="h-4 w-4" /></button>
+          <button type="button" className={buttonClass} disabled={transferring || Boolean(handoff?.releaseAttempted) || Boolean(saveError)} onClick={() => void load(true)}><RefreshCcw className="h-4 w-4" />Neu vorbereiten</button>
+          <button type="button" className={buttonClass} aria-label="Produktionsvorschau schließen" disabled={busy || saving || saveState === "saving"} onClick={() => void close()}><X className="h-4 w-4" /></button>
         </div>
       </div>
       {busy ? <p role="status" className="mt-4 text-sm text-stone-600">Vollständige Korrespondenz und gekauftes Design werden geprüft. Die Kundenkarte wird dabei nicht geändert.</p> : null}
-      {error ? <div role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950"><p className="font-semibold">{statusTitle}</p><p className="mt-1 whitespace-pre-line">{error}</p><p className="mt-2">{statusUnclear || handoff?.status === "pending" ? "Zuerst „Stand laden“ wählen. Solange das Ergebnis unklar ist, wird keine weitere Freigabe gestartet." : needsRefresh ? "Wähle „Neu vorbereiten“, prüfe die aktuellen Angaben und bestätige dann die Vorschau." : handoff?.status === "partial" ? "Ein Teil der Übergabe wurde gespeichert. Prüfe den genannten Fehler und setze anschließend die bestehende Übergabe fort." : "Es liegt keine bestätigte Produktionsübergabe vor. Prüfe den genannten Grund; deine Auswahl bleibt hier erhalten."}</p></div> : null}
+      {error && !review ? <div role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm"><p>{error}</p><button type="button" disabled={busy} className={`${buttonClass} mt-2`} onClick={() => void load()}>Stand erneut laden</button></div> : null}
+
       {handoff?.status === "synced" ? <p role="status" className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-emerald-900"><CheckCircle2 className="h-5 w-5" />Übergabe bestätigt: Karteninhalt, Dateien, Cover und Position wurden zurückgelesen.</p> : null}
       {handoff?.status === "pending" ? <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm">Freigabe läuft oder ihr Ergebnis ist noch unklar. Nicht erneut auslösen. Den Stand neu laden.</p> : null}
       {review && approval ? (
@@ -137,7 +305,9 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
             <div className="rounded-lg border border-stone-200 bg-white p-3 text-sm">
               <p role="status" className="font-semibold">{statusTitle}</p>
               <p className="mt-2">Die KI liefert Hinweise. Du entscheidest, was übernommen wird. Eine Begründung ist optional.</p>
-              {issues.length || blockReason ? <ul className="mt-2 list-disc space-y-1 pl-5">{[...(blockReason ? [blockReason] : []), ...issues].map((issue, i) => <li key={i}>{issue.replace(/^Entscheidung fehlt: /, "").replace(/^Datei prüfen: /, "Dateiauswahl: ")}</li>)}</ul> : null}
+              <p className="mt-2 text-xs text-stone-600" aria-live="polite">{frozenDraft ? "Freigegebener Entwurf gespeichert" : saveError ? "Nicht gespeichert – deine Auswahl bleibt geöffnet" : dirty || saveState === "saving" ? "Auswahl wird gespeichert …" : savedAt ? `Gespeichert ${new Date(savedAt).toLocaleTimeString("de-DE")}` : "Entwurf wird gesichert …"}</p>
+              {previousChoices.length ? <details className="mt-2 text-xs"><summary className="cursor-pointer font-medium">Bisherige Entscheidungen zum Abgleichen ({previousChoices.length})</summary>{previousChoices.map((choice, i) => <p key={i} className="mt-2"><strong>{choice.label}</strong><br />{choice.value}</p>)}</details> : null}
+              {frozenDraft && handoff?.status === "partial" ? <p className="mt-2 text-xs">Die gespeicherte Übergabe wird fortgesetzt. Für inhaltliche Änderungen zuerst neu vorbereiten.</p> : null}
               <details className="mt-2 text-xs text-stone-600"><summary className="cursor-pointer">KI-Zusammenfassung bei Vorbereitung</summary><p className="mt-2">{review.analysis.summary}</p></details>
               <p className="mt-2 text-xs text-stone-500">{review.mailCount} E-Mail-Volltexte · vorbereitet {new Date(review.preparedAt).toLocaleString("de-DE")}</p>
               <a href={safeLink(review.cardUrl)} target="_blank" rel="noreferrer" className="mt-2 inline-block text-violet-800 underline">Zugeordnete Quentin-Karte öffnen</a>
@@ -145,20 +315,20 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
             {designQuestions.length ? <div className={`rounded-lg border p-3 text-sm ${designsConfirmed ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
               <h4 className="font-semibold">Produkttexte mit den gekauften Designs abgleichen</h4>
               <p className="mt-2">Produktnummer, Größe und gekauftes Bild stehen rechts. Die Mail-Reihenfolge ändert diese Zuordnung nicht. Bestätige die Designs, wenn sie dem Kundenwunsch entsprechen.</p>
-              <details open={!designsConfirmed} className="mt-2 text-xs text-stone-600"><summary className="cursor-pointer">{designsConfirmed ? "Erledigte KI-Rückfrage ansehen" : "KI-Rückfrage"}</summary>{designQuestions.map(c => <p key={c.id} className="mt-2">{c.reason}</p>)}</details>
+              <details open={!designsConfirmed} className="mt-2 text-xs text-stone-600"><summary className="cursor-pointer">{designsConfirmed ? "Erledigte KI-Rückfrage ansehen" : "KI-Rückfrage"}</summary>{designQuestions.map(c => <p key={c.id} tabIndex={-1} data-review-field={`decisions.${c.id}`} className="mt-2">{c.reason}</p>)}</details>
               <button type="button" disabled={locked} aria-pressed={designsConfirmed} className={`${buttonClass} mt-3`} onClick={() => update(confirmPurchasedDesigns(review, approval))}>{designsConfirmed ? designQuestions.every(c => approval.decisions[c.id]?.note.startsWith("Gekaufte Designs visuell geprüft:")) ? "Gekaufte Designs bestätigt" : "Zuordnung selbst geprüft" : "Nach gekauften Designs produzieren"}</button>
               <button type="button" disabled={locked} className={`${buttonClass} mt-3 ml-2`} onClick={() => {
                 const decisions = { ...approval.decisions, ...Object.fromEntries(designQuestions.map(c => [c.id, { action: "reject" as const, note: "" }])) };
                 update({ decisions, ...(!edited ? rendered(review, decisions) : {}) });
               }}>KI-Rückfrage selbst geprüft – erledigt</button>
               <details className="mt-3"><summary className="cursor-pointer text-xs font-medium">Optional: Zuordnung erläutern oder Text anpassen</summary>
-                {designQuestions.map(c => <label key={c.id} className="mt-2 block text-xs">{c.reason}<input disabled={locked} aria-label={`Klärung: ${c.reason}`} placeholder="Geprüftes Ergebnis; nötige Textänderung in der Vorschau übernehmen" value={approval.decisions[c.id]?.note || ""} onChange={e => decide(c.id, "reject", e.target.value)} className={`${fieldClass} mt-1`} /></label>)}
+                {designQuestions.map(c => <label key={c.id} className="mt-2 block text-xs">{c.reason}<input disabled={locked} aria-label={`Klärung: ${c.reason}`} data-review-field={`decisions.${c.id}.note`} placeholder="Geprüftes Ergebnis; nötige Textänderung in der Vorschau übernehmen" value={approval.decisions[c.id]?.note || ""} onChange={e => decide(c.id, "reject", e.target.value)} className={`${fieldClass} mt-1`} />{fieldFeedback(`decisions.${c.id}.note`, approval.decisions[c.id]?.note.length || 0, 2000)}</label>)}
               </details>
             </div> : null}
             {review.analysis.changes.filter(c => (c.kind !== "addition" || c.questionOnly) && !designQuestions.some(q => q.id === c.id)).map(change => {
               const decision = approval.decisions[change.id];
               const current = review.products.find(p => p.id === change.productId)?.fields.find(f => f.label.toLowerCase() === change.field.toLowerCase())?.value;
-              return <div key={change.id} className={`rounded-lg border p-3 text-sm ${decision ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+              return <div key={change.id} tabIndex={-1} data-review-field={`decisions.${change.id}`} className={`rounded-lg border p-3 text-sm ${decision ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
                 <p className="flex gap-2 font-semibold">{decision ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}{change.reason}</p>
                 {decision ? <p className="mt-2 font-medium text-emerald-800">{decision.action === "accept" ? "Entschieden: Vorschlag übernommen" : change.questionOnly ? "Entschieden: selbst geprüft" : change.kind === "obsolete" ? "Entschieden: Hinweis beibehalten" : "Entschieden: Vorschlag nicht übernommen"}</p> : null}
                 {current ? <p className="mt-2"><span className="font-medium">Bestellt:</span> {current}</p> : null}
@@ -172,30 +342,30 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
                   <p className="mt-2 whitespace-pre-line text-xs">{deliveryNote.recipient.join("\n")}</p>
                   <p className="mt-2 text-xs">Empfänger und Lieferadresse stimmen mit der Bestellung überein. Der Lieferschein liegt im Mailanhang; er wurde nicht auf die Karte hochgeladen.</p>
                   <div className="mt-3 flex flex-wrap gap-2"><a href={safeLink(deliveryNote.href)} target="_blank" rel="noreferrer" className={buttonClass}>Originalmail öffnen</a><button type="button" disabled={locked} aria-pressed={Boolean(decision)} className={buttonClass} onClick={() => update(confirmDeliveryNote(review, approval))}>{decision ? "Lieferscheinprüfung bestätigt" : "Lieferschein und Adresse bestätigen"}</button><button type="button" disabled={locked} className={buttonClass} onClick={() => decide(change.id, "reject", "")}>Selbst geprüft – so lassen</button></div>
-                  <details className="mt-2"><summary className="cursor-pointer text-xs">Optional: Abweichung erläutern</summary><input disabled={locked} aria-label="Abweichung beim Lieferschein" className={`${fieldClass} mt-2`} value={decision?.note || ""} onChange={e => decide(change.id, "reject", e.target.value)} /></details>
-                </div> : change.questionOnly ? <div className="mt-3"><button type="button" disabled={locked} aria-pressed={Boolean(decision)} className={buttonClass} onClick={() => decide(change.id, "reject", "")}>{decision ? "Selbst geprüft – erledigt" : "Selbst geprüft – so lassen"}</button><p className="mt-2 text-xs text-stone-600">Die KI-Rückfrage trifft nicht zu oder ist von dir geklärt. Falls sich Produktionsangaben ändern, passe den Kartentext unten an.</p><details className="mt-2"><summary className="cursor-pointer text-xs">Optional: Entscheidung erläutern</summary><input disabled={locked} aria-label={`Klärung: ${change.reason}`} placeholder="Optionale Notiz" value={decision?.note || ""} onChange={e => decide(change.id, "reject", e.target.value)} className={`${fieldClass} mt-2`} /></details></div> : <div className="mt-3 flex flex-wrap gap-2">
+                  <details className="mt-2"><summary className="cursor-pointer text-xs">Optional: Abweichung erläutern</summary><input disabled={locked} aria-label="Abweichung beim Lieferschein" data-review-field={`decisions.${change.id}.note`} className={`${fieldClass} mt-2`} value={decision?.note || ""} onChange={e => decide(change.id, "reject", e.target.value)} />{fieldFeedback(`decisions.${change.id}.note`, decision?.note.length || 0, 2000)}</details>
+                </div> : change.questionOnly ? <div className="mt-3"><button type="button" disabled={locked} aria-pressed={Boolean(decision)} className={buttonClass} onClick={() => decide(change.id, "reject", "")}>{decision ? "Selbst geprüft – erledigt" : "Selbst geprüft – so lassen"}</button><p className="mt-2 text-xs text-stone-600">Die KI-Rückfrage trifft nicht zu oder ist von dir geklärt. Falls sich Produktionsangaben ändern, passe den Kartentext unten an.</p><details className="mt-2"><summary className="cursor-pointer text-xs">Optional: Entscheidung erläutern</summary><input disabled={locked} aria-label={`Klärung: ${change.reason}`} data-review-field={`decisions.${change.id}.note`} placeholder="Optionale Notiz" value={decision?.note || ""} onChange={e => decide(change.id, "reject", e.target.value)} className={`${fieldClass} mt-2`} />{fieldFeedback(`decisions.${change.id}.note`, decision?.note.length || 0, 2000)}</details></div> : <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" disabled={locked} aria-pressed={decision?.action === "accept"} className={`${buttonClass} ${decision?.action === "accept" ? "border-violet-600 bg-violet-50" : ""}`} onClick={() => decide(change.id, "accept")}>{change.requiresThreadId ? "Korrektur gehört zum Auftrag" : change.kind === "obsolete" ? "Hinweis entfernen" : "Vorschlag übernehmen"}</button>
                   <button type="button" disabled={locked} aria-pressed={decision?.action === "reject"} className={`${buttonClass} ${decision?.action === "reject" ? "border-violet-600 bg-violet-50" : ""}`} onClick={() => decide(change.id, "reject")}>{change.requiresThreadId ? "Andere Bestellung" : current ? "Bestellten Wert behalten" : "Vorschlag verwerfen"}</button>
                 </div>}
               </div>;
             })}
-            {review.analysis.changes.some(c => c.kind === "addition" && !c.questionOnly) ? <details className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm"><summary className="cursor-pointer font-medium">Bereits übernommen: {review.analysis.changes.filter(c => c.kind === "addition" && !c.questionOnly).length} belegte Hinweise</summary>{review.analysis.changes.filter(c => c.kind === "addition" && !c.questionOnly).map(change => <label key={change.id} className="mt-3 flex items-start gap-2"><input type="checkbox" disabled={locked} checked={approval.decisions[change.id]?.action === "accept"} onChange={e => decide(change.id, e.target.checked ? "accept" : "reject")} className="mt-1" /><span>{change.value}<span className="mt-1 block text-xs text-stone-600">{change.reason}</span>{change.evidence.map((e, i) => <span key={i} className="mt-1 block text-xs text-stone-500">{review.sources.find(s => s.id === e.sourceId)?.label}: {e.quote}</span>)}</span></label>)}</details> : null}
+            {review.analysis.changes.some(c => c.kind === "addition" && !c.questionOnly) ? <details className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm"><summary className="cursor-pointer font-medium">Bereits übernommen: {review.analysis.changes.filter(c => c.kind === "addition" && !c.questionOnly).length} belegte Hinweise</summary>{review.analysis.changes.filter(c => c.kind === "addition" && !c.questionOnly).map(change => <label key={change.id} tabIndex={-1} data-review-field={`decisions.${change.id}`} className="mt-3 flex items-start gap-2"><input type="checkbox" disabled={locked} checked={approval.decisions[change.id]?.action === "accept"} onChange={e => decide(change.id, e.target.checked ? "accept" : "reject")} className="mt-1" /><span>{change.value}<span className="mt-1 block text-xs text-stone-600">{change.reason}</span>{change.evidence.map((e, i) => <span key={i} className="mt-1 block text-xs text-stone-500">{review.sources.find(s => s.id === e.sourceId)?.label}: {e.quote}</span>)}</span></label>)}</details> : null}
             {review.analysis.threads.filter(t => t.relevance === "uncertain" && !review.analysis.changes.some(c => c.requiresThreadId === t.id)).map(thread => {
               const decision = approval.decisions[`thread:${thread.id}`];
-              return <div key={thread.id} className={`rounded-lg border p-3 text-sm ${decision ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}><p className="font-semibold">{decision ? "Zuordnung entschieden: " : "Mailzuordnung prüfen: "}{thread.reason}</p><details className="mt-2"><summary className="cursor-pointer text-xs">Mailverlauf ansehen</summary>{review.sources.filter(source => source.threadId === thread.id).map(source => <div key={source.id} className="mt-2"><p className="font-medium">{source.label}</p><pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-words font-sans text-xs">{source.text}</pre></div>)}</details><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={locked} aria-pressed={decision?.action === "reject"} className={buttonClass} onClick={() => decide(`thread:${thread.id}`, "reject")}>Andere Bestellung</button><button type="button" disabled={locked} aria-pressed={decision?.action === "accept"} className={buttonClass} onClick={() => decide(`thread:${thread.id}`, "accept")}>Gehört zu diesem Auftrag</button></div>{decision?.action === "accept" ? <input disabled={locked} className={`${fieldClass} mt-2`} aria-label={`Mailzuordnung: ${thread.reason}`} placeholder="Optionale Notiz zur Mailzuordnung" value={decision.note} onChange={e => decide(`thread:${thread.id}`, "accept", e.target.value)} /> : null}</div>;
+              return <div key={thread.id} tabIndex={-1} data-review-field={`decisions.thread:${thread.id}`} className={`rounded-lg border p-3 text-sm ${decision ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}><p className="font-semibold">{decision ? "Zuordnung entschieden: " : "Mailzuordnung prüfen: "}{thread.reason}</p><details className="mt-2"><summary className="cursor-pointer text-xs">Mailverlauf ansehen</summary>{review.sources.filter(source => source.threadId === thread.id).map(source => <div key={source.id} className="mt-2"><p className="font-medium">{source.label}</p><pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-words font-sans text-xs">{source.text}</pre></div>)}</details><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={locked} aria-pressed={decision?.action === "reject"} className={buttonClass} onClick={() => decide(`thread:${thread.id}`, "reject")}>Andere Bestellung</button><button type="button" disabled={locked} aria-pressed={decision?.action === "accept"} className={buttonClass} onClick={() => decide(`thread:${thread.id}`, "accept")}>Gehört zu diesem Auftrag</button></div>{decision?.action === "accept" ? <div><input disabled={locked} className={`${fieldClass} mt-2`} data-review-field={`decisions.thread:${thread.id}.note`} aria-label={`Mailzuordnung: ${thread.reason}`} placeholder="Optionale Notiz zur Mailzuordnung" value={decision.note} onChange={e => decide(`thread:${thread.id}`, "accept", e.target.value)} />{fieldFeedback(`decisions.thread:${thread.id}.note`, decision.note.length, 2000)}</div> : null}</div>;
             })}
             <div className="rounded-lg border border-stone-200 bg-white p-3">
               <div className="mb-3 flex items-center justify-between gap-2"><h4 className="text-sm font-semibold">Fertige Trello-Karte</h4><button type="button" className={buttonClass} disabled={locked} onClick={() => setEditText(!editText)}>{editText ? "Vorschau anzeigen" : "Text anpassen"}</button></div>
-              {editText ? <><label className="block text-sm font-medium">Kartentitel<input disabled={locked} className={`${fieldClass} mt-1`} value={approval.title} onChange={e => { setEdited(true); update({ title: e.target.value }); }} /></label><label className="mt-3 block text-sm font-medium">Produktionsbeschreibung (English)<textarea disabled={locked} className={`${fieldClass} mt-1 min-h-80 font-mono text-xs`} value={approval.description} onChange={e => { setEdited(true); update({ description: e.target.value }); }} /></label></> : <><p className="break-words text-sm font-semibold">{approval.title}</p><pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm text-stone-700">{approval.description}</pre></>}
+              {editText ? <><label className="block text-sm font-medium">Kartentitel<input data-review-field="title" disabled={locked} className={`${fieldClass} mt-1`} value={approval.title} onChange={e => { setEdited(true); update({ title: e.target.value }); }} />{fieldFeedback("title", approval.title.length, 1000)}</label><label className="mt-3 block text-sm font-medium">Produktionsbeschreibung (English)<textarea data-review-field="description" disabled={locked} className={`${fieldClass} mt-1 min-h-80 font-mono text-xs`} value={approval.description} onChange={e => { setEdited(true); update({ description: e.target.value }); }} />{fieldFeedback("description", approval.description.length, 16000)}</label></> : <><p className="break-words text-sm font-semibold">{approval.title}</p><pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm text-stone-700">{approval.description}</pre></>}
             </div>
-            {edited ? <div className="text-xs text-stone-600"><p>Der Text wurde manuell angepasst. Weitere Entscheidungen werden nicht automatisch in diesen Text eingetragen.</p><button type="button" disabled={locked} className={buttonClass} onClick={() => { update(rendered(review, approval.decisions)); setEdited(false); setEditText(false); }}>Automatische Vorschau wiederherstellen</button></div> : null}
+            {edited ? <div className="text-xs text-stone-600"><p>Der Text wurde manuell angepasst. Weitere Entscheidungen werden nicht automatisch in diesen Text eingetragen.</p><button type="button" disabled={locked} className={buttonClass} onClick={() => { update(rendered(review, approval.decisions)); setEdited(false); setEditText(false); setManualTextNeedsReview(false); }}>Automatische Vorschau wiederherstellen</button>{manualTextNeedsReview ? <button type="button" disabled={locked} className={`${buttonClass} ml-2`} onClick={() => setManualTextNeedsReview(false)}>Manuellen Kartentext abgeglichen</button> : null}</div> : null}
             <details className="rounded-lg border border-stone-200 bg-white p-3 text-sm"><summary className="cursor-pointer font-medium">Bisheriger Titel und Beschreibung</summary><p className="mt-3 font-semibold">{review.originalTitle}</p><pre className="mt-2 whitespace-pre-wrap break-words font-sans text-xs">{review.originalDescription}</pre></details>
             <details className="rounded-lg border border-stone-200 bg-white p-3 text-sm"><summary className="cursor-pointer font-medium">Geprüfte Korrespondenz und Zuordnung</summary>
               {review.analysis.threads.map(t => <div key={t.id} className="mt-3 border-t pt-3"><p className="font-semibold">{t.relevance === "related" ? "Dieser Auftrag" : t.relevance === "unrelated" ? "Andere Bestellung" : "Zuordnung offen"}: {t.reason}</p>{review.sources.filter(s => s.threadId === t.id).map(s => <details key={s.id} className="mt-2"><summary className="cursor-pointer text-xs">{s.label} · {s.at ? new Date(s.at).toLocaleString("de-DE") : ""}</summary><pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs">{s.text}</pre></details>)}</div>)}
             </details>
           </div>
           <div className="min-w-0 space-y-4">
-            <fieldset disabled={locked}><legend className="mb-2 text-sm font-semibold">Gekauftes Design und Cover</legend><div className="grid grid-cols-2 gap-2">{review.products.map((product, index) => <div key={product.id} className="min-w-0 rounded-lg border border-stone-200 bg-white p-2"><p className="mb-2 text-xs font-semibold">Produkt {index + 1} · {product.fields.find(f => f.label === "Size")?.value || product.title}</p><a href={safeLink(product.imageUrl)} target="_blank" rel="noreferrer" aria-label={`Gekauftes Design ${index + 1} öffnen: ${product.imageTitle}`}><img src={product.imageUrl} alt={product.imageTitle} className="h-32 w-full object-contain" /></a><p className="mt-2 break-words text-xs">{product.title} · {product.imageTitle}</p><label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name={`cover-${saleId}`} checked={approval.coverProductId === product.id} onChange={() => update({ coverProductId: product.id })} />Als Cover</label></div>)}</div></fieldset>
+            <fieldset disabled={locked} tabIndex={-1} data-review-field="coverProductId"><legend className="mb-2 text-sm font-semibold">Gekauftes Design und Cover</legend><div className="grid grid-cols-2 gap-2">{review.products.map((product, index) => <div key={product.id} className="min-w-0 rounded-lg border border-stone-200 bg-white p-2"><p className="mb-2 text-xs font-semibold">Produkt {index + 1} · {product.fields.find(f => f.label === "Size")?.value || product.title}</p><a href={safeLink(product.imageUrl)} target="_blank" rel="noreferrer" aria-label={`Gekauftes Design ${index + 1} öffnen: ${product.imageTitle}`}><img src={product.imageUrl} alt={product.imageTitle} className="h-32 w-full object-contain" /></a><p className="mt-2 break-words text-xs">{product.title} · {product.imageTitle}</p><label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name={`cover-${saleId}`} checked={approval.coverProductId === product.id} onChange={() => update({ coverProductId: product.id })} />Als Cover</label></div>)}</div></fieldset>
             <div><h4 className="text-sm font-semibold">Dateien auf der Karte</h4><p className="mt-1 text-xs text-stone-500">Entfernte Dateien werden zuvor in der privaten Ablage bytegleich gesichert.</p>
               {drawingRecommendations.map(({ document, recommendation, sizeUpdate }) => <section key={document.id} aria-label={`PDF-Empfehlung: ${document.name}`} className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
                 <p className="text-xs font-medium text-amber-900">Empfehlung aus der KI-PDF-Prüfung</p>
@@ -241,18 +411,29 @@ export function ProductionReviewPanel({ saleId, assignment, blockReason, payment
               {review.attachments.map(a => <div key={a.id} className="mt-2 rounded-lg border border-stone-200 bg-white p-3">
                 <div className="flex gap-3">{a.previewUrl ? <img src={a.previewUrl} alt="" className="h-14 w-20 object-contain" /> : null}<div className="min-w-0"><a href={safeLink(a.url)} target="_blank" rel="noreferrer" className="break-words text-sm font-medium underline">{reviewAttachmentLabel(review, a)}</a><p className="mt-1 text-xs text-stone-500">{a.reason}</p></div></div>
                 {review.documents?.filter(d => d.origin === "trello" && d.attachmentId === a.id).map(d => <div key={d.id} className="mt-2 text-xs"><p className="font-medium">{d.status === "read" ? `${d.pages} PDF-Seite${d.pages === 1 ? "" : "n"} mit KI geprüft` : "Manuelle PDF-Prüfung erforderlich"}</p><p className="mt-1">{d.summary}</p>{drawingRecommendations.some(r => r.document.id === d.id) ? <p className="mt-2 text-amber-900">Abweichungen und nächster Schritt stehen oben in der PDF-Empfehlung.</p> : d.findings.map((f, i) => <p key={i} className="mt-2 rounded bg-amber-50 p-2 text-amber-950">{f}</p>)}{d.evidence.length ? <details className="mt-2"><summary className="cursor-pointer">Textbelege ansehen</summary>{d.evidence.map((e, i) => <p key={i} className="mt-2 whitespace-pre-wrap">Seite {e.page}: {e.quote}</p>)}</details> : null}</div>)}
-                <select disabled={locked} aria-label={`Datei: ${reviewAttachmentLabel(review, a)}`} className={`${fieldClass} mt-2`} value={approval.attachments[a.id] || ""} onChange={e => update({ attachments: { ...approval.attachments, [a.id]: e.target.value as "keep" | "remove" } })}>
+                <select disabled={locked} aria-label={`Datei: ${reviewAttachmentLabel(review, a)}`} data-review-field={`attachments.${a.id}`} className={`${fieldClass} mt-2`} value={approval.attachments[a.id] || ""} onChange={e => update({ attachments: { ...approval.attachments, [a.id]: e.target.value as "keep" | "remove" } })}>
                   <option value="">Bitte prüfen</option><option value="keep">Behalten</option><option value="remove" disabled={a.removable === false}>Sichern und entfernen</option>
                 </select>
               </div>)}
             </div>
-            <label className="block text-sm font-medium">Produktionsliste<select disabled={locked} className={`${fieldClass} mt-1`} value={approval.priority} onChange={e => update({ priority: e.target.value as ProductionPriority })}>{Object.entries(PRODUCTION_LISTS).map(([key, list]) => <option key={key} value={key}>{list.name} · ganz oben</option>)}</select></label>
-            {approval.priority !== review.priority ? <input disabled={locked} className={fieldClass} aria-label="Optionale Notiz zur Produktionsliste" placeholder="Optionale Notiz zur abweichenden Produktionsliste" value={approval.priorityReason} onChange={e => update({ priorityReason: e.target.value })} /> : null}
-            <details className="text-sm"><summary className="cursor-pointer font-medium">Interne Prüfnote ergänzen</summary><textarea disabled={locked} aria-label="Interne Prüfnote" className={`${fieldClass} mt-2`} value={approval.operatorNote} placeholder="Zum Beispiel eine telefonisch bestätigte Absprache" onChange={e => update({ operatorNote: e.target.value })} /></details>
+            <label className="block text-sm font-medium">Produktionsliste<select data-review-field="priority" disabled={locked} className={`${fieldClass} mt-1`} value={approval.priority} onChange={e => update({ priority: e.target.value as ProductionPriority })}>{Object.entries(PRODUCTION_LISTS).map(([key, list]) => <option key={key} value={key}>{list.name} · ganz oben</option>)}</select></label>
+            {approval.priority !== review.priority || approval.priorityReason ? <div><input disabled={locked} className={fieldClass} data-review-field="priorityReason" aria-label="Optionale Notiz zur Produktionsliste" placeholder="Optionale Notiz zur abweichenden Produktionsliste" value={approval.priorityReason} onChange={e => update({ priorityReason: e.target.value })} />{fieldFeedback("priorityReason", approval.priorityReason.length, 2000)}</div> : null}
+            <details className="text-sm"><summary className="cursor-pointer font-medium">Interne Prüfnote ergänzen</summary><textarea disabled={locked} aria-label="Interne Prüfnote" data-review-field="operatorNote" className={`${fieldClass} mt-2`} value={approval.operatorNote} placeholder="Zum Beispiel eine telefonisch bestätigte Absprache" onChange={e => update({ operatorNote: e.target.value })} />{fieldFeedback("operatorNote", approval.operatorNote.length, 4000)}</details>
             {handoff?.backups.length ? <div className="rounded-lg border border-stone-200 bg-white p-3 text-sm"><h4 className="font-medium">Gesicherte Dateien</h4>{handoff.backups.map(b => <a key={b.attachmentId} className="mt-2 block underline" href={`/api/ops/supplier-sales?action=production_file_backup&saleId=${encodeURIComponent(saleId)}&attachmentId=${encodeURIComponent(b.attachmentId)}`}>{b.name}</a>)}</div> : null}
             <p className="text-sm font-semibold" role="status">{statusTitle}</p>
-            {error || issues.length || blockReason ? <a href={`#production-review-${saleId}`} className="block text-sm text-violet-800 underline">Offene Punkte und Fehler oben ansehen</a> : null}
-            {paymentConfirmation ? <label className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><input type="checkbox" disabled={locked} checked={paymentConfirmed} onChange={e => setPaymentConfirmed(e.target.checked)} className="mt-1" /><span>Ich gebe diesen Auftrag bewusst vor Zahlung frei.<span className="mt-1 block text-xs">Die Zahlung bleibt offen.</span></span></label> : null}
+            {saveError ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm"><p>{saveError.message}</p><button type="button" className={`${buttonClass} mt-2`} disabled={busy || saveState === "saving"} onClick={() => void (saveError.action === "load" || saveError.action === "status" ? load() : retrySave())}>{saveError.action === "load" ? "Neueren Stand ansehen" : saveError.action === "status" ? "Stand laden" : "Speichern erneut versuchen"}</button></div> : null}
+            {remoteState ? <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+              <p className="font-semibold">Gespeicherten Stand mit deiner Auswahl vergleichen</p>
+              <p className="mt-2">Deine noch nicht gespeicherten Angaben stehen weiterhin in der Vorschau. Der neuere gespeicherte Stand:</p>
+              {draftSummary(remoteState.draft || { approval: remoteState.approval || defaultReviewApproval(remoteState.review), assignmentNote: "", requestedDeliveryDate: "", edited: false, manualTextNeedsReview: false }, remoteState.review)}
+              <button type="button" className={`${buttonClass} mt-2`} onClick={() => { if (inputRef.current) setRetainedLocal({ input: inputRef.current, review }); install(remoteState); setError(null); }}>Gespeicherten Stand übernehmen</button>
+              {remoteState.review.id === review.id && !remoteState.handoff ? <button type="button" className={`${buttonClass} mt-2 ml-2`} onClick={() => { revisionRef.current = remoteState.draft?.revision || 0; setRemoteState(null); void retrySave(); }}>Meine Auswahl stattdessen speichern</button> : null}
+              <p className="mt-2 text-xs">„Meine Auswahl“ ersetzt den gespeicherten Entwurf. Es wird nichts an die Produktion übergeben.</p>
+            </div> : null}
+            {retainedLocal ? <details className="rounded-lg border p-3 text-xs"><summary>Vorherige lokale Auswahl ansehen</summary>{draftSummary(retainedLocal.input, retainedLocal.review)}</details> : null}
+            {error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950"><p className="font-semibold">{statusTitle}</p><p className="mt-1 whitespace-pre-line">{error}</p>{recoveryAction !== "edit" ? <button type="button" className={`${buttonClass} mt-2`} disabled={busy || saving || (recoveryAction === "prepare" && Boolean(handoff?.releaseAttempted))} onClick={() => void load(recoveryAction === "prepare")}>{recoveryAction === "prepare" ? "Neu vorbereiten – Entscheidungen abgleichen" : "Stand laden"}</button> : null}<p className="mt-2 text-xs">{statusUnclear || handoff?.status === "pending" ? "Solange der Übergabestand unklar ist, wird keine weitere Freigabe gestartet." : "Dein gespeicherter Entwurf bleibt erhalten."}</p></div> : null}
+            {issues.length || blockReason ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm"><p className="font-semibold">Noch zu erledigen</p>{blockReason ? <p className="mt-2">{blockReason}</p> : null}<ul className="mt-2 space-y-2">{problems.map((problem, i) => <li key={i}>{problem.message.replace(/^Entscheidung fehlt: /, "").replace(/^Datei prüfen: /, "Dateiauswahl: ")}{problem.field ? <button type="button" className="ml-2 underline" onClick={() => focusField(problem.field!)}>Zum Punkt</button> : null}</li>)}</ul></div> : null}
+            {paymentConfirmation ? <label className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><input type="checkbox" disabled={transferring} checked={paymentConfirmed} onChange={e => setPaymentConfirmed(e.target.checked)} className="mt-1" /><span>Ich gebe diesen Auftrag bewusst vor Zahlung frei.<span className="mt-1 block text-xs">Die Zahlung bleibt offen.</span></span></label> : null}
             <p className="text-xs text-stone-600">Mit der Freigabe bestätigst du Titel, Beschreibung, Dateien, Cover und Produktionsliste.</p>
             <button type="button" disabled={releaseBlocked} onClick={() => void release()} className="w-full rounded-lg bg-stone-950 px-4 py-3 text-sm font-semibold text-white disabled:bg-stone-300">{saving ? "Übergabe wird geprüft …" : handoff?.status === "partial" ? "Geprüfte Übergabe fortsetzen" : "Geprüft – an Produktion freigeben"}</button>
           </div>

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { defaultReviewApproval, renderProductionReview, reviewApprovalIssues, productionPriorityFromDeliveryTitles, QUENTIN_REVIEW_BOARD, PRODUCTION_LISTS, designMappingQuestions, confirmPurchasedDesigns, openImageVariants, decideImageVariants, reviewAttachmentLabel, reviewOpenStepCount, type ProductionReview } from "@/lib/ops/supplier-sale-review";
+import { defaultReviewApproval, renderProductionReview, reviewApprovalIssues, productionPriorityFromDeliveryTitles, QUENTIN_REVIEW_BOARD, PRODUCTION_LISTS, designMappingQuestions, confirmPurchasedDesigns, openImageVariants, decideImageVariants, reviewAttachmentLabel, reviewOpenStepCount, type ProductionReview, type ReviewDraft, reviewApprovalProblems, reviewDraftInputIssues, migrateReviewDraft } from "@/lib/ops/supplier-sale-review";
 import { analyzeProductionReview, validateReviewAnalysis } from "@/lib/ops/supplier-sale-review-ai";
 import { executeProductionHandoff, approvedDesignAttachmentName, type HandoffDependencies, type ProductionHandoff } from "@/lib/ops/supplier-sale-handoff";
 import { readSupplierSaleMail, readSupplierSaleMailPdfs } from "@/lib/ops/supplier-sale-mail";
@@ -1115,4 +1115,68 @@ test('a superseded initial design reference is a proposal while real reference i
     { role: 'other', recommendation: 'remove', summary: 'Älteres Maßblatt, durch neuere Zeichnung ersetzt.', findings: [], recipient: [], evidence: [{ page: 1, quote: text[0] }] }, {});
   assert.equal(misclassified.role, 'drawing'); guardDrawingRemoval([misclassified, current], 1); assert.equal(misclassified.recommendation, 'remove');
   const latest = { ...misclassified, supersededById: undefined }; guardDrawingRemoval([latest], 1); assert.equal(latest.recommendation, 'manual');
+});
+
+
+test("stale review has an explicit recovery action before obsolete decisions or text limits", () => {
+  const r = review(), a = approved(r);
+  a.reviewId = "older-review";
+  a.decisions["removed-question"] = { action: "reject", note: "" };
+  const problems = reviewApprovalProblems(r, a);
+  assert.deepEqual(problems.map(p => [p.code, p.action]), [["review_changed", "load"]]);
+  assert.doesNotMatch(problems[0].message, /zu lang|ungültig/i);
+});
+
+test("field length is actionable and never produces zero open issues beside undecided file groups", () => {
+  const r = review();
+  r.attachments = [1, 2, 3].map(i => ({ ...r.attachments[0], id: `image-${i}`, name: `image-${i}.png`, mimeType: "image/png", removable: true }));
+  const a = approved(r); a.attachments = {}; a.operatorNote = "x".repeat(4001);
+  const problems = reviewApprovalProblems(r, a);
+  assert.ok(problems.some(p => p.field === "operatorNote" && /4001 von 4000/.test(p.message)));
+  const issues = reviewApprovalIssues(r, a);
+  assert.equal(reviewOpenStepCount(r, a, issues), 2, "one file batch plus one concrete text error");
+  assert.equal(reviewOpenStepCount(r, a, ["Ein technischer Fehler"]), 1);
+  assert.deepEqual(reviewDraftInputIssues({ approval: a, edited: false, assignmentNote: "", requestedDeliveryDate: "", manualTextNeedsReview: false }), [], "incomplete or over-limit release fields remain storable drafts");
+});
+
+function savedDraft(r: ProductionReview): ReviewDraft {
+  return { version: 1, revision: 3, savedAt: "2026-11-25T10:00:00Z", savedBy: "Test", approval: { ...approved(r), confirmed: false },
+    edited: false, assignmentNote: "Keep together", requestedDeliveryDate: "2026-12-11", manualTextNeedsReview: false, previousChoices: [] };
+}
+
+test("new review migrates exact evidence across changed IDs but never reuses a changed question ID", () => {
+  const old = review(), draft = savedDraft(old), next = structuredClone(old);
+  next.id = "next"; next.sourceHash = "new-mail";
+  next.analysis.changes[0].id = "new-cable-id";
+  old.products.forEach(p => { p.fields = p.fields.map(f => ({ value: f.value, label: f.label })); });
+  const migrated = migrateReviewDraft(old, next, draft);
+  assert.deepEqual(migrated.approval.decisions["new-cable-id"], draft.approval.decisions.cable);
+  assert.equal(migrated.approval.reviewId, "next");
+  assert.equal(migrated.approval.confirmed, false);
+  assert.match(migrated.approval.description, /Keep together/);
+  next.analysis.changes[0].id = "cable"; next.analysis.changes[0].value = "Left side";
+  const changed = migrateReviewDraft(old, next, draft);
+  assert.equal(changed.approval.decisions.cable, undefined);
+  assert.ok(changed.previousChoices.some(c => /Kabelposition/.test(c.label)));
+  assert.ok(reviewApprovalProblems(next, { ...changed.approval, confirmed: true }).some(p => p.code === "decision_missing"));
+});
+
+test("draft migration preserves manual text for review and reopens changed document bytes", () => {
+  const old = review(), draft = savedDraft(old), next = structuredClone(old);
+  old.documents = [{ id: "doc", attachmentId: "old", sha256: "before" } as ReviewDocument];
+  next.documents = [{ id: "doc", attachmentId: "old", sha256: "after" } as ReviewDocument];
+  next.id = "next"; next.sourceHash = "changed";
+  draft.edited = true; draft.approval.title = "Manual title"; draft.approval.description = "Manual production instruction";
+  const migrated = migrateReviewDraft(old, next, draft);
+  assert.equal(migrated.manualTextNeedsReview, true);
+  assert.equal(migrated.approval.description, draft.approval.description);
+  assert.equal(migrated.approval.attachments.old, undefined, "same Trello metadata is not proof of unchanged PDF bytes");
+  assert.ok(migrated.previousChoices.some(c => c.label === old.attachments[0].name));
+});
+
+test("linked human mail decision is valid even when the analysis already classified the thread related", () => {
+  const r = review(), a = approved(r);
+  r.analysis.changes[1].requiresThreadId = "old-offer";
+  a.decisions["thread:old-offer"] = { action: "accept", note: "" };
+  assert.deepEqual(reviewApprovalIssues(r, a), []);
 });

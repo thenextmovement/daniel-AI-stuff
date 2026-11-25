@@ -66,6 +66,46 @@ export type ReviewApproval = {
   operatorNote: string; confirmed: boolean;
 };
 
+export type ReviewRecoveryAction = "edit" | "load" | "prepare" | "status" | "retry";
+export type ReviewProblem = { code: string; message: string; field?: string; action: ReviewRecoveryAction };
+export type ReviewDraftInput = {
+  approval: ReviewApproval; edited: boolean; assignmentNote: string; requestedDeliveryDate: string;
+  manualTextNeedsReview: boolean;
+};
+export type ReviewDraft = ReviewDraftInput & {
+  version: 1; revision: number; savedAt: string; savedBy: string | null;
+  previousChoices: Array<{ label: string; value: string }>;
+};
+
+/** Draft storage accepts incomplete work. Only release requires complete decisions. */
+export function reviewDraftInputIssues(value: unknown): string[] {
+  const record = (v: unknown): v is Record<string, unknown> => Boolean(v && typeof v === "object" && !Array.isArray(v));
+  if (!record(value) || !record(value.approval)) return ["Der Prüfentwurf hat ein ungültiges Format. Deine lokale Auswahl bleibt erhalten."];
+  const a = value.approval;
+  if (typeof value.edited !== "boolean" || typeof value.manualTextNeedsReview !== "boolean"
+    || typeof value.assignmentNote !== "string" || typeof value.requestedDeliveryDate !== "string"
+    || !["reviewId", "title", "description", "coverProductId", "priority", "priorityReason", "operatorNote"].every(k => typeof a[k] === "string")
+    || typeof a.confirmed !== "boolean" || !record(a.decisions) || !record(a.attachments)
+    || Object.values(a.decisions).some(d => !record(d) || !["accept", "reject"].includes(String(d.action)) || typeof d.note !== "string")
+    || Object.values(a.attachments).some(d => !["", "keep", "remove"].includes(String(d)))) return ["Der Prüfentwurf hat ein ungültiges Format. Bitte den aktuellen Stand laden."];
+  if (JSON.stringify(value).length > 300_000 || Object.keys(a.decisions).length > 500 || Object.keys(a.attachments).length > 500) return ["Der Prüfentwurf ist zu umfangreich zum Speichern. Bitte eingefügte Volltexte kürzen; deine lokale Auswahl bleibt erhalten."];
+  return [];
+}
+
+/** JSONB may reorder object keys; equality must follow the choices, never key order. */
+export function reviewApprovalContent(a: ReviewApproval): ReviewApproval {
+  return { reviewId: a.reviewId, title: a.title, description: a.description,
+    decisions: Object.fromEntries(Object.keys(a.decisions).sort().map(id => [id, { action: a.decisions[id].action, note: a.decisions[id].note }])),
+    attachments: Object.fromEntries(Object.keys(a.attachments).sort().map(id => [id, a.attachments[id]])),
+    coverProductId: a.coverProductId, priority: a.priority, priorityReason: a.priorityReason, operatorNote: a.operatorNote, confirmed: false };
+}
+
+export function reviewDraftContent(draft: ReviewDraftInput): ReviewDraftInput {
+  return { approval: reviewApprovalContent(draft.approval), edited: draft.edited,
+    assignmentNote: draft.assignmentNote, requestedDeliveryDate: draft.requestedDeliveryDate,
+    manualTextNeedsReview: draft.manualTextNeedsReview };
+}
+
 export function productionPriorityFromDeliveryTitles(titles: string[]): ProductionPriority {
   return titles.some(title => /express|eilauftrag|eilproduktion|eilversand|\brush\b/i.test(title)
     && !/\b(kein|ohne|no)\b/i.test(title)) ? "express" : "standard";
@@ -204,12 +244,14 @@ function sizeUpdateBlock(review: ProductionReview, decisions: ReviewApproval["de
     ...drawings.map(d => `Disregard conflicting dimensions in the attached drawing "${d.name.replace(/[\r\n"]/g, " ")}". Other specifications remain unchanged.`)].join("\n");
 }
 
-/** Count actual human actions: one explicit image-batch decision resolves all of its IDs. */
+/** Group only issues that actually exist; a technical error is never subtracted away. */
 export function reviewOpenStepCount(review: ProductionReview, approval: ReviewApproval, issues: string[]) {
-  const images = openImageVariants(review, approval);
-  const mapping = designMappingQuestions(review).filter(c => !approval.decisions[c.id]);
-  const documents = openDocumentSuggestions(review, approval);
-  return Math.max(0, issues.length - Math.max(0, images.length - 1) - Math.max(0, mapping.length - 1) - Math.max(0, documents.length - 1));
+  const groups = [
+    openImageVariants(review, approval).map(a => `Datei prüfen: ${reviewAttachmentLabel(review, a)}`),
+    designMappingQuestions(review).filter(c => !approval.decisions[c.id]).map(c => `Entscheidung fehlt: ${c.reason}`),
+    openDocumentSuggestions(review, approval).map(d => `Datei prüfen: ${reviewAttachmentLabel(review, review.attachments.find(a => a.id === d.attachmentId)!)}`),
+  ];
+  return groups.reduce((count, group) => count - Math.max(0, new Set(group.filter(message => issues.includes(message))).size - 1), issues.length);
 }
 
 export function defaultReviewApproval(review: ProductionReview): ReviewApproval {
@@ -281,51 +323,128 @@ export function renderProductionReview(review: ProductionReview, decisions: Revi
   return { title, description };
 }
 
-export function reviewApprovalIssues(review: ProductionReview, approval: ReviewApproval): string[] {
-  const issues = [...review.blockers];
+export function reviewApprovalProblems(review: ProductionReview, approval: ReviewApproval): ReviewProblem[] {
+  const problems: ReviewProblem[] = review.blockers.map(message => ({ code: "source_blocked", message, action: "prepare" }));
+  const add = (code: string, message: string, field?: string, action: ReviewRecoveryAction = "edit") => problems.push({ code, message, field, action });
   const record = (v: unknown): v is Record<string, unknown> => Boolean(v && typeof v === "object" && !Array.isArray(v));
   if (!record(approval) || !(["reviewId", "title", "description", "coverProductId", "priority", "priorityReason", "operatorNote"] as const).every(k => typeof approval[k] === "string")
-    || typeof approval.confirmed !== "boolean" || !record(approval.decisions) || !record(approval.attachments)) return ["Ungültiges Freigabeformat."];
-  const decisionIds = new Set([...review.analysis.changes.map(c => c.id), ...review.analysis.threads.filter(t => t.relevance === "uncertain").map(t => `thread:${t.id}`)]);
+    || typeof approval.confirmed !== "boolean" || !record(approval.decisions) || !record(approval.attachments)) return [{ code: "approval_format", message: "Die Auswahl konnte nicht gelesen werden. Bitte den aktuellen Prüfstand laden.", action: "load" }];
+  // A stale review must not masquerade as a length error or a missing decision.
+  if (approval.reviewId !== review.id) return [{ code: "review_changed", message: "Der Prüfentwurf wurde inzwischen erneuert. Bitte den aktuellen Stand laden; bisherige Entscheidungen werden abgeglichen.", action: "load" }];
+  const decisionIds = new Set([...review.analysis.changes.map(c => c.id),
+    ...review.analysis.threads.filter(t => t.relevance === "uncertain" || review.analysis.changes.some(c => c.requiresThreadId === t.id)).map(t => `thread:${t.id}`)]);
   for (const d of review.documents || []) {
     const update = drawingSizeUpdate(review, d, approval.decisions);
-    if (!update) continue;
-    decisionIds.add(update.id);
-    if (approval.decisions[update.id] && (!update.confirmed || approval.attachments[d.attachmentId] !== "keep")) issues.push("Größen-Update erneut bestätigen und die referenzierte Zeichnung behalten.");
+    const id = `drawing-size:${d.id}`;
+    if (update || approval.decisions[id]) decisionIds.add(id);
+    if (approval.decisions[id] && (!update?.confirmed || approval.attachments[d.attachmentId] !== "keep")) add("drawing_changed", "Größen-Update erneut bestätigen und die referenzierte Zeichnung behalten.", `decisions.${id}`);
   }
-  if (Object.entries(approval.decisions).some(([id, d]) => !decisionIds.has(id) || !record(d) || !["accept", "reject"].includes(String(d.action)) || typeof d.note !== "string" || d.note.length > 2000)
-    || Object.keys(approval.attachments).some(id => !review.attachments.some(a => a.id === id))
-    || approval.priorityReason.length > 2000 || approval.operatorNote.length > 4000) return ["Ungültige oder zu lange Prüfentscheidung."];
+  for (const [id, d] of Object.entries(approval.decisions)) {
+    if (!decisionIds.has(id)) { add("decision_changed", "Eine gespeicherte Entscheidung gehört zu einem anderen Prüfstand. Bitte den aktuellen Stand laden.", `decisions.${id}`, "load"); continue; }
+    if (!record(d) || !["accept", "reject"].includes(String(d.action)) || typeof d.note !== "string") { add("decision_format", "Diese Prüfentscheidung konnte nicht gelesen werden. Bitte erneut auswählen.", `decisions.${id}`); continue; }
+    if (d.note.length > 2000) {
+      const label = review.analysis.changes.find(c => c.id === id)?.reason || "Mailzuordnung";
+      add("text_too_long", `Notiz zu „${label}“: ${d.note.length} von 2000 Zeichen. Bitte um ${d.note.length - 2000} Zeichen kürzen.`, `decisions.${id}.note`);
+    }
+  }
+  for (const id of Object.keys(approval.attachments)) if (!review.attachments.some(a => a.id === id)) add("attachment_changed", "Eine ausgewählte Datei ist in diesem Prüfstand nicht mehr enthalten. Bitte den aktuellen Stand laden.", `attachments.${id}`, "load");
+  for (const [field, label, max] of [["title", "Kartentitel", 1000], ["description", "Produktionsbeschreibung", 16000], ["priorityReason", "Notiz zur Produktionsliste", 2000], ["operatorNote", "Interne Prüfnote", 4000]] as const) {
+    const value = approval[field];
+    if ((field === "title" || field === "description") && !value.trim()) add("text_missing", `${label} fehlt. Bitte das Feld ergänzen.`, field);
+    if (value.length > max) add("text_too_long", `${label}: ${value.length} von ${max} Zeichen. Bitte um ${value.length - max} Zeichen kürzen.`, field);
+  }
   const updateBlock = sizeUpdateBlock(review, approval.decisions);
   if (updateBlock) {
     const expected = renderProductionReview(review, approval.decisions);
-    // Extra assignment notes may sit between the update and the unchanged production body.
     if (approval.title.replace("CHECK INFO | ", "") !== expected.title.replace("CHECK INFO | ", "")
       || !approval.description.startsWith(updateBlock + "\n\n")
-      || !approval.description.endsWith(expected.description.slice(updateBlock.length + 2))) {
-      issues.push("Größen-Update, Titel und Produktionsmaße müssen übereinstimmen. Automatische Vorschau wiederherstellen.");
-    }
+      || !approval.description.endsWith(expected.description.slice(updateBlock.length + 2))) add("size_text_mismatch", "Größen-Update, Titel und Produktionsmaße müssen übereinstimmen. Automatische Vorschau wiederherstellen.", "description");
   }
-  if (approval.reviewId !== review.id) issues.push("Die Vorbereitung ist nicht mehr aktuell.");
-  if (!approval.confirmed) issues.push("Bitte die vollständige Vorschau bestätigen.");
-  if (!approval.title?.trim() || approval.title.length > 1000 || !approval.description?.trim() || approval.description.length > 16000) issues.push("Titel oder Beschreibung fehlt oder ist zu lang.");
-  if (approval.title.split(review.orderName).length !== 2) issues.push("Die Bestellreferenz muss genau einmal im Titel stehen.");
-  if (/KEY KUNDE/i.test(review.originalTitle) && !/^KEY KUNDE\s*\|/.test(approval.title)) issues.push("KEY KUNDE muss am Titelanfang erhalten bleiben.");
-  if (review.requestId && !approval.description?.includes(`Request-ID: ${review.requestId}`)) issues.push("Die Request-ID muss erhalten bleiben.");
-  if (!review.products.some(p => p.id === approval.coverProductId)) issues.push("Bitte ein gekauftes Design als Cover wählen.");
-  if (!Object.hasOwn(PRODUCTION_LISTS, approval.priority)) issues.push("Ungültige Produktionsliste.");
+  if (!approval.confirmed) add("confirmation_missing", "Bitte die vollständige Vorschau bestätigen.", "confirmed");
+  if (approval.title.split(review.orderName).length !== 2) add("order_reference", "Die Bestellreferenz muss genau einmal im Titel stehen.", "title");
+  if (/KEY KUNDE/i.test(review.originalTitle) && !/^KEY KUNDE\s*\|/.test(approval.title)) add("key_customer", "KEY KUNDE muss am Titelanfang erhalten bleiben.", "title");
+  if (review.requestId && !approval.description.includes(`Request-ID: ${review.requestId}`)) add("request_reference", "Die Request-ID muss erhalten bleiben.", "description");
+  if (!review.products.some(p => p.id === approval.coverProductId)) add("cover_missing", "Bitte ein gekauftes Design als Cover wählen.", "coverProductId");
+  if (!Object.hasOwn(PRODUCTION_LISTS, approval.priority)) add("priority_invalid", "Bitte eine gültige Produktionsliste wählen.", "priority");
   for (const change of review.analysis.changes) {
-    const decision = approval.decisions?.[change.id];
-    if (!decision || !["accept", "reject"].includes(decision.action)) issues.push(`Entscheidung fehlt: ${change.reason}`);
-    if (change.requiresThreadId && decision?.action === "accept" && approval.decisions[`thread:${change.requiresThreadId}`]?.action !== "accept") issues.push("Die Logo-Korrektur muss diesem Auftrag ausdrücklich zugeordnet werden.");
+    const decision = approval.decisions[change.id];
+    if (!decision || !["accept", "reject"].includes(decision.action)) add("decision_missing", `Entscheidung fehlt: ${change.reason}`, `decisions.${change.id}`);
+    if (change.requiresThreadId && decision?.action === "accept" && approval.decisions[`thread:${change.requiresThreadId}`]?.action !== "accept") add("thread_missing", "Die Logo-Korrektur muss diesem Auftrag ausdrücklich zugeordnet werden.", `decisions.thread:${change.requiresThreadId}`);
   }
   for (const thread of review.analysis.threads.filter(t => t.relevance === "uncertain" && !review.analysis.changes.some(c => c.requiresThreadId === t.id))) {
-    const decision = approval.decisions?.[`thread:${thread.id}`];
-    if (!decision) issues.push(`Mailzuordnung klären: ${thread.reason}`);
+    if (!approval.decisions[`thread:${thread.id}`]) add("thread_missing", `Mailzuordnung klären: ${thread.reason}`, `decisions.thread:${thread.id}`);
   }
   for (const attachment of review.attachments) {
-    if (!["keep", "remove"].includes(approval.attachments?.[attachment.id])) issues.push(`Datei prüfen: ${reviewAttachmentLabel(review, attachment)}`);
-    if (approval.attachments?.[attachment.id] === "remove" && attachment.removable === false) issues.push(`Diese Datei muss erhalten bleiben: ${reviewAttachmentLabel(review, attachment)}`);
+    if (!["keep", "remove"].includes(approval.attachments[attachment.id])) add("attachment_missing", `Datei prüfen: ${reviewAttachmentLabel(review, attachment)}`, `attachments.${attachment.id}`);
+    if (approval.attachments[attachment.id] === "remove" && attachment.removable === false) add("attachment_protected", `Diese Datei muss erhalten bleiben: ${reviewAttachmentLabel(review, attachment)}`, `attachments.${attachment.id}`);
   }
-  return [...new Set(issues)];
+  return problems.filter((p, i) => problems.findIndex(other => other.message === p.message && other.field === p.field) === i);
+}
+
+export function reviewApprovalIssues(review: ProductionReview, approval: ReviewApproval): string[] {
+  return [...new Set(reviewApprovalProblems(review, approval).map(p => p.message))];
+}
+
+export function renderReviewWithAssignment(review: ProductionReview, decisions: ReviewApproval["decisions"], assignmentNote: string) {
+  const text = renderProductionReview(review, decisions);
+  const note = assignmentNote.trim();
+  if (note) {
+    const blocks = text.description.split("\n\n");
+    blocks.splice(blocks[0]?.startsWith("UPDATE NEW SIZE\n") ? 1 : 0, 0, `CHECK INFO\n${note}`);
+    text.description = blocks.join("\n\n");
+    if (!text.title.includes("CHECK INFO")) text.title = text.title.replace(review.orderName + " |", review.orderName + " | CHECK INFO |");
+  }
+  return text;
+}
+
+/** Exact evidence comparison only. Model-generated IDs and similar wording are not identity. */
+export function migrateReviewDraft(previous: ProductionReview, next: ProductionReview, draft: ReviewDraft): ReviewDraftInput & Pick<ReviewDraft, "previousChoices"> {
+  const approval = defaultReviewApproval(next);
+  const previousChoices: ReviewDraft["previousChoices"] = [...draft.previousChoices];
+  const product = (r: ProductionReview, id: string | null) => r.products.filter(p => id ? p.id === id : true).map(p => ({ id: p.id, quantity: p.quantity, fields: p.fields.map(f => ({ label: f.label, value: f.value })), imageHash: p.imageHash }));
+  const evidence = (r: ProductionReview, change: ReviewChange) => change.evidence.map(e => {
+    const s = r.sources.find(s => s.id === e.sourceId);
+    return { quote: e.quote, kind: s?.kind, text: s?.text, threadId: s?.threadId };
+  });
+  const key = (r: ProductionReview, c: ReviewChange) => JSON.stringify({ kind: c.kind, productId: c.productId, field: c.field, value: c.value,
+    questionOnly: Boolean(c.questionOnly), requiresThreadId: c.requiresThreadId || null, product: product(r, c.productId), evidence: evidence(r, c) });
+  for (const old of previous.analysis.changes) {
+    const decision = draft.approval.decisions[old.id];
+    if (!decision) continue;
+    const matches = next.analysis.changes.filter(c => key(previous, old) === key(next, c));
+    const boundEvidence = old.evidence.length > 0 && old.evidence.every(e => previous.sources.some(s => s.id === e.sourceId))
+      && matches[0]?.evidence.every(e => next.sources.some(s => s.id === e.sourceId));
+    if (matches.length === 1 && (boundEvidence || previous.sourceHash === next.sourceHash)) approval.decisions[matches[0].id] = { ...decision };
+    else previousChoices.push({ label: old.reason, value: decision.action === "accept" ? `Übernommen: ${old.value || "Hinweis bestätigt"}` : "Selbst geprüft – bisherigen Bestellstand behalten" });
+  }
+  for (const thread of previous.analysis.threads) {
+    const decision = draft.approval.decisions[`thread:${thread.id}`];
+    if (!decision) continue;
+    const same = next.analysis.threads.find(t => t.id === thread.id && t.relevance === thread.relevance);
+    const bodies = (r: ProductionReview) => r.sources.filter(s => s.threadId === thread.id).map(s => [s.id, s.text]);
+    if (same && (same.relevance === "uncertain" || next.analysis.changes.some(c => c.requiresThreadId === same.id))
+      && JSON.stringify(bodies(previous)) === JSON.stringify(bodies(next))) approval.decisions[`thread:${thread.id}`] = { ...decision };
+    else previousChoices.push({ label: thread.reason, value: decision.action === "accept" ? "Gehört zu diesem Auftrag" : "Andere Bestellung" });
+  }
+  for (const old of previous.attachments) {
+    const choice = draft.approval.attachments[old.id];
+    if (!choice) continue;
+    const match = next.attachments.find(a => a.id === old.id && a.name === old.name && a.url === old.url && a.removable === old.removable);
+    const oldDoc = previous.documents?.find(d => d.attachmentId === old.id);
+    const newDoc = next.documents?.find(d => d.attachmentId === old.id);
+    const sameContent = oldDoc || newDoc ? Boolean(oldDoc?.sha256 && oldDoc.sha256 === newDoc?.sha256) : previous.cardHash === next.cardHash;
+    if (match && sameContent) approval.attachments[old.id] = choice;
+    else previousChoices.push({ label: old.name, value: choice === "keep" ? "Datei behalten" : "Datei sichern und entfernen" });
+  }
+  for (const d of next.documents || []) {
+    const update = drawingSizeUpdate(next, d, approval.decisions);
+    const old = update && draft.approval.decisions[update.id];
+    if (update && old?.action === "accept" && old.note === update.note && approval.attachments[d.attachmentId] === "keep") approval.decisions[update.id] = { ...old };
+  }
+  if (next.products.some(p => p.id === draft.approval.coverProductId && previous.products.some(old => old.id === p.id && old.imageHash === p.imageHash))) approval.coverProductId = draft.approval.coverProductId;
+  if (previous.priority === next.priority) { approval.priority = draft.approval.priority; approval.priorityReason = draft.approval.priorityReason; }
+  approval.operatorNote = draft.approval.operatorNote;
+  Object.assign(approval, draft.edited ? { title: draft.approval.title, description: draft.approval.description } : renderReviewWithAssignment(next, approval.decisions, draft.assignmentNote));
+  return { ...reviewDraftContent(draft), approval, manualTextNeedsReview: draft.edited && (draft.manualTextNeedsReview || previous.sourceHash !== next.sourceHash),
+    previousChoices: previousChoices.filter((c, i) => previousChoices.findIndex(p => p.label === c.label && p.value === c.value) === i) };
 }
