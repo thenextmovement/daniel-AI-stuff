@@ -1150,3 +1150,6 @@
 .leadPlanner .leadCalendar input { box-sizing:border-box; min-height:30px; max-width:100%; padding:4px 6px; font-size:12px; }
 .leadPlanner .leadDismissActions { margin-top:8px; padding-top:6px; border-top:1px solid #e6ebe8; }
 .leadPlanner .leadDismissActions button { background:transparent; border-color:transparent; color:#66736f; font-size:11px; min-height:28px; }
+
+.placetelHangup { background:#b42332; border-color:#b42332; color:#fff; }
+.placetelHangup:hover:not(:disabled) { background:#901c28; border-color:#901c28; }
