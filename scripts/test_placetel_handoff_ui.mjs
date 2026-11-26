@@ -20,7 +20,7 @@ try {
  for(const scenario of ['slow','fast','cancel','failure','expired']){
   const page=await browser.newPage();
   // Model browser transient activation after the asynchronous preparation.
-  await page.addInitScript(active=>Object.defineProperty(navigator,'userActivation',{value:{isActive:active}}),scenario==='fast');
+  await page.addInitScript(active=>Object.defineProperty(navigator,'userActivation',{value:{isActive:active}}),['fast','cancel'].includes(scenario));
   const cdp=await page.context().newCDPSession(page);await cdp.send('Page.enable');
   const handoffs=[];cdp.on('Page.frameRequestedNavigation',e=>{if(e.url.startsWith('tel:'))handoffs.push(e.url)});
   let pending,requests=0;
