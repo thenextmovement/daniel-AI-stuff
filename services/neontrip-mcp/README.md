@@ -121,3 +121,31 @@ Das Audit protokolliert Identität, Tool, Objekt-/Pfadreferenzen, Ergebnis und e
 SHA-256-Fingerprint der Begründung. Es schreibt weder den vollständigen `reason`
 noch Tokens oder Nutzdaten in den Auditdatensatz. Die Begründung ersetzt keine
 fachliche Freigabe, Konfliktprüfung oder Transaktion.
+
+
+## DHL Express: zentraler Vorschau-Pilot
+
+Die MCP-App zeigt Adressen, Paketdaten und DHL-Kundentarife direkt im unterstützenden
+Host. Lieferadresse und Paketdaten sind editierbar; Übernehmen fragt neue Tarife ab
+und verwirft die alte Auswahl. Länderwechsel bleiben wegen der Zollangaben im Chat.
+`dhl_confirm_preview` bestätigt ausschließlich eine Simulation (`booked:false`).
+Es gibt keine Shipment-, Pickup-, Label- oder Kundenmail-Funktion. Das Abholfenster
+ist nur ein Wunschfenster, keine DHL-Zusage. Nach Änderung der Abholstartzeit müssen
+Tarife neu abgefragt werden. Vorschauen gehören einer Identität, laufen nach zehn
+Minuten ab und gehen bei einem Neustart verloren. Ein einzelnes Gateway-Replikat
+verwenden; der Store ist nicht zwischen Instanzen geteilt.
+
+Coolify-Ziel: `qcwk40sg840ko4cc4o00gkk0`, Repository
+`thenextmovement/daniel-AI-stuff`, Branch `main`, Build-Verzeichnis
+`/services/neontrip-mcp`. Bestehende Ops-/Offers-Konfiguration erhalten.
+Runtime-Secrets: `DHL_API_USERNAME`, `DHL_API_PASSWORD`, `DHL_ACCOUNT_NUMBER`;
+`DHL_API_ENVIRONMENT=production` fragt echte Preise ab, erlaubt aber keine Buchung.
+
+`DHL_PREVIEW_IDENTITIES_JSON` ergänzt persönliche Testzugänge, ohne die vorhandene
+`MCP_IDENTITIES_JSON` zu ersetzen. Pro Person: `clientId`, `actor`, `tokenSha256`,
+`expiresAt` (Unix-Sekunden). Rollen/Scopes dürfen darin nicht gesetzt werden; der
+Server vergibt ausschließlich `system:read` und `shipping:preview`. Unterschiedliche
+zufällige Tokens verwenden, nur deren SHA-256-Hashes auf dem Server hinterlegen.
+Tokens nicht in Chat, Git oder Logs schreiben. Vor Freigabe je Identität die Toolliste,
+die Isolation zwischen Identitäten, Live-Preisabfrage und UI-Ressource prüfen.
+Eine erfolgreiche Bereitstellung ersetzt nicht den Codex-Test auf Fabiennes Rechner.

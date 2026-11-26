@@ -59,14 +59,19 @@ function optionalServiceUrl(name: string, value: string | undefined, env: Gatewa
   return normalized ? requiredUrl(name, normalized, env) : undefined;
 }
 
-function parseIdentities(value: string | undefined): Identity[] {
+function parseIdentities(value: string | undefined, previewValue?: string): Identity[] {
   let input: unknown;
   try {
     input = JSON.parse(String(value || "[]"));
   } catch {
     throw new Error("MCP_IDENTITIES_JSON ist kein gültiges JSON.");
   }
-  const identities = z.array(identitySchema).min(1).parse(input);
+  let previewInput: unknown;
+  try { previewInput = JSON.parse(previewValue || "[]"); }
+  catch { throw new Error("DHL_PREVIEW_IDENTITIES_JSON ist kein gültiges JSON."); }
+  const previewIdentities = z.array(identitySchema.pick({clientId:true,actor:true,tokenSha256:true,expiresAt:true}).strict()).parse(previewInput)
+    .map(identity=>({...identity,role:"operator" as const,scopes:["system:read","shipping:preview"]}));
+  const identities = z.array(identitySchema).min(1).parse([...z.array(z.unknown()).parse(input),...previewIdentities]);
   const now = Math.floor(Date.now() / 1000);
   const seenClients = new Set<string>();
   const seenHashes = new Set<string>();
@@ -103,7 +108,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     publicUrl,
     allowedHosts: csv(env.MCP_ALLOWED_HOSTS || publicUrl.hostname),
     allowedOrigins: csv(env.MCP_ALLOWED_ORIGINS),
-    identities: parseIdentities(env.MCP_IDENTITIES_JSON),
+    identities: parseIdentities(env.MCP_IDENTITIES_JSON, env.DHL_PREVIEW_IDENTITIES_JSON),
     requiredServices,
     requestTimeoutMs: z.coerce.number().int().min(500).max(30_000).catch(8_000).parse(env.MCP_REQUEST_TIMEOUT_MS),
     maxResponseBytes: z.coerce.number().int().min(10_000).max(5_000_000).catch(1_500_000).parse(env.MCP_MAX_RESPONSE_BYTES),

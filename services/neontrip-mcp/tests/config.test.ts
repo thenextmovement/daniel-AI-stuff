@@ -34,3 +34,14 @@ test("readiness reports every required service without complete credentials", ()
   const config = loadConfig(environment());
   assert.deepEqual(missingRequiredServices(config), ["billing", "offers"]);
 });
+
+
+test("separate DHL testers cannot inherit or inject Ops, Offers or booking access",()=>{
+ const tester={clientId:"fabienne-dhl-preview",actor:"Fabienne",tokenSha256:createHash("sha256").update("preview-only-fixture").digest("hex"),expiresAt:Math.floor(Date.now()/1000)+3600};
+ const base=loadConfig(environment());
+ const combined=loadConfig(environment({DHL_PREVIEW_IDENTITIES_JSON:JSON.stringify([tester])}));
+ assert.deepEqual(combined.identities[0],base.identities[0]);
+ assert.deepEqual(combined.identities[1]!.scopes,["system:read","shipping:preview"]);
+ assert.throws(()=>loadConfig(environment({DHL_PREVIEW_IDENTITIES_JSON:JSON.stringify([{...tester,scopes:["ops:write"]}])})));
+ assert.throws(()=>loadConfig(environment({DHL_PREVIEW_IDENTITIES_JSON:JSON.stringify([{...tester,clientId:"billing-test"}])})),/eindeutige/);
+});
