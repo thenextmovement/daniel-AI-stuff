@@ -62,6 +62,7 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
     };
   }, [callId, status, onCallChange]);
   function open(number: string) {
+    confirmation.current?.close();
     if (Date.now() >= expires.current) {
       setStatus("ended");
       setMessage("Die Vorbereitung ist abgelaufen. Bitte bereite den Anruf erneut vor.");
@@ -70,7 +71,7 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
     onStarted?.(binding.current.customerId,binding.current.requestId,new Date().toISOString());
     setStatus("opened");
     window.location.assign("tel:" + number);
-    setMessage("Nummer an Placetel übergeben. Die Gesprächsdokumentation erscheint hier, sobald die Aufnahme vorliegt.");
+    setMessage("Öffnen der Telefon-App angefordert. Bitte prüfe im Placetel-Softphone, ob der Anruf gestartet ist.");
   }
   const requestedNumber = useRef<string | undefined>(undefined);
   const [confirmationNumber, setConfirmationNumber] = useState("");
@@ -112,7 +113,7 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
       expires.current = data.expiresAt;
       setPhone(data.dialedPhone);
       onCallChange();
-      if (navigator.userActivation?.isActive) open(data.dialedPhone);
+      if (confirmation.current?.open && navigator.userActivation?.isActive) open(data.dialedPhone);
       else {
         setStatus("prepared");
         setMessage("Der Vorgang ist zugeordnet. Öffne jetzt das Softphone.");
@@ -126,13 +127,14 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
       <form onSubmit={event => {
         event.preventDefault();
         if (disabled || sending.current || !confirmation.current?.open) return;
-        confirmation.current.close();
         if (status === "prepared") open(phone); else void prepare();
       }}>
         <h3 id="confirm-placetel-title">Anruf bestätigen</h3>
         <p>Möchtest du {confirmationNumber || phone || dialNumber || "diesen Kunden"} jetzt mit dem Placetel-Softphone anrufen?</p>
+        {status === "sending" && <p role="status">Anruf wird vorbereitet. Bitte warte einen Moment …</p>}
+        {message && <p role="status">{message}</p>}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 24 }}>
-          <button type="submit" className={styles.button + " " + styles.primary} style={{ minHeight: 64, fontSize: 20, justifyContent: "center" }} disabled={disabled || status === "sending"}><Phone size={22}/>Anrufen</button>
+          <button type="submit" className={styles.button + " " + styles.primary} style={{ minHeight: 64, fontSize: 20, justifyContent: "center" }} disabled={disabled || status === "sending"}><Phone size={22}/>{status === "sending" ? "Wird vorbereitet …" : status === "prepared" ? "Placetel jetzt öffnen" : status === "retry" ? "Erneut prüfen" : "Anrufen"}</button>
           <button type="button" className={styles.button} style={{ minHeight: 64, fontSize: 20, justifyContent: "center" }} autoFocus onClick={() => confirmation.current?.close()}>Abbrechen</button>
         </div>
       </form>
