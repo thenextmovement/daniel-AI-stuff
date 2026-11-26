@@ -27,7 +27,9 @@ test("Neon Studio forwards manufacturing checks and keeps unrelated paths blocke
     assert.deepEqual(calls, [{ url: "http://studio.test:8080/api/manufacturing", body }]);
     assert.equal((await POST(request("api/admin"), context("api/admin"))).status, 404);
     assert.equal((await POST(request("api/manufacturing", "https://untrusted.test"), context("api/manufacturing"))).status, 403);
-    assert.equal(calls.length, 1);
+    assert.equal((await POST(request("cloud/reference"), context("cloud/reference"))).status, 200);
+    assert.equal(calls.at(-1)?.url, "http://studio.test:8080/cloud/reference");
+    assert.equal(calls.length, 2);
   } finally {
     globalThis.fetch = originalFetch;
     keys.forEach((key, index) => { if (saved[index] === undefined) delete env[key]; else env[key] = saved[index]; });

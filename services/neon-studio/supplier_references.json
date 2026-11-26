@@ -1,0 +1,987 @@
+{
+  "version": "quentin-2026-11-26-v1",
+  "audited_cards": 100,
+  "references": [
+    {
+      "id": "6b0800de59c0d79ecfaf7937",
+      "card_id": "6b07e7713e6f4aef5e27af4e",
+      "card_url": "https://trello.com/c/2CLMoCLH",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Kerschl’s Lounge",
+      "category": "serif_text_2_rows",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          50,
+          19.85
+        ]
+      ],
+      "evidence": "offered",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b08098789286f8043ad8bce",
+      "card_id": "6b070592b47cd9fe307250a0",
+      "card_url": "https://trello.com/c/jFN2UWOc",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Therapiebedarf24.de",
+      "category": "long_text_frame",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          160,
+          35
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b06ed5afabe8fba6a82fdbf",
+      "card_id": "6b06ed43541e9f27f86f7abd",
+      "card_url": "https://trello.com/c/tAJvzOFc",
+      "attachment_name": "image - 2026-11-25T151258.913.png",
+      "author_id": "65cb8b28f564e1faa7bc1ac8",
+      "motif": "Enjoy the Moment",
+      "category": "sans_script_2_rows",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          150,
+          75.26
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b067a34cd3fe58f34793fe6",
+      "card_id": "6b05d141d54c4e5c606e161d",
+      "card_url": "https://trello.com/c/Fae7ijWt",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Turkey outline",
+      "category": "map_symbol",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          70,
+          31.89
+        ],
+        [
+          90,
+          41
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b0677bb8cac87a68fddf96b",
+      "card_id": "6b05b9ce05b65aac2e766d5e",
+      "card_url": "https://trello.com/c/ggyBCzxc",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "WOK N ROLL",
+      "category": "geometric_logo_subline",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          70,
+          43.53
+        ],
+        [
+          176.9,
+          110
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b06cdc504b6bde7dcf6a372",
+      "card_id": "6b05604e3505c71e5063fd20",
+      "card_url": "https://trello.com/c/CbUNRmec",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Miles & Bytes; Bytes & Rights; Digits & Gallery; Bits & Fixes",
+      "category": "script_long",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          214,
+          46
+        ],
+        [
+          214,
+          46
+        ],
+        [
+          232,
+          46
+        ],
+        [
+          215,
+          46
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b04fa00441791787616bd99",
+      "card_id": "6b047688d15ab2ac1eee3e39",
+      "card_url": "https://trello.com/c/yZ8nZAGB",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "TX Timoryx",
+      "category": "angular_monogram_subline",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          40,
+          34.29
+        ],
+        [
+          57.83,
+          50
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b040d54fd761fff2cff4f40",
+      "card_id": "6b040639723ae6e591c9d6de",
+      "card_url": "https://trello.com/c/XFSByES6",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Glühwein & Co.",
+      "category": "script_long",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          75,
+          13
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b040ec6d5be08e8ed1c5c3b",
+      "card_id": "6b02efbe857e7556fbde9cc0",
+      "card_url": "https://trello.com/c/Gw1GpiOq",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "X-LUMINATOR",
+      "category": "parallel_display_text",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          100,
+          14.58
+        ]
+      ],
+      "evidence": "explicit_minimum",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b03b5234a93aedb7bb0e763",
+      "card_id": "6b01d7fe8e61ebdc9ebb0857",
+      "card_url": "https://trello.com/c/hm22DqSO",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "LOV The Dance Studio",
+      "category": "logo_small_subline",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          80,
+          49.48
+        ],
+        [
+          120,
+          74.22
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b03da214e69e59eb052a781",
+      "card_id": "6b01439f5b88b0d9275ed58d",
+      "card_url": "https://trello.com/c/d6LrCAem",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "FASTEN YOUR SEAT BELT",
+      "category": "serif_vs_geometric_long_text",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          125,
+          8.97
+        ],
+        [
+          120,
+          10.91
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b03d9437a57cd91e70f65fd",
+      "card_id": "6b00a61e41d6d0473247d170",
+      "card_url": "https://trello.com/c/vKMwjBgL",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Schröder Metallbau",
+      "category": "symbol_text_2_rows",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          55,
+          24.12
+        ],
+        [
+          80,
+          35.09
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b0132a3c41cda07d9cce550",
+      "card_id": "6b00353f4d4ddaf39b6e73c0",
+      "card_url": "https://trello.com/c/0wXQEL84",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "CLOUDNINE",
+      "category": "sans_text_1_row",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          100,
+          11.84
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afec3899ef0d53587e75bf4",
+      "card_id": "6afe1581542b48402c65ad68",
+      "card_url": "https://trello.com/c/zQiwd7Bi",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "LubiengZ",
+      "category": "script_word",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          50,
+          16.14
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6affa1380811d06603735c21",
+      "card_id": "6afdb5682d66af462d681819",
+      "card_url": "https://trello.com/c/0CabJSVj",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "HOTEL RAD",
+      "category": "sans_text_1_row",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          50,
+          10.26
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afe8fbb48140ab293882d5f",
+      "card_id": "6afd9dc0dc5ae3479bcd8cfa",
+      "card_url": "https://trello.com/c/xLwwwkmM",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Mobile Jugendarbeit",
+      "category": "irregular_text_3_rows",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          80,
+          50.86
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afe8d9e8b600440615b69a5",
+      "card_id": "6afd9c61b028f6207b14f861",
+      "card_url": "https://trello.com/c/QFFuO2YF",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "VIKING DEPT.",
+      "category": "gothic_logo_small_subline",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          100,
+          32.51
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afe8d4ff0cb4e400cbe4044",
+      "card_id": "6afd9aaa9bc761d2ebffe8d6",
+      "card_url": "https://trello.com/c/BJwj9LQj",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "HUMANOVER",
+      "category": "sans_word_diagonal",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          90,
+          15.76
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afe70219895b4616c84e5cd",
+      "card_id": "6afd7e677fd5b1abbcaae94b",
+      "card_url": "https://trello.com/c/7yB89cQv",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Stang Immobilienmanagement",
+      "category": "skyline_print_subline",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          80,
+          27.36
+        ],
+        [
+          100,
+          34.2
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afff3914a9638004ba56d74",
+      "card_id": "6afcca5269a5392f47cc2dda",
+      "card_url": "https://trello.com/c/xlHXKWBG",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Contact Gym; Hyrox; Drinks",
+      "category": "multi_design",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          500,
+          75.47
+        ],
+        [
+          120,
+          77.82
+        ],
+        [
+          106.37,
+          25
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afe658cf6e2147383d1ac87",
+      "card_id": "6afcaee78b0155bc57c44cd4",
+      "card_url": "https://trello.com/c/u2xmdIfj",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Knuthi’s Darts",
+      "category": "geometric_text",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          75,
+          10.35
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afd3ccb7e9d1bb150d8d14c",
+      "card_id": "6afc374fc1c3ca44f191f1af",
+      "card_url": "https://trello.com/c/xLg6pqjM",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "onOffice Always on your side",
+      "category": "logo_small_subline",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          130,
+          33.5
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afd40ca8495fa398d65c69d",
+      "card_id": "6afc3739543b2451181f5876",
+      "card_url": "https://trello.com/c/uGkkVDxb",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "heyData symbol; word",
+      "category": "geometric_symbol_and_word",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          28.56,
+          30
+        ],
+        [
+          70,
+          18.02
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afbf24d939985965fbae45b",
+      "card_id": "6afb0d41c1cde424dc141698",
+      "card_url": "https://trello.com/c/XHIwYIbb",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Takeda",
+      "category": "script_emblem",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          80,
+          28.68
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b012f831cd98a63ed5f6e36",
+      "card_id": "6afad48c788ba97517c97ed9",
+      "card_url": "https://trello.com/c/SvpYjzeE",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Music note neon vs fullglow",
+      "category": "simple_symbol",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          30.78,
+          42
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afd3c27af8431f7130135bc",
+      "card_id": "6afad451f85084bc3acf73e4",
+      "card_url": "https://trello.com/c/e9OPZolV",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Gratis Kugelschreiber",
+      "category": "dense_text_uv_illustration",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          100,
+          76.71
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afad636167255f19b49ecad",
+      "card_id": "6af9e1f5530f88e72e483319",
+      "card_url": "https://trello.com/c/b2PNDijO",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "DJ_AllArt two fonts",
+      "category": "geometric_display_word",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          60,
+          11.88
+        ],
+        [
+          100,
+          17.71
+        ],
+        [
+          60,
+          null
+        ],
+        [
+          100,
+          null
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afad9692f48ba6d1f4ca590",
+      "card_id": "6af748d973ee39f94b00d69d",
+      "card_url": "https://trello.com/c/qKeh3tRN",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Lo-ve-gan",
+      "category": "symbol_text_uv_subline",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          78.1,
+          23
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af6e92217902eb52387b093",
+      "card_id": "6af6d124bd2bef5aef2e28f4",
+      "card_url": "https://trello.com/c/sYi1wA4o",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "GET IN FOCUS",
+      "category": "frame_aperture_text_uv",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          75,
+          75
+        ]
+      ],
+      "evidence": "offered",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afada0584e870cf0475553b",
+      "card_id": "6af602e680db4c1663ca1ba4",
+      "card_url": "https://trello.com/c/D86TEHxP",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "LIFESPIRIT",
+      "category": "birds_text_uv",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          60,
+          39.17
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af6bbee6fe01808b65482c0",
+      "card_id": "6af5b3631761ac7a77c48d25",
+      "card_url": "https://trello.com/c/EW6RkUoe",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Skyline EKG",
+      "category": "skyline",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          200,
+          60
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6b06de2840ee7c157bc60e99",
+      "card_id": "6af5ab5b00bc8b1ee6999f9d",
+      "card_url": "https://trello.com/c/RQsRihmB",
+      "attachment_name": "image - 2026-11-25T140747.017.png",
+      "author_id": "65cb8b28f564e1faa7bc1ac8",
+      "motif": "Health Bar; Health Lounge",
+      "category": "script_words",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          95.7,
+          27
+        ],
+        [
+          110,
+          27
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af670d932f2aa8f03677db6",
+      "card_id": "6af5a07e87609ab85c153c23",
+      "card_url": "https://trello.com/c/bOTv4Idc",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Wintersäftchen",
+      "category": "script_word",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          150,
+          34
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af6b6f7422959ede5bef2f7",
+      "card_id": "6af5969e836ede26acfa620d",
+      "card_url": "https://trello.com/c/Md5hR8yM",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Santa Maria",
+      "category": "serif_text_oval",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          100,
+          37.85
+        ],
+        [
+          130,
+          49.21
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af6b162f6f03e624b4b2332",
+      "card_id": "6af57f4e4c6aad9786e0a70d",
+      "card_url": "https://trello.com/c/GHNIWSsF",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "HOLZLEDER",
+      "category": "bold_text_script_subline",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          135,
+          31.18
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af58f55f64ab4108a77a841",
+      "card_id": "6af57c3258c8cbd5b4b72f68",
+      "card_url": "https://trello.com/c/ddB9W1MR",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "SHINEFINITY",
+      "category": "sans_word",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          100,
+          15.36
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af48e56db81bf549f27be8e",
+      "card_id": "6af48d66ddc3f9d3961ad55e",
+      "card_url": "https://trello.com/c/LxUxp3lQ",
+      "attachment_name": "image - 2026-11-11T164812.136.png",
+      "author_id": "65cb8b28f564e1faa7bc1ac8",
+      "motif": "Your Local Cookie Dealer",
+      "category": "handwritten_3_rows_uv",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          100,
+          79.21
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af5921e7fa2be4ce813a4c1",
+      "card_id": "6af483a2ce8234ce4c41112d",
+      "card_url": "https://trello.com/c/kpXrE7ej",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "RED MON DAY",
+      "category": "bold_text_3_rows",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          96,
+          100.32
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af5399006450fdea4e81619",
+      "card_id": "6af46e07c63684396670a819",
+      "card_url": "https://trello.com/c/LiZwA1G4",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "coffee",
+      "category": "sans_word",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          58,
+          21
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af402b45658bc64045b1214",
+      "card_id": "6af3270ee49dfb9aa11cf5f4",
+      "card_url": "https://trello.com/c/dk0HlRiu",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "CPRO",
+      "category": "geometric_symbol_word",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          100,
+          30.83
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6afbc9657a711241b8c64cb6",
+      "card_id": "6af3086c9de851da5b23f1b5",
+      "card_url": "https://trello.com/c/C4n2X5Z1",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "melt",
+      "category": "script_word",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          50,
+          37.12
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af4218ca8abb4036532d84f",
+      "card_id": "6af2e69afb5995ccf8ac1b33",
+      "card_url": "https://trello.com/c/ATqUf7K1",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "amazon rme",
+      "category": "logo_subline",
+      "line_mode_hint": "mixed",
+      "dimensions_cm": [
+        [
+          180,
+          46.09
+        ],
+        [
+          180,
+          42.33
+        ]
+      ],
+      "evidence": "requested",
+      "size_eligible": false,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af6ac5061b3c1cad50f77e7",
+      "card_id": "6af2d850010320a7c446b346",
+      "card_url": "https://trello.com/c/Tit0Z70F",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Anschluss Frage",
+      "category": "sans_text_2_rows",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          40,
+          12.2
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af2ecc01cb47dbb10798f62",
+      "card_id": "6af2bd7b1477b04320e5f843",
+      "card_url": "https://trello.com/c/8X7AdNN8",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "ROBIN",
+      "category": "display_word",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          40,
+          null
+        ],
+        [
+          400,
+          92.8
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af2e4819a748d98c18fc4a6",
+      "card_id": "6af289c3289f6c8d50f0af47",
+      "card_url": "https://trello.com/c/W4suBqnT",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Finger cross",
+      "category": "hand_outline",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          27.38,
+          52.2
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af2ba22d71a00c0ab2c566c",
+      "card_id": "6af236053030e933cba1d26a",
+      "card_url": "https://trello.com/c/N2ph6Qcu",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "QUIRSO",
+      "category": "bold_word",
+      "line_mode_hint": "double",
+      "dimensions_cm": [
+        [
+          80,
+          18.23
+        ],
+        [
+          150,
+          34.19
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    },
+    {
+      "id": "6af2bbc6cc47cabaf6aba2ad",
+      "card_id": "6af21c7c6e84d677a29983c2",
+      "card_url": "https://trello.com/c/XdM69STR",
+      "attachment_name": "image.png",
+      "author_id": "6348e5b604ca9b0433d5fe84",
+      "motif": "Knobloch Immobilien",
+      "category": "house_text_2_rows",
+      "line_mode_hint": "single",
+      "dimensions_cm": [
+        [
+          75,
+          47.57
+        ],
+        [
+          120,
+          76.11
+        ]
+      ],
+      "evidence": "smallest_response",
+      "size_eligible": true,
+      "contour_eligible": true
+    }
+  ]
+}

@@ -410,7 +410,7 @@ async function changeLimitException(site,restore){
     resetTarget();
     await checkManufacturing(false,true);
     if(project!==state.project)return;
-    if(!manufacturingReport)throw Error('Die Mindestgröße konnte nicht neu berechnet werden.');
+    if(!manufacturingReport)throw Error('Die Größenprüfung konnte nicht abgeschlossen werden.');
     const width=manufacturingReport.recommendedWidth;
     if(!window.studioManualMinimum?.()&&Math.abs(state.drawing.width-width)>.01){
       await resizeToMinimum(width);
@@ -459,7 +459,7 @@ function updateLimitControls(){
   const names=keys.map(key=>d?.pathKeys.indexOf(key)??-1).filter(i=>i>=0)
     .map(i=>`${d.names[i]} (Linie ${i+1})`);
   const reasons=(report?.limitingReasons||[]).map(reason=>reason==='spacing'?'Abstand der Neonlinien':'geschlossene Innenöffnung');
-  const label=manufacturingReport?`${number(manufacturingReport.recommendedWidth/10,1)} cm geometrische Mindestbreite`:`Vorschau bei ${number((d?.width||0)/10,1)} cm`;
+  const label=manufacturingReport?`${number(manufacturingReport.recommendedWidth/10,1)} cm ${manufacturingReport.referenceBased?'Empfehlung nach Referenz':'manuelle bzw. geometrisch geprüfte Breite'}`:`Vorschau bei ${number((d?.width||0)/10,1)} cm`;
   const message=names.length?`${label} · ${reasons.join(' und ')} · ${names.join(', ')}`:'';
   $('limitReason').textContent=message;
   $('limitReason').hidden=!message;
@@ -523,17 +523,19 @@ async function checkManufacturing(applyToPreview=false,force=false){
   const ticket=++manufacturingTicket;
   manufacturingReport=null;previewLimit=null;previewLimitTicket=null;showingLimit=false;updateLimitControls();
   if(state.drawing)renderDrawing();
-  minimumStatus('Mindestgröße wird berechnet …',false);
+  minimumStatus(window.studioReferenceMinimum?'Lieferantenreferenzen werden verglichen …':'Mindestgröße wird berechnet …',false);
   $('manufacturingApply').hidden=true;
   try{
-    const report=await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings})).json();
+    const report=window.studioReferenceMinimum&&!state.settings.fixedBoard
+      ?await window.studioReferenceMinimum()
+      :await (await api('/api/manufacturing',{id:state.project.id,settings:state.settings})).json();
     if(ticket!==manufacturingTicket||key!==manufacturingKey())return;
     manufacturingReport={...report,key};
     if(showingLimit){showingLimit=!!report.limitingKeys?.length;selectKeys(report.limitingKeys||[]);}
     updateLimitControls();
     window.dispatchEvent(new Event('studio-minimum-ready'));
     const manual=window.studioManualMinimum?.();
-    const label=report.fixedSize?(report.fixedSizeValid?'Feste Maße geprüft · Abstände eingehalten':'Feste Maße beibehalten · enge Stellen im Motiv prüfen'):manual?window.studioManualSizeLabel():`Geometrische Mindestbreite: ${number(report.recommendedWidth/10,1)} cm`;
+    const label=report.fixedSize?(report.fixedSizeValid?'Feste Maße geprüft · Abstände eingehalten':'Feste Maße beibehalten · enge Stellen im Motiv prüfen'):manual?window.studioManualSizeLabel():`${report.referenceBased?'Empfohlene Breite nach Referenz':'Geometrische Mindestbreite'}: ${number(report.recommendedWidth/10,1)} cm`;
     const count=report.ignoredSiteIds?.length||0;
     minimumStatus(label+(count?` · ${count} ${count===1?'Stelle ignoriert':'Stellen ignoriert'}`:''),true);
     $('manufacturingApply').hidden=!!report.fixedSize||!!state.settings.geometricSizing&&Math.abs(state.drawing.width-(manual||report.recommendedWidth))<.01;
@@ -553,6 +555,7 @@ function applyMinimumToPreview(){
   const report=manufacturingReport;
   if(report?.fixedSize)return;
   if(!report?.recommendedWidth||report.key!==manufacturingKey()||state.busy)return;
+  if(report.reference_match?.cut)state.settings.referenceContour='follow';
   return resizeToMinimum(window.studioManualMinimum?.()||report.recommendedWidth);
 }
 function resizeToMinimum(width){

@@ -12,57 +12,33 @@ from cloud_exports import artifacts,CUT
 from minimum_size import PROFILE, SpacingLimitExceeded, measure, minimum_size, widths_for_heights, target_width
 
 
-def optimize_smallest(store, model, settings):
-    """Try verified spacing corrections before enlarging the entire motif."""
-    original=minimum_size(store,model,settings)
-    if 'spacing' not in original.get('limitingReasons',[]):return settings
-    low,high=8,math.ceil(original['recommendedWidth']/10)
-    best=settings
-    while low<high:
-        middle=(low+high)//2
-        width=middle*10
-        try:report=target_width(store,model,settings,width)
-        except ValueError:
-            low=middle+1
-            continue
-        proposal=report.get('proposal')
-        candidate=None
-        if not report['issues']:candidate=settings
-        elif proposal and proposal['remaining']==0:
-            candidate={**settings,'pathOffsets':proposal['offsets']}
-        if candidate is not None:
-            drawing=store.drawing(model,json.dumps({**candidate,**PROFILE,'width':width},sort_keys=True))
-            if drawing['exportable'] and measure(drawing)['recommendedWidth']<=width:
-                best=candidate;high=middle
-                continue
-        low=middle+1
-    return best
-
-
 def size_variants(store,model,settings,spec):
     widths=spec.get('widths_mm',[])
     if not isinstance(widths,list) or any(type(w) not in (int,float) or not 80<=w<=20000 for w in widths):
         raise Review('Ungültige Angebotsbreite.')
     manual=spec.get('minimum_width_mm')
-    floor=manual or math.ceil(minimum_size(store,model,settings)['recommendedWidth']/10)*10
-    targets=list(dict.fromkeys(max(w,floor) for w in widths))
-    if (spec.get('smallest_requested') or not targets) and floor not in targets:targets.append(floor)
-    if spec.get('minimum_first'):
-        targets=[floor,*[w for w in targets if w>floor]]
+    reference=spec.get('reference_match',{}).get('size',{}).get('width_mm')
+    floor=manual or reference
+    targets=list(dict.fromkeys(widths))
+    if spec.get('smallest_requested') or not targets:
+        if not floor:raise Review('Keine passende Größenreferenz. Bitte manuell prüfen.')
+        if floor not in targets:targets.append(floor)
+    if manual and any(w<manual for w in targets):raise Review('Wunschgröße liegt unter der manuellen Mindestbreite.')
+    if spec.get('minimum_first') and floor:
+        targets=[floor,*[w for w in targets if w!=floor]]
     if len(targets)>4:raise Review('Es sind mehr als vier Angebotsvarianten angefragt.')
     verified=[];reports=[]
     for width in targets:
         options={**settings,**PROFILE,'width':width}
         drawing=store.drawing(model,json.dumps(options,sort_keys=True))
-        if drawing['width'] < floor-.001:raise Review('Die Zeichnung unterschreitet die Mindestbreite.')
+        if floor and drawing['width'] < min(targets)-.001:raise Review('Die Zeichnung unterschreitet die Mindestbreite.')
         report={'recommendedWidth':manual} if manual else measure(drawing)
-        if report['recommendedWidth']>width and spec.get('minimum_first') and width>floor:continue
         if report['recommendedWidth']>width:
             if 'spacing' in report.get('limitingReasons',[]):
                 raise SpacingLimitExceeded('Abstand in der Angebotszeichnung zu klein.')
             raise Review('Abstand oder Innenöffnung in der Angebotszeichnung zu klein.')
         verified.append(width)
-        reports.append({**report,'recommendedWidth':floor})
+        reports.append({**report,'recommendedWidth':floor,'referenceBased':bool(reference)})
     return verified,reports
 
 
@@ -137,67 +113,8 @@ class Jobs:
         data,metrics=generate(self.t,source,p.get('selected_attachments'))
         designs=data.get('designs',[data])
         records=[self.design_record(design) for design in designs]
-        records=self.compact_designs(source,designs,records)
         p=self.db.save(id,{**records[0],'additional_designs':records[1:],'metrics':metrics},status='draft')
         self.publish(p, generated=True)
-
-    def compact_designs(self,card,designs,records):
-        """One bounded correction pass; a usable first draft survives failed refinement."""
-        feedback=[];previous=[]
-        for design,record in zip(designs,records):
-            report=None
-            if not record['spec'].get('fixed_board') and record['spec'].get('smallest_requested') and record['spec'].get('size_axis')!='height':
-                try:
-                    record['settings']=optimize_smallest(self.store,record['model'],record['settings'])
-                    report=minimum_size(self.store,record['model'],record['settings'])
-                except (ValueError,Review):pass
-            previous.append(report)
-            if report and report.get('limitingReasons')==['opening']:
-                feedback.append({'design_name':design.get('design_name'), 'svg':design['svg'],
-                                 'line_plan':design.get('line_plan'), 'minimum_width_mm':report['recommendedWidth'],
-                                 'limiting_site':report.get('limitingSite')})
-        if not feedback:return records
-        replacements={}
-        try:
-            revised,metrics=generate(self.t,card,feedback=feedback)
-            alternatives=revised.get('designs',[revised])
-            if len(alternatives)!=len(designs):return records
-            for i,(original,alternative,report) in enumerate(zip(designs,alternatives,previous)):
-                if not report or report.get('limitingReasons')!=['opening']:continue
-                # Refinement may edit geometry, never silently change the order.
-                fields=('design_name','colors','source_attachment_ids','excluded_regions','quantity','widths_mm')
-                if any(original.get(key)!=alternative.get(key) for key in fields):continue
-                def groups(d):
-                    return sorted((g['name'],g['mode'],len(g['path_ids']),len(g.get('dot_ids',[]))) for g in d['line_plan'])
-                if groups(original)!=groups(alternative):continue
-                candidate=self.design_record({**original,'svg':alternative['svg'],'line_plan':alternative['line_plan']})
-                def appearance(record):
-                    return [(item['originalGroup'],item['name'],item.get('sourceColor'),item['role'],item['neonCenterline'])
-                            for item in self.store.model(record['model'])['modes']['double']]
-                if appearance(records[i])!=appearance(candidate):continue
-                # Reject smaller lettering obtained by stretching or compressing the logo.
-                def boxes(record):
-                    bounds=[path_bounds(item['commands']) for item in self.store.model(record['model'])['modes']['double']]
-                    left=min(b[0] for b in bounds);top=min(b[1] for b in bounds)
-                    width=max(b[2] for b in bounds)-left
-                    return [((b[0]-left)/width,(b[1]-top)/width,(b[2]-b[0])/width,(b[3]-b[1])/width) for b in bounds]
-                before,after=boxes(records[i]),boxes(candidate)
-                if any(abs(a-b)>max(old[2 if axis%2==0 else 3],.001)*.05+1e-9
-                       for old,new in zip(before,after) for axis,(a,b) in enumerate(zip(old,new))):
-                    records[i]['spec']['compact_note']='Eine kleinere Kontur würde das Motiv zu stark verändern. Kalkuliert ist der erste geometrisch geprüfte Entwurf.'
-                    continue
-                candidate['settings']=optimize_smallest(self.store,candidate['model'],candidate['settings'])
-                self.size_design(candidate,card)
-                if candidate['spec']['auto_minimum_mm']>=report['recommendedWidth']:continue
-                candidate['metrics']={**candidate.get('metrics',{}),'compact_retry':metrics}
-                candidate['spec']['compact_note']='Innenkonturen automatisch angepasst und die kleinere Größe erneut geprüft.'
-                replacements[i]=candidate
-        except (ValueError,KeyError,TypeError,Review,ServiceError,TimeoutError,RequestException):
-            for record in records:
-                record['spec']['compact_note']='Die zusätzliche Konturkorrektur wurde nicht bestätigt. Kalkuliert ist der erste geometrisch geprüfte Entwurf.'
-            return records
-        for i,candidate in replacements.items():records[i]=candidate
-        return records
 
     def reread(self,p):
         card=self.t.card(p[p['reread']])
@@ -236,7 +153,6 @@ class Jobs:
         data,metrics=generate(self.t,card)
         designs=data.get('designs',[data])
         records=[self.design_record(design) for design in designs]
-        records=self.compact_designs(card,designs,records)
         for record in records:
             try:self.size_design(record,card)
             except SpacingLimitExceeded:
@@ -285,6 +201,11 @@ class Jobs:
             p.update(spec=spec,settings=settings,metrics={**(p.get('metrics') or {}),'manufacturing':report})
             return
         if p.get('model'):
+            from reference_matching import select
+            match=select(self.t,self.store,self.db,p,snapshot)
+            spec['reference_match']=match
+            if match.get('cut'):
+                p['settings']={**p['settings'],'referenceContour':'follow'}
             requested=spec.get('requested_widths_mm',spec.get('widths_mm',[]))
             # Adopt the title rule for existing smallest-only projects on their next export.
             if 'minimum_first' not in spec and not requested:
@@ -309,13 +230,13 @@ class Jobs:
                     for height,target in zip(spec['heights_mm'],converted):
                         if any(abs(w-target)<=.01 for w in widths):continue
                         reason=f'Wunschhöhe {height/10:g} cm: Die aktuellen Konturen benötigen mehr Platz.'
-                        height_notes.append(reason+' Der Preis gilt für die separat berechnete Mindestgröße.')
+                        height_notes.append(reason+' Bitte Wunschhöhe und Referenzgröße prüfen.')
                 previous_notes=spec.get('height_fit_notes',[])
                 issues=[i for i in spec.get('issues',[]) if not size_only_issue(i) and i not in previous_notes]
                 if height_notes or previous_notes:
                     spec['height_fit_notes']=height_notes
                 spec.update(requested_widths_mm=requested,widths_mm=widths,sized_widths_mm=widths)
-                spec.update(auto_minimum_mm=None if spec.get('minimum_width_mm') else reports[0]['recommendedWidth'],minimum_tube_mm=6,
+                spec.update(auto_minimum_mm=None,reference_width_mm=match.get('size',{}).get('width_mm'),minimum_tube_mm=6,
                             issues=issues+height_notes)
                 settings['width']=widths[0]
                 p.update(spec=spec,settings=settings,metrics={**(p.get('metrics') or {}),'manufacturing':reports[0]})
@@ -331,7 +252,7 @@ class Jobs:
             if not d.get('exportable') or not d['paths']:raise Review('Zeichnung enthält noch ungeklärte Pfade.')
             if spec.get('minimum_width_mm') is not None and d['width']<spec['minimum_width_mm']-.1:raise Review('Die Zeichnung liegt unter der manuell eingetragenen Mindestbreite.')
             if 'requested_widths_mm' in spec and not spec.get('minimum_width_mm') and not spec.get('fixed_board'):
-                if measure(d)['recommendedWidth']>width:raise Review('Geometrische Mindestbreite unterschritten.')
+                if measure(d)['recommendedWidth']>width:raise Review('Zeichnung passt bei dieser Größe nicht. Bitte prüfen; keine automatische Vergrößerung.')
             variants.append(d)
         sources=spec.get('source_attachment_ids') or p.get('selected_attachments') or []
         filename=next((a['name'] for a in snapshot.get('attachments',[])
@@ -390,9 +311,6 @@ class Jobs:
             if not p.get('copy') or not p.get('model'):raise Review('Kopie oder Zeichnung fehlt.')
             records=[p,*p.get('additional_designs',[])]
             for record in records:
-                if generated and not record['spec'].get('fixed_board') and not record['spec'].get('minimum_width_mm') and record['spec'].get('size_axis')!='height':
-                    try:record['settings']=optimize_smallest(self.store,record['model'],record['settings'])
-                    except SpacingLimitExceeded:pass  # Existing original-PNG recovery below.
                 try:self.size_design(record,p['snapshot'])
                 except SpacingLimitExceeded:
                     if not generated or len(records)!=1:raise
@@ -407,11 +325,16 @@ class Jobs:
             files=[];quotes=[];variants=[];specs=[];design_notes=[]
             for index,record in enumerate(records,1):
                 batch,prices,drawings,spec=self.design_artifacts(record,p['snapshot'])
+                from reference_matching import check_contour
+                for drawing in drawings:
+                    check_contour(self.t,drawing,spec.get('reference_match',{}))
                 if len(records)>1:
                     batch=[(f'mockup{index}.jpg' if name=='mockup1.jpg' else f'Design_{index}_{name}',mime,data) for name,mime,data in batch]
                     design_notes.append(f"Design {index} · {spec['design_name']} · "+
                         ', '.join(decimal(d['width']/10)+' cm / '+q['total_usd']+' USD' for d,q in zip(drawings,prices)))
-                if spec.get('compact_note'):design_notes.append(spec['compact_note'])
+                for kind,reference in spec.get('reference_match',{}).items():
+                    if isinstance(reference,dict) and reference.get('card_url'):
+                        design_notes.append(('Größenreferenz' if kind=='size' else 'Zuschnittreferenz')+': '+reference['card_url']+' · '+reference['reason'])
                 if spec.get('issues'):
                     heading=f"Design {index} · " if len(records)>1 else ''
                     design_notes.append(heading+'Offen im Entwurf ('+spec['colors']+', '+spec['usage']+')')
@@ -455,8 +378,8 @@ class Jobs:
                 minimum_note=('\nMindestbreite (manuell): '+decimal(spec['minimum_width_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.') if len(records)==1 and spec.get('minimum_width_mm') is not None else ''
                 if len(records)==1 and spec.get('size_axis')=='height' and spec.get('manual_height_mm') is not None:
                     minimum_note='\nMindesthöhe (manuell): '+decimal(spec['manual_height_mm']/10)+' cm. Keine automatische Fertigungsfreigabe.'
-                if len(records)==1 and spec.get('auto_minimum_mm'):
-                    minimum_note+='\nKleinste geprüfte Breite mit 6-mm-Neonflex: '+decimal(spec['auto_minimum_mm']/10)+' cm.'
+                if len(records)==1 and spec.get('reference_width_mm'):
+                    minimum_note+='\nEmpfohlene Breite nach Lieferantenreferenz: '+decimal(spec['reference_width_mm']/10)+' cm. Keine Fertigungsfreigabe.'
                 self.t.comment_once(p['copy'],marker+'\n'+('\n'.join(changes)+'\n' if changes else '')+('\n'.join(design_notes)+'\n' if design_notes else '')+f'{len(files)} Dateien erstellt. EK inklusive Versand in USD; Formel-Schätzung, Lieferantenpreis noch nicht bestätigt.'+minimum_note+'\nBearbeiten: https://ops.neontrip.de/ops/neon-studio?project='+p['id'],marker)
                 self.t.call('PUT',f"cards/{p['copy']}",json={'name':copy_title(p['snapshot']['name']),'idList':READY,'pos':'bottom'})
                 checked=self.t.card(p['copy'])

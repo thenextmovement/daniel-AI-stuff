@@ -1080,7 +1080,7 @@ def _review_cut_to_shape(path, reference, lines, padding):
     raise ValueError('Formzuschnitt konnte den Konturverlauf und Neonabstand nicht einhalten.')
 
 
-def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands=()):
+def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands=(), reference_follow=False):
     # Close the outline of each component, preserving useful exterior concavities.
     pieces=[]
     for line in lines:
@@ -1116,6 +1116,15 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
         corridor=box(max(a.bounds[0],b.bounds[0]),upper[1]-padding,
                      min(a.bounds[2],b.bounds[2]),lower[0]+padding)
         connectors.append(envelope.intersection(corridor))
+    if reference_follow:
+        # Supplier word boards join the baseline, instead of cutting deep slots
+        # up into N/W legs. Keep the actual sloping top and tall ascenders.
+        for _,_,indices in rows:
+            row=unary_union([pieces[i] for i in indices])
+            l,t,r,b=row.bounds
+            if len(indices)>=3 and r-l>2*(b-t):
+                dip=max(radius,min(depth,padding))
+                connectors.append(row.convex_hull.intersection(box(l,b-dip,r,b)))
     merged=unary_union([*pieces,*connectors])
     # Connect remaining disjoint components, never emit islands.
     while merged.geom_type=='MultiPolygon':
@@ -1135,7 +1144,9 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
     else:
         inset=hull.buffer(-next(iter(depths.values()),depth),quad_segs=20) if depths else hull.buffer(-depth,quad_segs=20)
     cap=inset.buffer(radius,quad_segs=20).intersection(hull)
-    if bands:
+    if reference_follow:
+        cap=Polygon()  # Supplier-style local silhouette, no artificial text shelf.
+    if bands and not reference_follow:
         # Replace the sloping hull only over text columns. The buffered neon
         # underneath retains local ascenders, descenders and the full clearance.
         columns=[]
@@ -1173,7 +1184,7 @@ def _full_shape(lines, padding, radius, depth, depths=None, paddings=None, bands
     if not cap.is_empty:
         merged=unary_union([merged,cap])
         merged=Polygon(merged.exterior)
-    smoothing=max(1,radius)
+    smoothing=max(1,radius,padding*2,depth) if reference_follow else max(1,radius)
     smoothed=merged.buffer(smoothing,quad_segs=20).buffer(-smoothing,quad_segs=20)
     # Buffer roundoff can split a connected contour. Keep the original verified
     # envelope rather than dropping islands or losing the acrylic bridge.
@@ -1414,7 +1425,7 @@ def build_geometry(model, options=None, *, editable=True, sizing_probe=False, un
                 side_depths.update(automatic_depths)
                 if settings['radius'] == DEFAULTS['radius'] and not settings.get('manualContourRadius'):
                     radius = min(15, padding, w/4, h/4)
-        outer=_full_shape(lines,padding,radius,depth,side_depths,paddings if asymmetric else None,bands)
+        outer=_full_shape(lines,padding,radius,depth,side_depths,paddings if asymmetric else None,bands,settings.get('referenceContour')=='follow')
         # Sampling/curve fitting can move extrema by a fraction of a millimetre.
         # Anchor the backing to the requested dimensions without moving neon.
         a,b,c,d=path_bounds(outer)

@@ -88,7 +88,7 @@ class ManufacturingTests(unittest.TestCase):
    self.assertTrue(any('innerhalb der Kontur' in reason for reason in r['reasons']))
   d=self.drawing([outline,[['m',[13,0]],['l',[13,40]]]])
   self.assertEqual(inspect(d)['minimumSpacing'],6)
- def test_size_variants_rebuilds_and_verifies_grown_motif(self):
+ def test_size_variants_verifies_reference_width_without_growth(self):
   from cloud_jobs import size_variants
   import json
   case=self
@@ -98,11 +98,11 @@ class ManufacturingTests(unittest.TestCase):
     width=json.loads(options)['width'];size=(width-36)/20
     d=case.drawing([[['m',[0,0]],['l',[width-36,0]]],[['m',[0,size]],['l',[width-36,size]]]]);d['width']=width
     return d
-  widths,reports=size_variants(Store(),'model',{},dict(widths_mm=[600],smallest_requested=True))
-  self.assertEqual(widths,[600,200])  # 19.6 cm is quoted as 20 cm.
+  widths,reports=size_variants(Store(),'model',{},dict(widths_mm=[600],smallest_requested=True,reference_match={"size":{"width_mm":200}}))
+  self.assertEqual(widths,[600,200])  # Exact supplier reference width; no computed minimum.
   self.assertGreaterEqual((widths[1]-36)/20,8)
   self.assertLessEqual(reports[1]['recommendedWidth'],widths[1])
- def test_smallest_title_adds_only_distinct_feasible_absolute_widths(self):
+ def test_smallest_title_preserves_distinct_requested_widths_or_reviews(self):
   import json
   from cloud_ai import smallest_title_widths
   from cloud_jobs import size_variants
@@ -113,10 +113,14 @@ class ManufacturingTests(unittest.TestCase):
   with patch('cloud_jobs.minimum_size',return_value={'recommendedWidth':830}),patch('cloud_jobs.measure',side_effect=measure):
    for title,expected in [
     ('Smallest Size',[830]),('SMALL IS SIZE + 100 cm',[830,1000]),
-    ('Small Size + 30 cm',[830]),('Smallest Size + 83 cm',[830]),
-    ('LED | Smallest Size + 100,5 cm + 100,5 cm + 110 cm | acrylic + 150 cm',[830,1005])]:
+    ('Small Size + 30 cm',None),('Smallest Size + 83 cm',[830]),
+    ('LED | Smallest Size + 100,5 cm + 100,5 cm + 110 cm | acrylic + 150 cm',None)]:
     extras=smallest_title_widths(title)
-    self.assertEqual(size_variants(store,'id',{},dict(minimum_first=True,smallest_requested=True,widths_mm=extras))[0],expected)
+    spec=dict(minimum_first=True,smallest_requested=True,widths_mm=extras,reference_match={'size':{'width_mm':830}})
+    if expected is None:
+     from cloud_ai import Review
+     with self.assertRaises(Review):size_variants(store,'id',{},spec)
+    else:self.assertEqual(size_variants(store,'id',{},spec)[0],expected)
   self.assertIsNone(smallest_title_widths('LED | 100 cm'))
  def test_closed_letter_opening_accepts_two_mm_air_but_rejects_less(self):
   from minimum_size import measure

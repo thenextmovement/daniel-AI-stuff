@@ -10,6 +10,7 @@ from cloud_trello import request_id
 
 PREFIX='/api/ops/neon-studio'
 class CloudHandler(Handler):
+    reference_only=True
     def allowed(self):
         expected=os.getenv('NEON_SERVICE_TOKEN','')
         actual=self.headers.get('Authorization','').removeprefix('Bearer ')
@@ -54,6 +55,39 @@ class CloudHandler(Handler):
                     'selected_attachments':p.get('selected_attachments',[])})
             return super().do_GET()
         except ValueError as e:return self.respond(400,{'error':str(e)})
+    def verify_export(self,payload,drawing,options):
+        from reference_matching import select,check_contour
+        from cloud_jobs import size_variants
+        jobs=self.server.jobs;db=self.server.db;store=self.server.store
+        project=str(options.get('project',''))
+        if not project:raise Review('Bitte Downloads im geöffneten Studio-Projekt starten.')
+        with jobs.project_lock(project):
+            p=db.get(project)
+            if p['revision']!=options.get('revision'):raise Review('Projekt wurde geändert. Bitte neu öffnen.')
+            designs=[p,*p.get('additional_designs',[])]
+            number=options.get('design',1)
+            if type(number) is not int or not 1<=number<=len(designs):raise Review('Design nicht gefunden.')
+            spec=options.get('spec',designs[number-1]['spec'])
+            if not isinstance(spec,dict):raise Review('Ungültige Angebotsangaben.')
+            spec=dict(spec);manual_minimum_width(spec)
+            record={'model':payload['id'],'settings':payload['settings'],'spec':spec}
+            match=select(jobs.t,store,db,record,p.get('snapshot',{}))
+            if match.get('cut') and payload['settings'].get('referenceContour')!='follow':
+                raise Review('Bitte den Zuschnitt nach Referenz zuerst in der Vorschau übernehmen.')
+            spec.update(auto_minimum_mm=None,reference_width_mm=match.get('size',{}).get('width_mm'),reference_match=match)
+            widths=spec.get('widths_mm') or [drawing['width']]
+            if spec.get('smallest_requested') and match.get('size') and match['size']['width_mm'] not in widths:
+                raise Review('Bitte die Referenzgröße zuerst in der Vorschau übernehmen.')
+            # Check every exported variant; keep the visible dimensions unchanged.
+            checked=list(dict.fromkeys([drawing['width'],*(widths if 'quote' in options.get('formats',[]) else [])]))
+            if not payload['settings'].get('fixedBoard'):
+                for width in checked:
+                    size_variants(store,payload['id'],payload['settings'],{**spec,'widths_mm':[width],'smallest_requested':False,'minimum_first':False})
+            for width in checked:
+                variant=drawing if abs(width-drawing['width'])<.001 else store.drawing(payload['id'],json.dumps({**payload['settings'],'width':width,'scale':None},sort_keys=True))
+                check_contour(jobs.t,variant,match)
+            options['spec']=spec
+
     def do_POST(self):
         path=urlparse(self.path).path
         if not path.startswith('/cloud/'):return super().do_POST()
@@ -69,6 +103,21 @@ class CloudHandler(Handler):
                 p=db.get(str(payload.get('id','')))
                 if p['status'] in ('copying','generating','publishing','queued','publish_queued'):raise Review('Projekt wird bereits verarbeitet.')
                 if p['revision']!=payload.get('revision'):raise Conflict('Projekt wurde inzwischen geändert. Bitte neu öffnen.')
+                if path=='/cloud/reference':
+                    from reference_matching import select
+                    designs=[p,*p.get('additional_designs',[])]
+                    number=payload.get('design',1)
+                    if type(number) is not int or not 1<=number<=len(designs):raise Review('Design nicht gefunden.')
+                    record=designs[number-1]
+                    settings=payload.get('settings',record['settings']);spec=payload.get('spec',record['spec'])
+                    if not isinstance(settings,dict) or not isinstance(spec,dict):raise Review('Ungültige Einstellungen.')
+                    manual=manual_minimum_width(spec)
+                    record={**record,'model':str(payload.get('model') or record['model']),'settings':settings,
+                            'spec':{**spec,'smallest_requested':True}}
+                    match=select(jobs.t,self.server.store,db,record,p.get('snapshot',{}))
+                    width=manual or match.get('size',{}).get('width_mm')
+                    if not width:raise Review('Keine passende Größenreferenz. Bitte prüfen.')
+                    return self.respond(200,{'recommendedWidth':width,'referenceBased':not bool(manual),'reference_match':match})
                 if path=='/cloud/save':
                     others=p.get('additional_designs',[])
                     number=payload.get('design',1)

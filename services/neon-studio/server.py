@@ -241,6 +241,8 @@ class Handler(BaseHTTPRequestHandler):
                 if 'heights_mm' in payload:
                     widths=widths_for_heights(self.server.store,str(payload.get('id','')),settings,payload['heights_mm'])
                     return self.respond(200,{'widths_mm':widths})
+                if getattr(self,'reference_only',False) and not settings.get('fixedBoard'):
+                    raise ValueError('Mindestgröße nur anhand einer Lieferantenreferenz. Bitte Referenzvergleich öffnen.')
                 return self.respond(200,minimum_size(self.server.store,str(payload.get('id','')),settings))
             if path=='/api/pricing':
                 settings=payload.get('settings',{})
@@ -280,6 +282,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.respond(200,{**drawing,'renderMs':round((time.perf_counter()-started)*1000,1)})
                 options=payload.get('options',{})
                 if not isinstance(options,dict):raise ValueError('Ungültige PDF-Einstellungen.')
+                if getattr(self,'reference_only',False):self.verify_export(payload,drawing,options)
                 if options.get('kind')=='download':
                     from cloud_exports import selected_download
                     name,mime,data=selected_download(drawing,options,self.server.store,str(payload.get('id','')),settings)

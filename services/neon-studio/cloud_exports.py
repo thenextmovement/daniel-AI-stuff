@@ -90,7 +90,7 @@ def product_rows(d,spec):
     if d['settings'].get('fixedBoard'):
         rows.extend([('Acrylic / Acrylplatte',de(d['width']/10)+' × '+de(d['height']/10)+' cm'),
                      ('Neon motif / Neonmotiv (zentriert)',de(d['motifWidth']/10)+' × '+de(d['motifHeight']/10)+' cm')])
-    for key,label in [('auto_minimum_mm','Minimum checked width / Kleinste geprüfte Breite'),
+    for key,label in [('reference_width_mm','Reference recommendation / Empfohlene Breite nach Referenz'),
                       ('minimum_width_mm','Manual minimum / Mindestbreite (manuell)')]:
         if key=='minimum_width_mm' and spec.get('manual_height_mm') is not None:
             rows.append(('Manual minimum height / Mindesthöhe (manuell)',de(spec['manual_height_mm']/10)+' cm'))

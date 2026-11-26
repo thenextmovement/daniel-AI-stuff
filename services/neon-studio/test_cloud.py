@@ -144,6 +144,8 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(self.db.get(p['id'])['status'],'review')
 
  def test_label_reread_includes_new_comments_and_preserves_original_uploads(self):
+  from unittest.mock import patch
+  comparison=patch('reference_matching.select',return_value={});comparison.start();self.addCleanup(comparison.stop)
   from unittest.mock import Mock,patch
   from cloud_trello import READY
   card={'id':'copy','idBoard':BOARD,'idList':READY,'name':'🤖 LED Neon 🤖','desc':'Acryl anpassen',
@@ -296,6 +298,8 @@ class CloudTests(unittest.TestCase):
    jobs.store.drawing(record['model'],json.dumps(record['settings']))
 
  def test_reread_edited_copy_replaces_stale_full_glow_question(self):
+  from unittest.mock import patch
+  comparison=patch('reference_matching.select',return_value={});comparison.start();self.addCleanup(comparison.stop)
   from unittest.mock import Mock,patch
   card={'id':'copy','name':'🤖 LED Neon 🤖','desc':'LED-Neon-Kontur',
         'attachments':[{'id':'1','name':'logo.png'},{'id':'3','name':'image.png'}]}
@@ -315,28 +319,17 @@ class CloudTests(unittest.TestCase):
   self.assertEqual((saved['status'],saved['spec']['issues'],saved['selected_attachments']),('draft',[],[]))
   self.assertTrue(saved['model'])
   t.call.assert_not_called()
- def test_compact_retry_keeps_order_and_uses_only_verified_smaller_geometry(self):
+ def test_smallest_without_reference_keeps_original_model_for_review(self):
   from unittest.mock import Mock,patch
-  from minimum_size import minimum_size
   jobs=Jobs(self.db,DurableStore(self.db),Mock())
-  def design(height):
-   return {'svg':f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><path id="outline" d="M0 0 L200 0 L200 {height} L0 {height} Z" stroke="blue" fill="none"/></svg>',
-           'design_name':'Test','source_attachment_ids':['art'],'smallest_requested':True,'widths_mm':[],
-           'colors':'Blau','line_plan':[{'name':'Schriftzug Test','mode':'double','path_ids':['outline']}]}
-  data=design(2);record=jobs.design_record(data)
-  before=minimum_size(jobs.store,record['model'],record['settings'])['recommendedWidth']
-  with patch('cloud_jobs.generate',return_value=(design(2.08),{})) as generate:
-   improved=jobs.compact_designs({'name':'Smallest Size','desc':''},[data],[record])
-  self.assertEqual(generate.call_count,1)
-  after=minimum_size(jobs.store,improved[0]['model'],improved[0]['settings'])['recommendedWidth']
-  self.assertLess(after,before)
-  self.assertEqual(improved[0]['spec']['colors'],'Blau')
-  for candidate in (design(8),design(1),{**design(8),'colors':'Rot'},{**design(8),'line_plan':None},
-                    {**design(8),'svg':design(8)['svg'].replace('stroke="blue"','stroke="red"')}):
-   with patch('cloud_jobs.generate',return_value=(candidate,{})):
-    self.assertEqual(jobs.compact_designs({'name':'Smallest Size','desc':''},[data],[record])[0]['model'],record['model'])
-  with patch('cloud_jobs.generate',side_effect=TimeoutError):
-   self.assertEqual(jobs.compact_designs({'name':'Smallest Size','desc':''},[data],[record])[0]['model'],record['model'])
+  data={'svg':SVG.replace('<path ', '<path id="logo" '),
+        'line_plan':[{'name':'Logo','mode':'single','path_ids':['logo']}],
+        'colors':'Blau','smallest_requested':True,'widths_mm':[]}
+  record=jobs.design_record(data);original=record['model']
+  with patch('reference_matching.select',side_effect=Review('Keine passende Referenz')),patch('cloud_jobs.generate') as generate:
+   with self.assertRaisesRegex(Review,'Referenz'):jobs.size_design(record,{'name':'Smallest Size'})
+  self.assertEqual(record['model'],original)
+  generate.assert_not_called()
  def test_review_and_watcher_failures_do_not_send_email(self):
   from unittest.mock import patch
   p=self.db.enqueue('no-mail-card','no-mail-event',{})
@@ -383,12 +376,13 @@ class CloudTests(unittest.TestCase):
   svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80"><g stroke="black" fill="none"><path id="a" d="M2 20 L198 20"/><path id="b" d="M2 20.05 L198 20.05"/></g></svg>'
   data={'svg':svg,'line_plan':[{'name':'Hand','mode':'single','path_ids':['a','b']}],
         'source_attachment_ids':['png'],'colors':'Kaltweiß','widths_mm':[],'smallest_requested':True,'customer_name':'Test'}
-  with patch('cloud_jobs.generate',return_value=(data,{})),patch.object(jobs,'design_artifacts') as export:
+  with patch('reference_matching.select',return_value={'size':{'width_mm':600}}),patch('cloud_jobs.generate',return_value=(data,{})),patch.object(jobs,'design_artifacts') as export:
    # Stop after rendering, before sending anything to Trello.
    def rendered(*args):
     files,quotes,drawings,spec=Jobs.design_artifacts(jobs,*args)
     self.assertEqual(len(files),4)
-    self.assertEqual(spec['auto_minimum_mm'],drawings[0]['width'])
+    self.assertIsNone(spec['auto_minimum_mm'])
+    self.assertEqual(spec['reference_width_mm'],drawings[0]['width'])
     self.assertTrue(all(c['id']=='cold-white' for c in drawings[0]['pathColors']))
     raise StopIteration
    export.side_effect=rendered
@@ -734,6 +728,8 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(Image.open(io.BytesIO(files[1][2])).tobytes(),pix.samples)
   self.assertEqual(files[2][2],before[2][2])
  def test_publish_manual_minimum_transfers_comment_artifacts_and_actual_size(self):
+  from unittest.mock import patch
+  comparison=patch('reference_matching.select',return_value={});comparison.start();self.addCleanup(comparison.stop)
   from cloud_trello import HOLDING,READY,FIELDS
   class Fake:
    def __init__(self):
@@ -830,6 +826,8 @@ class CloudTests(unittest.TestCase):
   self.assertEqual(widths,[950,1400])
 
  def test_publish_rejects_actual_drawing_below_manual_minimum_before_upload(self):
+  from unittest.mock import patch
+  comparison=patch('reference_matching.select',return_value={});comparison.start();self.addCleanup(comparison.stop)
   from cloud_trello import HOLDING
   from unittest.mock import Mock
   p=self.db.enqueue('small-card','small-event',{'name':'LED Neon Test'})

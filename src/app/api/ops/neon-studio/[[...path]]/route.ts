@@ -1,7 +1,7 @@
 import { isOpsPortalConfigured, resolveOpsRequestActor } from "@/lib/ops/auth";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-const ALLOWED = /^(?:|health|app\.js|cloud\.js|style\.css|example\.png|test-logo\.png|cloud\/(?:list|project|save|publish|enqueue|retry)|api\/(?:prepare|upload|trace-selection|vector-page|geometry|pricing|manufacturing|export|example|split-paths|recovery-source|recovery-preview|recovery-apply|outline-[a-z-]+))$/;
+const ALLOWED = /^(?:|health|app\.js|cloud\.js|style\.css|example\.png|test-logo\.png|cloud\/(?:list|project|save|publish|enqueue|retry|reference)|api\/(?:prepare|upload|trace-selection|vector-page|geometry|pricing|manufacturing|export|example|split-paths|recovery-source|recovery-preview|recovery-apply|outline-[a-z-]+))$/;
 async function proxy(req: Request, context: { params: Promise<{path?: string[]}> }) {
   const host=req.headers.get("x-forwarded-host") || req.headers.get("host");
   if (!isOpsPortalConfigured(host) || !(await resolveOpsRequestActor(host,req.headers)))
@@ -19,7 +19,7 @@ async function proxy(req: Request, context: { params: Promise<{path?: string[]}>
     const upstream=await fetch(base.replace(/\/$/,"")+"/"+path+url.search,{
       method:req.method,headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},
       body:req.method==="GET"?undefined:await req.arrayBuffer(),
-      signal:AbortSignal.timeout(180000),redirect:"error",cache:"no-store"});
+      signal:AbortSignal.timeout(path === "cloud/reference" || path === "api/export" ? 900000 : 180000),redirect:"error",cache:"no-store"});
     const headers=new Headers({"Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer"});
     for(const name of ["content-type","content-disposition","content-security-policy"])
       if(upstream.headers.get(name))headers.set(name,upstream.headers.get(name)!);

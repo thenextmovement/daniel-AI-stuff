@@ -37,11 +37,11 @@ function setupDownloads(){
     submit.disabled=true;state.exporting=true;exportState();
     try{
       if(sizesDirty&&formats.includes('quote'))await applySizeFields();
-      const spec={...cloudSpec,auto_minimum_mm:window.studioManualMinimum()?null:manufacturingReport?.recommendedWidth,
+      const spec={...cloudSpec,auto_minimum_mm:null,reference_width_mm:manufacturingReport?.referenceBased?manufacturingReport.recommendedWidth:null,
         light_type:pricing.color,usage:pricing.outdoor?'Außen':'Innen',pricing_options:priceOptions(),
         controllers:Number($('priceControllers').value),uv_print:$('priceUv').checked,
         waterproof_psus:pricing.outdoor?Number($('pricePsus').value):0,shape:state.settings.shape};
-      const response=await api('/api/export',{id:state.project.id,settings:state.settings,options:{kind:'download',formats,spec,motif:spec.design_name,pdfOptions:state.exportOptions}});
+      const response=await api('/api/export',{id:state.project.id,settings:state.settings,options:{kind:'download',project:cloud.id,revision:cloud.revision,design:designNumber,formats,spec,motif:spec.design_name,pdfOptions:state.exportOptions}});
       const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');
       link.href=url;link.download=response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]||'Neon_Studio.zip';
       document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
@@ -52,6 +52,13 @@ function setupDownloads(){
 }
 let sizesDirty=false;
 window.studioManualMinimum=()=>cloudSpec.minimum_width_mm;
+window.studioReferenceMinimum=async()=>{
+  const result=await cloudRequest('reference',{id:cloud.id,revision:cloud.revision,design:designNumber,
+    model:state.project.id,settings:state.settings,spec:cloudSpec});
+  cloudSpec={...cloudSpec,auto_minimum_mm:null,reference_width_mm:result.referenceBased?result.recommendedWidth:null,
+    reference_match:result.reference_match};
+  return result;
+};
 window.studioManualSizeLabel=()=>cloudSpec.size_axis==='height'&&cloudSpec.manual_height_mm
   ?'Manuelle Mindesthöhe: '+number(cloudSpec.manual_height_mm/10,1)+' cm'
   :'Manuelle Mindestbreite: '+number(cloudSpec.minimum_width_mm/10,1)+' cm';
@@ -82,7 +89,7 @@ function updateSizeLabels(){
   const height=$('sizeAxis').value==='height';
   $$('[data-size-label]').forEach(label=>label.textContent=label.dataset.sizeLabel+'. '+(height?'Höhe':'Breite')+' (cm)');
   $('manualSize').setAttribute('aria-label',(height?'Mindesthöhe':'Mindestbreite')+' in cm');
-  $('manualSize').placeholder=!height&&manufacturingReport?number(manufacturingReport.recommendedWidth/10,1)+' (autom.)':'Automatisch';
+  $('manualSize').placeholder=!height&&manufacturingReport?number(manufacturingReport.recommendedWidth/10,1)+' (Referenz)':'Nach Referenz';
   $('addSize').hidden=!$('fourthSize').parentElement.hidden;
 }
 $('addSize').onclick=()=>{
@@ -182,7 +189,10 @@ async function applySizeFields(resetMinimum=!!cloudSpec.minimum_width_mm && $('m
   const extras=extraInputs.filter(id=>$(id).value!=='').map(id=>$(id).valueAsNumber*10);
   const dimensions=manual?[manual,...extras]:extras;
   if(new Set(dimensions).size!==dimensions.length)throw Error('Bitte unterschiedliche Größen eingeben.');
-  if(!manual&&(resetMinimum||!manufacturingReport))await checkManufacturing(false,true);
+  if(!manual&&(resetMinimum||!manufacturingReport)){
+    cloudSpec={...cloudSpec,minimum_width_mm:null,manual_height_mm:null};
+    await checkManufacturing(false,true);
+  }
   const automatic=manufacturingReport?.recommendedWidth;
   const generation=state.generation;
   let converted=dimensions;
@@ -192,7 +202,7 @@ async function applySizeFields(resetMinimum=!!cloudSpec.minimum_width_mm && $('m
     if(state.generation!==generation)throw Error('Die Zeichnung wurde geändert. Bitte die Größen erneut bestimmen.');
   }
   const first=manual?converted[0]:automatic;
-  if(!first)throw Error('Die automatische Mindestgröße steht noch aus.');
+  if(!first)throw Error('Der Referenzvergleich steht noch aus.');
   let additional=manual?converted.slice(1):converted;
   let heights=height?dimensions:[];
   if(resetMinimum){
@@ -200,6 +210,7 @@ async function applySizeFields(resetMinimum=!!cloudSpec.minimum_width_mm && $('m
     additional=additional.filter(w=>w>first);
   }
   if(additional.some(w=>w<=first))throw Error('Weitere Größen müssen größer als die Mindestgröße sein.');
+  if(manufacturingReport?.reference_match?.cut)state.settings.referenceContour='follow';
   await resizeToMinimum(first);
   if(!state.valid||Math.abs(state.drawing.width-first)>.1||
       (height&&manual&&Math.abs(state.drawing.height-manual)>.1))throw Error('Die eingegebene Größe konnte nicht übernommen werden.');
@@ -288,8 +299,8 @@ function cloudPriceControls(){
   $$('[data-price-outdoor]').forEach(b=>{const active=(b.dataset.priceOutdoor==='true')===pricing.outdoor;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active);});
   $('pricePsuRow').hidden=!pricing.outdoor;$('priceOutdoorNote').hidden=!pricing.outdoor;
   const warning=$('cloudSizeWarning');if(warning&&!state.project){
-    if(cloudSpec.auto_minimum_mm){
-      warning.hidden=false;warning.textContent=`Kleinste geprüfte Breite mit ${cloudSpec.minimum_tube_mm||8}-mm-Neonflex: `+(cloudSpec.auto_minimum_mm/10).toLocaleString('de-DE')+' cm';return;
+    if(cloudSpec.reference_width_mm){
+      warning.hidden=false;warning.textContent='Empfohlene Breite nach Lieferantenreferenz: '+(cloudSpec.reference_width_mm/10).toLocaleString('de-DE')+' cm';return;
     }
     warning.hidden=cloudSpec.minimum_width_mm==null&&!!cloudSpec.widths_mm?.length;
     warning.textContent=cloudSpec.minimum_width_mm!=null?'Mindestbreite: '+(cloudSpec.minimum_width_mm/10).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' cm · manuell':'Vorschaugröße – Mindestgröße noch nicht geprüft';
@@ -445,7 +456,7 @@ async function cloudBoot(){
   }
   const sizeWarning=textElement('span','Vorschaugröße – Mindestgröße noch nicht geprüft');sizeWarning.id='cloudSizeWarning';sizeWarning.hidden=!!cloudSpec.widths_mm?.length;bar.append(sizeWarning);
   if(cloud.model){
-    const check=textElement('button','Mindestgröße ermitteln');
+    const check=textElement('button','Größe nach Referenz');
     check.id='cloudMinimumCheck';check.disabled=true;
     check.onclick=async()=>{
       if(!sizesDirty||!window.studioManualMinimum()||$('manualSize').value!==''||$('manualSize').validity.badInput){
@@ -454,9 +465,9 @@ async function cloudBoot(){
       }
       try{
         await applySizeFields(true);
-        minimumStatus('Geometrische Mindestbreite: '+number(state.drawing.width/10,1)+' cm',true);
+        minimumStatus('Empfohlene Breite nach Referenz: '+number(state.drawing.width/10,1)+' cm',true);
         await cloudSave();
-        toast('Automatische Mindestgröße übernommen und gespeichert.');
+        toast('Referenzgröße übernommen und gespeichert.');
       }catch(error){toast(error.message,true);}
     };
     const limit=textElement('button','Engstelle zeigen');
