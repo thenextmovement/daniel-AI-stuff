@@ -148,4 +148,7 @@ Server vergibt ausschließlich `system:read` und `shipping:preview`. Unterschied
 zufällige Tokens verwenden, nur deren SHA-256-Hashes auf dem Server hinterlegen.
 Tokens nicht in Chat, Git oder Logs schreiben. Vor Freigabe je Identität die Toolliste,
 die Isolation zwischen Identitäten, Live-Preisabfrage und UI-Ressource prüfen.
-Eine erfolgreiche Bereitstellung ersetzt nicht den Codex-Test auf Fabiennes Rechner.
+Die Einrichtung gilt für Rahim, Fabian, Daniel und künftig freigeschaltete
+Mitarbeiter. Neue Mitarbeiter erhalten einen eigenen Eintrag nach demselben Schema;
+bestehende Identitäten und Automationsrechte bleiben unverändert. Eine erfolgreiche
+Bereitstellung ersetzt nicht den Codex-Test auf dem jeweiligen Mitarbeiterrechner.
