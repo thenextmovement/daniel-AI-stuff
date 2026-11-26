@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useImperativeHandle, type Ref } from "react";
-import { Phone } from "lucide-react";
+import { Phone, PhoneOff } from "lucide-react";
 import styles from "./phone-central.module.css";
 
 export type PlacetelCallHandle = { start: (number: string) => boolean };
@@ -16,6 +16,32 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
   const [callId, setCallId] = useState("");
   const [phone, setPhone] = useState("");
   const expires = useRef(0);
+  const [hangupPending, setHangupPending] = useState(false);
+  const hangupTimer = useRef<number | null>(null);
+  function clearHangup() {
+    if (hangupTimer.current !== null) window.clearTimeout(hangupTimer.current);
+    hangupTimer.current = null;
+  }
+  useEffect(() => () => clearHangup(), []);
+  function hangup() {
+    if (status !== "opened" || hangupTimer.current !== null || !/^\+[1-9]\d{6,14}$/.test(phone)) return;
+    setHangupPending(true);
+    setMessage("Auflegen angefordert. Warte auf die Bestätigung von Placetel …");
+    hangupTimer.current = window.setTimeout(() => {
+      hangupTimer.current = null;
+      setHangupPending(false);
+      setMessage("Das Auflegen wurde noch nicht bestätigt. Bitte erlaube das Öffnen von Placetel im Browser und versuche es erneut oder prüfe den Anruf im Softphone.");
+    }, 10000);
+    try {
+      // The installed Placetel softphone registers this number-bound protocol handler.
+      // Only the provider status below confirms that the call actually ended.
+      window.location.assign("hangup://" + phone);
+    } catch {
+      clearHangup();
+      setHangupPending(false);
+      setMessage("Der Auflegen-Befehl konnte nicht an Placetel übergeben werden. Bitte versuche es erneut oder lege im Softphone auf.");
+    }
+  }
   const endedCallback=useRef(onEnded);endedCallback.current=onEnded;
   const binding=useRef({customerId,requestId});
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -36,6 +62,8 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
         if (response.ok) {
           const data = await response.json();
           if (!controller.signal.aborted && typeof data.endedAt === "string" && Number.isFinite(Date.parse(data.endedAt))) {
+            clearHangup();
+            setHangupPending(false);
             setStatus("ended");
             setMessage("Gespräch beendet");
             endedCallback.current?.(binding.current.customerId,binding.current.requestId,callId);
@@ -139,13 +167,16 @@ export function PlacetelCallButton({ ref, customerId, requestId, dialNumber, dis
         </div>
       </form>
     </dialog>
-    {status === "opened" ? <p role="status">Zum Auflegen oder Abbrechen den roten Hörer im Placetel-Softphone drücken.</p> :
+    {status === "opened" ? <button type="button" className={styles.button + " " + styles.placetelDial + " " + styles.placetelHangup} disabled={hangupPending} onClick={hangup}>
+      <PhoneOff size={20}/>{hangupPending ? "Auflegen angefordert …" : "Auflegen"}
+    </button> :
       status !== "ended" && <button className={styles.button + " " + styles.primary + " " + styles.placetelDial} type="button" disabled={disabled || status === "sending"}
         onClick={() => { setConfirmationNumber(phone || requestedNumber.current || dialNumber || ""); confirmation.current?.showModal(); }}>
         <Phone size={17}/>{status === "sending" ? "Anruf wird vorbereitet …" : status === "retry" ? "Status prüfen" : status === "prepared" ? "Placetel-Softphone öffnen" : "Mit Placetel-Softphone anrufen"}
       </button>}
     {message && <p role="status" className={styles.small}>{message}</p>}
     {(status === "opened" || status === "ended") && <button type="button" className={styles.link} onClick={() => {
+      clearHangup(); setHangupPending(false);
       key.current = null; requestedNumber.current = undefined; onNoteTarget(""); setCallId(""); setPhone(""); setStatus("ready"); setMessage("");
     }}>Weiteren Anruf vorbereiten</button>}
   </div>;

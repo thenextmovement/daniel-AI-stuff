@@ -18,14 +18,14 @@ try {
  const url=`http://127.0.0.1:${server.address().port}`;
  browser=await chromium.launch({headless:true});
  for(const scenario of ['slow','fast','cancel','failure','expired']){
-  const page=await browser.newPage();
+  const page=await browser.newPage();page.setDefaultTimeout(15000);
   // Model browser transient activation after the asynchronous preparation.
   await page.addInitScript(active=>Object.defineProperty(navigator,'userActivation',{value:{isActive:active}}),['fast','cancel'].includes(scenario));
   const cdp=await page.context().newCDPSession(page);await cdp.send('Page.enable');
-  const handoffs=[];cdp.on('Page.frameRequestedNavigation',e=>{if(e.url.startsWith('tel:'))handoffs.push(e.url)});
-  let pending,requests=0;
+  const hangups=[];const handoffs=[];cdp.on('Page.frameRequestedNavigation',e=>{if(e.url.startsWith('hangup:'))hangups.push(e.url);if(e.url.startsWith('tel:'))handoffs.push(e.url)});
+  let pending,requests=0,endedAt=null;
   await page.route('**/api/ops/voice-phone/**',async route=>{
-   if(route.request().url().includes('/status'))return route.fulfill({json:{endedAt:null}});
+   if(route.request().url().includes('/status'))return route.fulfill({json:{endedAt}});
    requests++;await new Promise(r=>pending=r);
    await route.fulfill({status:scenario==='failure'?503:200,json:scenario==='failure'?{ok:false,error:'Test: Vorbereitung fehlgeschlagen'}:{ok:true,callId:'test-call',direct:true,state:'accepted',dialedPhone:'+493023125000',expiresAt:scenario==='expired'?1:Date.now()+90000}});
   });
@@ -49,6 +49,33 @@ try {
   assert.equal(requests,1,'handoff must not create a second preparation');
   assert.equal(handoffs.length,['slow','fast'].includes(scenario)?1:0,scenario);
   if(handoffs.length)assert.equal(handoffs[0],'tel:+493023125000');
+  if(handoffs.length){
+   const hangup=page.getByRole('button',{name:'Auflegen',exact:true});
+   if(scenario==='fast' && process.env.PLACETEL_PREVIEW_PATH){
+    await page.screenshot({path:process.env.PLACETEL_PREVIEW_PATH,fullPage:true});
+   }
+   await hangup.click();
+   await page.getByText('Auflegen angefordert.',{exact:false}).last().waitFor();
+   assert.deepEqual(hangups,['hangup://+493023125000']);
+   assert.equal(await page.getByRole('button',{name:'Auflegen angefordert …',exact:true}).isDisabled(),true);
+   assert.equal(await page.getByText('Gespräch beendet',{exact:true}).count(),0);
+   if(scenario==='fast'){
+    endedAt=new Date().toISOString();
+    await page.getByText('Gespräch beendet',{exact:true}).last().waitFor();
+    await page.waitForTimeout(10500);
+    assert.equal(await page.getByText('Gespräch beendet',{exact:true}).last().isVisible(),true);
+    assert.equal(await hangup.count(),0);
+   }else{
+    await page.getByText('Das Auflegen wurde noch nicht bestätigt.',{exact:false}).last().waitFor({timeout:15000});
+    assert.equal(await hangup.isEnabled(),true);
+    await hangup.click();
+    assert.equal(hangups.length,2);
+    await page.getByRole('button',{name:'Weiteren Anruf vorbereiten',exact:true}).click();
+    await page.waitForTimeout(10500);
+    assert.equal(await page.getByText('Das Auflegen wurde noch nicht bestätigt.',{exact:false}).count(),0);
+   }
+   assert.equal(requests,1,'hangup must not prepare or dial another call');
+  }else assert.equal(await page.getByRole('button',{name:'Auflegen',exact:true}).count(),0);
   console.log('PASS',scenario);await page.close();
  }
 } finally {await browser?.close();if(server)await new Promise(r=>server.close(r));await rm(temp,{recursive:true,force:true});}
