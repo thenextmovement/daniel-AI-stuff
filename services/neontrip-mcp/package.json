@@ -7,7 +7,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/build-dhl-preview-ui.mjs && tsc -p tsconfig.json",
     "dev": "tsx src/server.ts",
     "start": "node dist/server.js",
     "test": "node --import tsx --test tests/*.test.ts",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/express": "2.0.0",
+    "@modelcontextprotocol/ext-apps": "2.0.4",
     "@modelcontextprotocol/node": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
     "express": "5.2.1",
@@ -24,6 +25,8 @@
   "devDependencies": {
     "@types/express": "5.0.6",
     "@types/node": "22.20.1",
+    "esbuild": "0.28.2",
+    "happy-dom": "21.0.4",
     "tsx": "4.23.13",
     "typescript": "5.9.3"
   }

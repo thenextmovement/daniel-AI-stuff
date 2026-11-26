@@ -1,3 +1,4 @@
+import {registerDhlPreviewTools, type DhlPreviewContext} from "./dhl-preview-mcp.js";
 import { notifyWriteFailure } from "./write-alerts.js";
 import { OPS_OPERATIONS, OPS_COVERAGE, opsOperation } from "./ops-catalog.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -145,6 +146,7 @@ export function createNeontripMcpServer(input: {
   audit: AuditSink;
   nativeOffersCatalog?: Record<string, unknown>[];
   nativeOffersError?: string;
+  dhlPreview?: DhlPreviewContext;
 }) {
   const identity = identityFromAuth(input.authInfo);
   const server = new McpServer({ name: "neontrip-operations", version: "0.1.0" });
@@ -588,5 +590,6 @@ export function createNeontripMcpServer(input: {
     },
   });
 
+  if (input.dhlPreview && identity.role === "operator" && hasScope(identity,"shipping:preview")) registerDhlPreviewTools(server, identity, input.dhlPreview, input.audit);
   return server;
 }

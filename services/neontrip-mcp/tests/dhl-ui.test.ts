@@ -1,0 +1,85 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {Window,type HTMLButtonElement,type HTMLInputElement} from "happy-dom";
+import {mountPreview} from "../src/ui/dhl-preview-view.js";
+import {draft,offer} from "./fixtures/dhl-preview.js";
+import type {Preview} from "../src/dhl-preview.js";
+test("form renders address as text, requires selection, confirms only versioned ID and clears on update",async()=>{
+ const window=new Window();const doc=window.document;const root=doc.createElement("main");doc.body.append(root);
+ const calls:unknown[]=[];
+ const view=mountPreview(root as unknown as HTMLElement,async(args)=>{calls.push(args);return {status:"preview_confirmed",booked:false}});
+ const p:Preview={id:"p1",version:1,expiresAt:Date.now()+600000,mode:"preview",draft:{...draft,receiver:{...draft.receiver,name:"<img src=x onerror=alert(1)>"}},offers:[offer],warnings:[]};
+ view.render(p);
+ assert.equal(root.querySelector("img"),null);
+ assert.ok(root.textContent.includes("<img src=x onerror=alert(1)>"));
+ assert.ok(root.textContent.includes("40 × 30 × 20 cm"));
+ const button=root.querySelector("button")!;assert.equal(button.disabled,true);
+ const radio=root.querySelector('input[type="radio"]')! as any;
+ radio.click(); assert.equal(button.disabled,false);button.click();
+ await new Promise(r=>setImmediate(r));
+ assert.deepEqual(calls,[{previewId:"p1",version:1,offerId:"fixture-offer",pickup:{readyByTime:"10:00",closeTime:"18:00"}}]);
+ assert.ok(root.textContent.includes("Test bestätigt, nichts gebucht"));
+ view.render({...p,version:2,offers:[]});assert.equal(root.querySelector("button")!.disabled,true);
+ assert.equal(root.querySelectorAll('input[type="radio"]:checked').length,0);
+ view.dispose(); window.happyDOM.abort();
+});
+test("stale errors, expired rates and impossible success do not appear confirmed",async()=>{
+ const w=new Window();const root=w.document.createElement("main");
+ const view=mountPreview(root as unknown as HTMLElement,async()=>({booked:true}));
+ view.render({id:"x",version:1,expiresAt:Date.now()+60000,mode:"preview",draft,offers:[offer],warnings:[]});
+ (root.querySelector("input") as any).click();root.querySelector("button")!.click();
+ await new Promise(r=>setImmediate(r));
+ assert.ok(!root.textContent.includes("Test bestätigt, nichts gebucht"));
+ view.render({id:"x",version:2,expiresAt:0,mode:"preview",draft,offers:[offer],warnings:[]});
+ (root.querySelector("input") as any).click();assert.equal(root.querySelector("button")!.disabled,true);
+ view.dispose(); w.happyDOM.abort();
+});
+test("DHL destination-local delivery time is preserved independently of browser timezone",()=>{
+ const w=new Window();const root=w.document.createElement("main");
+ const view=mountPreview(root as unknown as HTMLElement,async()=>({booked:false,status:"preview_confirmed"}));
+ view.render({id:"p",version:1,expiresAt:Date.now()+10000,mode:"preview",draft,offers:[{...offer,deliveryDate:"2026-11-30T09:00:00"}],warnings:[]});
+ assert.equal(root.querySelector(".delivery-day")!.textContent,"Montag, 30.11.");
+ assert.equal(root.querySelector(".delivery-time")!.textContent,"bis 09:00 Uhr");
+ view.dispose();w.happyDOM.abort();
+});
+
+test("pickup window validates order and can be omitted when the driver already comes",async(t)=>{
+ const w=new Window();const root=w.document.createElement("main");w.document.body.append(root);const calls:any[]=[];
+ const view=mountPreview(root as unknown as HTMLElement,async args=>{calls.push(args);return {booked:false,status:"preview_confirmed"};});
+ t.after(()=>{view.dispose();w.happyDOM.abort();});
+ view.render({id:"p",version:1,expiresAt:Date.now()+60000,mode:"preview",draft,offers:[{...offer,deliveryDate:"2026-11-30T23:59:00"}],warnings:[]});
+ assert.equal(root.querySelector(".delivery-time")!.textContent,"Tagesende");
+ (root.querySelector('input[type="radio"]') as any).click();
+ const selects=root.querySelectorAll("select");selects[1]!.value="09:00";selects[1]!.dispatchEvent(new w.Event("change"));
+ assert.equal(root.querySelector("button")!.disabled,true);
+ (root.querySelector('input[type="checkbox"]') as any).click();
+ assert.equal(root.querySelector("button")!.disabled,false);assert.equal(selects[0]!.disabled,true);
+ root.querySelector("button")!.click();await new Promise(r=>setImmediate(r));assert.equal(calls[0].pickup,undefined);
+ view.dispose();w.happyDOM.abort();
+});
+
+test("inline editors reprice changed data and discard the previous selection; cancel and errors preserve draft",async(t)=>{
+ const w=new Window();const root=w.document.createElement("main");w.document.body.append(root);
+ const calls:any[]=[];let fail=false;
+ const p:Preview={id:"edit",version:1,expiresAt:Date.now()+60000,mode:"preview",draft,offers:[offer],warnings:[]};
+ const view=mountPreview(root as unknown as HTMLElement,async()=>({booked:false,status:"preview_confirmed"}),async args=>{calls.push(args);if(fail)throw Error("DHL nicht erreichbar");return {...p,version:2,draft:args.draft,offers:[{...offer,id:"new-offer"}]};});
+ t.after(()=>{view.dispose();w.happyDOM.abort();});view.render(p);
+ (root.querySelector('input[type="radio"]') as any).click();
+ (root.querySelector('[aria-label="Lieferadresse bearbeiten"]') as any).click();
+ assert.equal(root.querySelector<HTMLButtonElement>(".confirm-preview")!.disabled,true);
+ assert.equal(root.querySelector<HTMLInputElement>('input[type="radio"]')!.disabled,true);
+ root.querySelector<HTMLInputElement>('[name="city"]')!.value="Potsdam";
+ root.querySelector("form")!.dispatchEvent(new w.Event("submit",{bubbles:true,cancelable:true}));await new Promise(r=>setImmediate(r));
+ assert.equal(calls[0].draft.receiver.city,"Potsdam");assert.deepEqual(calls[0].previous,{previewId:"edit",version:1});
+ assert.equal(draft.receiver.city,"Berlin");assert.equal(root.querySelector("form"),null);
+ assert.equal(root.querySelector<HTMLButtonElement>(".confirm-preview")!.disabled,true);
+ assert.equal(root.querySelector<HTMLInputElement>('input[type="radio"]')!.value,"new-offer");
+ (root.querySelector('[aria-label="Paketdaten bearbeiten"]') as any).click();
+ root.querySelector<HTMLInputElement>('[name="0-lengthCm"]')!.value="120";
+ root.querySelector<HTMLInputElement>('[name="0-weightKg"]')!.value="9.5";
+ fail=true;root.querySelector("form")!.dispatchEvent(new w.Event("submit",{bubbles:true,cancelable:true}));await new Promise(r=>setImmediate(r));
+ assert.equal(calls[1].draft.parcels[0].lengthCm,120);assert.equal(calls[1].draft.parcels[0].weightKg,9.5);
+ assert.ok(root.textContent.includes("DHL nicht erreichbar"));assert.equal(root.querySelector<HTMLButtonElement>(".confirm-preview")!.disabled,true);
+ const cancel=Array.from(root.querySelectorAll("button")).find(b=>b.textContent==="Abbrechen")!;cancel.click();
+ assert.equal(root.querySelector("form"),null);assert.ok(root.textContent.includes("40 × 30 × 20 cm"));
+});

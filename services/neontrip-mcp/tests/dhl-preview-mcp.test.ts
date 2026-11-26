@@ -1,0 +1,44 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {createHash} from "node:crypto";
+import type {AddressInfo} from "node:net";
+import {createGatewayApp} from "../src/server.js";
+import type {GatewayConfig} from "../src/config.js";
+import {draft} from "./fixtures/dhl-preview.js";
+test("scoped HTTP MCP preview, resource, state across calls and no booking tool",async(t)=>{
+ const token="pilot-test-only";const now=Date.now();
+ const cfg:GatewayConfig={env:"test",host:"127.0.0.1",port:8787,publicUrl:new URL("http://127.0.0.1:8787/mcp"),allowedHosts:["127.0.0.1"],allowedOrigins:[],identities:[{clientId:"pilot",actor:"pilot",role:"operator",tokenSha256:createHash("sha256").update(token).digest("hex"),scopes:["system:read","shipping:preview"],expiresAt:Math.floor(now/1000)+3600}],requiredServices:[],requestTimeoutMs:1000,maxResponseBytes:1500000,requestsPerMinute:100,allowDecisionCustomerEmail:false,dhl:{environment:"test",username:"test",password:"test",accountNumber:"123456789"}};
+ const requests:string[]=[];
+ const {app,close}=createGatewayApp({config:cfg,audit:()=>{},fetchImpl:async(url)=>{
+  requests.push(String(url));return Response.json({products:[{productCode:"N",productName:"TEST",totalPrice:[{currencyType:"BILLC",priceCurrency:"EUR",price:42.5}]}]});
+ }});
+ const listener=app.listen(0,"127.0.0.1");await new Promise<void>(r=>listener.once("listening",r));
+ t.after(async()=>{await close();await new Promise<void>(r=>listener.close(()=>r()));});
+ const endpoint="http://127.0.0.1:"+(listener.address() as AddressInfo).port+"/mcp";
+ const rpc=async(method:string,params:unknown)=>{
+  const res=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json",accept:"application/json,text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})});const raw=await res.text();return JSON.parse(raw.startsWith("event:")?raw.split("\n").find(l=>l.startsWith("data: "))!.slice(6):raw);
+ };
+ const catalog=await rpc("tools/list",{});const names=catalog.result.tools.map((x:any)=>x.name);
+ assert.ok(names.includes("dhl_prepare_preview"));assert.ok(names.includes("dhl_show_preview"));
+ assert.ok(!names.some((x:string)=>/book|shipment|pickup/.test(x)));
+ const render=catalog.result.tools.find((x:any)=>x.name==="dhl_show_preview");
+ assert.equal(render._meta.ui.resourceUri,"ui://neontrip/dhl-preview.html");
+ const prepared=await rpc("tools/call",{name:"dhl_prepare_preview",arguments:{draft:{...draft,shippingDates:[new Date(now+86400000).toISOString().replace(/\.\d{3}Z$/,"Z")]}}});
+ const p=prepared.result.structuredContent;assert.equal(p.mode,"preview");assert.equal(p.offers.length,1);
+ const shown=await rpc("tools/call",{name:"dhl_show_preview",arguments:{previewId:p.id,version:p.version}});
+ assert.equal(shown.result.structuredContent.id,p.id);
+ const confirmed=await rpc("tools/call",{name:"dhl_confirm_preview",arguments:{previewId:p.id,version:p.version,offerId:p.offers[0].id,pickup:{readyByTime:"16:00",closeTime:"18:00"}}});
+ assert.deepEqual(confirmed.result.structuredContent.pickup,{readyByTime:"16:00",closeTime:"18:00"});
+ assert.equal(confirmed.result.structuredContent.pickupStatus,"not_requested");
+ const invalid=await rpc("tools/call",{name:"dhl_confirm_preview",arguments:{previewId:p.id,version:p.version,offerId:p.offers[0].id,pickup:{readyByTime:"18:00",closeTime:"16:00"}}});
+ assert.ok(invalid.error||invalid.result?.isError);
+ assert.equal(confirmed.result.structuredContent.booked,false);
+ const resource=await rpc("resources/read",{uri:"ui://neontrip/dhl-preview.html"});
+ assert.equal(resource.result.contents[0].mimeType,"text/html;profile=mcp-app");
+ assert.ok(requests.every(u=>u==="https://express.api.dhl.com/mydhlapi/test/rates"));
+ cfg.identities[0]!.scopes=["system:read"];
+ const denied=await rpc("tools/call",{name:"dhl_confirm_preview",arguments:{previewId:p.id,version:p.version,offerId:p.offers[0].id}});
+ assert.ok(denied.error||denied.result?.isError);
+ const hidden=await rpc("resources/read",{uri:"ui://neontrip/dhl-preview.html"});
+ assert.ok(hidden.error||hidden.result?.isError);
+});

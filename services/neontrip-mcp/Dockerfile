@@ -4,6 +4,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY tsconfig.json ./
 COPY src ./src
+COPY scripts/build-dhl-preview-ui.mjs ./scripts/build-dhl-preview-ui.mjs
 RUN npm run build
 
 FROM node:22-alpine AS runtime

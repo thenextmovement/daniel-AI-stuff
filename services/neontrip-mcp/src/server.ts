@@ -1,3 +1,6 @@
+import {createPreviewStore} from "./dhl-preview.js";
+import {fetchDhlRates} from "./dhl-rates.js";
+import type {DhlPreviewContext} from "./dhl-preview-mcp.js";
 import { createServer, type Server as HttpServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import type { NextFunction, Request, Response } from "express";
@@ -41,8 +44,13 @@ export function createGatewayApp(options: {
   config: GatewayConfig;
   fetchImpl?: typeof fetch;
   audit?: AuditSink;
+  dhlPreview?: DhlPreviewContext;
 }) {
   const { config } = options;
+  const dhlPreview = options.dhlPreview ?? {store:createPreviewStore(), rates: async (draft: import("./dhl-preview.js").Draft) => {
+    if (!config.dhl) return {offers:[],warnings:["DHL-API-Zugang fehlt. Keine echten Tarife verfügbar."]};
+    return fetchDhlRates(draft,config.dhl,options.fetchImpl);
+  }};
   const app = createMcpExpressApp({
     host: config.host,
     allowedHosts: config.allowedHosts,
@@ -87,6 +95,7 @@ export function createGatewayApp(options: {
       }
       return createNeontripMcpServer({
       config,
+      dhlPreview,
       authInfo,
       api,
       audit: options.audit || jsonAuditSink, nativeOffersCatalog, nativeOffersError,

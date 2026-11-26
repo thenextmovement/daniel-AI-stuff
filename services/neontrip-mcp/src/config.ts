@@ -1,3 +1,4 @@
+import type { DhlRateConfig } from "./dhl-rates.js";
 import { z } from "zod";
 import { SCOPES, type Identity, type Scope, type ServiceName } from "./types.js";
 
@@ -31,6 +32,7 @@ export type GatewayConfig = {
   requestsPerMinute: number;
   allowDecisionCustomerEmail: boolean;
   releaseCommit?: string;
+  dhl?: DhlRateConfig;
   ops?: { baseUrl: URL; accessClientId: string; accessClientSecret: string };
   offers?: { baseUrl: URL; apiKey: string };
 };
@@ -94,6 +96,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
   const requiredServices = z.array(z.enum(["billing", "offers", "customers"])).parse(csv(env.MCP_REQUIRED_SERVICES || "billing,offers"));
 
   return {
+    ...(env.DHL_API_USERNAME && env.DHL_API_PASSWORD && env.DHL_ACCOUNT_NUMBER ? { dhl: { environment: z.enum(["test", "production"]).parse(env.DHL_API_ENVIRONMENT || "test"), username: env.DHL_API_USERNAME, password: env.DHL_API_PASSWORD, accountNumber: z.string().regex(/^\d{9}$/).parse(env.DHL_ACCOUNT_NUMBER) } } : {}),
     env: nodeEnv,
     host: env.MCP_HOST || "127.0.0.1",
     port: z.coerce.number().int().min(1).max(65535).catch(8787).parse(env.MCP_PORT),
